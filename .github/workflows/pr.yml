@@ -64,11 +64,27 @@ jobs:
             --configuration Release \
             --results-directory TestResults
 
+      - name: Normalize coverage reports
+        run: |
+          mkdir -p CoverageResults
+          shopt -s globstar nullglob
+          files=(TestResults/**/*.cobertura.*.xml)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No coverage reports found in TestResults"
+            exit 1
+          fi
+
+          index=0
+          for file in "${files[@]}"; do
+            index=$((index + 1))
+            cp "$file" "CoverageResults/coverage-unit-${index}.cobertura.xml"
+          done
+
       - name: Upload test results
         uses: actions/upload-artifact@v7
         with:
           name: coverage-unit
-          path: TestResults/
+          path: CoverageResults/*.cobertura.xml
 
   integration-tests:
     name: Integration Test (${{ matrix.name }})
@@ -115,11 +131,27 @@ jobs:
             --configuration Release \
             --results-directory TestResults
 
+      - name: Normalize coverage reports
+        run: |
+          mkdir -p CoverageResults
+          shopt -s globstar nullglob
+          files=(TestResults/**/*.cobertura.*.xml)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No coverage reports found in TestResults"
+            exit 1
+          fi
+
+          index=0
+          for file in "${files[@]}"; do
+            index=$((index + 1))
+            cp "$file" "CoverageResults/coverage-${{ matrix.name }}-${index}.cobertura.xml"
+          done
+
       - name: Upload test results
         uses: actions/upload-artifact@v7
         with:
           name: coverage-integration-${{ matrix.name }}
-          path: TestResults/
+          path: CoverageResults/*.cobertura.xml
 
   today:
     runs-on: ubuntu-latest
@@ -144,7 +176,11 @@ jobs:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
 
   coverage:
-    needs: [unit-tests]
+    needs: [unit-tests, integration-tests]
+    if: >
+      always() &&
+      needs.unit-tests.result == 'success' &&
+      (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped')
     uses: tcfoss/github-actions/.github/workflows/coverage.yml@v1
     permissions:
       contents: read
