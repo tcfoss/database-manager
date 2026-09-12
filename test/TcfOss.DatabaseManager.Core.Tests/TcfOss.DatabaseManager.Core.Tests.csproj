@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>TcfOss.DatabaseManager.Core.Tests</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateResourceDesignerFiles>true</GenerateResourceDesignerFiles>
+    <CoreCompileDependsOn>PrepareResources;$(CompileDependsOn)</CoreCompileDependsOn>
+    <!--
+    To enable the Microsoft Testing Platform 'dotnet test' experience, add property:
+      <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+
+    To enable the Microsoft Testing Platform native command line experience, add property:
+      <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+
+    For more information on Microsoft Testing Platform support in xUnit.net, please visit:
+      https://xunit.net/docs/getting-started/v3/microsoft-testing-platform
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Resources\TestText.resx">
+      <Generator>MSBuild:Compile</Generator>
+      <PublicClass>True</PublicClass>
+      <LastGenOutput>TestText.Designer.cs</LastGenOutput>
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>TcfOss.DatabaseManager.Core.Tests.Resources</StronglyTypedNamespace>
+      <StronglyTypedClassName>TestText</StronglyTypedClassName>
+      <StronglyTypedFileName>$(IntermediateOutputPath)TestText.Designer.cs</StronglyTypedFileName>
+    </EmbeddedResource>
+
+    <Compile Update="$(IntermediateOutputPath)TestText.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>TestText.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TcfOss.DatabaseManager.Core\TcfOss.DatabaseManager.Core.csproj" />
+  </ItemGroup>
+
+</Project>

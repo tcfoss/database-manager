@@ -1,0 +1,13 @@
+Catalog: def
+QuoteStyle: Backticks
+Dialect: MariaDb
+
+Schemas:
+  - SchemaName: information_schema
+    RootPath: ./
+
+Credentials:
+  HostName: localhost
+  UserName: mariadb
+  Password: mariadb
+  Port: 3306

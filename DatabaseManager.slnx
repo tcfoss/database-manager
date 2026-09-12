@@ -1,0 +1,29 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TcfOss.DatabaseManager.App/TcfOss.DatabaseManager.App.csproj" />
+    <Project Path="src/TcfOss.DatabaseManager.Core/TcfOss.DatabaseManager.Core.csproj" />
+    <Project Path="src/TcfOss.DatabaseManager.MariaDb/TcfOss.DatabaseManager.MariaDb.csproj" />
+    <Project Path="src/TcfOss.DatabaseManager.MsSql/TcfOss.DatabaseManager.MsSql.csproj" />
+    <Project Path="src/TcfOss.DatabaseManager.MySql/TcfOss.DatabaseManager.MySql.csproj" />
+  </Folder>
+  <Folder Name="/src/LibWrapper/">
+    <Project Path="src/LibWrapper/TcfOss.DatabaseManager.Core.LibWrapper/TcfOss.DatabaseManager.Core.LibWrapper.csproj" />
+    <Project Path="src/LibWrapper/TcfOss.DatabaseManager.MariaDb.LibWrapper/TcfOss.DatabaseManager.MariaDb.LibWrapper.csproj" />
+    <Project Path="src/LibWrapper/TcfOss.DatabaseManager.MySql.LibWrapper/TcfOss.DatabaseManager.MySql.LibWrapper.csproj" />
+    <Project Path="src/LibWrapper/TcfOss.DatabaseManager.MsSql.LibWrapper/TcfOss.DatabaseManager.MsSql.LibWrapper.csproj" />
+  </Folder>
+  <Folder Name="/unit-test/">
+    <Project Path="test/TcfOss.DatabaseManager.Core.Tests/TcfOss.DatabaseManager.Core.Tests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.MariaDb.Tests/TcfOss.DatabaseManager.MariaDb.Tests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.MsSql.Tests/TcfOss.DatabaseManager.MsSql.Tests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.MySql.Tests/TcfOss.DatabaseManager.MySql.Tests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.LibWrapper.Tests/TcfOss.DatabaseManager.LibWrapper.Tests.csproj" />
+  </Folder>
+  <Folder Name="/integration-test/">
+    <Project Path="test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.Core.IntegrationTests/TcfOss.DatabaseManager.Core.IntegrationTests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.MariaDb.IntegrationTests/TcfOss.DatabaseManager.MariaDb.IntegrationTests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj" />
+    <Project Path="test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,418 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<root>
+<data name="SerializationTests_FullViewJson" xml:space="preserve">
+  <value>
+{
+  "Name": "def.Schema1.View1",
+  "Body": {
+    "Body": {
+      "$type": "TcfOss.DatabaseManager.Core.Statements.Components.SelectBody+SimpleSelectQuery, TcfOss.DatabaseManager.Core",
+      "Query": {
+        "Selections": [
+          {
+            "$type": "TcfOss.DatabaseManager.Core.Statements.Components.SimpleSelectItem+UnnamedExpression, TcfOss.DatabaseManager.Core",
+            "Expression": {
+              "$type": "TcfOss.DatabaseManager.Core.Expressions.SingleIdentifier, TcfOss.DatabaseManager.Core",
+              "Identifier": "Column1",
+              "Source": {
+                "SourceId": 0,
+                "Start": 27,
+                "End": 34
+              },
+              "PreNonSql": null
+            },
+            "Meta": {
+              "PreNonSql": [
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Newlines, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 4
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+LineComment, TcfOss.DatabaseManager.Core",
+                  "Body": " comment\n",
+                  "Prefix": "--"
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 4
+                }
+              ],
+              "PostNonSql": null,
+              "Start": 6,
+              "End": 35,
+              "EndPlusTerminatorLength": null,
+              "RawText": null
+            }
+          },
+          {
+            "$type": "TcfOss.DatabaseManager.Core.Statements.Components.SimpleSelectItem+UnnamedExpression, TcfOss.DatabaseManager.Core",
+            "Expression": {
+              "$type": "TcfOss.DatabaseManager.Core.Expressions.SingleIdentifier, TcfOss.DatabaseManager.Core",
+              "Identifier": "Column2",
+              "Source": {
+                "SourceId": 0,
+                "Start": 41,
+                "End": 48
+              },
+              "PreNonSql": null
+            },
+            "Meta": {
+              "PreNonSql": [
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Newlines, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 4
+                }
+              ],
+              "PostNonSql": null,
+              "Start": 35,
+              "End": 49,
+              "EndPlusTerminatorLength": null,
+              "RawText": null
+            }
+          }
+        ],
+        "Distinct": null,
+        "Top": null,
+        "SelectInto": null,
+        "From": [
+          {
+            "Relation": {
+              "$type": "TcfOss.DatabaseManager.Core.Statements.Components.TableFactor+Table, TcfOss.DatabaseManager.Core",
+              "Name": {
+                "Values": [
+                  "Schema1",
+                  "Table1"
+                ],
+                "Source": {
+                  "SourceId": 0,
+                  "Start": 54,
+                  "End": 68
+                }
+              },
+              "Hints": null,
+              "Alias": null
+            },
+            "Joins": null
+          }
+        ],
+        "Where": {
+          "$type": "TcfOss.DatabaseManager.Core.Expressions.BinaryOperator, TcfOss.DatabaseManager.Core",
+          "Left": {
+            "$type": "TcfOss.DatabaseManager.Core.Expressions.SingleIdentifier, TcfOss.DatabaseManager.Core",
+            "Identifier": "Column1",
+            "Source": {
+              "SourceId": 0,
+              "Start": 75,
+              "End": 82
+            },
+            "PreNonSql": null
+          },
+          "Operator": "=",
+          "Right": {
+            "$type": "TcfOss.DatabaseManager.Core.Expressions.LiteralValue, TcfOss.DatabaseManager.Core",
+            "Value": {
+              "$type": "TcfOss.DatabaseManager.Core.Common.Value+SingleQuotedString, TcfOss.DatabaseManager.Core",
+              "Value": "Value"
+            },
+            "PreNonSql": null
+          },
+          "PreNonSql": null
+        },
+        "GroupBy": null,
+        "Having": null,
+        "Meta": {
+          "PreNonSql": null,
+          "PostNonSql": null,
+          "Start": null,
+          "End": null,
+          "EndPlusTerminatorLength": null,
+          "RawText": null
+        }
+      },
+      "Meta": {
+        "PreNonSql": null,
+        "PostNonSql": null,
+        "Start": null,
+        "End": null,
+        "EndPlusTerminatorLength": null,
+        "RawText": null
+      }
+    },
+    "CommonTableExpression": null,
+    "OrderBy": null,
+    "Limit": null,
+    "SelectInto": null,
+    "Meta": {
+      "PreNonSql": null,
+      "PostNonSql": null,
+      "Start": 0,
+      "End": 91,
+      "EndPlusTerminatorLength": 91,
+      "RawText": null
+    }
+  },
+  "ObjectType": "View",
+  "RawBodyText": "SELECT \n    -- comment\n    Column1, \n    Column2\nFROM Schema1.Table1\nWHERE Column1 = 'Value'"
+}
+    </value>
+  </data>
+  <data name="SerializationTests_JsonWithPreNonSql" xml:space="preserve">
+    <value>
+{
+  "Name": "def.Schema1.View1",
+  "Body": {
+    "Body": {
+      "$type": "TcfOss.DatabaseManager.Core.Statements.Components.SelectBody+SimpleSelectQuery, TcfOss.DatabaseManager.Core",
+      "Query": {
+        "Selections": [
+          {
+            "$type": "TcfOss.DatabaseManager.Core.Statements.Components.SimpleSelectItem+UnnamedExpression, TcfOss.DatabaseManager.Core",
+            "Expression": {
+              "$type": "TcfOss.DatabaseManager.Core.Expressions.SingleIdentifier, TcfOss.DatabaseManager.Core",
+              "Identifier": "Column1",
+              "Source": {
+                "SourceId": 0,
+                "Start": 27,
+                "End": 34
+              }
+            },
+            "Meta": {
+              "PreNonSql": [
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Newlines, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 4
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+LineComment, TcfOss.DatabaseManager.Core",
+                  "Body": " comment\n",
+                  "Prefix": "--"
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 4
+                }
+              ],
+              "PostNonSql": null,
+              "Start": 6,
+              "End": 35,
+              "EndPlusTerminatorLength": null,
+              "RawText": null
+            }
+          },
+          {
+            "$type": "TcfOss.DatabaseManager.Core.Statements.Components.SimpleSelectItem+UnnamedExpression, TcfOss.DatabaseManager.Core",
+            "Expression": {
+              "$type": "TcfOss.DatabaseManager.Core.Expressions.SingleIdentifier, TcfOss.DatabaseManager.Core",
+              "Identifier": "Column2",
+              "Source": {
+                "SourceId": 0,
+                "Start": 41,
+                "End": 48
+              }
+            },
+            "Meta": {
+              "PreNonSql": [
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Newlines, TcfOss.DatabaseManager.Core",
+                  "Number": 1
+                },
+                {
+                  "$type": "TcfOss.DatabaseManager.Core.Statements.Components.NonSql+Spaces, TcfOss.DatabaseManager.Core",
+                  "Number": 4
+                }
+              ],
+              "PostNonSql": null,
+              "Start": 35,
+              "End": 49,
+              "EndPlusTerminatorLength": null,
+              "RawText": null
+            }
+          }
+        ],
+        "Distinct": null,
+        "Top": null,
+        "SelectInto": null,
+        "From": [
+          {
+            "Relation": {
+              "$type": "TcfOss.DatabaseManager.Core.Statements.Components.TableFactor+Table, TcfOss.DatabaseManager.Core",
+              "Name": {
+                "Values": [
+                  "Schema1",
+                  "Table1"
+                ],
+                "Source": {
+                  "SourceId": 0,
+                  "Start": 54,
+                  "End": 68
+                }
+              },
+              "Hints": null,
+              "Alias": null
+            },
+            "Joins": null
+          }
+        ],
+        "Where": {
+          "$type": "TcfOss.DatabaseManager.Core.Expressions.BinaryOperator, TcfOss.DatabaseManager.Core",
+          "Left": {
+            "$type": "TcfOss.DatabaseManager.Core.Expressions.SingleIdentifier, TcfOss.DatabaseManager.Core",
+            "Identifier": "Column1",
+            "Source": {
+              "SourceId": 0,
+              "Start": 75,
+              "End": 82
+            }
+          },
+          "Operator": "=",
+          "Right": {
+            "$type": "TcfOss.DatabaseManager.Core.Expressions.LiteralValue, TcfOss.DatabaseManager.Core",
+            "Value": {
+              "$type": "TcfOss.DatabaseManager.Core.Common.Value+SingleQuotedString, TcfOss.DatabaseManager.Core",
+              "Value": "Value"
+            }
+          }
+        },
+        "GroupBy": null,
+        "Having": null,
+        "Meta": {
+          "PreNonSql": null,
+          "PostNonSql": null,
+          "Start": null,
+          "End": null,
+          "EndPlusTerminatorLength": null,
+          "RawText": null
+        }
+      },
+      "Meta": {
+        "PreNonSql": null,
+        "PostNonSql": null,
+        "Start": null,
+        "End": null,
+        "EndPlusTerminatorLength": null,
+        "RawText": null
+      }
+    },
+    "CommonTableExpression": null,
+    "OrderBy": null,
+    "Limit": null,
+    "SelectInto": null,
+    "Meta": {
+      "PreNonSql": null,
+      "PostNonSql": null,
+      "Start": 0,
+      "End": 91,
+      "EndPlusTerminatorLength": 91,
+      "RawText": null
+    }
+  },
+  "ObjectType": "View",
+  "RawBodyText": "SELECT \n    -- comment\n    Column1, \n    Column2\nFROM Schema1.Table1\nWHERE Column1 = 'Value'"
+}
+    </value>
+  </data>
+  <data name="RawCreateProcedure_LibraryActivity_SearchAvailableBooks" xml:space="preserve">
+    <value>
+CREATE
+    DEFINER = 'admin'@'localhost'
+PROCEDURE search_available_books(IN search_term VARCHAR(255))
+    SQL SECURITY DEFINER
+BEGIN
+
+    SELECT
+        ab.book_id,
+        ab.full_title,
+        bs.title,
+        bs.description,
+        bs.authors,
+        bs.genres
+    FROM available_books AS ab
+    INNER JOIN book_search AS bs
+        ON ab.book_id = bs.book_id
+    WHERE MATCH(bs.title, bs.description, bs.authors, bs.genres) AGAINST (search_term IN NATURAL LANGUAGE MODE)
+    OR ab.full_title LIKE CONCAT('%', search_term, '%')
+    OR bs.description LIKE CONCAT('%', search_term, '%');
+
+END
+    </value>
+  </data>
+  <data name="RawCreateView_LibraryActivity_AvailableBooks" xml:space="preserve">
+    <value>
+CREATE
+    DEFINER = 'admin'@'localhost'
+    SQL SECURITY INVOKER
+VIEW available_books
+AS
+SELECT
+    bc.book_id,
+    bc.full_title
+FROM library_catalog.book AS bc
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM active_rental AS ar
+    WHERE ar.book_id = bc.book_id
+    AND ar.really_active = 'Y'
+);
+    </value>
+  </data>
+  <data name="BadConfig_Template" xml:space="preserve">
+    <value>
+Catalog: def
+Dialect: {0}
+QuoteStyle: backticks
+
+Schemas:
+  - SchemaName: asset_management
+    RootPath: AssetManagement
+    ExcludeDatabaseObjectNames:
+      - _refactors
+
+Credentials:
+  HostName: localhost
+  UserName: username
+  Port: 3306
+  SocketPath: /var/run/mysqld/mysqld.sock
+
+DifferFormatting:
+  ObjectNamePrefixWithSchema: {1}
+
+AttributeDefaults:
+  SignedIntWidth: {2}
+
+{3}
+    </value>
+  </data>
+  <data name="BadConfig_Error_Template" xml:space="preserve">
+    <value>Configuration Error: {0} (In file '{1}' at line {2}, column {3})
+{4}
+{5}</value>
+  </data>
+</root>

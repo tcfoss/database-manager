@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <data name="ErrWithType" xml:space="preserve">
+        <value>{0}: {1}</value>
+    </data>
+    <data name="Err_Cmd" xml:space="preserve">
+        <value>Command Error</value>
+    </data>
+    <data name="Err_Cmd_DialectRequired" xml:space="preserve">
+        <value>The command '{0}' requires a specific SQL dialect.</value>
+    </data>
+    <data name="Err_Cmd_ConfigurationRequired" xml:space="preserve">
+        <value>The command '{0}' requires a valid configuration file.</value>
+    </data>
+    <data name="Err_Cmd_ConnectionFailed" xml:space="preserve">
+        <value>The command '{0}' required a database connection. A connection could not be established.</value>
+    </data>
+    <data name="Err_Cmd_FileExists" xml:space="preserve">
+        <value>The file '{0}' already exists.</value>
+    </data>
+    <data name="Err_Cmd_RequiredArgumentMissing" xml:space="preserve">
+        <value>The required argument '{0}' was not provided.</value>
+    </data>
+    <data name="Err_Conf" xml:space="preserve">
+        <value>Configuration Error</value>
+    </data>
+    <data name="Err_Conf_AmbiguousConfigFile" xml:space="preserve">
+        <value>Multiple potential configuration files were found in directory '{0}'. The file names were {1}. Either rename files or specify a configuration file path explicitly to disambiguate.</value>
+    </data>
+    <data name="Err_Conf_UnknownField" xml:space="preserve">
+        <value>The configuration contains an unknown field '{0}'.</value>
+    </data>
+    <data name="Err_Conf_RequestedValueNotFound" xml:space="preserve">
+        <value>The value '{0}' is not valid for field '{1}'.</value>
+    </data>
+    <data name="Err_Conf_InvalidValue" xml:space="preserve">
+        <value>The value '{0}' is invalid for the field '{1}'.</value>
+    </data>
+    <data name="Err_Conf_InvalidNull" xml:space="preserve">
+        <value>The field '{0}' cannot be null.</value>
+    </data>
+    <data name="Err_Conf_MissingField" xml:space="preserve">
+        <value>The configuration is missing the required field '{0}'.</value>
+    </data>
+    <data name="Err_Conf_DeployScriptMissingType" xml:space="preserve">
+        <value>The Type field on DeployScript entry {0} is missing or invalid. It should be one of {{ PreDeployment | PostDropConstraints | PreAddConstraints | PostDeployment }}.</value>
+    </data>
+    <data name="Err_Conf_InvalidFieldType" xml:space="preserve">
+        <value>The field '{0}' in the configuration file has an invalid type. Expected type: '{1}'.</value>
+    </data>
+    <data name="Err_Conf_InvalidFieldOneOfValues" xml:space="preserve">
+        <value>The field '{0}' in the configuration file has an invalid value '{1}'. Expected one of {{{2}}}.</value>
+    </data>
+    <data name="Err_Conf_Numeric_ScaleGreaterThanPrecision" xml:space="preserve">
+        <value>The field '{0}Scale' is invalid. Numeric scale ({1}) cannot be greater than the corresponding precision ({2}).</value>
+    </data>
+    <data name="Err_Conf_Numeric_ScaleWithoutPrecision" xml:space="preserve">
+        <value>The field '{0}Scale' is invalid. Numeric scale cannot be specified without the corresponding precision.</value>
+    </data>
+    <data name="Err_Conf_InvalidPort" xml:space="preserve">
+        <value>The port value '{0}' is invalid. It must be an unsigned integer between 1 and 65535.</value>
+    </data>
+    <data name="Err_Conf_EnvironmentVariableNotSet" xml:space="preserve">
+        <value>The required environment variable '{0}' is not set.</value>
+    </data>
+    <data name="Err_Conf_OverlappingSchemas" xml:space="preserve">
+        <value>The schema mappings overlap: Attempted to read '{0}' more than once.</value>
+    </data>
+    <data name="Err_Conf_DefinerHostWithoutAccount" xml:space="preserve">
+        <value>DefaultDefinerHost cannot be specified without DefaultDefinerAccount.</value>
+    </data>
+    <data name="Err_Conf_ImplicitDefiner" xml:space="preserve">
+        <value>If specified, DEFINER must be an explicit user or role. Using CURRENT_USER or CURRENT_ROLE is not supported.</value>
+    </data>
+    <data name="Err_Parse" xml:space="preserve">
+        <value>Parse Error</value>
+    </data>
+    <data name="Err_Parse_ColumnComponentUnexpectedName" xml:space="preserve">
+        <value>Column components of type {0} do not support an explicit name, but 'CONSTRAINT {1}' was specified.</value>
+    </data>
+    <data name="Err_Parse_DuplicateSpecification" xml:space="preserve">
+        <value>The attribute '{0}' was specified more than once.</value>
+    </data>
+    <data name="Err_Parse_ExpectedButFound" xml:space="preserve">
+        <value>Expected {0}. Found {1}.</value>
+    </data>
+    <data name="Err_Parse_ExpectedOneOfButFound" xml:space="preserve">
+        <value>Expected one of {{ {0} }}. Found {1}.</value>
+    </data>
+    <data name="Err_Lex" xml:space="preserve">
+        <value>Lexing Error</value>
+    </data>
+    <data name="Err_Lex_InvalidCharacter" xml:space="preserve">
+        <value>Unexpected character '{0}' found in SQL input.</value>
+    </data>
+    <data name="Err_Lex_UnterminatedQuotedIdentifier" xml:space="preserve">
+        <value>Unterminated quoted identifier. Expected '{0}'.</value>
+    </data>
+    <data name="Err_Lex_UnterminatedStringLiteral" xml:space="preserve">
+        <value>Unterminated string literal.</value>
+    </data>
+    <data name="Err_Lex_UnterminatedBlockComment" xml:space="preserve">
+        <value>Unterminated block comment.</value>
+    </data>
+    <data name="Err_Lex_ExpectedSymbolSequence" xml:space="preserve">
+        <value>Expected one or more symbol characters.</value>
+    </data>
+    <data name="Err_Syntax" xml:space="preserve">
+        <value>Syntax Error</value>
+    </data>
+    <data name="Err_Syntax_DuplicateObject" xml:space="preserve">
+        <value>The database object name '{1}' is used more than once.</value>
+    </data>
+    <data name="Err_Syntax_DuplicateColumn" xml:space="preserve">
+        <value>The column name '{0}' is used more than once in table or view '{1}'.</value>
+    </data>
+    <data name="Err_Syntax_AttributeSpecifiedMultipleTimes" xml:space="preserve">
+        <value>The attribute '{0}' is specified multiple times on {1} {2}.</value>
+    </data>
+    <data name="Err_Syntax_TriggerSupportsOnlyOneEvent" xml:space="preserve">
+        <value>Dialect '{0}' requires that triggers have one and only one event. Trigger '{1}' specifies {2} events.</value>
+    </data>
+    <data name="Err_Syntax_ConstraintNameNotAllowed" xml:space="preserve">
+        <value>The constraint name '{0}' is not allowed for {1} constraints on {2} {3}.</value>
+    </data>
+    <data name="Err_Syntax_ConstraintNameNotAllowedDialect" xml:space="preserve">
+        <value>The constraint name '{0}' is not allowed for {1} constraints on {2} {3} in {4}.</value>
+    </data>
+    <data name="Err_Syntax_UnknownIdentifier" xml:space="preserve">
+        <value>The identifier '{0}' could be found.</value>
+    </data>
+    <data name="Err_Syntax_UnknownTable" xml:space="preserve">
+        <value>The table or view '{0}' could be found.</value>
+    </data>
+    <data name="Err_Syntax_TableIdentifierNotUnique" xml:space="preserve">
+        <value>The identifier '{0}' does not uniquely identify a table or view.</value>
+    </data>
+    <data name="Err_Syntax_SelectIdentifierNotUnique" xml:space="preserve">
+        <value>The identifier '{0}' does not uniquely identify a selectable value.</value>
+    </data>
+    <data name="Err_Syntax_IndexDirectionNotSupportedNamed" xml:space="preserve">
+        <value>The index '{0}' on '{1}' has type {2}, which does not support a direction specification.</value>
+    </data>
+    <data name="Err_Syntax_IndexDirectionNotSupportedUnnamed" xml:space="preserve">
+        <value>An index on '{0}' has type {1}, which does not support a direction specification.</value>
+    </data>
+    <data name="Err_Syntax_AutoIncrementPkOnly" xml:space="preserve">
+        <value>The column '{0}' on table '{1}' is marked as AUTO_INCREMENT, but it is not a primary key.</value>
+    </data>
+    <data name="Err_Syntax_AutoIncrementNonInteger" xml:space="preserve">
+        <value>The column '{0}' on table '{1}' is marked as AUTO_INCREMENT, but it is not of an integer type.</value>
+    </data>
+    <data name="Err_Syntax_IndexColumnNotFound" xml:space="preserve">
+        <value>The index '{0}' on table '{1}' references a non-existent column '{2}'.</value>
+    </data>
+    <data name="Err_Syntax_ForeignKeyReferencedTableNotFound" xml:space="preserve">
+        <value>The foreign key '{0}' on table '{1}' references a non-existent table '{2}'.</value>
+    </data>
+    <data name="Err_Syntax_ForeignKeyReferencedColumnNotFound" xml:space="preserve">
+        <value>The foreign key '{0}' on table '{1}' references a non-existent column '{2}' in referenced table '{3}'.</value>
+    </data>
+    <data name="Err_Syntax_ForeignKeyColumnCountMismatch" xml:space="preserve">
+        <value>The foreign key '{0}' on table '{1}' includes ({2}) a different number of columns than it references ({3}).</value>
+    </data>
+    <data name="Err_Syntax_ForeignKeyTypeMismatch" xml:space="preserve">
+        <value>The foreign key '{0}' on table '{1}' includes a column '{2}' whose type ({3}) does not match the type ({4}) of the referenced column '{5}' in table '{6}'.</value>
+    </data>
+    <data name="Err_Syntax_UnaliasedSubquery" xml:space="preserve">
+        <value>A subquery in a FROM clause must have an alias.</value>
+    </data>
+    <data name="Err_Syntax_CreateIndexUnknownTable" xml:space="preserve">
+        <value>The CREATE INDEX statement references a non-existent table '{0}'.</value>
+    </data>
+    <data name="Err_Syntax_CreateIndexUnexpectedType" xml:space="preserve">
+        <value>The CREATE INDEX statement specifies an unexpected index type '{0}'.</value>
+    </data>
+    <data name="Err_Def" xml:space="preserve">
+        <value>Unsupported in Definitions Error</value>
+    </data>
+    <data name="Err_Def_ObjectNoDefiner" xml:space="preserve">
+        <value>The definition of {0} '{1}' must have an explicit DEFINER.</value>
+    </data>
+    <data name="Err_Def_ObjectImplicitDefiner" xml:space="preserve">
+        <value>The definition of {0} '{1}' must have an explicit DEFINER. Using CURRENT_USER or CURRENT_ROLE is not supported.</value>
+    </data>
+    <data name="Err_Def_ObjectNoSecurityContext" xml:space="preserve">
+        <value>The definition of {0} '{1}' must have an explicit SQL SECURITY specification.</value>
+    </data>
+    <data name="Err_Def_Table_UniqueOnColumn" xml:space="preserve">
+        <value>Column '{0}' is designated as UNIQUE. Use a table-level constraint instead.</value>
+    </data>
+    <data name="Err_Def_Table_CheckOnColumn" xml:space="preserve">
+        <value>Column '{0}' has an in-line CHECK constraint. Use a table-level constraint instead.</value>
+    </data>
+    <data name="Err_Def_Table_UnnamedConstraint" xml:space="preserve">
+        <value>{0} on table '{1}' must be named.</value>
+    </data>
+    <data name="Err_Def_Table_NoColumns" xml:space="preserve">
+        <value>The table '{0}' must have at least one column.</value>
+    </data>
+    <data name="Err_Def_Table_SelectAs" xml:space="preserve">
+        <value>The definition of TABLE '{0}' contains a SELECT AS clause, which is not supported.</value>
+    </data>
+    <data name="Err_Def_View_UnexpectedSelectItem" xml:space="preserve">
+        <value>The definition of VIEW '{0}' contains an unexpected selected item '{1}'.</value>
+    </data>
+    <data name="Err_Def_View_SelectWildcard" xml:space="preserve">
+        <value>The definition of VIEW '{0}' contains a wildcard in the top-level SELECT list, which is not supported.</value>
+    </data>
+    <data name="Err_Def_View_NonUniqueSelection" xml:space="preserve">
+        <value>The VIEW '{0}' selects multiple items whose names resolve to '{1}'. Each selected column must have a unique name; consider using a column alias.</value>
+    </data>
+    <data name="Err_Def_View_SelectWithoutAlias" xml:space="preserve">
+        <value>Expressions and literal values in the definition of VIEW '{0}' must be aliased.</value>
+    </data>
+    <data name="Err_Def_Event_NonLiteralDate" xml:space="preserve">
+        <value>The event '{0}' references non-literal date value '{1}'.</value>
+    </data>
+    <data name="Err_Def_Trigger_PrecedesUnsupported" xml:space="preserve">
+        <value>The trigger '{0}' uses the PRECEDES clause to define firing order. Use FOLLOWS instead.</value>
+    </data>
+    <data name="Err_Def_Trigger_UndefinedOrder" xml:space="preserve">
+        <value>The triggers '{0}' and '{1}' have undefined firing order. Use a FOLLOWS clause to specify the order.</value>
+    </data>
+    <data name="Err_Def_ForeignKeyNoBackingIndex" xml:space="preserve">
+        <value>Foreign key '{0}' on table '{1}' must have a backing index.</value>
+    </data>
+    <data name="Err_Def_ForeignKeyNoReferencedBackingIndex" xml:space="preserve">
+        <value>Foreign key '{0}' on table '{1}' references table '{2}', which does not have a backing index for the referenced columns.</value>
+    </data>
+    <data name="Err_Def_DataTypeStringAttributeMissing" xml:space="preserve">
+        <value>Neither the character set nor the collation could be determined for column '{0}' on table '{1}'.</value>
+    </data>
+    <data name="Err_Def_DataTypeStringNoCharacterSet" xml:space="preserve">
+        <value>The character set could not be determined for column '{0}' on table '{1}'.</value>
+    </data>
+    <data name="Err_Def_DataTypeStringNoCollation" xml:space="preserve">
+        <value>The collation could not be determined for column '{0}' on table '{1}'.</value>
+    </data>
+    <data name="Err_Def_DataTypeStringInvalidCharacterSet" xml:space="preserve">
+        <value>The character set '{0}' specified for column '{1}' on table '{2}' is not valid.</value>
+    </data>
+    <data name="Err_Def_DataTypeStringInvalidCollation" xml:space="preserve">
+        <value>The collation '{0}' specified for column '{1}' on table '{2}' is not valid for its character set '{3}'.</value>
+    </data>
+    <data name="Err_Internal_IdentifierLengthMismatch" xml:space="preserve">
+        <value>The identifier '{0}' is of length {1}, which does not match the expected length of {2} for identifiers of type '{3}'.</value>
+    </data>
+    <data name="Err_Internal_ColumnIdentifierParentMismatch" xml:space="preserve">
+        <value>The column identifier '{0}' has references table '{1}', but is being added to table '{2}'.</value>
+    </data>
+    <data name="Err_Component_Context" xml:space="preserve">
+        <value>{0}
+{1}</value>
+    </data>
+    <data name="Err_Component_Location_FileOnly" xml:space="preserve">
+        <value> (In file '{0}')</value>
+    </data>
+    <data name="Err_Component_Location_LineAndColumn" xml:space="preserve">
+        <value> (At line {0}, column {1})</value>
+    </data>
+    <data name="Err_Component_Location_Full" xml:space="preserve">
+        <value> (In file '{0}' at line {1}, column {2})</value>
+    </data>
+    <data name="Err_Component_MessageWithLocation" xml:space="preserve">
+        <value>{0}{1}</value>
+    </data>
+    <data name="Err_Component_ErrorWithContext" xml:space="preserve">
+        <value>{0}
+{1}</value>
+    </data>
+</root>

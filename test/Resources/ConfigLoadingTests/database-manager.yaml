@@ -1,0 +1,25 @@
+Catalog: def
+QuoteStyle: Ansi
+Dialect: MySql
+
+Schemas:
+- SchemaName: schema1
+  RootPath: Schema1
+  RefactorFiles:
+    - refactors.yaml
+  DeployScripts:
+    - FilePath: Scripts
+      UniqueId: 00000000-0000-0000-0000-000000000006
+      Type: PostDeployment
+- SchemaName: schema2
+  RootPath: Schema2
+  DeployScripts:
+    - FilePath: my_script.sql
+      Type: PreDeployment
+    - FilePath: other-scripts.yaml
+    - FilePath: more-scripts.yaml
+      UniqueId: 00000000-0000-0000-0000-000000000005
+- SchemaName: schema3
+  RootPath: Schema3
+  DeployScripts:
+    - FilePath: Scripts

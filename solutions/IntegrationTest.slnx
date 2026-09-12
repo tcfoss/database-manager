@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/integration-test/">
+    <Project Path="../test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.Core.IntegrationTests/TcfOss.DatabaseManager.Core.IntegrationTests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.MariaDb.IntegrationTests/TcfOss.DatabaseManager.MariaDb.IntegrationTests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

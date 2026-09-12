@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="../src/TcfOss.DatabaseManager.App/TcfOss.DatabaseManager.App.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.Core/TcfOss.DatabaseManager.Core.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.MariaDb/TcfOss.DatabaseManager.MariaDb.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.MsSql/TcfOss.DatabaseManager.MsSql.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.MySql/TcfOss.DatabaseManager.MySql.csproj" />
+  </Folder>
+</Solution>

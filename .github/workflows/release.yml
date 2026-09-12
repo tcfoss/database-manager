@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to (re-)release, e.g. 1.0.0. Required for manual runs.'
+        required: true
+      force-retag:
+        description: 'Delete and recreate the tag if it already exists'
+        type: boolean
+        default: false
+
+jobs:
+  parse-version:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/') && github.base_ref == 'master')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - id: parse
+        uses: tcfoss/github-actions/.github/actions/parse-release-version@v1
+        with:
+          branch: ${{ github.head_ref }}
+          version-override: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+
+  tag:
+    needs: parse-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Tag release
+        run: |
+          version="v${{ needs.parse-version.outputs.version }}"
+          if [[ "${{ inputs.force-retag }}" == "true" ]]; then
+            git push origin ":refs/tags/$version" || true
+            git tag -d "$version" 2>/dev/null || true
+          fi
+          git tag -a "$version" -m "Release $version"
+          git push origin "$version"
+
+  publish-app:
+    needs: [parse-version, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and package CLI binaries
+        run: |
+          version="${{ needs.parse-version.outputs.version }}"
+          for RID in linux-x64 win-x64 osx-arm64; do
+            echo "Publishing CLI for RID: $RID..."
+            dotnet publish src/TcfOss.DatabaseManager.App/TcfOss.DatabaseManager.App.csproj \
+              --configuration Release \
+              --runtime "$RID" \
+              --self-contained false \
+              --output "publish/dbman_$RID"
+
+            echo "Creating tarball for RID: $RID..."
+            (
+              cd "publish/dbman_$RID"
+              tar -czvf "../../database-manager-${RID}-${version}.tar.gz" *
+            )
+          done
+
+      - name: Upload CLI binaries artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-binaries
+          path: database-manager-*.tar.gz
+
+  publish-dotnet:
+    needs: [parse-version, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore DatabaseManager.slnx
+
+      - name: Build
+        run: dotnet build DatabaseManager.slnx --no-restore --configuration Release
+
+      - name: Pack
+        run: |
+          version="${{ needs.parse-version.outputs.version }}"
+          projects=(
+            "src/TcfOss.DatabaseManager.Core/TcfOss.DatabaseManager.Core.csproj"
+            "src/TcfOss.DatabaseManager.MySql/TcfOss.DatabaseManager.MySql.csproj"
+            "src/TcfOss.DatabaseManager.MariaDb/TcfOss.DatabaseManager.MariaDb.csproj"
+            "src/TcfOss.DatabaseManager.MsSql/TcfOss.DatabaseManager.MsSql.csproj"
+            "src/LibWrapper/TcfOss.DatabaseManager.Core.LibWrapper/TcfOss.DatabaseManager.Core.LibWrapper.csproj"
+            "src/LibWrapper/TcfOss.DatabaseManager.MySql.LibWrapper/TcfOss.DatabaseManager.MySql.LibWrapper.csproj"
+            "src/LibWrapper/TcfOss.DatabaseManager.MariaDb.LibWrapper/TcfOss.DatabaseManager.MariaDb.LibWrapper.csproj"
+            "src/LibWrapper/TcfOss.DatabaseManager.MsSql.LibWrapper/TcfOss.DatabaseManager.MsSql.LibWrapper.csproj"
+          )
+          for proj in "${projects[@]}"; do
+            echo "Packing $proj..."
+            dotnet pack "$proj" \
+              --no-build \
+              --configuration Release \
+              -p:PackageVersion="$version" \
+              --output ./nupkg
+          done
+
+      - name: Push to GitHub Packages
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate
+
+      - name: NuGet login (OIDC -> temp API key)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: tcflanagan
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --source "https://api.nuget.org/v3/index.json" \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --skip-duplicate
+
+  finalize-release:
+    needs: [parse-version, tag, publish-app, publish-dotnet]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download CLI binaries artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-binaries
+
+      - name: Resolve release
+        uses: tcfoss/github-actions/.github/actions/issuetracker-resolve@v1
+        with:
+          api-url: ${{ vars.ISSUETRACKER_API_URL }}
+          version: ${{ needs.parse-version.outputs.version }}
+          token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
+          release-url: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.parse-version.outputs.version }}
+
+      - name: Release notes
+        id: notes
+        uses: tcfoss/github-actions/.github/actions/issuetracker-notes@v1
+        with:
+          api-url: ${{ vars.ISSUETRACKER_API_URL }}
+          version: ${{ needs.parse-version.outputs.version }}
+          token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.parse-version.outputs.version }}
+          body_path: ${{ steps.notes.outputs.notes-file }}
+          files: database-manager-*.tar.gz

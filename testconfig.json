@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemastore.org",
+  "platformOptions": {
+    "Coverlet": {
+      "format": "cobertura",
+      "excludeByFile": "**/*.g.cs",
+      "exclude": "[System.Text.*]*,[Testcontainers*]*,[MySqlConnector*]*,[Docker.DotNet*]*,[*.Tests]*,[*.IntegrationTests]*",
+      "excludeByAttribute": "ExcludeFromCodeCoverage,GeneratedCode",
+      "skipAutoProps": true
+    }
+  }
+}

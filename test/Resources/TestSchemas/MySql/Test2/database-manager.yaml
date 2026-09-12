@@ -1,0 +1,27 @@
+Catalog: def
+QuoteStyle: Backticks
+Dialect: MariaDb
+
+Schemas:
+- SchemaName: library_catalog
+  RootPath: LibraryCatalog
+  RefactorFiles:
+    - refactors.yaml
+- SchemaName: library_identity
+  RootPath: LibraryIdentity
+- SchemaName: library_activity
+  RootPath: LibraryActivity
+  RefactorFiles:
+    - refactors.yaml
+
+Credentials:
+  HostName: localhost
+  UserName: mariadb
+  Password: mariadb
+  Port: 3306
+
+DifferFormatting:
+  ProcedurePreferRawText: true
+  FunctionPreferRawText: true
+  TriggerPreferRawText: true
+  ViewPreferRawText: true

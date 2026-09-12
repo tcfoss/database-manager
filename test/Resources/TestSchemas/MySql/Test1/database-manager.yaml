@@ -1,0 +1,44 @@
+Catalog: def
+QuoteStyle: Backticks
+Dialect: MariaDb
+
+Schemas:
+  - SchemaName: library_catalog
+    RootPath: LibraryCatalog
+    DeployScripts:
+      - FilePath: ../Scripts/01_preserve_book_info.sql
+        Type: PreDeployment
+        UniqueId: 00000000-0000-0000-0000-000000000010
+      - FilePath: ../Scripts/02_preserve_active_rental.sql
+        Type: PreDeployment
+        UniqueId: 00000000-0000-0000-0000-000000000011
+      - FilePath: ../Scripts/03_populate_item_status.sql
+        Type: PreAddConstraints
+        UniqueId: 00000000-0000-0000-0000-000000000012
+      - FilePath: ../Scripts/04_populate_acquisition.sql
+        Type: PreAddConstraints
+        UniqueId: 00000000-0000-0000-0000-000000000013
+      - FilePath: ../Scripts/05_populate_item.sql
+        Type: PreAddConstraints
+        UniqueId: 00000000-0000-0000-0000-000000000014
+  - SchemaName: library_identity
+    RootPath: LibraryIdentity
+  - SchemaName: library_activity
+    RootPath: LibraryActivity
+    DeployScripts:
+      - FilePath: Tables/misplaced_script.sql
+        Type: PreDeployment
+        # UniqueId is already inserted into _database_manager table so this should be skipped
+        UniqueId: 00000000-0000-0000-0000-000000000003
+
+Credentials:
+  HostName: localhost
+  UserName: mariadb
+  Password: mariadb
+  Port: 3306
+
+DifferFormatting:
+  ProcedurePreferRawText: true
+  FunctionPreferRawText: true
+  TriggerPreferRawText: true
+  ViewPreferRawText: true

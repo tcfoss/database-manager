@@ -1,0 +1,151 @@
+name: Pull Request
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore DatabaseManager.slnx
+
+      - name: Lint C#
+        run: dotnet format DatabaseManager.slnx --verify-no-changes --severity info --no-restore
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Lint dbman-dev (mypy)
+        run: |
+          cd tools/dbman-dev
+          poetry install --no-root
+          poetry run mypy ./src
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore solutions/UnitTests.slnx
+
+      - name: Build
+        run: dotnet build solutions/UnitTests.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: |
+          dotnet test solutions/UnitTests.slnx \
+            --no-build \
+            --configuration Release \
+            --results-directory TestResults
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unit
+          path: TestResults/
+
+  integration-tests:
+    name: Integration Test (${{ matrix.name }})
+    if: >
+      startsWith(github.head_ref, 'release/') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Core
+            project: test/TcfOss.DatabaseManager.Core.IntegrationTests/TcfOss.DatabaseManager.Core.IntegrationTests.csproj
+          - name: MySQL
+            project: test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj
+          - name: MariaDB
+            project: test/TcfOss.DatabaseManager.MariaDb.IntegrationTests/TcfOss.DatabaseManager.MariaDb.IntegrationTests.csproj
+          - name: MSSQL
+            project: test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj
+          - name: App
+            project: test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj
+    permissions:
+      contents: read
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore DatabaseManager.slnx
+
+      - name: Build
+        run: dotnet build DatabaseManager.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: |
+          dotnet test "${{ matrix.project }}" \
+            --no-build \
+            --configuration Release \
+            --results-directory TestResults
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-integration-${{ matrix.name }}
+          path: TestResults/
+
+  today:
+    runs-on: ubuntu-latest
+    outputs:
+      date: ${{ steps.today.outputs.date }}
+    steps:
+      - id: today
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+  validate-release:
+    needs: today
+    if: startsWith(github.head_ref, 'release/')
+    uses: tcfoss/github-actions/.github/workflows/validate-release.yml@v1
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      branch: ${{ github.head_ref }}
+      api-url: ${{ vars.ISSUETRACKER_API_URL }}
+      release-date: ${{ needs.today.outputs.date }}
+    secrets:
+      issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
+
+  coverage:
+    needs: [unit-tests]
+    uses: tcfoss/github-actions/.github/workflows/coverage.yml@v1
+    permissions:
+      contents: read
+      pull-requests: write

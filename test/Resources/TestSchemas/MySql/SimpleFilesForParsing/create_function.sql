@@ -1,0 +1,6 @@
+CREATE
+    DEFINER = CURRENT_USER
+FUNCTION simple_function (param1 INT)
+    RETURNS INT
+    DETERMINISTIC
+RETURN param1 * 2;

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TcfOss.DatabaseManager.Core\TcfOss.DatabaseManager.Core.csproj" />
+    <ProjectReference Include="..\..\src\LibWrapper\TcfOss.DatabaseManager.Core.LibWrapper\TcfOss.DatabaseManager.Core.LibWrapper.csproj" />
+    <ProjectReference Include="..\..\src\LibWrapper\TcfOss.DatabaseManager.MariaDb.LibWrapper\TcfOss.DatabaseManager.MariaDb.LibWrapper.csproj" />
+    <ProjectReference Include="..\..\src\LibWrapper\TcfOss.DatabaseManager.MsSql.LibWrapper\TcfOss.DatabaseManager.MsSql.LibWrapper.csproj" />
+    <ProjectReference Include="..\..\src\LibWrapper\TcfOss.DatabaseManager.MySql.LibWrapper\TcfOss.DatabaseManager.MySql.LibWrapper.csproj" />
+  </ItemGroup>
+
+</Project>

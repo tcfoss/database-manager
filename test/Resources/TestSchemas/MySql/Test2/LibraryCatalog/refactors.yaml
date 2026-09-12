@@ -1,0 +1,13 @@
+- UniqueId: 00000000-0000-0000-0000-000000000001
+  Type: TableRename
+  OldName: no_matter_already_applied
+  NewName: no_matter_already_applied
+- UniqueId: f3e7e2b8-4e3e-4c8a-8b2e-6b2e9e3b7c1d
+  Type: TableRename
+  OldName: accidentally_added_table
+  NewName: differently_named_table
+- UniqueId: a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6
+  Type: ColumnRename
+  TableName: contributor
+  OldName: disambiguation
+  NewName: details

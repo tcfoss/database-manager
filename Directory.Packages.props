@@ -1,0 +1,64 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+
+    <!-- Core Dependencies -->
+    <ItemGroup>
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.8" />
+        <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+        <PackageVersion Include="TcfOss.DataStructures" Version="1.0.13" />
+        <PackageVersion Include="TcfOss.StringEnumGenerator" Version="1.0.2" />
+        <PackageVersion Include="YamlDotNet" Version="16.3.0" />
+    </ItemGroup>
+
+    <!-- Application Dependencies -->
+    <ItemGroup>
+        <PackageVersion Include="System.CommandLine" Version="3.0.0-rc.1.26425.128" />
+        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+        <PackageVersion Include="Serilog" Version="4.3.0" />
+        <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+        <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageVersion Include="MinVer" Version="7.0.0" PrivateAssets="All" />
+    </ItemGroup>
+
+    <!-- Database Providers -->
+    <ItemGroup>
+        <PackageVersion Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.12" />
+    </ItemGroup>
+
+    <!-- Common Testing Dependencies -->
+    <ItemGroup>
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+        <PackageVersion Include="xunit.v3" Version="4.0.0" />
+        <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+        <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
+        <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.7" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- <PackageVersion Include="Docker.DotNet.Enhanced" Version="3.130.0" /> -->
+        <PackageVersion Include="Testcontainers" Version="4.15.0" />
+        <PackageVersion Include="Testcontainers.MariaDb" Version="4.15.0" />
+        <PackageVersion Include="Testcontainers.MySql" Version="4.15.0" />
+        <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
+        <PackageVersion Include="Testcontainers.XunitV3" Version="4.15.0" />
+    </ItemGroup>
+
+</Project>

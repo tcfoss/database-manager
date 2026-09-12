@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/bin": true,
+			"**/obj": true,
+			// "**/test-results": true,
+			"**/coverage-history": true
+		},
+		"python.defaultInterpreterPath": "python3"
+	}
+}

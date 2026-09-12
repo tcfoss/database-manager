@@ -1,0 +1,19 @@
+# Version: 4.1.1 (Using https://semver.org/)
+# Updated: 2022-05-23
+
+root = false
+
+[*.{cs,csx}]
+csharp_style_unused_value_expression_statement_preference = discard_variable:none
+dotnet_diagnostic.IDE0058.severity = none
+dotnet_diagnostic.CA1707.severity = none
+
+dotnet_naming_style.test_case_style.capitalization = pascal_case
+dotnet_naming_style.test_case_style.word_separator = _
+
+dotnet_naming_symbols.test_case_group.applicable_accessibilities = *
+dotnet_naming_symbols.test_case_group.required_modifiers = static
+dotnet_naming_symbols.test_case_group.applicable_kinds = method
+dotnet_naming_rule.test_case_rule.symbols = test_case_group
+dotnet_naming_rule.test_case_rule.style = test_case_style
+dotnet_naming_rule.test_case_rule.severity = warning

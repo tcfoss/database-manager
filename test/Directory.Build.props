@@ -1,0 +1,14 @@
+<Project>
+    <PropertyGroup>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <TestingPlatformCommandLineArguments>$(TestingPlatformCommandLineArguments) --config-file $(MSBuildThisFileDirectory)../testconfig.json --coverlet</TestingPlatformCommandLineArguments>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Coverlet.MTP searches for testconfig.json next to the test assembly; passing "config-file" alone is not enough -->
+        <None Include="$(MSBuildThisFileDirectory)../testconfig.json" Link="testconfig.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+- FilePath: MoreStuff/script1.sql
+  Type: PreDeployment
+- FilePath: MoreStuff/script2.sql
+  Type: PostDropConstraints
+  UniqueId: 00000000-0000-0000-0000-000000000006
+- FilePath: MoreStuff/script3.sql
+  Type: PreAddConstraints
+- FilePath: MoreStuff/script4.sql
+  Type: PostDeployment
+  UniqueId: 00000000-0000-0000-0000-000000000008
