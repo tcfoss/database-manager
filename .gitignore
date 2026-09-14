@@ -21,7 +21,6 @@ __pycache__/
 build/
 dist/
 .venv/
-**/dbman_dev/installation/_build_meta.py
 
 BuildInfo.cs
 

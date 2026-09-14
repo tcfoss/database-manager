@@ -44,4 +44,8 @@ namespace $(RootNamespace)
     <Compile Include="$(IntermediateOutputPath)BuildInfo.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="ninman.yml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

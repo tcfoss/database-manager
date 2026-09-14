@@ -1,6 +1,6 @@
 [project]
 name = "dbman-dev"
-version = "0.5.11"
+version = "0.5.12"
 description = "Tools for automating NetDatabaseManager development tasks"
 authors = [
     {name = "Thomas Flanagan",email = "t@tcflanagan.net"}
@@ -20,12 +20,8 @@ dbman-dev-debug-help = "dbman_dev.debug_help:main"
 dbman-dev-infoschema-entities = "dbman_dev.infoschema_building.entities:run_cli"
 dbman-dev-infoschema-test-data = "dbman_dev.infoschema_building.test_data:run_cli"
 dbman-dev-infoschema-regenerator = "dbman_dev.infoschema_building.all_auto:main"
-dbman-dev-install = "dbman_dev.installation.install_dev:run_cli"
 dbman-dev-coverage = "dbman_dev.coverage.generate_report:main"
 dbman-dev-coverage-mtp = "dbman_dev.coverage.generate_report_mtp:main"
-
-[tool.dbman-dev]
-installer-version = "1.1.1"
 
 [tool.poetry]
 packages = [{include = "dbman_dev", from = "src"}]
@@ -33,13 +29,8 @@ packages = [{include = "dbman_dev", from = "src"}]
 [tool.poetry.group.dev.dependencies]
 pylint = "^3.3.8"
 mypy = "^1.19.1"
-pyinstaller = "^6.18.0"
 types-docker = "^7.1.0.20260109"
 types-pymysql = "^1.1.0.20251220"
-
-[[tool.mypy.overrides]]
-module = ["dbman_dev.installation._build_meta", "dbman_dev.installation.get_installer_version"]
-ignore_errors = true
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

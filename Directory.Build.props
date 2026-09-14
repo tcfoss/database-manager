@@ -1,14 +1,25 @@
 <Project>
     <PropertyGroup>
-        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-        <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-        <MinVerTagPrefix>v</MinVerTagPrefix>
-    </PropertyGroup>
-
-    <PropertyGroup>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <AnalysisMode>Recommended</AnalysisMode>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <Authors>Thomas C. Flanagan</Authors>
+        <Company>TcfOss</Company>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/tcfoss/database-manager</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/tcfoss/database-manager</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+        <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+        <MinVerTagPrefix>v</MinVerTagPrefix>
     </PropertyGroup>
 
     <Target Name="OverrideVersions" AfterTargets="MinVer">
@@ -17,4 +28,8 @@
             <AssemblyVersion>0.1.0.0</AssemblyVersion>
         </PropertyGroup>
     </Target>
+
+    <ItemGroup>
+        <None Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 </Project>
