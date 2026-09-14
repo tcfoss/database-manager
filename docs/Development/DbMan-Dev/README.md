@@ -31,28 +31,3 @@ poetry run dbman-dev-infoschema-regenerator
 ```
 
 is the same as running both of the above commands for both "MySql" and "MariaDb".
-
-## Local Installation
-
-To install the application, run
-
-```sh
-poetry run dbman-dev-install install [--system]
-```
-
-This does the following:
-
-1. Builds and publishes TcfOss.DatabaseManager.App.
-2. "Installs" the results of the publish.
-
-The meaning of "install" changes depending on whether the `--system` flag is set.
-
-If `--system` is set, then "install" means
-
-1. Copy the files to `/usr/local/lib/tcf-database-manager`.
-2. Create a symlink to the primary executable in `/usr/local/bin` with the name `dbman`.
-
-Otherwise, "install" means
-
-1. Copy the files to `~/.local/lib/tcf-database-manager`.
-2. Creates a symlink to the primary executable in `~/.local/bin` with the name `dbman`.
