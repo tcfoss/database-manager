@@ -32,7 +32,7 @@ Both blocks are optional. Any key you omit takes its built-in default.
 Several keys (`ExpandWildcards`, `SelectItemPrefixWithObject`,
 `UpdateTargetPrefixWithObject`) need to know which tables and columns exist
 to do their job. See
-[Definition-aware formatting](./index.md#definition-aware-formatting) for how
+[Definition-aware formatting](./README.md#definition-aware-formatting) for how
 to supply a database definition to the `format-sql` command.
 
 ### Example
