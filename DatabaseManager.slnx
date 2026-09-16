@@ -26,4 +26,7 @@
     <Project Path="test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj" />
     <Project Path="test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj" />
   </Folder>
+  <Folder Name="/benchmark/">
+    <Project Path="benchmark/BenchmarkDeJoin/BenchmarkDeJoin.csproj" />
+  </Folder>
 </Solution>

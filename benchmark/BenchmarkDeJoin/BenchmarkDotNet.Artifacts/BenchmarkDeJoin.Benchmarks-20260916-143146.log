@@ -1,0 +1,162 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 2 benchmark(s) in total *****
+// ***** Building 1 exe(s) in Parallel: Start   *****
+// start dotnet  restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1/" /p:OutDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:OutputPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:PublishDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\publish/" in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1
+// command took 4.59 sec and exited with 0
+// start dotnet  build -c Release --no-restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1/" /p:OutDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:OutputPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:PublishDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\publish/" --output "C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1
+// command took 50.98 sec and exited with 0
+// ***** Done, took 00:00:56 (56.03 sec)   *****
+// Found 2 benchmarks:
+//   Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=false]
+//   Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=true]
+
+Setup power plan (GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c FriendlyName: High performance)
+// **************************
+// Benchmark: Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=false]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet BenchmarkDeJoin-Job-CNUJVU-1.dll --anonymousPipes 2224 2212 --benchmarkName "BenchmarkDeJoin.Benchmarks.LoadDefinition(NewMethod: \"false\")" --job "InvocationCount=1, UnrollFactor=1" --benchmarkId 0 in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL,AvxVnni,SERIALIZE VectorSize=256
+// Job: Job-CNUJVU(InvocationCount=1, UnrollFactor=1)
+
+
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.IO.DirectoryNotFoundException: Could not find a part of the path 'C:\home\thomas\Code\IssueTracker\database'.
+   at System.IO.Enumeration.FileSystemEnumerator`1.CreateDirectoryHandle(String path, Boolean ignoreNotFound)
+   at System.IO.Enumeration.FileSystemEnumerator`1.Init()
+   at System.IO.Enumeration.FileSystemEnumerator`1..ctor(String directory, Boolean isNormalized, EnumerationOptions options, String expression)
+   at System.IO.Enumeration.FileSystemEnumerable`1..ctor(String directory, FindTransform transform, EnumerationOptions options, Boolean isNormalized, String expression)
+   at System.IO.Enumeration.FileSystemEnumerableFactory.FileInfos(String directory, String expression, EnumerationOptions options, Boolean isNormalized)
+   at System.IO.DirectoryInfo.InternalEnumerateInfos(String path, String searchPattern, SearchTarget searchTarget, EnumerationOptions enumerationOptions)
+   at System.IO.DirectoryInfo.EnumerateFiles()
+   at TcfOss.DatabaseManager.Core.App.StartupBase.SearchForConfigurationPath(String startDirectory) in C:\Users\flanagantc\source\repos\database-manager\src\TcfOss.DatabaseManager.Core\App\StartupBase.cs:line 86
+   at TcfOss.DatabaseManager.Core.App.StartupBase.GetConfigPath(String workingDirectory, String configPath) in C:\Users\flanagantc\source\repos\database-manager\src\TcfOss.DatabaseManager.Core\App\StartupBase.cs:line 39
+   at TcfOss.DatabaseManager.Core.LibWrapper.StartAppBase`1.StartCommon(String configPath, Config rawConfig, String workingDirectory, Boolean relaxed, StartupOptions options) in C:\Users\flanagantc\source\repos\database-manager\src\LibWrapper\TcfOss.DatabaseManager.Core.LibWrapper\StartAppBase.cs:line 28
+   at TcfOss.DatabaseManager.MariaDb.LibWrapper.MariaDbStartApp.Start(String configFilePath, Config rawConfig, String workingDirectory, Boolean relaxed, StartupOptions options) in C:\Users\flanagantc\source\repos\database-manager\src\LibWrapper\TcfOss.DatabaseManager.MariaDb.LibWrapper\MariaDbStartApp.cs:line 17
+   at BenchmarkDeJoin.Benchmarks.Setup() in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\Benchmarks.cs:line 74
+   at BenchmarkDotNet.Engines.EngineFactory.CreateReadyToRun(EngineParameters engineParameters)
+   at BenchmarkDotNet.Autogenerated.Runnable_0.Run(IHost host, String benchmarkName) in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\BenchmarkDeJoin-Job-CNUJVU-1.notcs:line 177
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   --- End of inner exception stack trace ---
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at System.Reflection.MethodBase.Invoke(Object obj, Object[] parameters)
+   at BenchmarkDotNet.Autogenerated.UniqueProgramName.AfterAssemblyLoadingAttached(String[] args) in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\BenchmarkDeJoin-Job-CNUJVU-1.notcs:line 57
+// AfterAll
+No Workload Results were obtained from the run.
+// Benchmark Process 68780 has exited with code -1.
+
+// ** Remained 1 (50.0%) benchmark(s) to run. Estimated finish 2026-09-16 14:32 (0h 0m from now) **
+Setup power plan (GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c FriendlyName: High performance)
+// **************************
+// Benchmark: Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=true]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet BenchmarkDeJoin-Job-CNUJVU-1.dll --anonymousPipes 2248 2120 --benchmarkName "BenchmarkDeJoin.Benchmarks.LoadDefinition(NewMethod: \"true\")" --job "InvocationCount=1, UnrollFactor=1" --benchmarkId 1 in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL,AvxVnni,SERIALIZE VectorSize=256
+// Job: Job-CNUJVU(InvocationCount=1, UnrollFactor=1)
+
+
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.IO.DirectoryNotFoundException: Could not find a part of the path 'C:\home\thomas\Code\IssueTracker\database'.
+   at System.IO.Enumeration.FileSystemEnumerator`1.CreateDirectoryHandle(String path, Boolean ignoreNotFound)
+   at System.IO.Enumeration.FileSystemEnumerator`1.Init()
+   at System.IO.Enumeration.FileSystemEnumerator`1..ctor(String directory, Boolean isNormalized, EnumerationOptions options, String expression)
+   at System.IO.Enumeration.FileSystemEnumerable`1..ctor(String directory, FindTransform transform, EnumerationOptions options, Boolean isNormalized, String expression)
+   at System.IO.Enumeration.FileSystemEnumerableFactory.FileInfos(String directory, String expression, EnumerationOptions options, Boolean isNormalized)
+   at System.IO.DirectoryInfo.InternalEnumerateInfos(String path, String searchPattern, SearchTarget searchTarget, EnumerationOptions enumerationOptions)
+   at System.IO.DirectoryInfo.EnumerateFiles()
+   at TcfOss.DatabaseManager.Core.App.StartupBase.SearchForConfigurationPath(String startDirectory) in C:\Users\flanagantc\source\repos\database-manager\src\TcfOss.DatabaseManager.Core\App\StartupBase.cs:line 86
+   at TcfOss.DatabaseManager.Core.App.StartupBase.GetConfigPath(String workingDirectory, String configPath) in C:\Users\flanagantc\source\repos\database-manager\src\TcfOss.DatabaseManager.Core\App\StartupBase.cs:line 39
+   at TcfOss.DatabaseManager.Core.LibWrapper.StartAppBase`1.StartCommon(String configPath, Config rawConfig, String workingDirectory, Boolean relaxed, StartupOptions options) in C:\Users\flanagantc\source\repos\database-manager\src\LibWrapper\TcfOss.DatabaseManager.Core.LibWrapper\StartAppBase.cs:line 28
+   at TcfOss.DatabaseManager.MariaDb.LibWrapper.MariaDbStartApp.Start(String configFilePath, Config rawConfig, String workingDirectory, Boolean relaxed, StartupOptions options) in C:\Users\flanagantc\source\repos\database-manager\src\LibWrapper\TcfOss.DatabaseManager.MariaDb.LibWrapper\MariaDbStartApp.cs:line 17
+   at BenchmarkDeJoin.Benchmarks.Setup() in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\Benchmarks.cs:line 74
+   at BenchmarkDotNet.Engines.EngineFactory.CreateReadyToRun(EngineParameters engineParameters)
+   at BenchmarkDotNet.Autogenerated.Runnable_1.Run(IHost host, String benchmarkName) in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\BenchmarkDeJoin-Job-CNUJVU-1.notcs:line 340
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   --- End of inner exception stack trace ---
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at System.Reflection.MethodBase.Invoke(Object obj, Object[] parameters)
+   at BenchmarkDotNet.Autogenerated.UniqueProgramName.AfterAssemblyLoadingAttached(String[] args) in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\BenchmarkDeJoin-Job-CNUJVU-1.notcs:line 57
+// AfterAll
+No Workload Results were obtained from the run.
+// Benchmark Process 60504 has exited with code -1.
+
+// ** Remained 0 (0.0%) benchmark(s) to run. Estimated finish 2026-09-16 14:32 (0h 0m from now) **
+Successfully reverted power plan (GUID: 381b4222-f694-41f0-9685-ff5bb260df2e FriendlyName: Balanced)
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts\results\BenchmarkDeJoin.Benchmarks-report.csv
+  BenchmarkDotNet.Artifacts\results\BenchmarkDeJoin.Benchmarks-report-github.md
+  BenchmarkDotNet.Artifacts\results\BenchmarkDeJoin.Benchmarks-report.html
+
+// * Detailed results *
+Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=false]
+Runtime = .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3; GC = Concurrent Workstation
+There are not any results runs
+
+Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=true]
+Runtime = .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3; GC = Concurrent Workstation
+There are not any results runs
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.22631.7517/23H2/2023Update/SunValley3)
+13th Gen Intel Core i7-13850HX 2.10GHz, 1 CPU, 28 logical and 20 physical cores
+.NET SDK 10.0.401
+  [Host]     : .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+  Job-CNUJVU : .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+
+InvocationCount=1  UnrollFactor=1  
+
+| Method         | NewMethod | Mean | Error |
+|--------------- |---------- |-----:|------:|
+| LoadDefinition | false     |   NA |    NA |
+| LoadDefinition | true      |   NA |    NA |
+
+Benchmarks with issues:
+  Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=false]
+  Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=true]
+
+// * Warnings *
+Environment
+  Summary -> Detected error exit code from one of the benchmarks. It might be caused by following antivirus software:
+        - Windows Defender (windowsdefender://)
+        - CrowdStrike Falcon Sensor (C:\Program Files\CrowdStrike\CSFalconController.exe)
+Use InProcessEmitToolchain or InProcessNoEmitToolchain to avoid new process creation.
+
+
+// * Legends *
+  NewMethod : Value of the 'NewMethod' parameter
+  Mean      : Arithmetic mean of all measurements
+  Error     : Half of 99.9% confidence interval
+  1 ns      : 1 Nanosecond (0.000000001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:02 (2.31 sec), executed benchmarks: 2
+
+Global total time: 00:01:00 (60.68 sec), executed benchmarks: 2
+// * Artifacts cleanup *
+Artifacts cleanup is finished

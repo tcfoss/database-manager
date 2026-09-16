@@ -31,6 +31,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
     private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaIndexData>>> _indexDataBySchema = new();
     private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaForeignKeyData>>> _foreignKeyDataBySchema = new();
 
+    private readonly Lazy<Task<Dictionary<string, string>>> _characterSetApplicabilities;
+
     private readonly QuoteStyle _quoteStyle;
     private readonly MyConfig _config;
     private readonly MyLexer _lexer;
@@ -40,6 +42,10 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
     private readonly IDbContextFactory<InfoSchemaContext> _contextFactory;
     private readonly IRetrieveRawEntities _rawEntityRetriever;
 
+    private bool UseNewImplementation => Environment.GetEnvironmentVariable("new_method") == "true";
+
+    private static readonly string OldLogFile = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "oldLog.txt");
+    private static readonly string NewLogFile = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "newLog.txt");
 
     public InfoSchemaRepo(MyConfig config, IDbContextFactory<InfoSchemaContext> contextFactory, IRetrieveRawEntities rawEntityRetriever)
     {
@@ -50,6 +56,15 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
         _lexer = new MyLexer();
         _parser = new MyParser();
         _helper = new InfoSchemaRepoHelper(_lexer, _parser, config);
+        _characterSetApplicabilities = new Lazy<Task<Dictionary<string, string>>>(async () =>
+        {
+            InfoSchemaContext context = await _contextFactory.CreateDbContextAsync();
+
+            return await context.CollationCharacterSetApplicabilities.ToDictionaryAsync(
+                coll => coll.FullCollationName,
+                coll => coll.CharacterSetName
+            );
+        });
     }
 
     public async Task<List<ObjectIdentifier>> GetTableIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, bool refreshCache = true, CancellationToken cancellationToken = default)
@@ -180,6 +195,12 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     private async Task<SchemaTableData> LoadSchemaTableDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
     {
+        return await (UseNewImplementation ? LoadSchemaTableDataAsyncNew(catalog, schema, cancellationToken) : LoadSchemaTableDataAsyncOld(catalog, schema, cancellationToken));
+    }
+
+    private async Task<SchemaTableData> LoadSchemaTableDataAsyncOld(string catalog, string schema, CancellationToken cancellationToken = default)
+    {
+        File.AppendAllText(OldLogFile, "Calling Old\n");
         await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         List<TableDto> tableInfoRows = await (from t in context.Tables
@@ -230,6 +251,90 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
                                                    ConstraintName = c.ConstraintName,
                                                    CheckClause = c.CheckClause
                                                }).ToListAsync(cancellationToken);
+
+        return new SchemaTableData(
+            tableInfoRows.ToDictionary(t => t.TableName, t => t),
+            columnRows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<ColumnDto>)[.. g]),
+            checkRows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<TableCheckDto>)[.. g]));
+    }
+
+
+    private async Task<SchemaTableData> LoadSchemaTableDataAsyncNew(string catalog, string schema, CancellationToken cancellationToken = default)
+    {
+        File.AppendAllText(NewLogFile, "Calling New\n");
+        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var tableInfoRowsRaw = await (from t in context.Tables
+                                              where t.TableCatalog == catalog
+                                              && t.TableSchema == schema
+                                              && t.TableType == "BASE TABLE"
+                                              select new
+                                              {
+                                                  TableName = t.TableName,
+                                                  Engine = t.Engine!,
+                                                  Collation = t.TableCollation!,
+                                                  TableComment = t.TableComment
+                                              }).ToListAsync(cancellationToken);
+
+        var characterSets = await _characterSetApplicabilities.Value;
+
+        List<TableDto> tableInfoRows = [.. tableInfoRowsRaw.Select(x => new TableDto
+        {
+            TableName = x.TableName,
+            Engine = x.Engine,
+            Collation = x.Collation,
+            CharacterSet = characterSets[x.Collation],
+            TableComment = x.TableComment
+        })];
+
+        List<TableCheckDto> checkRows = await (from c in context.CheckConstraints
+                                               where c.ConstraintCatalog == catalog
+                                               && c.ConstraintSchema == schema
+                                               select new TableCheckDto
+                                               {
+                                                   TableName = c.TableName,
+                                                   ConstraintName = c.ConstraintName,
+                                                   CheckClause = c.CheckClause,
+                                                   Level = c.Level.ToUpperInvariant()
+                                               }).ToListAsync(cancellationToken);
+
+        List<TableCheckDto> tableCheckRows = [.. checkRows.Where(x => x.Level == "TABLE")];
+        var columnCheckRows = checkRows.Where(x => x.Level == "COLUMN").ToDictionary(x => (x.TableName, x.ConstraintName), x => x);
+
+
+        List<ColumnDto> columnRows = await (from c in context.Columns
+                                            // join ccSub in context.CheckConstraints
+                                            // on new { c.TableCatalog, c.TableSchema, Tab = c.TableName, Level = "Column", Col = c.ColumnName }
+                                            //     equals new { TableCatalog = ccSub.ConstraintCatalog, TableSchema = ccSub.ConstraintSchema, Tab = ccSub.TableName, ccSub.Level, Col = ccSub.ConstraintName }
+                                            //     into ccGroup
+                                            // from cc in ccGroup.DefaultIfEmpty()
+                                            where c.TableCatalog == catalog
+                                            && c.TableSchema == schema
+                                            orderby c.TableName, c.OrdinalPosition
+                                            select new ColumnDto
+                                            {
+                                                TableName = c.TableName,
+                                                ColumnName = c.ColumnName,
+                                                ColumnType = c.ColumnType,
+                                                CharacterSetName = c.CharacterSetName,
+                                                CollationName = c.CollationName,
+                                                IsNullable = c.IsNullable,
+                                                ColumnDefault = c.ColumnDefault,
+                                                GenerationExpression = c.GenerationExpression,
+                                                Extra = c.Extra,
+                                                ColumnComment = c.ColumnComment,
+                                                CheckClause = null
+                                            }).ToListAsync(cancellationToken);
+
+        for (int i = 0; i < columnRows.Count; i++)
+        {
+            ColumnDto columnRow = columnRows[i];
+            if (columnCheckRows.TryGetValue((columnRow.TableName, columnRow.ColumnName), out var checkRow))
+            {
+                columnRows[i] = columnRow with { CheckClause = checkRow.CheckClause };
+            }
+        }
+
 
         return new SchemaTableData(
             tableInfoRows.ToDictionary(t => t.TableName, t => t),

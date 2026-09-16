@@ -1,0 +1,198 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 2 benchmark(s) in total *****
+// ***** Building 1 exe(s) in Parallel: Start   *****
+// start dotnet  restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1/" /p:OutDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:OutputPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:PublishDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\publish/" in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1
+// command took 3.77 sec and exited with 0
+// start dotnet  build -c Release --no-restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1/" /p:OutDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:OutputPath="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" /p:PublishDir="C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\publish/" --output "C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0/" in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1
+// command took 52.56 sec and exited with 0
+// ***** Done, took 00:00:56 (56.62 sec)   *****
+// Found 2 benchmarks:
+//   Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=false]
+//   Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=true]
+
+Setup power plan (GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c FriendlyName: High performance)
+// **************************
+// Benchmark: Benchmarks.LoadDefinition: Job-CNUJVU(InvocationCount=1, UnrollFactor=1) [NewMethod=false]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet BenchmarkDeJoin-Job-CNUJVU-1.dll --anonymousPipes 1876 2304 --benchmarkName "BenchmarkDeJoin.Benchmarks.LoadDefinition(NewMethod: \"false\")" --job "InvocationCount=1, UnrollFactor=1" --benchmarkId 0 in C:\Users\flanagantc\source\repos\database-manager\benchmark\BenchmarkDeJoin\bin\Release\net10.0\BenchmarkDeJoin-Job-CNUJVU-1\bin\Release\net10.0
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL,AvxVnni,SERIALIZE VectorSize=256
+// Job: Job-CNUJVU(InvocationCount=1, UnrollFactor=1)
+
+OverheadJitting  1: 1 op, 99300.00 ns, 99.3000 us/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:06.1373548
+WorkloadJitting  1: 1 op, 10066673100.00 ns, 10.0667 s/op
+
+OverheadWarmup   1: 1 op, 500.00 ns, 500.0000 ns/op
+OverheadWarmup   2: 1 op, 700.00 ns, 700.0000 ns/op
+OverheadWarmup   3: 1 op, 1000.00 ns, 1.0000 us/op
+OverheadWarmup   4: 1 op, 400.00 ns, 400.0000 ns/op
+OverheadWarmup   5: 1 op, 600.00 ns, 600.0000 ns/op
+OverheadWarmup   6: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadWarmup   7: 1 op, 700.00 ns, 700.0000 ns/op
+
+OverheadActual   1: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadActual   2: 1 op, 900.00 ns, 900.0000 ns/op
+OverheadActual   3: 1 op, 500.00 ns, 500.0000 ns/op
+OverheadActual   4: 1 op, 900.00 ns, 900.0000 ns/op
+OverheadActual   5: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadActual   6: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadActual   7: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadActual   8: 1 op, 1100.00 ns, 1.1000 us/op
+OverheadActual   9: 1 op, 600.00 ns, 600.0000 ns/op
+OverheadActual  10: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadActual  11: 1 op, 1200.00 ns, 1.2000 us/op
+OverheadActual  12: 1 op, 600.00 ns, 600.0000 ns/op
+OverheadActual  13: 1 op, 600.00 ns, 600.0000 ns/op
+OverheadActual  14: 1 op, 1000.00 ns, 1.0000 us/op
+OverheadActual  15: 1 op, 1100.00 ns, 1.1000 us/op
+OverheadActual  16: 1 op, 1100.00 ns, 1.1000 us/op
+OverheadActual  17: 1 op, 800.00 ns, 800.0000 ns/op
+OverheadActual  18: 1 op, 1000.00 ns, 1.0000 us/op
+OverheadActual  19: 1 op, 600.00 ns, 600.0000 ns/op
+OverheadActual  20: 1 op, 500.00 ns, 500.0000 ns/op
+
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.9476023
+WorkloadWarmup   1: 1 op, 8880395000.00 ns, 8.8804 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5885688
+WorkloadWarmup   2: 1 op, 8800854200.00 ns, 8.8009 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4867413
+WorkloadWarmup   3: 1 op, 8664792200.00 ns, 8.6648 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.0318870
+WorkloadWarmup   4: 1 op, 8600216200.00 ns, 8.6002 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5357325
+WorkloadWarmup   5: 1 op, 8681901600.00 ns, 8.6819 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.6626163
+WorkloadWarmup   6: 1 op, 8695221400.00 ns, 8.6952 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5831335
+WorkloadWarmup   7: 1 op, 8708151200.00 ns, 8.7082 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2969000
+WorkloadWarmup   8: 1 op, 8556291200.00 ns, 8.5563 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.9140382
+WorkloadWarmup   9: 1 op, 8794660800.00 ns, 8.7947 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.6901275
+WorkloadWarmup  10: 1 op, 8827804800.00 ns, 8.8278 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5653969
+WorkloadWarmup  11: 1 op, 8532439200.00 ns, 8.5324 s/op
+
+// BeforeActualRun
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.3435159
+WorkloadActual   1: 1 op, 8535718700.00 ns, 8.5357 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2755358
+WorkloadActual   2: 1 op, 8531526900.00 ns, 8.5315 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.6082771
+WorkloadActual   3: 1 op, 8574970500.00 ns, 8.5750 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2056385
+WorkloadActual   4: 1 op, 8684889400.00 ns, 8.6849 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.6735055
+WorkloadActual   5: 1 op, 8711416500.00 ns, 8.7114 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5761354
+WorkloadActual   6: 1 op, 8740596700.00 ns, 8.7406 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.1279516
+WorkloadActual   7: 1 op, 8641769900.00 ns, 8.6418 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.0873088
+WorkloadActual   8: 1 op, 8486493600.00 ns, 8.4865 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.0493630
+WorkloadActual   9: 1 op, 8340122900.00 ns, 8.3401 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7498668
+WorkloadActual  10: 1 op, 8859367500.00 ns, 8.8594 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4185304
+WorkloadActual  11: 1 op, 8427787600.00 ns, 8.4278 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.8810135
+WorkloadActual  12: 1 op, 6635897600.00 ns, 6.6359 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.3140781
+WorkloadActual  13: 1 op, 8604096400.00 ns, 8.6041 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.3957615
+WorkloadActual  14: 1 op, 8457024800.00 ns, 8.4570 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:06.0185170
+WorkloadActual  15: 1 op, 9227025300.00 ns, 9.2270 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2993488
+WorkloadActual  16: 1 op, 8467433600.00 ns, 8.4674 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.3317544
+WorkloadActual  17: 1 op, 8485976000.00 ns, 8.4860 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2290199
+WorkloadActual  18: 1 op, 8774388000.00 ns, 8.7744 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2754421
+WorkloadActual  19: 1 op, 8712464800.00 ns, 8.7125 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4849451
+WorkloadActual  20: 1 op, 8524499800.00 ns, 8.5245 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:04.8408231
+WorkloadActual  21: 1 op, 8616889900.00 ns, 8.6169 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5215446
+WorkloadActual  22: 1 op, 8640196300.00 ns, 8.6402 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2728208
+WorkloadActual  23: 1 op, 8498196100.00 ns, 8.4982 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7343311
+WorkloadActual  24: 1 op, 8782884100.00 ns, 8.7829 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7027289
+WorkloadActual  25: 1 op, 8397867200.00 ns, 8.3979 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:04.8175777
+WorkloadActual  26: 1 op, 8392782100.00 ns, 8.3928 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5739214
+WorkloadActual  27: 1 op, 8559479700.00 ns, 8.5595 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5786319
+WorkloadActual  28: 1 op, 8944805600.00 ns, 8.9448 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.0274020
+WorkloadActual  29: 1 op, 8707498400.00 ns, 8.7075 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4352523
+WorkloadActual  30: 1 op, 8842102100.00 ns, 8.8421 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7406988
+WorkloadActual  31: 1 op, 8840015800.00 ns, 8.8400 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2472904
+WorkloadActual  32: 1 op, 8743585400.00 ns, 8.7436 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5423378
+WorkloadActual  33: 1 op, 9079809100.00 ns, 9.0798 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5067712
+WorkloadActual  34: 1 op, 8818740000.00 ns, 8.8187 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.6050606
+WorkloadActual  35: 1 op, 8740403900.00 ns, 8.7404 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.6537968
+WorkloadActual  36: 1 op, 8646946200.00 ns, 8.6469 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7816063
+WorkloadActual  37: 1 op, 8594664700.00 ns, 8.5947 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7839556
+WorkloadActual  38: 1 op, 8914674100.00 ns, 8.9147 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2038071
+WorkloadActual  39: 1 op, 8731545800.00 ns, 8.7315 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4318400
+WorkloadActual  40: 1 op, 8480504000.00 ns, 8.4805 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7772418
+WorkloadActual  41: 1 op, 6756579300.00 ns, 6.7566 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.3381016
+WorkloadActual  42: 1 op, 8716162600.00 ns, 8.7162 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.0209569
+WorkloadActual  43: 1 op, 8731684000.00 ns, 8.7317 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4497587
+WorkloadActual  44: 1 op, 8897430900.00 ns, 8.8974 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.7277501
+WorkloadActual  45: 1 op, 8789105600.00 ns, 8.7891 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:06.2443803
+WorkloadActual  46: 1 op, 9677963800.00 ns, 9.6780 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2687177
+WorkloadActual  47: 1 op, 8913370900.00 ns, 8.9134 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.1812942
+WorkloadActual  48: 1 op, 8959961300.00 ns, 8.9600 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4772743
+WorkloadActual  49: 1 op, 8615680400.00 ns, 8.6157 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2062334
+WorkloadActual  50: 1 op, 8680986200.00 ns, 8.6810 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.8962924
+WorkloadActual  51: 1 op, 8926408300.00 ns, 8.9264 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.2698015
+WorkloadActual  52: 1 op, 8887935200.00 ns, 8.8879 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.1706629
+WorkloadActual  53: 1 op, 8575125100.00 ns, 8.5751 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.1820099
+WorkloadActual  54: 1 op, 8716986500.00 ns, 8.7170 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.5485967
+WorkloadActual  55: 1 op, 9157288100.00 ns, 9.1573 s/op
+[DbCommands] NewMethod=false Count=42 TotalDuration=00:00:05.4886326
+WorkloadActual  56: 1 op, 8711702000.00 ns, 8.7117 s/op
+Successfully reverted power plan (GUID: 381b4222-f694-41f0-9685-ff5bb260df2e FriendlyName: Balanced)
