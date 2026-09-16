@@ -24,12 +24,16 @@ using TcfOss.DatabaseManager.MySql.Parsing;
 
 namespace TcfOss.DatabaseManager.MariaDb.DatabaseComms;
 
-public class InfoSchemaRepo : IRetrieveDatabaseObjects
+public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 {
+    private readonly SemaphoreSlim _queryGate = new(10);
     private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<List<TriggerDto>>>> _triggersBySchema = new();
     private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaTableData>>> _tableDataBySchema = new();
     private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaIndexData>>> _indexDataBySchema = new();
     private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaForeignKeyData>>> _foreignKeyDataBySchema = new();
+    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaRoutineData>>> _routineDataBySchema = new();
+    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<IReadOnlyDictionary<string, ViewEntity>>>> _viewsBySchema = new();
+    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<IReadOnlyDictionary<string, EventEntity>>>> _eventsBySchema = new();
 
     private readonly QuoteStyle _quoteStyle;
     private readonly MyConfig _config;
@@ -61,9 +65,13 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
             _ = _tableDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
             _ = _indexDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
             _ = _foreignKeyDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
+            _ = _routineDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
+            _ = _viewsBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
+            _ = _eventsBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
         }
 
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         IQueryable<ObjectIdentifier> query = from t in context.Tables
                                              where t.TableCatalog == schemaId.Catalog.Name
@@ -77,7 +85,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     public async Task<List<ObjectIdentifier>> GetProcedureIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         IQueryable<ObjectIdentifier> query = from r in context.Routines
                                              where r.RoutineCatalog == schemaId.Catalog.Name
@@ -90,7 +99,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     public async Task<List<ObjectIdentifier>> GetFunctionIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         IQueryable<ObjectIdentifier> query = from r in context.Routines
                                              where r.RoutineCatalog == schemaId.Catalog.Name
@@ -103,7 +113,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     public async Task<List<ObjectIdentifier>> GetViewIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         IQueryable<ObjectIdentifier> query = from v in context.Views
                                              where v.TableCatalog == schemaId.Catalog.Name
@@ -115,7 +126,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     public async Task<List<ObjectIdentifier>> GetEventIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         IQueryable<ObjectIdentifier> query = from e in context.Events
                                              where e.EventCatalog == schemaId.Catalog.Name
@@ -180,7 +192,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     private async Task<SchemaTableData> LoadSchemaTableDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         List<TableDto> tableInfoRows = await (from t in context.Tables
                                               join coll in context.CollationCharacterSetApplicabilities
@@ -318,7 +331,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     private async Task<SchemaIndexData> LoadSchemaIndexDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         List<SchemaConstraintDto> constraints = await (from tc in context.TableConstraints
                                                        where tc.ConstraintCatalog == catalog
@@ -439,7 +453,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     private async Task<SchemaForeignKeyData> LoadSchemaForeignKeyDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         List<ForeignKeyColumnDto> rows = await (from tc in context.TableConstraints
                                                 join rc in context.ReferentialConstraints
@@ -509,32 +524,89 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
         return checks;
     }
 
-    private SqlValueList<RoutineParameter> GetRoutineParameters(string catalog, string schema, string routineType, string routineName)
+    private async Task<SchemaRoutineData> GetSchemaRoutineDataAsync(string catalog, string schema)
     {
-        using InfoSchemaContext context = _contextFactory.CreateDbContext();
+        (string Catalog, string Schema) schemaKey = (catalog, schema);
+        Lazy<Task<SchemaRoutineData>> lazyRows = _routineDataBySchema.GetOrAdd(
+            schemaKey,
+            _ => new Lazy<Task<SchemaRoutineData>>(
+                () => LoadSchemaRoutineDataAsync(catalog, schema),
+                LazyThreadSafetyMode.ExecutionAndPublication));
 
-        IQueryable<RoutineParameterDto> parms = from rp in context.Parameters
-                                                where rp.SpecificCatalog == catalog
-                                                && rp.SpecificSchema == schema
-                                                && rp.SpecificName == routineName
-                                                && rp.RoutineType == routineType
-                                                && rp.OrdinalPosition > 0
-                                                orderby rp.OrdinalPosition
-                                                select new RoutineParameterDto
-                                                {
-                                                    ParameterName = rp.ParameterName!,
-                                                    DataType = rp.DtdIdentifier,
-                                                    CharacterSet = rp.CharacterSetName,
-                                                    Collation = rp.CollationName,
-                                                    ParameterMode = rp.ParameterMode
-                                                };
+        try
+        {
+            return await lazyRows.Value;
+        }
+        catch
+        {
+            _ = _routineDataBySchema.TryRemove(schemaKey, out _);
+            throw;
+        }
+    }
 
+    private async Task<SchemaRoutineData> LoadSchemaRoutineDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
+    {
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
+
+        List<RoutineRow> routineRows = await (from r in context.Routines
+                                              where r.RoutineCatalog == catalog
+                                              && r.RoutineSchema == schema
+                                              select new RoutineRow
+                                              {
+                                                  Name = r.RoutineName,
+                                                  Type = r.RoutineType,
+                                                  Value = new RoutineDto
+                                                  {
+                                                      DataType = r.DtdIdentifier,
+                                                      Definer = r.Definer,
+                                                      SecurityType = r.SecurityType,
+                                                      SqlDataAccess = r.SqlDataAccess,
+                                                      RoutineComment = r.RoutineComment,
+                                                      IsDeterministic = r.IsDeterministic,
+                                                      RoutineDefinition = r.RoutineDefinition,
+                                                  }
+                                              }).ToListAsync(cancellationToken);
+
+        List<RoutineParameterRow> parameterRows = await (from rp in context.Parameters
+                                                         where rp.SpecificCatalog == catalog
+                                                         && rp.SpecificSchema == schema
+                                                         && rp.OrdinalPosition > 0
+                                                         select new RoutineParameterRow
+                                                         {
+                                                             Name = rp.SpecificName,
+                                                             Type = rp.RoutineType,
+                                                             OrdinalPosition = rp.OrdinalPosition,
+                                                             Value = new RoutineParameterDto
+                                                             {
+                                                                 ParameterName = rp.ParameterName!,
+                                                                 DataType = rp.DtdIdentifier,
+                                                                 CharacterSet = rp.CharacterSetName,
+                                                                 Collation = rp.CollationName,
+                                                                 ParameterMode = rp.ParameterMode
+                                                             }
+                                                         }).ToListAsync(cancellationToken);
+
+        return new SchemaRoutineData(
+            routineRows.ToDictionary(r => (r.Name, r.Type), r => r.Value),
+            parameterRows
+                .OrderBy(r => r.OrdinalPosition)
+                .GroupBy(r => (r.Name, r.Type))
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<RoutineParameterDto>)[.. g.Select(r => r.Value)]));
+    }
+
+    private SqlValueList<RoutineParameter> GetRoutineParameters(
+        SchemaRoutineData routineData,
+        string routineType,
+        string routineName)
+    {
+        routineData.ParametersByRoutine.TryGetValue((routineName, routineType), out IReadOnlyList<RoutineParameterDto>? parameters);
         var routineParms = new SqlValueList<RoutineParameter>();
-        foreach (RoutineParameterDto p in parms)
+        foreach (RoutineParameterDto p in parameters ?? [])
         {
             DataType dataType = _helper.ParseDataTypeWithDefaults(p.DataType, p.CharacterSet, p.Collation);
             var name = new Identifier(p.ParameterName, _quoteStyle);
-            var direction = RoutineParameterDirection.Parse(p.ParameterMode!);
+            RoutineParameterDirection direction = RoutineParameterDirection.Parse(p.ParameterMode!);
             routineParms.Add(new RoutineParameter.Directed(name, dataType, direction));
         }
 
@@ -543,29 +615,18 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     public async Task<MyStoredProcedure> GetProcedureAsync(ObjectIdentifier procedureId, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
         string createProcText = (await _rawEntityRetriever.GetCreateProcedureAsync(procedureId, cancellationToken)).CreateProcedure!;
         var createProc = (CreateProcedure)_parser.Parse([.. _lexer.Tokenize(createProcText)])[0];
         string createProcBody = createProcText[(int)createProc.Body.Meta.Start!..];
 
         (string catalog, string schema, string procName) = procedureId.Strings;
+        SchemaRoutineData routineData = await GetSchemaRoutineDataAsync(catalog, schema);
+        if (!routineData.RoutinesByName.TryGetValue((procName, "PROCEDURE"), out RoutineDto proc))
+        {
+            throw new InvalidOperationException($"Failed to load metadata for procedure '{procedureId}'.");
+        }
 
-        RoutineDto proc = await (from r in context.Routines
-                                 where r.RoutineCatalog == catalog
-                                 && r.RoutineSchema == schema
-                                 && r.RoutineName == procName
-                                 && r.RoutineType == "PROCEDURE"
-                                 select new RoutineDto
-                                 {
-                                     Definer = r.Definer,
-                                     SecurityType = r.SecurityType,
-                                     SqlDataAccess = r.SqlDataAccess,
-                                     RoutineComment = r.RoutineComment,
-                                     IsDeterministic = r.IsDeterministic,
-                                 }).FirstAsync(cancellationToken);
-
-        SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(catalog, schema, "PROCEDURE", procName);
+        SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "PROCEDURE", procName);
 
         RoutineInfo procInfo = RoutineToRoutineInfo(proc);
 
@@ -584,27 +645,14 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     public async Task<MyStoredFunction> GetFunctionAsync(ObjectIdentifier functionId, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
         (string catalog, string schema, string funcName) = functionId.Strings;
+        SchemaRoutineData routineData = await GetSchemaRoutineDataAsync(catalog, schema);
+        if (!routineData.RoutinesByName.TryGetValue((funcName, "FUNCTION"), out RoutineDto func))
+        {
+            throw new InvalidOperationException($"Failed to load metadata for function '{functionId}'.");
+        }
 
-        RoutineDto func = await (from r in context.Routines
-                                 where r.RoutineCatalog == catalog
-                                 && r.RoutineSchema == schema
-                                 && r.RoutineName == funcName
-                                 && r.RoutineType == "FUNCTION"
-                                 select new RoutineDto
-                                 {
-                                     DataType = r.DtdIdentifier,
-                                     Definer = r.Definer,
-                                     SecurityType = r.SecurityType,
-                                     SqlDataAccess = r.SqlDataAccess,
-                                     RoutineComment = r.RoutineComment,
-                                     IsDeterministic = r.IsDeterministic,
-                                     RoutineDefinition = r.RoutineDefinition,
-                                 }).FirstAsync(cancellationToken);
-
-        SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(catalog, schema, "FUNCTION", funcName);
+        SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "FUNCTION", funcName);
         RoutineInfo funcInfo = RoutineToRoutineInfo(func);
         DataType returnType = _helper.ParseDataType(func.DataType!);
 
@@ -679,7 +727,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
 
     private async Task<List<TriggerDto>> LoadSchemaTriggersAsync(string catalog, string schema, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         return await (from t in context.Triggers
                       where t.EventObjectCatalog == catalog
@@ -697,17 +746,45 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
                       }).ToListAsync(cancellationToken);
     }
 
+    private async Task<IReadOnlyDictionary<string, ViewEntity>> GetViewsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken = default)
+    {
+        (string Catalog, string Schema) schemaKey = (catalog, schema);
+        Lazy<Task<IReadOnlyDictionary<string, ViewEntity>>> lazyViews = _viewsBySchema.GetOrAdd(
+            schemaKey,
+            _ => new Lazy<Task<IReadOnlyDictionary<string, ViewEntity>>>(
+                () => LoadViewsBySchemaAsync(catalog, schema, cancellationToken),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
+        try
+        {
+            return await lazyViews.Value;
+        }
+        catch
+        {
+            _ = _viewsBySchema.TryRemove(schemaKey, out _);
+            throw;
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, ViewEntity>> LoadViewsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken)
+    {
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
+
+        List<ViewEntity> views = await context.Views
+            .Where(v => v.TableCatalog == catalog && v.TableSchema == schema)
+            .ToListAsync(cancellationToken);
+        return views.ToDictionary(v => v.TableName);
+    }
+
     public async Task<MyView> GetViewAsync(ObjectIdentifier viewId, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
         (string catalog, string schema, string viewName) = viewId.Strings;
-
-        ViewEntity isView = await (from v in context.Views
-                                   where v.TableCatalog == catalog
-                                   && v.TableSchema == schema
-                                   && v.TableName == viewName
-                                   select v).FirstAsync(cancellationToken);
+        IReadOnlyDictionary<string, ViewEntity> views = await GetViewsBySchemaAsync(catalog, schema, cancellationToken);
+        if (!views.TryGetValue(viewName, out ViewEntity? isView))
+        {
+            throw new InvalidOperationException($"Failed to load metadata for view '{viewId}'.");
+        }
 
         var body = (Select)_helper.ParseStatement(isView.ViewDefinition);
 
@@ -726,17 +803,45 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
         };
     }
 
+    private async Task<IReadOnlyDictionary<string, EventEntity>> GetEventsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken = default)
+    {
+        (string Catalog, string Schema) schemaKey = (catalog, schema);
+        Lazy<Task<IReadOnlyDictionary<string, EventEntity>>> lazyEvents = _eventsBySchema.GetOrAdd(
+            schemaKey,
+            _ => new Lazy<Task<IReadOnlyDictionary<string, EventEntity>>>(
+                () => LoadEventsBySchemaAsync(catalog, schema, cancellationToken),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
+        try
+        {
+            return await lazyEvents.Value;
+        }
+        catch
+        {
+            _ = _eventsBySchema.TryRemove(schemaKey, out _);
+            throw;
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, EventEntity>> LoadEventsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken)
+    {
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
+
+        List<EventEntity> events = await context.Events
+            .Where(e => e.EventCatalog == catalog && e.EventSchema == schema)
+            .ToListAsync(cancellationToken);
+        return events.ToDictionary(e => e.EventName);
+    }
+
     public async Task<MyEvent> GetEventAsync(ObjectIdentifier eventId, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
         (string catalog, string schema, string eventName) = eventId.Strings;
-
-        EventEntity isEvent = await (from e in context.Events
-                                     where e.EventCatalog == catalog
-                                           && e.EventSchema == schema
-                                           && e.EventName == eventName
-                                     select e).FirstAsync(cancellationToken);
+        IReadOnlyDictionary<string, EventEntity> events = await GetEventsBySchemaAsync(catalog, schema, cancellationToken);
+        if (!events.TryGetValue(eventName, out EventEntity? isEvent))
+        {
+            throw new InvalidOperationException($"Failed to load metadata for event '{eventId}'.");
+        }
 
         Statement body = _helper.ParseStatement(isEvent.EventDefinition);
 
@@ -796,7 +901,8 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
                            SELECT `entry_key` FROM {fullTableName}
                            WHERE `entry_type` = '{StoredMetadataConstants.Refactor}'
                            """;
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         List<string> result = await context.Database.SqlQueryRaw<string>(existsQuery).ToListAsync(cancellationToken);
         return [.. result];
@@ -829,14 +935,16 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
                            EXCEPT
                            ({unionBuilder})
                            """;
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         return await context.Database.SqlQueryRaw<string>(existsQuery).ToListAsync(cancellationToken);
     }
 
     private async Task<string> CreateManagementTableAsync(SchemaIdentifier schemaId, CancellationToken cancellationToken = default)
     {
-        await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
+        InfoSchemaContext context = lease.Context;
 
         IQueryable<TableEntity> tableExistsQuery =
             from t in context.Tables
@@ -910,4 +1018,26 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects
             Comment = comment,
         };
     }
+
+    private async Task<QueryLease<InfoSchemaContext>> GetConnectionAsync(CancellationToken cancellationToken)
+    {
+        await _queryGate.WaitAsync(cancellationToken);
+        try
+        {
+            InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            return new QueryLease<InfoSchemaContext>(context, _queryGate);
+        }
+        catch
+        {
+            _queryGate.Release();
+            throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        _queryGate.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
 }

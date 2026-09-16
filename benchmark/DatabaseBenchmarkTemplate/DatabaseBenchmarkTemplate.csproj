@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <PropertyGroup>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <Configuration>Release</Configuration>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" VersionOverride="0.15.8" />
+    <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" VersionOverride="0.15.8" Condition="'$(OS)' == 'Windows_NT'" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LibWrapper\TcfOss.DatabaseManager.MariaDb.LibWrapper\TcfOss.DatabaseManager.MariaDb.LibWrapper.csproj" />
+  </ItemGroup>
+</Project>
