@@ -1,0 +1,4 @@
+app_directory: tcfoss-database-manager
+source_binary_name: TcfOss.DatabaseManager.App.exe
+binary_name: dbman
+target_permissions: 755

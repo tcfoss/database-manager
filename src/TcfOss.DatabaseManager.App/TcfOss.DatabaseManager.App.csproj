@@ -44,7 +44,17 @@ namespace $(RootNamespace)
     <Compile Include="$(IntermediateOutputPath)BuildInfo.cs" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- Windows target if a win-* RID is specified, or none is specified and the host OS is Windows -->
+  <PropertyGroup>
+    <_IsWindowsTarget Condition="'$(RuntimeIdentifier)' != '' AND $(RuntimeIdentifier.StartsWith('win'))">true</_IsWindowsTarget>
+    <_IsWindowsTarget Condition="'$(RuntimeIdentifier)' == '' AND '$(OS)' == 'Windows_NT'">true</_IsWindowsTarget>
+    <_IsWindowsTarget Condition="'$(_IsWindowsTarget)' == ''">false</_IsWindowsTarget>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_IsWindowsTarget)' == 'true'">
+    <None Update="ninman.win.yml" Link="ninman.yml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(_IsWindowsTarget)' != 'true'">
     <None Update="ninman.yml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

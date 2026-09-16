@@ -4,7 +4,7 @@ The execution of the application is mostly controlled by a configuration file
 at the root of your database project named `database-manager.yaml`. If your
 file has a non-standard name, or you are running the application from a
 different directory, see the `--config` flag described in
-[the basic usage page](./index.md#the-configuration-file).
+[the basic usage page](./README.md#the-configuration-file).
 
 ## Minimal example
 
@@ -91,12 +91,12 @@ Logging:
 | `Logging`               |    no    | console at `Information` level       |
 
 \* `Credentials` is required for any command that connects to the RDBMS. See
-the per-command tables in [the basic usage page](./index.md).
+the per-command tables in [the basic usage page](./README.md).
 
 ### `Catalog`
 
 A catalog is the top-level organizational element of the RDBMS — see the
-[glossary](./index.md#definitions-of-terms). For MySQL and MariaDB it is
+[glossary](./README.md#definitions-of-terms). For MySQL and MariaDB it is
 always `def`, at least for now. (The next MariaDB version is expected to
 support multiple catalogs as part of multi-tenancy work; how that will
 interact with this project is not yet clear.)

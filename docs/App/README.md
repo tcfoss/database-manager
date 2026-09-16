@@ -1,5 +1,7 @@
 # DatabaseManager Basic Usage
 
+<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
+
 DatabaseManager lets you specify a database definition in version-controlled
 files and use those files to update a live RDBMS.
 
