@@ -28,6 +28,75 @@ public class StartAppBaseTests
         Assert.NotNull(result.Services.GetRequiredService<IStubService>());
     }
 
+    [Fact]
+    public void Start_UsesExplicitConfigFile_WhenProvided()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var configPath = Path.Combine(tempDir, "database-manager.yaml");
+            File.WriteAllText(configPath, "dialect: generic\nprojectDirectory: \"" + tempDir + "\"\n");
+
+            var app = new FakeStartApp();
+            var result = app.Start(configFilePath: configPath, workingDirectory: tempDir);
+
+            Assert.False(result.UsingDefaultConfig);
+            Assert.Equal(tempDir, result.Config.ProjectDirectory);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Start_UsesDefaultConfig_WhenNoConfigFileExists()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var app = new FakeStartApp();
+            var result = app.Start(workingDirectory: tempDir);
+
+            Assert.True(result.UsingDefaultConfig);
+            Assert.Equal(tempDir, result.Config.ProjectDirectory);
+            Assert.NotNull(result.Services);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Start_UsesProvidedRawConfig_WithoutLoadingFile()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var app = new FakeStartApp();
+            var rawConfig = new Config
+            {
+                ProjectDirectory = tempDir,
+                Catalog = "def",
+                Dialect = SqlDialect.Generic,
+                Schemas = []
+            };
+
+            var result = app.Start(rawConfig: rawConfig, workingDirectory: tempDir);
+
+            Assert.False(result.UsingDefaultConfig);
+            Assert.Equal(tempDir, result.Config.ProjectDirectory);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
     private sealed class FakeStartApp : StartAppBase<FakeStartResult>
     {
         protected override SqlDialect Dialect => SqlDialect.Generic;
@@ -73,7 +142,7 @@ public class StartAppBaseTests
             Action<ConfigBase>? configSetupAction = null,
             bool relaxed = false)
         {
-            var (logger, _) = loggingSetupFunc(builder, rawConfig.Logging);
+            (ILogger logger, _) = loggingSetupFunc(builder, rawConfig.Logging);
             logSetupAction?.Invoke(logger, null);
 
             var config = new ConfigGeneric
