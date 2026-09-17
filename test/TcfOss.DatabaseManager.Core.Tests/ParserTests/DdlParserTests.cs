@@ -173,6 +173,37 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expectedIfExists, stmt.IfExists);
     }
 
+    [Theory]
+    [InlineData("DROP INDEX my_index ON mytable", "my_index", "mytable")]
+    [InlineData("DROP INDEX IF EXISTS my_index ON mytable", "my_index", "mytable")]
+    [InlineData("DROP INDEX `my_index` ON `my_schema`.`my_table`", "`my_index`", "`my_schema`.`my_table`")]
+    public static void DropIndex_ParsesObjectAndOnTarget(string sql, string expectedIndexName, string expectedTableName)
+    {
+        var stmt = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(DroppableObject.Index, stmt.ObjectType);
+        var item = Assert.Single(stmt.Names);
+        Assert.Equal(expectedIndexName, item.ToString());
+        Assert.NotNull(stmt.OnObject);
+        Assert.Equal(expectedTableName, stmt.OnObject!.ToString());
+        Assert.Equal(sql.Contains("IF EXISTS"), stmt.IfExists);
+    }
+
+    [Theory]
+    [InlineData("DROP TABLE mytable1, mytable2, mytable3", "TABLE", 3)]
+    [InlineData("DROP TABLE IF EXISTS mytable1, mytable2", "TABLE", 2)]
+    [InlineData("DROP VIEW myview1, myview2", "VIEW", 2)]
+    [InlineData("DROP VIEW IF EXISTS myview1, myview2, myview3", "VIEW", 3)]
+    public static void DropObject_MultipleNames_AreParsed(string sql, string expectedTypeName, int expectedCount)
+    {
+        var stmt = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(expectedTypeName, stmt.ObjectType.ToString());
+        Assert.Equal(expectedCount, stmt.Names.Count);
+        Assert.Equal(sql.Contains("IF EXISTS"), stmt.IfExists);
+        Assert.Null(stmt.OnObject);
+    }
+
 
     [Theory]
     [InlineData("CREATE TRIGGER mytrigger UPDATE ON mytable FOR EACH ROW SELECT 1", "{ BEFORE | AFTER | 'INSTEAD OF' | FOR }")]

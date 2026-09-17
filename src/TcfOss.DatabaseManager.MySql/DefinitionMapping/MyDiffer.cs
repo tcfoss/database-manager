@@ -489,7 +489,7 @@ public partial class MyDiffer
                     new DefinitionAlterStatement(
                         DefaultWeights.DropTable,
                         tableMap.Start!.Name.Schema,
-                        new DropObject(tableMap.Start!.Name.ToObjectName(Depth), DroppableObject.Table)
+                        new DropObject([tableMap.Start!.Name.ToObjectName(Depth)], DroppableObject.Table)
                     )
                 );
             }
@@ -551,7 +551,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject(map.Start.Name.ToObjectName(Depth), DroppableObject.Procedure)));
+                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Procedure)));
             }
             if (map.End != null)
             {
@@ -563,7 +563,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject(map.Start.Name.ToObjectName(Depth), DroppableObject.Function)));
+                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Function)));
             }
             if (map.End != null)
             {
@@ -575,7 +575,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropView, map.Start.Name.Schema, new DropObject(map.Start.Name.ToObjectName(Depth), DroppableObject.View), Comment: $"Drop view {map.Start.Name}"));
+                results.Add(new DefinitionAlterStatement(DefaultWeights.DropView, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.View), Comment: $"Drop view {map.Start.Name}"));
             }
             if (map.End != null)
             {
@@ -608,7 +608,7 @@ public partial class MyDiffer
                 results.Add(new DefinitionAlterStatement(
                     DefaultWeights.DropProgramObject,
                     map.Start.Name.Schema,
-                    new DropObject(map.Start.Name.ToObjectName(Depth), DroppableObject.Trigger),
+                    new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Trigger),
                     Comment: $"Drop trigger {map.Start.Name}"
                 ));
             }
@@ -635,7 +635,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject(map.Start.Name.ToObjectName(Depth), DroppableObject.Event)));
+                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Event)));
             }
             if (map.End != null)
             {

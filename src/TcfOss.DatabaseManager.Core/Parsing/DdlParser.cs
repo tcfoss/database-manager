@@ -766,7 +766,7 @@ public class DdlParser
 
         bool temporary = state.ParseKeyword(Keyword.TEMPORARY);
 
-        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE);
+        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX);
 
         DroppableObject typeToDrop = typeToDropKw switch
         {
@@ -778,16 +778,34 @@ public class DdlParser
             Keyword.EVENT => DroppableObject.Event,
             Keyword.SCHEMA => DroppableObject.Schema,
             Keyword.DATABASE => DroppableObject.Database,
+            Keyword.INDEX => DroppableObject.Index,
             _ => throw state.ExpectedException<DroppableObject>()
         };
 
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
-        ObjectName itemToDrop = _parseObjectName(state);
 
-        return new DropObject(itemToDrop, typeToDrop)
+        SqlValueList<ObjectName> names;
+        if (typeToDropKw is Keyword.TABLE or Keyword.VIEW)
+        {
+            names = state.ParseCommaSeparated(_parseObjectName);
+        }
+        else
+        {
+            names = [_parseObjectName(state)];
+        }
+
+        ObjectName? onObject = null;
+        if (typeToDrop == DroppableObject.Index)
+        {
+            state.ExpectKeyword(Keyword.ON);
+            onObject = _parseObjectName(state);
+        }
+
+        return new DropObject(names, typeToDrop)
         {
             IfExists = ifExists,
-            Temporary = temporary
+            Temporary = temporary,
+            OnObject = onObject
         };
     }
 

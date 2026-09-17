@@ -6,16 +6,18 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record DropObject(ObjectName Name, DroppableObject ObjectType) : Statement
+public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectType) : Statement
 {
     public bool Temporary { get; init; }
     public bool IfExists { get; init; }
+    public ObjectName? OnObject { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
         string? ifNotExists = IfExists ? " IF EXISTS" : null;
         string? temporary = Temporary ? " TEMPORARY" : null;
-        writer.WriteSql($"DROP{temporary} {ObjectType}{ifNotExists} {Name}");
+        string? onObject = OnObject != null ? $" ON {OnObject}" : null;
+        writer.WriteSql($"DROP{temporary} {ObjectType}{ifNotExists} {Names}{onObject}");
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -28,7 +30,18 @@ public record DropObject(ObjectName Name, DroppableObject ObjectType) : Statemen
             writer.Write(" IF EXISTS");
         }
         writer.Write(" ");
-        Name.FormatSql(writer, manager);
+        for (int i = 0; i < Names.Count; i++)
+        {
+            if (i > 0)
+            {
+                writer.Write(", ");
+            }
+            Names[i].FormatSql(writer, manager);
+        }
+        if (OnObject != null)
+        {
+            writer.Write($" ON {OnObject}");
+        }
         Meta.FormatPostNonSql(writer, manager);
     }
 
@@ -36,10 +49,21 @@ public record DropObject(ObjectName Name, DroppableObject ObjectType) : Statemen
     {
         using (context.Enter(ReferencedItemsContext.DropObjectStatement))
         {
-            ItemRef? item = context.CreateObjectRef(Name);
-            if (item != null)
+            foreach (ObjectName name in Names)
             {
-                yield return item;
+                ItemRef? item = context.CreateObjectRef(name);
+                if (item != null)
+                {
+                    yield return item;
+                }
+            }
+            if (OnObject != null)
+            {
+                ItemRef? item = context.CreateObjectRef(OnObject);
+                if (item != null)
+                {
+                    yield return item;
+                }
             }
         }
     }
