@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using TcfOss.DatabaseManager.Core.App;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.LibWrapper;
 using TcfOss.DatabaseManager.MariaDb.LibWrapper;
 using TcfOss.DatabaseManager.MsSql.Configuration;
@@ -12,6 +13,22 @@ namespace TcfOss.DatabaseManager.LibWrapper.Tests;
 
 public class ProviderSpecificStartAppTests
 {
+    [Fact]
+    public void GenericStartApp_ExposesServicesAndTypedConfig()
+    {
+        var app = new GenericStartApp();
+
+        var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        {
+            ConfigureBuilder = builder => builder.Services.AddSingleton<ITestRegistration>(new TestRegistration())
+        });
+
+        Assert.NotNull(result.Services);
+        Assert.IsType<ConfigGeneric>(result.Config);
+        Assert.IsType<AppServiceProvider>(result.ServiceProvider);
+        Assert.NotNull(result.Services.GetRequiredService<ITestRegistration>());
+    }
+
     [Fact]
     public void SqlServerStartApp_ExposesServicesAndTypedConfig()
     {

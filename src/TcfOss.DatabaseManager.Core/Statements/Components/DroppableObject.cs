@@ -10,4 +10,5 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 [StringEnum("EVENT")]
 [StringEnum("SCHEMA")]
 [StringEnum("DATABASE")]
+[StringEnum("INDEX")]
 public sealed partial class DroppableObject;

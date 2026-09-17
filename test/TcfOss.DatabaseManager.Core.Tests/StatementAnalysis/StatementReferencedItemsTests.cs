@@ -198,6 +198,30 @@ public class StatementReferencedItemsTests
     }
 
     [Fact]
+    public void DropMultipleTables_Unknown()
+    {
+        var stmt = ParseStatement("DROP TABLE t1, t2");
+
+        List<ItemRef> items = [.. stmt.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Unknown })];
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal("t1", items[0].N());
+        Assert.Equal("t2", items[1].N());
+    }
+
+    [Fact]
+    public void DropIndex_Unknown()
+    {
+        var stmt = ParseStatement("DROP INDEX idx ON t");
+
+        List<ItemRef> items = [.. stmt.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Unknown })];
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal("idx", items[0].N());
+        Assert.Equal("t", items[1].N());
+    }
+
+    [Fact]
     public void Truncate_Unknown()
     {
         var stmt = ParseStatement("TRUNCATE TABLE t");
