@@ -28,15 +28,13 @@ public partial class MyDbDefinitionLoader(
     IParseText textParser,
     IFunctionNameProvider functionNameProvider,
     ILogger<MyDbDefinitionLoader> logger)
-    : ILoadDbDefinition<MyDefinition>, IGetUnappliedRefactors, IGetUnappliedDeployScripts, IDisposable
+    : ILoadDbDefinition<MyDefinition>, IGetUnappliedRefactors, IGetUnappliedDeployScripts
 {
     private readonly MyConfig _config = config;
     private readonly IRetrieveDatabaseObjects _repo = repo;
     private readonly IFunctionNameProvider _functionNameProvider = functionNameProvider;
     private readonly ILogger<MyDbDefinitionLoader> _logger = logger;
     private readonly IParseText _tp = textParser;
-
-    private readonly SemaphoreSlim _semaphore = new(10);
 
     public async Task<IEnumerable<string>> GetUnappliedRefactorIdsAsync(SchemaIdentifier schemaId, IReadOnlyCollection<string> allRefactorIds)
     {
@@ -113,17 +111,9 @@ public partial class MyDbDefinitionLoader(
 
         IEnumerable<Task<(ObjectIdentifier tableId, MyTable table, Dictionary<ObjectIdentifier, MyTrigger> trig)>> tableTasks = tableIds.Select(async tableId =>
         {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                MyTable table = await _repo.GetTableAsync(tableId, cancellationToken);
-                Dictionary<ObjectIdentifier, MyTrigger> trig = await _repo.GetTriggersOnTableAsync(tableId, cancellationToken);
-                return (tableId, table, trig);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
+            MyTable table = await _repo.GetTableAsync(tableId, cancellationToken);
+            Dictionary<ObjectIdentifier, MyTrigger> trig = await _repo.GetTriggersOnTableAsync(tableId, cancellationToken);
+            return (tableId, table, trig);
         });
         (ObjectIdentifier tableId, MyTable table, Dictionary<ObjectIdentifier, MyTrigger> trig)[] tableResults = await Task.WhenAll(tableTasks);
 
@@ -138,18 +128,7 @@ public partial class MyDbDefinitionLoader(
             }
         }
 
-        IEnumerable<Task<MyStoredFunction>> functionTasks = functionIds.Select(async id =>
-        {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                return await _repo.GetFunctionAsync(id, cancellationToken);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        });
+        IEnumerable<Task<MyStoredFunction>> functionTasks = functionIds.Select(async id => await _repo.GetFunctionAsync(id, cancellationToken));
         MyStoredFunction[] functionResults = await Task.WhenAll(functionTasks);
 
         var functions = new ValueDict<ObjectIdentifier, MyStoredFunction>();
@@ -158,18 +137,7 @@ public partial class MyDbDefinitionLoader(
             functions.Add(functionIds[i], functionResults[i]);
         }
 
-        IEnumerable<Task<MyStoredProcedure>> procedureTasks = procedureIds.Select(async id =>
-        {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                return await _repo.GetProcedureAsync(id, cancellationToken);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        });
+        IEnumerable<Task<MyStoredProcedure>> procedureTasks = procedureIds.Select(async id => await _repo.GetProcedureAsync(id, cancellationToken));
         MyStoredProcedure[] procedureResults = await Task.WhenAll(procedureTasks);
 
         var procedures = new ValueDict<ObjectIdentifier, MyStoredProcedure>();
@@ -178,18 +146,7 @@ public partial class MyDbDefinitionLoader(
             procedures.Add(procedureIds[i], procedureResults[i]);
         }
 
-        IEnumerable<Task<MyView>> viewTasks = viewIds.Select(async id =>
-        {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                return await _repo.GetViewAsync(id, cancellationToken);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        });
+        IEnumerable<Task<MyView>> viewTasks = viewIds.Select(async id => await _repo.GetViewAsync(id, cancellationToken));
         MyView[] viewResults = await Task.WhenAll(viewTasks);
 
         var views = new ValueDict<ObjectIdentifier, MyView>();
@@ -198,18 +155,7 @@ public partial class MyDbDefinitionLoader(
             views.Add(viewIds[i], viewResults[i]);
         }
 
-        IEnumerable<Task<MyEvent>> eventTasks = eventIds.Select(async id =>
-        {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                return await _repo.GetEventAsync(id, cancellationToken);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        });
+        IEnumerable<Task<MyEvent>> eventTasks = eventIds.Select(async id => await _repo.GetEventAsync(id, cancellationToken));
         MyEvent[] eventResults = await Task.WhenAll(eventTasks);
 
         var events = new ValueDict<ObjectIdentifier, MyEvent>();
@@ -357,12 +303,6 @@ public partial class MyDbDefinitionLoader(
             OnUpdate = normalizedOnUpdate,
             Check = normalizedCheck
         };
-    }
-
-    public void Dispose()
-    {
-        _semaphore.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Retrieving unapplied refactors for schema '{Schema}'")]

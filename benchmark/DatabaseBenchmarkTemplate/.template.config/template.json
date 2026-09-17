@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/template",
+  "author": "Thomas C. Flanagan",
+  "classifications": ["Benchmark", "Database"],
+  "tags": {
+    "language": "C#",
+    "type": "project",
+    "platform": ".NET"
+  },
+  "identity": "TcfOss.DatabaseManager.DatabaseBenchmark",
+  "name": "Database benchmark project",
+  "shortName": "tcfoss-db-benchmark",
+  "sourceName": "DatabaseBenchmarkTemplate",
+  "preferNameDirectory": true,
+  "symbols": {
+    "ProjectName": {
+      "type": "parameter",
+      "datatype": "text",
+      "replaces": "DatabaseBenchmarkTemplate",
+      "fileRename": "DatabaseBenchmarkTemplate"
+    }
+  }
+}
