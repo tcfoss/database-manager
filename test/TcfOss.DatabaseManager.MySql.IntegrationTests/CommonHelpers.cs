@@ -278,16 +278,28 @@ public static partial class CommonHelpers
         script = $"SET NAMES 'utf8mb4';\n\n{script}";
         if (container is MySqlContainer mySqlContainer)
         {
-            return await mySqlContainer.ExecScriptAsync(script, ct);
+            return await ExecScriptThroughClientAsync(mySqlContainer, script, ct);
         }
-        else if (container is MariaDbContainer mariaDbContainer)
+        if (container is MariaDbContainer mariaDbContainer)
         {
-            return await mariaDbContainer.ExecScriptAsync(script, ct);
+            return await ExecScriptThroughClientAsync(mariaDbContainer, script, ct);
         }
-        else
-        {
-            throw new NotSupportedException($"Container type {container.GetType().Name} is not supported.");
-        }
+        throw new NotSupportedException($"Container type {container.GetType().Name} is not supported.");
+    }
+
+    private static async Task<ExecResult> ExecScriptThroughClientAsync(IContainer container, string script, CancellationToken ct)
+    {
+        // MySQL 9.x blows up if `--execute="source filepath"` is called with a final semicolon,
+        // which TestContainers adds when calling through ExecScriptAsync. Hence, a workaround.
+        var containerPath = $"/tmp/{Guid.NewGuid():N}.sql";
+        await container.CopyAsync(Encoding.UTF8.GetBytes(script), containerPath, ct: ct);
+
+        var command = "client=mysql; "
+            + "if ! command -v mysql >/dev/null 2>&1; then client=mariadb; fi; "
+            + $"\"$client\" --user=root --default-character-set=utf8mb4 < {containerPath}; "
+            + "status=$?; rm -f " + containerPath + "; exit $status";
+
+        return await container.ExecAsync(["sh", "-c", command], ct);
     }
 
     public static string GetSimpleSchemaInitializationScript()

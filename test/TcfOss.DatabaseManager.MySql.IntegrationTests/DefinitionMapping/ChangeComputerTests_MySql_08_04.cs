@@ -5,7 +5,7 @@ using Testcontainers.MySql;
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests.DefinitionMapping;
 
 // ReSharper disable once UnusedMember.Global
-public class ChangeComputerTests_MySql_08_04_06(ITestOutputHelper testOutputHelper)
+public class ChangeComputerTests_MySql_08_04(ITestOutputHelper testOutputHelper)
     : ChangeComputerTests<MySqlBuilder, MySqlContainer>(testOutputHelper)
 {
     protected override SqlDialect Dialect => SqlDialect.MySql;
