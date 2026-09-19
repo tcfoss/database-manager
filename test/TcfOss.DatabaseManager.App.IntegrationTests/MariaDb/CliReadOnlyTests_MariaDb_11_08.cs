@@ -1,9 +1,13 @@
-﻿using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+﻿using TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.MariaDb.IntegrationTests.DatabaseFixtures;
+using Testcontainers.MariaDb;
+using Xunit.Sdk;
 
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MariaDb;
 
 // ReSharper disable once UnusedMember.Global
-public class CliReadOnlyTests_MariaDb_11_08 : CliReadOnlyTests<CliReadOnlyFixture_MariaDb_11_08>
+public class CliReadOnlyTests_MariaDb_11_08 : CliReadOnlyTests<CliReadOnlyTests_MariaDb_11_08.ThisFixture>
 {
     protected override SqlDialect Dialect => SqlDialect.MariaDb;
     protected override string IfConditionBegin => "";
@@ -12,9 +16,17 @@ public class CliReadOnlyTests_MariaDb_11_08 : CliReadOnlyTests<CliReadOnlyFixtur
     protected override string DefaultParameterDirection => "IN ";
     protected override string DefaultCollation => "utf8mb4_uca1400_ai_ci";
 
-    public CliReadOnlyTests_MariaDb_11_08(CliReadOnlyFixture_MariaDb_11_08 fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MariaDb_11_08(ThisFixture fixture, ITestOutputHelper testOutputHelper)
     {
         Fixture = fixture;
         TestOutputHelper = testOutputHelper;
+    }
+
+    public class ThisFixture : CliReadOnlyFixture<MariaDbBuilder, MariaDbContainer>
+    {
+        public ThisFixture(IMessageSink messageSink)
+        {
+            DbFixture = new MariaDbFixture_11_08(messageSink);
+        }
     }
 }

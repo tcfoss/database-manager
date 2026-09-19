@@ -366,7 +366,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
     private Direction? GetIndexDirection(Direction? direction, string indexMethod, string? keyName)
     {
-        if (indexMethod == "FULLTEXT" || indexMethod == "SPATIAL" || indexMethod == "HASH")
+        if (indexMethod is "FULLTEXT" or "SPATIAL" or "HASH")
         {
             if (direction != null)
             {
@@ -374,10 +374,8 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             }
             return null;
         }
-        else
-        {
-            return direction ?? Direction.Ascending;
-        }
+
+        return direction ?? Direction.Ascending;
     }
 
     private SqlValueList<KeyPart> NormalizeKeyParts(SqlValueList<KeyPart> keyParts, QuoteStyle quoteStyle, string indexMethod, string? keyName)

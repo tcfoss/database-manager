@@ -7,18 +7,16 @@ using Xunit.Sdk;
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MariaDb;
 
 // ReSharper disable once UnusedMember.Global
-public class CliReadOnlyTests_MariaDb_10_11
-    : CliReadOnlyTests<CliReadOnlyTests_MariaDb_10_11.ThisFixture>
+public class CliReadOnlyTests_MariaDb_12_03 : CliReadOnlyTests<CliReadOnlyTests_MariaDb_12_03.ThisFixture>
 {
     protected override SqlDialect Dialect => SqlDialect.MariaDb;
     protected override string IfConditionBegin => "";
     protected override string IfConditionEnd => "";
     protected override uint? DefaultIntWidth => 11;
     protected override string DefaultParameterDirection => "IN ";
-    protected override string DefaultCharset => "latin1";
-    protected override string DefaultCollation => "latin1_swedish_ci";
+    protected override string DefaultCollation => "utf8mb4_uca1400_ai_ci";
 
-    public CliReadOnlyTests_MariaDb_10_11(ThisFixture fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MariaDb_12_03(ThisFixture fixture, ITestOutputHelper testOutputHelper)
     {
         Fixture = fixture;
         TestOutputHelper = testOutputHelper;
@@ -28,7 +26,7 @@ public class CliReadOnlyTests_MariaDb_10_11
     {
         public ThisFixture(IMessageSink messageSink)
         {
-            DbFixture = new MariaDbFixture_10_11(messageSink);
+            DbFixture = new MariaDbFixture_12_03(messageSink);
         }
     }
 }

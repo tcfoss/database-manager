@@ -58,4 +58,30 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         return Task.CompletedTask;
     }
+
+    [Fact]
+    public override Task Verify_DoubleDiff_NoChanges_SimpleSchema()
+    {
+        var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Test1").FullName);
+
+        var workingDir = fileFixture.RootDirectory.FullName;
+
+        UpdateConfiguration(workingDir, null, null);
+
+        var cli = new CommandLineInterface();
+        var diffResult = cli.Run([
+            "--working-dir",
+            workingDir,
+            "compute-changes",
+            "InitialChanges.sql"
+        ]);
+
+        Assert.Equal(1, diffResult);
+
+        var actual = GetOutputLines(TestOutputHelper);
+        Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
+
+        return Task.CompletedTask;
+    }
 }

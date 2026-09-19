@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
 using TcfOss.DatabaseManager.Core.Extensions;
+using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
 namespace TcfOss.DatabaseManager.MySql.DefinitionMapping;
@@ -97,7 +98,7 @@ public static class MyObjectMapper
         return (startNames, endNames, nameToIndex);
     }
 
-    private static (Dictionary<string, int> startWithoutDropped, Dictionary<string, int> endWithoutAdded) GetIndexMapsWithoutAddsAndDrops(SqlValueList<MyColumn> start, HashSet<string> startNames, SqlValueList<MyColumn> end, HashSet<string> endNames)
+    private static (Dictionary<string, int> startWithoutDropped, Dictionary<string, int> endWithoutAdded) GetPositionMapsWithoutAddsAndDrops(SqlValueList<MyColumn> start, HashSet<string> startNames, SqlValueList<MyColumn> end, HashSet<string> endNames)
     {
         var addedCols = endNames.Except(startNames).ToHashSet();
         var droppedCols = startNames.Except(endNames).ToHashSet();
@@ -131,7 +132,7 @@ public static class MyObjectMapper
     {
         (HashSet<string> startNames, HashSet<string> endNames, Dictionary<string, IndexPair> nameToIndex) = GetColumnNameSets(start, end);
 
-        (Dictionary<string, int> startWithoutDropped, Dictionary<string, int> endWithoutAdded) = GetIndexMapsWithoutAddsAndDrops(start, startNames, end, endNames);
+        (Dictionary<string, int> startWithoutDropped, Dictionary<string, int> endWithoutAdded) = GetPositionMapsWithoutAddsAndDrops(start, startNames, end, endNames);
 
         var maps = new List<ColumnMapping>();
         foreach ((int? startIndex, int? endIndex) in nameToIndex.Values)
@@ -142,12 +143,12 @@ public static class MyObjectMapper
 
             if (startCol != null && endCol == null)
             {
-                maps.Add(new(startCol, null, null, ColumnChangeType.Dropped, false));
+                maps.Add(new ColumnMapping(startCol, null, null, ColumnChangeType.Dropped, false));
                 continue;
             }
             else if (startCol == null && endCol != null)
             {
-                maps.Add(new(null, endCol, endPrev?.Name, ColumnChangeType.Added, false));
+                maps.Add(new ColumnMapping(null, endCol, endPrev?.Name, ColumnChangeType.Added, false));
                 continue;
             }
 
@@ -157,17 +158,59 @@ public static class MyObjectMapper
             {
                 moved = true;
             }
-            if (!startCol.Equals(endCol))
+            if (!startCol.Equals(endCol) && !AreColumnsReallyEqual(startCol, endCol))
             {
                 changeType = ColumnChangeType.Modified;
             }
             if (moved || changeType != ColumnChangeType.NoChange)
             {
-                maps.Add(new(startCol, endCol, endPrev?.Name, changeType, moved));
+                maps.Add(new ColumnMapping(startCol, endCol, endPrev?.Name, changeType, moved));
             }
         }
 
         return maps;
+    }
+
+    private static bool AreColumnsReallyEqual(MyColumn start, MyColumn end)
+    {
+        if (start.Equals(end))
+        {
+            return true;
+        }
+
+        if (start.DataType is not MyDataType.BaseMyStringType startStrType || end.DataType is not MyDataType.BaseMyStringType endStrType)
+        {
+            return false;
+        }
+
+        StringAttribute? startAttr = startStrType.StringAttribute;
+        StringAttribute? endAttr = endStrType.StringAttribute;
+
+        if (startAttr == null || endAttr == null)
+        {
+            return false;
+        }
+
+        if (endAttr is { CharacterSetInferred: true, CollationInferred: true })
+        {
+            MyColumn startMod = start with { DataType = startStrType with { StringAttribute = null } };
+            MyColumn endMod = end with { DataType = endStrType with { StringAttribute = null } };
+            return startMod.Equals(endMod);
+        }
+        if (endAttr.CharacterSetInferred)
+        {
+            MyColumn startMod = start with { DataType = startStrType with { StringAttribute = startAttr with { CharacterSet = null } } };
+            MyColumn endMod = end with { DataType = endStrType with { StringAttribute = endAttr with { CharacterSet = null } } };
+            return startMod.Equals(endMod);
+        }
+        if (endAttr.CollationInferred)
+        {
+            MyColumn startMod = start with { DataType = startStrType with { StringAttribute = startAttr with { Collation = null } } };
+            MyColumn endMod = end with { DataType = endStrType with { StringAttribute = endAttr with { Collation = null } } };
+            return startMod.Equals(endMod);
+        }
+
+        return false;
     }
 
     private sealed class IndexPair

@@ -85,7 +85,7 @@ public class MaDatabaseDefaultLoader(InfoSchemaContext context) : ILoadDatabaseD
         {
             string characterSetName = group.Key;
             var collations = group.Select(x => x.FullCollationName).ToHashSet();
-            string defaultCollation = group.FirstOrDefault(x => x.IsDefault == "Yes")?.FullCollationName ?? collations.First();
+            string defaultCollation = group.First(x => x.IsDefault == "Yes").FullCollationName;
 
             characterSetSpecs[characterSetName] = new CharacterSetSpec
             {

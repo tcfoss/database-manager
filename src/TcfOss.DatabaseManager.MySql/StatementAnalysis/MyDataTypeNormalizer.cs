@@ -34,15 +34,15 @@ public class MyDataTypeNormalizer(MyConfig config, string characterSet, string c
     {
         if (strType.StringAttribute == null || (strType.StringAttribute.CharacterSet == null && strType.StringAttribute.Collation == null))
         {
-            return strType with { StringAttribute = new StringAttribute(CharacterSet, Collation) };
+            return strType with { StringAttribute = new StringAttribute(CharacterSet, Collation) { CharacterSetInferred = true, CollationInferred = true } };
         }
         if (strType.StringAttribute.CharacterSet == null)
         {
-            return strType with { StringAttribute = strType.StringAttribute with { CharacterSet = CharacterSet } };
+            return strType with { StringAttribute = strType.StringAttribute with { CharacterSet = CharacterSet, CharacterSetInferred = true } };
         }
         if (strType.StringAttribute.Collation == null)
         {
-            return strType with { StringAttribute = strType.StringAttribute with { Collation = _config.CharacterSets[strType.StringAttribute.CharacterSet].DefaultCollation } };
+            return strType with { StringAttribute = strType.StringAttribute with { Collation = _config.CharacterSets[strType.StringAttribute.CharacterSet].DefaultCollation, CollationInferred = true } };
         }
         return strType;
     }

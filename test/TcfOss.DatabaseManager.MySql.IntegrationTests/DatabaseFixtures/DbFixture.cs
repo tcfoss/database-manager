@@ -28,4 +28,9 @@ public abstract class DbFixture<TBuilderEntity, TContainerEntity>(IMessageSink m
     {
         return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Port, dialect, removeSlashesBeforeQuotesGenerationExpression, objectNamePrefixWithSchema: objectNamePrefixWithSchema);
     }
+
+    public MyConfig GetSimpleSchemaConfig(string rootPath, SqlDialect dialect)
+    {
+        return Container.GetSimpleSchemaConfig(rootPath, Port, dialect);
+    }
 }
