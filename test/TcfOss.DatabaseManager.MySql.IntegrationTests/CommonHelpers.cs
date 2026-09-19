@@ -214,6 +214,20 @@ public static partial class CommonHelpers
 
     public static MyConfig GetSimpleSchemaConfig(this IDatabaseContainer container, string rootPath, ushort port, SqlDialect dialect)
     {
+        DeployScript[] deployScripts = [];
+        if (File.Exists(Path.Combine(rootPath, "Scripts", "01_populate_nulltest_name.sql")))
+        {
+            deployScripts =
+            [
+                new DeployScript
+                {
+                    Type = Core.DatabaseComms.DeployScriptType.PreSetNotNull,
+                    FilePath = "../Scripts/01_populate_nulltest_name.sql",
+                    UniqueId = "00000000-0000-0000-0000-000000000001",
+                }
+            ];
+        }
+
         var rawConfig = new ConfigParsing.Config
         {
             ProjectDirectory = rootPath,
@@ -233,6 +247,7 @@ public static partial class CommonHelpers
                 {
                     SchemaName = "simple_schema",
                     RootPath = "Schema",
+                    DeployScripts = deployScripts,
                 }
             ],
             Logging = new LogSettings

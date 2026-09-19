@@ -25,5 +25,4 @@ public sealed class SimpleSchemaDifferTests_MariaDb_10_11
             DbFixture = new MariaDbFixture_10_11(messageSink);
         }
     }
-
 }

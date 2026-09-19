@@ -19,6 +19,7 @@ using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
 using AttributeDefaults = TcfOss.DatabaseManager.Core.Configuration.Parsing.AttributeDefaults;
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
+using DefinitionMappingDeployScript = TcfOss.DatabaseManager.Core.DefinitionMapping.DeployScript;
 using Refactor = TcfOss.DatabaseManager.Core.DefinitionMapping.Refactor;
 
 namespace TcfOss.DatabaseManager.MySql.Tests.DefinitionMapping;
@@ -32,12 +33,12 @@ public abstract class MyDifferTestsBase
     protected abstract SqlDialect Dialect { get; }
     private bool AllowCheckOnColumn => Dialect == SqlDialect.MariaDb;
 
-    private List<DefinitionAlterStatement> ComputeChanges(string startText, string endText, IEnumerable<Refactor>? refactors = null, Config? rawConfig = null)
+    private List<DefinitionAlterStatement> ComputeChanges(string startText, string endText, IEnumerable<Refactor>? refactors = null, Config? rawConfig = null, IEnumerable<DefinitionMappingDeployScript>? deployScripts = null)
     {
-        return ComputeChangesWithConfig(startText, endText, refactors, rawConfig).Changes;
+        return ComputeChangesWithConfig(startText, endText, refactors, rawConfig, deployScripts).Changes;
     }
 
-    private (MyConfig Config, List<DefinitionAlterStatement> Changes) ComputeChangesWithConfig(string startText, string endText, IEnumerable<Refactor>? refactors = null, Config? rawConfig = null)
+    private (MyConfig Config, List<DefinitionAlterStatement> Changes) ComputeChangesWithConfig(string startText, string endText, IEnumerable<Refactor>? refactors = null, Config? rawConfig = null, IEnumerable<DefinitionMappingDeployScript>? deployScripts = null)
     {
         var loggerFactory = new LoggerFactory();
         rawConfig ??= GetRawConfiguration();
@@ -56,7 +57,7 @@ public abstract class MyDifferTestsBase
         var startDefinition = startBuilder.ToDefinition();
         var endDefinition = endBuilder.ToDefinition();
 
-        var differ = new MyDiffer(config, startDefinition, endDefinition, refactors ?? [], [], loggerFactory.CreateLogger<MyDiffer>());
+        var differ = new MyDiffer(config, startDefinition, endDefinition, refactors ?? [], deployScripts ?? [], loggerFactory.CreateLogger<MyDiffer>());
         return (config, differ.ComputeChanges());
     }
 
@@ -168,6 +169,47 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void PreSetNotNull_DeployScript_With_UniqueId_Generates_Metadata_Insert()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL
+        );
+        """;
+
+        var scriptId = "00000000-0000-0000-0000-000000000099";
+        DefinitionMappingDeployScript[] deployScripts =
+        [
+            new(
+                DeployScriptType.PreSetNotNull,
+                s_schema,
+                "pre_set_not_null.sql",
+                "/fake/project/root/pre_set_not_null.sql",
+                [new Truncate(new ObjectName(new Identifier("mytable", QuoteStyle.Backticks)))])
+            {
+                UniqueId = scriptId,
+            }
+        ];
+
+        var changes = ComputeChanges(startText, startText, deployScripts: deployScripts);
+
+        Assert.Collection(changes,
+            scriptChange =>
+            {
+                Assert.Equal(DefaultWeights.PreSetNotNullScript, scriptChange.Weight);
+                Assert.True(scriptChange.FromDeployScript);
+                Assert.Equal("TRUNCATE `mytable`;\n", scriptChange.Statement.ToSql());
+            },
+            metadataChange =>
+            {
+                Assert.Equal(DefaultWeights.InsertPreSetNotNullMeta, metadataChange.Weight);
+                Assert.False(metadataChange.FromDeployScript);
+                Assert.Equal($"INSERT INTO `schema1`.`_database_manager` (`entry_key`, `entry_type`) VALUES ('{scriptId}', 'D')", metadataChange.Statement.ToSql());
+            }
+        );
     }
 
     [Fact]
@@ -464,6 +506,102 @@ public abstract class MyDifferTestsBase
         var change = Assert.Single(changes);
         var expected = "ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(255) NOT NULL";
         Assert.Equal(expected, change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Make_Not_Nullable_Happens_After_PreSetNotNull_Script()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(255) NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(255) NOT NULL
+        );
+        """;
+
+        DefinitionMappingDeployScript[] deployScripts =
+        [
+            new(
+                DeployScriptType.PreSetNotNull,
+                s_schema,
+                "pre_set_not_null.sql",
+                "/fake/project/root/pre_set_not_null.sql",
+                TextParser.ParseText("UPDATE mytable SET name = '' WHERE name IS NULL;"))
+        ];
+
+        var changes = ComputeChanges(startText, endText, deployScripts: deployScripts);
+
+        Assert.Collection(changes,
+            scriptChange =>
+            {
+                Assert.Equal(DefaultWeights.PreSetNotNullScript, scriptChange.Weight);
+                Assert.True(scriptChange.FromDeployScript);
+                Assert.Equal("UPDATE mytable SET name = '' WHERE name IS NULL;\n", scriptChange.Statement.ToSql());
+            },
+            notNullChange =>
+            {
+                Assert.Equal(DefaultWeights.SetNotNull, notNullChange.Weight);
+                Assert.False(notNullChange.FromDeployScript);
+                Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(255) NOT NULL", notNullChange.Statement.ToSql());
+            }
+        );
+    }
+
+    [Fact]
+    public void Make_Not_Nullable_With_Other_Change_Happens_After_PreSetNotNull_Script()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(255) NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(500) NOT NULL
+        );
+        """;
+
+        DefinitionMappingDeployScript[] deployScripts =
+        [
+            new(
+                DeployScriptType.PreSetNotNull,
+                s_schema,
+                "pre_set_not_null.sql",
+                "/fake/project/root/pre_set_not_null.sql",
+                TextParser.ParseText("UPDATE mytable SET name = '' WHERE name IS NULL;"))
+        ];
+
+        var changes = ComputeChanges(startText, endText, deployScripts: deployScripts);
+
+        Assert.Collection(changes,
+            nullableChange =>
+            {
+                Assert.Equal(DefaultWeights.AlterTable, nullableChange.Weight);
+                Assert.False(nullableChange.FromDeployScript);
+                Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(500) NULL", nullableChange.Statement.ToSql());
+            },
+            scriptChange =>
+            {
+                Assert.Equal(DefaultWeights.PreSetNotNullScript, scriptChange.Weight);
+                Assert.True(scriptChange.FromDeployScript);
+                Assert.Equal("UPDATE mytable SET name = '' WHERE name IS NULL;\n", scriptChange.Statement.ToSql());
+            },
+            notNullChange =>
+            {
+                Assert.Equal(DefaultWeights.SetNotNull, notNullChange.Weight);
+                Assert.False(notNullChange.FromDeployScript);
+                Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(500) NOT NULL", notNullChange.Statement.ToSql());
+            }
+        );
     }
 
     [Fact]

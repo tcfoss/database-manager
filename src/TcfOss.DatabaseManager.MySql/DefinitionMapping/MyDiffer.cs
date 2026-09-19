@@ -36,6 +36,7 @@ public partial class MyDiffer
     private uint _nextRefactorWeight = DefaultWeights.ApplyRename;
     private uint _nextPreDeploymentScriptWeight = DefaultWeights.PreDeploymentScript;
     private uint _nextPostDropConstraintsScriptWeight = DefaultWeights.PostDropConstraintsScript;
+    private uint _nextPreSetNotNullWeight = DefaultWeights.PreSetNotNullScript;
     private uint _nextPreAddConstraintsScriptWeight = DefaultWeights.PreAddConstraintsScript;
     private uint _nextPostDeploymentScriptWeight = DefaultWeights.PostDeploymentScript;
     private uint _nextAlterTableWeight = DefaultWeights.AlterTable;
@@ -104,6 +105,7 @@ public partial class MyDiffer
             {
                 DeployScriptType.PreDeployment => _nextPreDeploymentScriptWeight++,
                 DeployScriptType.PostDropConstraints => _nextPostDropConstraintsScriptWeight++,
+                DeployScriptType.PreSetNotNull => _nextPreSetNotNullWeight++,
                 DeployScriptType.PreAddConstraints => _nextPreAddConstraintsScriptWeight++,
                 DeployScriptType.PostDeployment => _nextPostDeploymentScriptWeight++,
                 _ => throw new InvalidOperationException($"Unknown deploy script type '{deployScript.Type}'.")
@@ -161,6 +163,7 @@ public partial class MyDiffer
             {
                 DeployScriptType.PreDeployment => DefaultWeights.InsertPreDeployMeta,
                 DeployScriptType.PostDropConstraints => DefaultWeights.InsertPostDropConstraintsMeta,
+                DeployScriptType.PreSetNotNull => DefaultWeights.InsertPreSetNotNullMeta,
                 DeployScriptType.PreAddConstraints => DefaultWeights.InsertPreAddConstraintsMeta,
                 DeployScriptType.PostDeployment => DefaultWeights.InsertPostDeployMeta,
                 _ => throw new InvalidOperationException($"Unknown deploy script type '{type}'.")

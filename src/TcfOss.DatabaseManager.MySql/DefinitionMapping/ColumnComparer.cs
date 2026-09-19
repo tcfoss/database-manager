@@ -9,11 +9,17 @@ public static class MyColumnComparer
 {
     private static ColumnChangeType ApplyNullability(ColumnChangeType changes, MyColumn start, MyColumn end)
     {
-        ColumnOption.Nullability startNullability = start.Nullability ?? new ColumnOption.Nullability.Null();
-        ColumnOption.Nullability endNullability = end.Nullability ?? new ColumnOption.Nullability.Null();
-        if (startNullability != endNullability)
+        bool startIsNotNull = start.Nullability is ColumnOption.Nullability.NotNull;
+        bool endIsNotNull = end.Nullability is ColumnOption.Nullability.NotNull;
+
+        switch (startIsNotNull)
         {
-            changes |= ColumnChangeType.Nullability;
+            case true when !endIsNotNull:
+                changes |= ColumnChangeType.SetNull;
+                break;
+            case false when endIsNotNull:
+                changes |= ColumnChangeType.SetNotNull;
+                break;
         }
 
         return changes;

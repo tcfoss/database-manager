@@ -21,12 +21,16 @@ public abstract class SimpleSchemaDifferTests<TBuilderEntity, TContainerEntity, 
             .Select(change => change.Statement.ToSql())
             .ToArray();
 
-        var expectedStatements = new[]
-        {
+        List<string> expectedStatements =
+        [
             "ALTER TABLE `samples` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
             "ALTER TABLE `widgets` DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci",
+            "ALTER TABLE `nulltest` MODIFY COLUMN `name` VARCHAR(50) NULL",
             "ALTER TABLE `samples` MODIFY COLUMN `changed_collation` VARCHAR(100) NOT NULL, MODIFY COLUMN `changed_charset` CHAR(10) NOT NULL",
-        };
+            "UPDATE `nulltest` SET `name` = 'Probably Beta, but more research is needed' WHERE `name` IS NULL;\n",
+            "INSERT INTO `simple_schema`.`_database_manager` (`entry_key`, `entry_type`) VALUES ('00000000-0000-0000-0000-000000000001', 'D')",
+            "ALTER TABLE `nulltest` MODIFY COLUMN `name` VARCHAR(50) NOT NULL",
+        ];
 
         Assert.Equal(expectedStatements, actualStatements);
     }

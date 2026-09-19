@@ -61,7 +61,7 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
 
         filenameBase = Path.Combine(Fixture.RootDirectory.FullName, "Schema2");
         var scripts2Type = DeployScriptType.PreDeployment;
-        Assert.Equal(9, deployScripts2.Length);
+        Assert.Equal(10, deployScripts2.Length);
         Assert.Equal("my_script.sql", deployScripts2[0].FileName);
         Assert.Equal(Path.Combine(filenameBase, "my_script.sql"), deployScripts2[0].FilePath);
         Assert.Equal(scripts2Type, deployScripts2[0].Type);
@@ -93,14 +93,18 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
         Assert.Equal(Path.Combine(filenameBase, "MoreStuff", "script2.sql"), deployScripts2[6].FilePath);
         Assert.Equal(DeployScriptType.PostDropConstraints, deployScripts2[6].Type);
         Assert.Equal("00000000-0000-0000-0000-000000000006", deployScripts2[6].UniqueId);
-        Assert.Equal("script3.sql", deployScripts2[7].FileName);
-        Assert.Equal(Path.Combine(filenameBase, "MoreStuff", "script3.sql"), deployScripts2[7].FilePath);
-        Assert.Equal(DeployScriptType.PreAddConstraints, deployScripts2[7].Type);
-        Assert.Equal("00000000-0000-0000-0000-000000000005", deployScripts2[7].UniqueId);
-        Assert.Equal("script4.sql", deployScripts2[8].FileName);
-        Assert.Equal(Path.Combine(filenameBase, "MoreStuff", "script4.sql"), deployScripts2[8].FilePath);
-        Assert.Equal(DeployScriptType.PostDeployment, deployScripts2[8].Type);
-        Assert.Equal("00000000-0000-0000-0000-000000000008", deployScripts2[8].UniqueId);
+        Assert.Equal("script2.sql", deployScripts2[7].FileName);
+        Assert.Equal(Path.Combine(filenameBase, "MoreStuff", "script2.sql"), deployScripts2[7].FilePath);
+        Assert.Equal(DeployScriptType.PreSetNotNull, deployScripts2[7].Type);
+        Assert.Equal("00000000-0000-0000-0000-000000000009", deployScripts2[7].UniqueId);
+        Assert.Equal("script3.sql", deployScripts2[8].FileName);
+        Assert.Equal(Path.Combine(filenameBase, "MoreStuff", "script3.sql"), deployScripts2[8].FilePath);
+        Assert.Equal(DeployScriptType.PreAddConstraints, deployScripts2[8].Type);
+        Assert.Equal("00000000-0000-0000-0000-000000000005", deployScripts2[8].UniqueId);
+        Assert.Equal("script4.sql", deployScripts2[9].FileName);
+        Assert.Equal(Path.Combine(filenameBase, "MoreStuff", "script4.sql"), deployScripts2[9].FilePath);
+        Assert.Equal(DeployScriptType.PostDeployment, deployScripts2[9].Type);
+        Assert.Equal("00000000-0000-0000-0000-000000000008", deployScripts2[9].UniqueId);
 
         var schemaMap3 = config.Schemas[new SchemaIdentifier("schema3", config.Catalog, config.QuoteStyle)];
         Assert.NotNull(schemaMap3);

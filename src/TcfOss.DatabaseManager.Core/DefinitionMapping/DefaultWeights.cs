@@ -25,6 +25,9 @@ public struct DefaultWeights
 
     public const uint AlterTable = 51_000;
 
+    public const uint PreSetNotNullScript = 67_800;
+    public const uint InsertPreSetNotNullMeta = 67_850;
+    public const uint SetNotNull = 67_900;
     public const uint CreateTable = 68_000;
 
     public const uint PreAddConstraintsScript = 70_000;
