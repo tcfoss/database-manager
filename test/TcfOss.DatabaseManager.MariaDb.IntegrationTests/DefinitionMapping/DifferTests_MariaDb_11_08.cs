@@ -4,7 +4,7 @@ using Testcontainers.MariaDb;
 namespace TcfOss.DatabaseManager.MariaDb.IntegrationTests.DefinitionMapping;
 
 // ReSharper disable once UnusedMember.Global
-public class DifferTests_MariaDb_11_08_02 : DifferTests<MariaDbBuilder, MariaDbContainer, DifferFixture_MariaDb_11_08_02>
+public class DifferTests_MariaDb_11_08 : DifferTests<MariaDbBuilder, MariaDbContainer, DifferFixture_MariaDb_11_08>
 {
     protected override string CharacterSet => "utf8mb4";
     protected override string Collation => "utf8mb4_uca1400_ai_ci";
@@ -13,7 +13,7 @@ public class DifferTests_MariaDb_11_08_02 : DifferTests<MariaDbBuilder, MariaDbC
     protected override string FunctionParameterDirection => "IN ";
     protected override string CteDeclName => "my_cte";
 
-    public DifferTests_MariaDb_11_08_02(DifferFixture_MariaDb_11_08_02 fixture)
+    public DifferTests_MariaDb_11_08(DifferFixture_MariaDb_11_08 fixture)
     {
         Fixture = fixture;
     }

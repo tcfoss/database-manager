@@ -15,7 +15,7 @@ using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using GenerationMode = TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes.GenerationMode;
 
-namespace TcfOss.DatabaseManager.App.IntegrationTests;
+namespace TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
 
 public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     where TFixture : CliReadOnlyFixture

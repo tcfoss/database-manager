@@ -1,15 +1,17 @@
-﻿using TcfOss.DatabaseManager.MySql.IntegrationTests;
+﻿using TcfOss.DatabaseManager.Core.IntegrationTests;
+using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using Testcontainers.MariaDb;
 
 namespace TcfOss.DatabaseManager.MariaDb.IntegrationTests.DefinitionMapping;
 
 // ReSharper disable once UnusedType.Global
-public class ChangeComputerTests_MariaDb_10_11_13(ITestOutputHelper testOutputHelper)
+// ReSharper disable once UnusedMember.Global
+public class ChangeComputerTests_MariaDb_11_08(ITestOutputHelper testOutputHelper)
     : ChangeComputerTestsMaBase(testOutputHelper)
 {
     protected override MariaDbBuilder Configure()
     {
-        return new MariaDbBuilder("mariadb:10.11.13")
+        return new MariaDbBuilder(FixtureImages.MariaDb_11_08)
             .WithStandardOptions();
     }
 }

@@ -13,6 +13,6 @@ public sealed class SimpleSchemaDifferFixture_MariaDb_10_11
 
     public SimpleSchemaDifferFixture_MariaDb_10_11(IMessageSink messageSink)
     {
-        DbFixture = new MariaDbFixture_10_11_13(messageSink);
+        DbFixture = new MariaDbFixture_10_11(messageSink);
     }
 }

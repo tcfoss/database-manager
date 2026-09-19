@@ -1,4 +1,6 @@
-﻿using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+﻿using TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using Testcontainers.MariaDb;
 
@@ -12,7 +14,7 @@ public class CliReadWriteTests_MariaDb_10_11(ITestOutputHelper testOutputHelper)
 
     protected override MariaDbBuilder Configure()
     {
-        return new MariaDbBuilder("mariadb:10.11.13")
+        return new MariaDbBuilder(FixtureImages.MariaDb_10_11)
             .WithStandardOptions();
     }
 }

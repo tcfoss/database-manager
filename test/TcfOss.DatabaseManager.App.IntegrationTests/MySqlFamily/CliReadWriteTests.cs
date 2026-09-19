@@ -8,7 +8,7 @@ using Testcontainers.Xunit;
 
 [assembly: CaptureConsole(CaptureOut = false)]
 
-namespace TcfOss.DatabaseManager.App.IntegrationTests;
+namespace TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
 
 public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestOutputHelper testOutputHelper)
     : ContainerTest<TBuilderEntity, TContainerEntity>(testOutputHelper)

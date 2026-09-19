@@ -14,7 +14,7 @@ public class DownloadSchemaFixture_MySql_08_04_06 : DownloadSchemaFixture<MySqlB
 
     public DownloadSchemaFixture_MySql_08_04_06(IMessageSink messageSink)
     {
-        DbFixture = new MySqlFixture_08_04_06(messageSink);
+        DbFixture = new MySqlFixture_08_04(messageSink);
         FsProjectFixture = new FsProjectFixture();
     }
 }

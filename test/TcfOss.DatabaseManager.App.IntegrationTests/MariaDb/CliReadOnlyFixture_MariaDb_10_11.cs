@@ -1,4 +1,5 @@
-﻿using TcfOss.DatabaseManager.MariaDb.IntegrationTests.DatabaseFixtures;
+﻿using TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
+using TcfOss.DatabaseManager.MariaDb.IntegrationTests.DatabaseFixtures;
 using Testcontainers.MariaDb;
 using Xunit.Sdk;
 
@@ -9,7 +10,7 @@ public class CliReadOnlyFixture_MariaDb_10_11 : CliReadOnlyFixture<MariaDbBuilde
 {
     public CliReadOnlyFixture_MariaDb_10_11(IMessageSink messageSink)
     {
-        DbFixture = new MariaDbFixture_10_11_13(messageSink);
+        DbFixture = new MariaDbFixture_10_11(messageSink);
     }
 
 }

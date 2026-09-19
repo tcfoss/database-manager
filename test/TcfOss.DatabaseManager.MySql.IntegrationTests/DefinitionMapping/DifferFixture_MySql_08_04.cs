@@ -5,11 +5,11 @@ using Xunit.Sdk;
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests.DefinitionMapping;
 
 // ReSharper disable ClassNeverInstantiated.Global
-public class DifferFixture_MySql_08_04_06 : DifferFixture<MySqlBuilder, MySqlContainer>
+public class DifferFixture_MySql_08_04 : DifferFixture<MySqlBuilder, MySqlContainer>
 {
     protected override bool RemoveSlashesBeforeQuotesGenerationExpression => true;
-    public DifferFixture_MySql_08_04_06(IMessageSink messageSink)
+    public DifferFixture_MySql_08_04(IMessageSink messageSink)
     {
-        DbFixture = new MySqlFixture_08_04_06(messageSink);
+        DbFixture = new MySqlFixture_08_04(messageSink);
     }
 }

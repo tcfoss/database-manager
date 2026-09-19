@@ -12,6 +12,6 @@ public sealed class SimpleSchemaDifferFixture_MySql_08_04
 
     public SimpleSchemaDifferFixture_MySql_08_04(IMessageSink messageSink)
     {
-        DbFixture = new MySqlFixture_08_04_06(messageSink);
+        DbFixture = new MySqlFixture_08_04(messageSink);
     }
 }

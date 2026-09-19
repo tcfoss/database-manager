@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.IntegrationTests.DatabaseFixtures;
 
-namespace TcfOss.DatabaseManager.App.IntegrationTests;
+namespace TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
 
 public abstract class CliReadOnlyFixture : IAsyncLifetime
 {

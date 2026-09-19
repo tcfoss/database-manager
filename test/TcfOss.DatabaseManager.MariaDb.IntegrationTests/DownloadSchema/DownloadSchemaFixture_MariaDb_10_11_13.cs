@@ -14,7 +14,7 @@ public class DownloadSchemaFixture_MariaDb_10_11_13 : DownloadSchemaFixture<Mari
 
     public DownloadSchemaFixture_MariaDb_10_11_13(IMessageSink messageSink)
     {
-        DbFixture = new MariaDbFixture_10_11_13(messageSink);
+        DbFixture = new MariaDbFixture_10_11(messageSink);
         FsProjectFixture = new FsProjectFixture();
     }
 }

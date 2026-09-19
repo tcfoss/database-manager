@@ -1,18 +1,19 @@
-﻿using TcfOss.DatabaseManager.MySql.IntegrationTests;
+﻿using TcfOss.DatabaseManager.Core.IntegrationTests;
+using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.IntegrationTests.DatabaseFixtures;
 using Testcontainers.MariaDb;
 using Xunit.Sdk;
 
 namespace TcfOss.DatabaseManager.MariaDb.IntegrationTests.DatabaseFixtures;
 
-public sealed class MariaDbFixture_11_08_02(IMessageSink messageSink)
+public sealed class MariaDbFixture_11_08(IMessageSink messageSink)
     : DbFixture<MariaDbBuilder, MariaDbContainer>(messageSink)
 {
     protected override ushort Port => MariaDbBuilder.MariaDbPort;
 
     protected override MariaDbBuilder Configure()
     {
-        return new MariaDbBuilder("mariadb:11.8.2")
+        return new MariaDbBuilder(FixtureImages.MariaDb_11_08)
             .WithStandardOptions();
         // .WithImage("mariadb:11.8.2")
         // .WithPrivileged(true)

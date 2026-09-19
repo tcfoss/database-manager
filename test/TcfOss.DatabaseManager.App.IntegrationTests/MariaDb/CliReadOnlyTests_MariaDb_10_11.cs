@@ -1,4 +1,5 @@
-﻿using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+﻿using TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MariaDb;
 

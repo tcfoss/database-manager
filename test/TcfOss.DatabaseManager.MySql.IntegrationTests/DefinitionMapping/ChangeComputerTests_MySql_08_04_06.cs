@@ -1,4 +1,5 @@
 ﻿using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.IntegrationTests;
 using Testcontainers.MySql;
 
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests.DefinitionMapping;
@@ -11,7 +12,7 @@ public class ChangeComputerTests_MySql_08_04_06(ITestOutputHelper testOutputHelp
 
     protected override MySqlBuilder Configure()
     {
-        return new MySqlBuilder("mysql:8.4.6")
+        return new MySqlBuilder(FixtureImages.MySql_08_04)
             .WithStandardOptions();
     }
 }
