@@ -7,10 +7,10 @@ using Xunit.Sdk;
 namespace TcfOss.DatabaseManager.MariaDb.IntegrationTests.DefinitionMapping;
 
 // ReSharper disable once UnusedMember.Global
-public sealed class SimpleSchemaDifferTests_MariaDb_11_08
-    : SimpleSchemaDifferTests<MariaDbBuilder, MariaDbContainer, SimpleSchemaDifferTests_MariaDb_11_08.ThisFixture>
+public sealed class SimpleSchemaDifferTests_MariaDb_12_03
+    : SimpleSchemaDifferTests<MariaDbBuilder, MariaDbContainer, SimpleSchemaDifferTests_MariaDb_12_03.ThisFixture>
 {
-    public SimpleSchemaDifferTests_MariaDb_11_08(ThisFixture fixture)
+    public SimpleSchemaDifferTests_MariaDb_12_03(ThisFixture fixture)
     {
         Fixture = fixture;
     }
@@ -22,7 +22,7 @@ public sealed class SimpleSchemaDifferTests_MariaDb_11_08
 
         public ThisFixture(IMessageSink messageSink)
         {
-            DbFixture = new MariaDbFixture_11_08(messageSink);
+            DbFixture = new MariaDbFixture_12_03(messageSink);
         }
     }
 
