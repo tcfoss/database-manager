@@ -292,7 +292,9 @@ public static partial class CommonHelpers
 
     public static string GetSimpleSchemaInitializationScript()
     {
-        var schemaRootDirectory = Path.Combine(SimpleSchemaSourceDirectory.FullName, "Initial", "Schema");
+        var initialRootDirectory = Path.Combine(SimpleSchemaSourceDirectory.FullName, "Initial");
+        var schemaRootDirectory = Path.Combine(initialRootDirectory, "Schema");
+        var dataRootDirectory = Path.Combine(initialRootDirectory, "Data");
         var sb = new StringBuilder();
 
         sb.AppendLine(
@@ -306,6 +308,15 @@ public static partial class CommonHelpers
         foreach (var sqlFile in Directory.GetFiles(schemaRootDirectory, "*.sql").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
             sb.AppendLine(File.ReadAllText(sqlFile));
+        }
+
+        // Seed data lives separately from Schema so it isn't parsed as part of the schema definition.
+        if (Directory.Exists(dataRootDirectory))
+        {
+            foreach (var sqlFile in Directory.GetFiles(dataRootDirectory, "*.sql").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                sb.AppendLine(File.ReadAllText(sqlFile));
+            }
         }
 
         return sb.ToString();
