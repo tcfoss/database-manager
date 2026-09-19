@@ -21,6 +21,8 @@ public struct DefaultWeights
 
     public const uint DropTable = 50_000;
 
+    public const uint SetCharacterSetCollation = 50_950;
+
     public const uint AlterTable = 51_000;
 
     public const uint CreateTable = 68_000;

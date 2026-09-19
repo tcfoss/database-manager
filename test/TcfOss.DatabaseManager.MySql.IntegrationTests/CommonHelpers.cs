@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Text;
+using System.Text.RegularExpressions;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,7 @@ public static partial class CommonHelpers
 
     private static DirectoryInfo SchemasDirectory { get; } = new(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql"));
     public static DirectoryInfo InitialSourceDirectory { get; } = new(Path.Combine(SchemasDirectory.FullName, "Initial"));
+    public static DirectoryInfo SimpleSchemaSourceDirectory { get; } = new(Path.Combine(SchemasDirectory.FullName, "SimpleSchema"));
 
     public static DirectoryInfo GetSchemaDirectory(string testSchemaName)
     {
@@ -210,6 +212,45 @@ public static partial class CommonHelpers
         return config;
     }
 
+    public static MyConfig GetSimpleSchemaConfig(this IDatabaseContainer container, string rootPath, ushort port, SqlDialect dialect)
+    {
+        var rawConfig = new ConfigParsing.Config
+        {
+            ProjectDirectory = rootPath,
+            Catalog = "def",
+            Dialect = dialect,
+            QuoteStyle = QuoteStyle.Backticks,
+            Credentials = new ConfigParsing.Credentials
+            {
+                Hostname = container.Hostname,
+                Username = "root",
+                Password = dialect == SqlDialect.MySql ? "mysql" : "mariadb",
+                Port = container.GetMappedPublicPort(port).ToString(),
+            },
+            Schemas =
+            [
+                new ConfigParsing.SchemaMapping
+                {
+                    SchemaName = "simple_schema",
+                    RootPath = "Schema",
+                }
+            ],
+            Logging = new LogSettings
+            {
+                DatabaseLogLevel = LogLevel.Information,
+                Target = LogTarget.File,
+            },
+            DifferFormatting = new ConfigParsing.DifferFormattingSettings
+            {
+                ObjectNamePrefixWithSchema = false,
+                OmitModifiersIfDefault = true,
+            },
+        };
+
+        MyStartup startup = dialect == SqlDialect.MySql ? new MyStartup() : new MaStartup();
+        return (MyConfig)startup.StartApp(rootPath, rawConfig, relaxed: false);
+    }
+
     public static MariaDbBuilder WithStandardOptions(this MariaDbBuilder builder)
     {
         return builder
@@ -247,6 +288,27 @@ public static partial class CommonHelpers
         {
             throw new NotSupportedException($"Container type {container.GetType().Name} is not supported.");
         }
+    }
+
+    public static string GetSimpleSchemaInitializationScript()
+    {
+        var schemaRootDirectory = Path.Combine(SimpleSchemaSourceDirectory.FullName, "Initial", "Schema");
+        var sb = new StringBuilder();
+
+        sb.AppendLine(
+            "CREATE DATABASE IF NOT EXISTS `simple_schema` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;");
+        sb.AppendLine();
+
+        sb.AppendLine("USE `simple_schema`;");
+        sb.AppendLine();
+
+        // Include every table definition so new tables don't need a matching CommonHelpers change.
+        foreach (var sqlFile in Directory.GetFiles(schemaRootDirectory, "*.sql").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            sb.AppendLine(File.ReadAllText(sqlFile));
+        }
+
+        return sb.ToString();
     }
 
     public static void UpdateConfiguration(SqlDialect dialect, string dirPath, string? host, ushort? port)

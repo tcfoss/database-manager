@@ -495,6 +495,16 @@ public partial class MyDiffer
             }
             else
             {
+                if (tableMap.Start!.CharacterSet != tableMap.End!.CharacterSet || tableMap.Start!.Collation != tableMap.End!.Collation)
+                {
+                    results.Add(
+                        new DefinitionAlterStatement(
+                            DefaultWeights.SetCharacterSetCollation,
+                            tableMap.Start!.Name.Schema,
+                            new AlterTable(tableMap.End.Name.ToObjectName(Depth), [new AlterTableOperation.SetCharacterSetCollation(tableMap.End!.CharacterSet, tableMap.End!.Collation)])
+                        )
+                    );
+                }
                 results.AddRange(GetAlterTableColumns(tableMap.Handle, tableMap.Start!, tableMap.End!));
             }
         }

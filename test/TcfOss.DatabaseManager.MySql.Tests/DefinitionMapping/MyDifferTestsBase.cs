@@ -171,6 +171,233 @@ public abstract class MyDifferTestsBase
     }
 
     [Fact]
+    public void Inferred_End_String_Attributes_Do_Not_Modify_Explicit_Start_Attributes()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) NOT NULL
+        );
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void Explicit_End_String_Attributes_Generate_Modify()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL
+        );
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL", change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Table_Default_String_Attributes_Generate_Table_Change_Without_Column_Modify()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) NOT NULL
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Explicit_Table_Default_Equal_To_Default_Generates_No_Change()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void Table_Character_Set_Without_Collation_Equal_To_Default_Generates_No_Change()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        ) DEFAULT CHARACTER SET utf8mb4;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void Table_Collation_Without_Character_Set_Generates_Table_Change()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        ) DEFAULT COLLATE utf8mb4_uca1400_ai_cs;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Table_And_Column_String_Attributes_Generate_Both_Changes()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        Assert.Equal(2, changes.Count);
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", changes[0].Statement.ToSql());
+        Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(255) NOT NULL", changes[1].Statement.ToSql());
+    }
+
+    [Fact]
+    public void Inferred_End_Attributes_Do_Not_Modify_All_String_Type_Families()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            code CHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+            description TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+            label NATIONAL VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            code CHAR(10) NOT NULL,
+            description TEXT NOT NULL,
+            label NATIONAL VARCHAR(20) NOT NULL
+        );
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void Partial_End_Column_Attributes_Ignore_Inferred_Differences()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            charset_only VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL,
+            collation_only VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            charset_only VARCHAR(255) CHARACTER SET utf8mb4 NOT NULL,
+            collation_only VARCHAR(255) COLLATE utf8mb4_uca1400_ai_cs NOT NULL
+        );
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `collation_only` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL", change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Mixed_Inferred_Explicit_And_Unchanged_Columns_Modify_Only_Explicit_Change()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            inherited VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+            changed VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+            unchanged VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            inherited VARCHAR(255) NOT NULL,
+            changed VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL,
+            unchanged VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `changed` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs NOT NULL", change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Table_Default_Change_Preserves_Explicit_Old_Column_Attributes()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
+    }
+
+    [Fact]
     public void Change_Data_Type()
     {
         var startText = """

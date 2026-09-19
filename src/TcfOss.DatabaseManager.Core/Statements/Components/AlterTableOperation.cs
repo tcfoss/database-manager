@@ -175,6 +175,30 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
+    public record SetCharacterSetCollation(string? CharacterSet, string? Collation) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            string? charset = CharacterSet == null ? null : $" CHARACTER SET {CharacterSet}";
+            string? collation = Collation == null ? null : $" COLLATE {Collation}";
+            writer.WriteSql($"DEFAULT{charset}{collation}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("DEFAULT");
+            if (CharacterSet != null)
+            {
+                writer.Write($" CHARACTER SET {CharacterSet}");
+            }
+            if (Collation != null)
+            {
+                writer.Write($" COLLATE {Collation}");
+            }
+        }
+    }
+
     public record AddPrimaryKey(StatementTableConstraint.PrimaryKey PrimaryKey) : AlterTableOperation
     {
         public override void ToSql(SqlTextWriter writer)
@@ -385,4 +409,6 @@ public abstract record AlterTableOperation() : IWriteSql
             writer.WriteSql($"AUTO_INCREMENT = {NewValue}");
         }
     }
+
+
 }

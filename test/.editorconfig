@@ -19,3 +19,4 @@ dotnet_diagnostic.xUnit2005.severity = none # Do not us identity check on value 
 
 resharper_inconsistent_naming_highlighting = none
 resharper_localizable_element_highlighting = none
+resharper_convert_to_constant_local_highlighting = none

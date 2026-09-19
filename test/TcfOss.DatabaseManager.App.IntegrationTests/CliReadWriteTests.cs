@@ -53,7 +53,24 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
         Assert.Matches(@"INSERT INTO (`library_activity`\.)?`_database_manager` \(`entry_key`, `entry_type`\) VALUES \('7a8b9c0d-e1f2-3g4h-5i6j-7k8l9m0n1o2p', 'R'\), \('2b3c4d5e-6f7g-8h9i-0j1k-l2m3n4o5p6q7', 'R'\), \('3c4d5e6f-7g8h-9i0j-1k2l-m3n4o5p6q7r8', 'R'\);", initialChangesText);
     }
 
-    private async Task<string> Verify_DoubleDiff_NoChanges(string workingDir, TContainerEntity container)
+    [Fact]
+    public virtual async Task Verify_DoubleDiff_NoChanges_SimpleSchema()
+    {
+        string initializationScript = CommonHelpers.GetSimpleSchemaInitializationScript();
+        await Container.ExecScriptAsync(initializationScript, TestContext.Current.CancellationToken);
+
+        var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Test1").FullName);
+
+        string initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
+
+        Assert.Contains("ALTER TABLE `samples` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", initialChangesText);
+        Assert.Contains("ALTER TABLE `widgets` DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci", initialChangesText);
+        Assert.Contains("MODIFY COLUMN `changed_collation`", initialChangesText);
+        Assert.Contains("MODIFY COLUMN `changed_charset`", initialChangesText);
+    }
+
+    protected async Task<string> Verify_DoubleDiff_NoChanges(string workingDir, TContainerEntity container)
     {
         UpdateConfiguration(workingDir, container.Hostname, container.GetMappedPublicPort(container.GetPort()));
 
