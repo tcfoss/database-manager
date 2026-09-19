@@ -125,6 +125,22 @@ public partial class MyDiffer
                 return;
             }
 
+            if (colChanges.HasFlag(ColumnChangeType.SetNotNull))
+            {
+                MyColumn endNotNull = end;
+                end = end with { Nullability = new ColumnOption.Nullability.Null() };
+                Statements.Add(new DefinitionAlterStatement(
+                    DefaultWeights.SetNotNull,
+                    _end.Name.Schema,
+                    new AlterTable(_tableName, [new AlterTableOperation.ModifyColumn(endNotNull.ToStatementColumn(_manager))]),
+                    $"Setting NOT NULL on column {end.Name}"
+                ));
+                if (colChanges == ColumnChangeType.SetNotNull)
+                {
+                    return;
+                }
+            }
+
             AlterTableColumnPosition? newPos = null;
             if (colChanges.HasFlag(ColumnChangeType.Order))
             {
@@ -178,7 +194,7 @@ public partial class MyDiffer
             {
                 new AlterTable(_tableName, [new AlterTableOperation.RenameColumn(start.Name.ToSimpleIdentifier(), tempColId)]),
                 new AlterTable(_tableName, [new AlterTableOperation.AddColumn(end.ToStatementColumn(_manager)) { Position = newColumnPosition }]),
-                new Update(new TableWithJoins(new TableFactor.Table(_tableName)), [new(new AssignmentTarget.ObjectName(new ObjectName(end.Name.ToSimpleIdentifier(_parent.Config.QuoteStyle))), new SingleIdentifier(tempColId))]),
+                new Update(new TableWithJoins(new TableFactor.Table(_tableName)), [new Assignment(new AssignmentTarget.ObjectName(new ObjectName(end.Name.ToSimpleIdentifier(_parent.Config.QuoteStyle))), new SingleIdentifier(tempColId))]),
                 new AlterTable(_tableName, [new AlterTableOperation.DropColumn(tempColId)])
             };
 
@@ -271,7 +287,8 @@ public partial class MyDiffer
             return colChanges.HasFlag(ColumnChangeType.DataType)
                         || colChanges.HasFlag(ColumnChangeType.DropGeneration)
                         || colChanges.HasFlag(ColumnChangeType.GenerationExpression)
-                        || colChanges.HasFlag(ColumnChangeType.Nullability);
+                        || colChanges.HasFlag(ColumnChangeType.SetNull)
+                        || colChanges.HasFlag(ColumnChangeType.SetNotNull);
         }
 
         /// <summary>

@@ -10,6 +10,9 @@ namespace TcfOss.DatabaseManager.MariaDb.IntegrationTests.DefinitionMapping;
 public sealed class SimpleSchemaDifferTests_MariaDb_10_11
     : SimpleSchemaDifferTests<MariaDbBuilder, MariaDbContainer, SimpleSchemaDifferTests_MariaDb_10_11.ThisFixture>
 {
+    protected override bool ExpectNullableNulltestAlter => false;
+    protected override bool ExpectNullableNulltestAlterAfterSamplesModify => true;
+
     public SimpleSchemaDifferTests_MariaDb_10_11(ThisFixture fixture)
     {
         Fixture = fixture;
@@ -25,5 +28,4 @@ public sealed class SimpleSchemaDifferTests_MariaDb_10_11
             DbFixture = new MariaDbFixture_10_11(messageSink);
         }
     }
-
 }

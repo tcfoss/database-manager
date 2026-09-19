@@ -26,7 +26,7 @@ public class ConfigLoaderTestsMessedUpDeployScripts(ConfigLoaderFixture fixture)
         });
 
         var expectedPath = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", "MoreStuff", "script2.sql");
-        var expectedMessage = $$"""Configuration Error: The Type field on DeployScript entry DeployScript { Type = 0, FilePath = {{expectedPath}}, FileName = script2.sql, UniqueId = 00000000-0000-0000-0000-000000000006 } is missing or invalid. It should be one of { PreDeployment | PostDropConstraints | PreAddConstraints | PostDeployment }.""";
+        var expectedMessage = $$"""Configuration Error: The Type field on DeployScript entry DeployScript { Type = 0, FilePath = {{expectedPath}}, FileName = script2.sql, UniqueId = 00000000-0000-0000-0000-000000000006 } is missing or invalid. It should be one of { PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }.""";
         Assert.Equal(expectedMessage, exception.Message);
     }
 

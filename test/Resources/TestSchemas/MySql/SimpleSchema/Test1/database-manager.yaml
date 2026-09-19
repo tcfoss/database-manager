@@ -5,6 +5,10 @@ Dialect: MySql
 Schemas:
   - SchemaName: simple_schema
     RootPath: Schema
+    DeployScripts:
+      - FilePath: ../Scripts/01_populate_nulltest_name.sql
+        UniqueId: 00000000-0000-0000-0000-000000000001
+        Type: PreSetNotNull
 
 Credentials:
   HostName: localhost

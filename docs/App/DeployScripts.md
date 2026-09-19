@@ -9,7 +9,7 @@ The basic syntax for specifying a deploy script under a schema mapping in the co
 file is
 
 ```yaml
-Type: { PreDeployment | PostDropConstraints | PreAddConstraints | PostDeployment } # Required*
+Type: { PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment } # Required*
 FilePath: <path to script, relative to schema root> # Required
 UniqueId: <guid for the script> # Optional
 ```

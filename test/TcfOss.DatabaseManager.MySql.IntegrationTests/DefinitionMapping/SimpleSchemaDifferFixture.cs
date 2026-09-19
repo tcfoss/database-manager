@@ -2,9 +2,14 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging;
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
+using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.MySql.App;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseComms;
@@ -12,6 +17,8 @@ using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.DefinitionMapping;
 using TcfOss.DatabaseManager.MySql.IntegrationTests.DatabaseFixtures;
+using TcfOss.DatabaseManager.MySql.Lexing;
+using TcfOss.DatabaseManager.MySql.Parsing;
 
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests.DefinitionMapping;
 
@@ -42,6 +49,7 @@ public abstract class SimpleSchemaDifferFixture<TBuilderEntity, TContainerEntity
         MyDefinition startDefinition = await dbLoader.LoadDefinitionAsync();
 
         MyConfig config = DbFixture.GetSimpleSchemaConfig(_endFsFixture.RootDirectory.FullName, Dialect);
+        List<DeployScript> deployScripts = LoadDeployScripts(config);
         var fsLoader = (MyFsDefinitionLoader)MyAppServiceProvider.FilesystemDefinitionLoader;
         MyDefinition endDefinition = fsLoader.LoadDefinition(false);
 
@@ -50,9 +58,43 @@ public abstract class SimpleSchemaDifferFixture<TBuilderEntity, TContainerEntity
             startDefinition,
             endDefinition,
             [],
-            [],
+            deployScripts,
             loggerFactory.CreateLogger<MyDiffer>());
         ActualChanges.AddRange(differ.ComputeChanges());
+    }
+
+    private static List<DeployScript> LoadDeployScripts(MyConfig config)
+    {
+        var textParser = new TextParser(new MyLexer(), new MyParser());
+        var deployScripts = new List<DeployScript>();
+
+        foreach (MySchemaMapping schema in config.Schemas.Values)
+        {
+            foreach (Core.Configuration.DeployScript deployScript in schema.DeployScripts)
+            {
+                string bodyText = File.ReadAllText(deployScript.FilePath);
+                SqlValueList<Statement> statements = textParser.ParseText(bodyText, deployScript.FilePath);
+                foreach (Statement statement in statements)
+                {
+                    if (statement is IHaveBodyStatement haveBodyStatement)
+                    {
+                        statement.Meta.RawText = SourceManager.GetText(bodyText, haveBodyStatement.Body.Meta);
+                    }
+                    else
+                    {
+                        statement.Meta.RawText = SourceManager.GetText(bodyText, statement.Meta);
+                    }
+                }
+
+                deployScripts.Add(new DeployScript(deployScript.Type, schema.SchemaName, deployScript.FileName, deployScript.FilePath, statements)
+                {
+                    UniqueId = deployScript.UniqueId,
+                    RawBodyText = bodyText,
+                });
+            }
+        }
+
+        return deployScripts;
     }
 
     public async ValueTask DisposeAsync()
