@@ -30,6 +30,7 @@ public static class MyObjectMapper
                 excluded.Add(objKey);
             }
         }
+        mappings.Sort((x, y) => x.Handle.CompareTo(y.Handle));
         return mappings;
     }
 
