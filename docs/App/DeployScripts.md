@@ -32,10 +32,12 @@ all scripts referenced in the `.yaml` file have their own `Type` specified.
 
 ## File Path Resolution
 
-The path resolver add scripts in the order in which they are referenced. The contents
+The path resolver adds scripts in the order in which they are referenced. The contents
 of YAML references are read and registered before proceeding to the next item in the
 containing list. The contents of directory references are read and registered  **in
 standard string sort order** before proceeding to the next reference.
+
+File paths in the main configuration file are assumed to be relative to the schema root. File paths in YAML files may be relative either to the location of the YAML file itself or to the schema root (the former takes precedence). If a file path is absolute, it is used as-is.
 
 Script execution order is determined (1) by the script type and then, within a script
 type, by the resolution order described above.

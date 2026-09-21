@@ -69,7 +69,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
             else if (fullPath.Extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
                      fullPath.Extension.Equals(".yml", StringComparison.OrdinalIgnoreCase))
             {
-                expandedDeployScripts.AddRange(ExpandDeployScriptsFromYaml(fullPath, schemaId, schemaRootPath, parentRootPath, uniqueId, scriptType));
+                expandedDeployScripts.AddRange(ExpandDeployScriptsFromYaml(fullPath, schemaId, schemaRootPath, fullPath.Directory ?? parentRootPath, uniqueId, scriptType));
             }
             else if (fullPath.Extension.Equals(".sql", StringComparison.OrdinalIgnoreCase))
             {
