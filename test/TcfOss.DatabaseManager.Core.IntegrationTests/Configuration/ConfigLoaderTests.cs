@@ -163,6 +163,53 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
         }
     }
 
+    [Fact]
+    public void DeployScriptManifest_ResolvesEntriesRelativeToManifestDirectory()
+    {
+        string schemaRootPath = Path.Combine(Fixture.RootDirectory.FullName, $"Schema-{Guid.NewGuid():N}");
+        string manifestPath = Path.Combine(schemaRootPath, "Manifests", "deploy.yaml");
+        string scriptPath = Path.Combine(schemaRootPath, "Manifests", "Scripts", "script.sql");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(scriptPath)!);
+        File.WriteAllText(manifestPath, "- FilePath: Scripts/script.sql\n  Type: PreDeployment\n");
+        File.WriteAllText(scriptPath, "-- manifest-relative script");
+
+        try
+        {
+            var rawConfig = new ConfigParsing.Config
+            {
+                Dialect = SqlDialect.MySql,
+                Schemas =
+                [
+                    new ConfigParsing.SchemaMapping
+                    {
+                        SchemaName = "schema",
+                        RootPath = Path.GetRelativePath(Fixture.RootDirectory.FullName, schemaRootPath),
+                        DeployScripts =
+                        [
+                            new ConfigParsing.DeployScript
+                            {
+                                FilePath = "Manifests/deploy.yaml",
+                            }
+                        ],
+                    }
+                ],
+            };
+
+            var config = GetConfig(rawConfig);
+            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+
+            var deployScript = Assert.Single(schema.DeployScripts);
+            Assert.Equal(new FileInfo(scriptPath).FullName, deployScript.FilePath.FullName);
+            Assert.Equal(DeployScriptType.PreDeployment, deployScript.Type);
+        }
+        finally
+        {
+            Directory.Delete(schemaRootPath, recursive: true);
+        }
+    }
+
     private ConfigGeneric GetConfig(ConfigParsing.Config? rawConfig = null)
     {
         rawConfig ??= Fixture.LoadRawConfig();
