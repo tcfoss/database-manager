@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
@@ -64,8 +66,13 @@ public class MyCommandRunnerTests
         var contextFactory = contextFixture.CreateFactory();
 
         var serviceCollection = new ServiceCollection();
+        serviceCollection.AddLogging(sc =>
+        {
+            sc.AddProvider(NullLoggerProvider.Instance);
+        });
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
+        AppServiceProvider.ServiceProvider = serviceProvider;
 
         var fsLoader = new MyFsDefinitionLoader(
             config,
@@ -73,7 +80,7 @@ public class MyCommandRunnerTests
             textParser,
             new SourceManager(),
             new MyFunctionNameProvider(),
-            factory.CreateLogger<MyFsDefinitionLoader>(),
+            AppServiceProvider.GetLogger<MyFsDefinitionLoader>(),
             factory
         );
         var dbLoader = new MyDbDefinitionLoader(
@@ -81,7 +88,7 @@ public class MyCommandRunnerTests
             new InfoSchemaRepo(config, contextFactory, new FakeRawEntityRetriever()),
             textParser,
             new MyFunctionNameProvider(),
-            factory.CreateLogger<MyDbDefinitionLoader>()
+            AppServiceProvider.GetLogger<MyDbDefinitionLoader>()
         );
         var formatter = new MySqlFormatter(
             config,
@@ -89,7 +96,7 @@ public class MyCommandRunnerTests
             textParser,
             new MyFunctionNameProvider(),
             fsLoader,
-            factory.CreateLogger<MySqlFormatter>());
+            AppServiceProvider.GetLogger<MySqlFormatter>());
 
         return new MyCommandRunner(
             configForRunner!,
@@ -99,7 +106,7 @@ public class MyCommandRunnerTests
             fsLoader,
             new MyDownloadSchema(config, factory.CreateLogger<MyDownloadSchema>(), dbLoader),
             writer,
-            new MyChangeComputer(config, writer, serviceProvider.GetRequiredService<IServiceScopeFactory>(), dbLoader, dbLoader, factory.CreateLogger<MyChangeComputer>()),
+            new MyChangeComputer(config, writer, AppServiceProvider.ScopeFactory, dbLoader, dbLoader, factory.CreateLogger<MyChangeComputer>()),
             new SourceManager(),
             factory.CreateLogger<MyCommandRunner>());
     }

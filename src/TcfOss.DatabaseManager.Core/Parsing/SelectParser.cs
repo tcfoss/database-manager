@@ -582,7 +582,7 @@ public class SelectParser
     }
 
 
-    public virtual Identifier? ParseOptionalAlias(ParserState state, Func<Keyword?, bool> isReserved)
+    public virtual Identifier? ParseOptionalAlias(ParserState state, Func<Keyword, bool> isReserved)
     {
         bool afterAs = state.ParseKeyword(Keyword.AS);
         Token token = state.Peek();

@@ -62,13 +62,9 @@ public static class KeywordHelper
         Keyword.END,
     ];
 
-    public static bool IsReservedForColumnAlias(Keyword? keyword)
+    public static bool IsReservedForColumnAlias(Keyword keyword)
     {
-        if (keyword is null)
-        {
-            return false;
-        }
-        return s_reservedForColumnAlias.Contains(keyword.Value);
+        return s_reservedForColumnAlias.Contains(keyword);
     }
 
     /// Can't be used as a column alias, so that `SELECT Expression alias`
@@ -129,12 +125,8 @@ public static class KeywordHelper
         Keyword.MATCH_RECOGNIZE,
     ];
 
-    public static bool IsReservedForTableAlias(Keyword? keyword)
+    public static bool IsReservedForTableAlias(Keyword keyword)
     {
-        if (keyword is null)
-        {
-            return false;
-        }
-        return s_reservedForTableAlias.Contains(keyword.Value);
+        return s_reservedForTableAlias.Contains(keyword);
     }
 }

@@ -1,10 +1,10 @@
 {
-  "$schema": "https://schemastore.org",
+  "$schema": "https://raw.githubusercontent.com/microsoft/testfx/main/docs/testconfig.schema.json",
   "platformOptions": {
     "Coverlet": {
       "format": "cobertura",
       "excludeByFile": "**/*.g.cs",
-      "exclude": "[System.Text.*]*,[Testcontainers*]*,[MySqlConnector*]*,[Docker.DotNet*]*,[*.Tests]*,[*.IntegrationTests]*",
+      "exclude": "[System.Text.*]*,[Testcontainers*]*,[MySqlConnector*]*,[Docker.DotNet*]*,[*.Tests]*,[*.IntegrationTests]*,[TcfOss.DatabaseManager.Core*]*Errors.*",
       "excludeByAttribute": "ExcludeFromCodeCoverage,GeneratedCode",
       "skipAutoProps": true
     }

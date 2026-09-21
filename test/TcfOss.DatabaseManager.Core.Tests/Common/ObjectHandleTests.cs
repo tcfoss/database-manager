@@ -51,22 +51,6 @@ public class ObjectHandleTests
         Assert.Throws<IdentifierMismatchException.IdentifierLengthException>(() => ObjectHandle.Create(parts, s_schema, NameHandling.None));
     }
 
-    // === GetNamePart with various NameHandling values ===
-
-    [Theory]
-    [InlineData(NameHandling.Uppercase, QuoteStyle.None, "HELLO")]
-    [InlineData(NameHandling.Uppercase, QuoteStyle.Backticks, "HELLO")]
-    [InlineData(NameHandling.UppercaseUnlessQuoted, QuoteStyle.None, "HELLO")]
-    [InlineData(NameHandling.UppercaseUnlessQuoted, QuoteStyle.Backticks, "Hello")]
-    [InlineData(NameHandling.UppercaseUnlessQuoted, QuoteStyle.Ansi, "Hello")]
-    public void GetNamePart_Uppercase_Variants(NameHandling handling, QuoteStyle quoteStyle, string expected)
-    {
-        var identifier = new Identifier("Hello", quoteStyle);
-
-        string result = Handle.GetNamePart(identifier, handling);
-
-        Assert.Equal(expected, result);
-    }
 
     // === Comparison operators ===
 

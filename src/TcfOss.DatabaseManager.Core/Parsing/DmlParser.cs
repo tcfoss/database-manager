@@ -137,7 +137,7 @@ public class DmlParser
         return new SimpleSelectItem.UnnamedExpression(wildcardOrExpr);
     }
 
-    private static bool IsReservedForOutputAlias(Keyword? keyword)
+    private static bool IsReservedForOutputAlias(Keyword keyword)
     {
         return keyword switch
         {
