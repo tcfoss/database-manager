@@ -19,7 +19,7 @@ public partial class DefinitionFileLoader<TSchemaMapping> : IReadSchemaMapFiles
         _logger = logger;
         _deployScripts = [.. _config.Schemas.Values
                 .SelectMany(s => s.DeployScripts)
-                .Select(ds => ds.FilePath)];
+                .Select(ds => ds.FilePath.FullName)];
     }
 
     protected virtual IEnumerable<string> GetPathList(string rootDir)

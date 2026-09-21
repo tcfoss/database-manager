@@ -5,7 +5,7 @@ namespace TcfOss.DatabaseManager.Core.Configuration;
 public record DeployScript
 {
     public required DeployScriptType Type { get; init; }
-    public required string FilePath { get; set; }
-    public string FileName => Path.GetFileName(FilePath);
+    public required FileInfo FilePath { get; set; }
+    public string FileName => FilePath.Name;
     public string? UniqueId { get; set; }
 }

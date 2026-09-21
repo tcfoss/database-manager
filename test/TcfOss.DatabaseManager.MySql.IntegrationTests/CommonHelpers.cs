@@ -58,39 +58,39 @@ public static partial class CommonHelpers
 
     public static MyConfig GetLibrarySchemaConfig(this IDatabaseContainer container, string rootPath, bool includeScripts, bool includeRefactors, ushort port, SqlDialect dialect = SqlDialect.MariaDb, bool removeSlashesBeforeQuotesGenerationExpression = false, IReadEnvironmentVariables? environmentVariableReader = null, bool objectNamePrefixWithSchema = true)
     {
-        DeployScript[] catalogScripts = [];
-        DeployScript[] activityScripts = [];
+        ConfigParsing.DeployScript[] catalogScripts = [];
+        ConfigParsing.DeployScript[] activityScripts = [];
         string[] catalogRefactors = [];
         string[] activityRefactors = [];
         string[] activityExclusions = [];
         if (includeScripts)
         {
             catalogScripts = [
-                new DeployScript()
+                new ConfigParsing.DeployScript()
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreDeployment,
                     FilePath = "../Scripts/01_preserve_book_info.sql",
                     UniqueId = "00000000-0000-0000-0000-000000000010",
                 },
-                new DeployScript()
+                new ConfigParsing.DeployScript()
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreDeployment,
                     FilePath = "../Scripts/02_preserve_active_rental.sql",
                     UniqueId = "00000000-0000-0000-0000-000000000011",
                 },
-                new DeployScript()
+                new ConfigParsing.DeployScript()
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreAddConstraints,
                     FilePath = "../Scripts/03_populate_item_status.sql",
                     UniqueId = "00000000-0000-0000-0000-000000000012",
                 },
-                new DeployScript()
+                new ConfigParsing.DeployScript()
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreAddConstraints,
                     FilePath = "../Scripts/04_populate_acquisition.sql",
                     UniqueId = "00000000-0000-0000-0000-000000000013",
                 },
-                new DeployScript()
+                new ConfigParsing.DeployScript()
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreAddConstraints,
                     FilePath = "../Scripts/05_populate_item.sql",
@@ -98,7 +98,7 @@ public static partial class CommonHelpers
                 }
             ];
             activityScripts = [
-                new DeployScript()
+                new ConfigParsing.DeployScript()
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreDeployment,
                     FilePath = "Tables/misplaced_script.sql",
@@ -214,12 +214,12 @@ public static partial class CommonHelpers
 
     public static MyConfig GetSimpleSchemaConfig(this IDatabaseContainer container, string rootPath, ushort port, SqlDialect dialect)
     {
-        DeployScript[] deployScripts = [];
+        ConfigParsing.DeployScript[] deployScripts = [];
         if (File.Exists(Path.Combine(rootPath, "Scripts", "01_populate_nulltest_name.sql")))
         {
             deployScripts =
             [
-                new DeployScript
+                new ConfigParsing.DeployScript
                 {
                     Type = Core.DatabaseComms.DeployScriptType.PreSetNotNull,
                     FilePath = "../Scripts/01_populate_nulltest_name.sql",

@@ -72,8 +72,8 @@ public abstract class SimpleSchemaDifferFixture<TBuilderEntity, TContainerEntity
         {
             foreach (Core.Configuration.DeployScript deployScript in schema.DeployScripts)
             {
-                string bodyText = File.ReadAllText(deployScript.FilePath);
-                SqlValueList<Statement> statements = textParser.ParseText(bodyText, deployScript.FilePath);
+                string bodyText = File.ReadAllText(deployScript.FilePath.FullName);
+                SqlValueList<Statement> statements = textParser.ParseText(bodyText, deployScript.FilePath.FullName);
                 foreach (Statement statement in statements)
                 {
                     if (statement is IHaveBodyStatement haveBodyStatement)
@@ -86,7 +86,7 @@ public abstract class SimpleSchemaDifferFixture<TBuilderEntity, TContainerEntity
                     }
                 }
 
-                deployScripts.Add(new DeployScript(deployScript.Type, schema.SchemaName, deployScript.FileName, deployScript.FilePath, statements)
+                deployScripts.Add(new DeployScript(deployScript.Type, schema.SchemaName, deployScript.FileName, deployScript.FilePath.FullName, statements)
                 {
                     UniqueId = deployScript.UniqueId,
                     RawBodyText = bodyText,

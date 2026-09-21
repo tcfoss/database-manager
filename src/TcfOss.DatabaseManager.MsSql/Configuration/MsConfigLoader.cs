@@ -94,10 +94,11 @@ public class MsConfigLoader(ILogger logger)
 
         var schemaId = new SchemaIdentifier(rawSchema.SchemaName, catalogId, quoteStyle);
         string schemaRootPath = rawSchema.RootPath.GetAbsolutePath(projectDirectory);
+        DeployScript[] deployScripts = [];
 
         if (rawSchema.DeployScripts.SafeAny())
         {
-            rawSchema.DeployScripts = [.. ExpandDeployScripts(rawSchema.DeployScripts, schemaRootPath, schemaId)];
+            deployScripts = [.. ExpandDeployScripts(rawSchema.DeployScripts, schemaId, new DirectoryInfo(schemaRootPath), null)];
         }
 
         var schemaMapping = new MsSchemaMapping
@@ -108,7 +109,7 @@ public class MsConfigLoader(ILogger logger)
             ExcludeFilePatterns = rawSchema.ExcludeFilePatterns,
             ExcludeDatabaseObjectNames = rawSchema.ExcludeDatabaseObjectNames,
             Refactors = GetRefactors(schemaId, schemaRootPath, rawSchema.RefactorFiles, quoteStyle),
-            DeployScripts = rawSchema.DeployScripts,
+            DeployScripts = deployScripts,
         };
         return (schemaId, schemaMapping);
     }
