@@ -2,7 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-// using TcfOss.DatabaseManager.Core.Configuration.Parsing.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseComms;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
@@ -64,7 +63,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
             if (fullPath.Attributes.HasFlag(FileAttributes.Directory))
             {
-                expandedDeployScripts.AddRange(ExpandDeployScriptsFromDirectory(fullPath, schemaId, schemaRootPath, parentRootPath, uniqueId, scriptType));
+                expandedDeployScripts.AddRange(ExpandDeployScriptsFromDirectory(new DirectoryInfo(fullPath.FullName), schemaId, schemaRootPath, parentRootPath, uniqueId, scriptType));
             }
             else if (fullPath.Extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
                      fullPath.Extension.Equals(".yml", StringComparison.OrdinalIgnoreCase))
@@ -89,13 +88,9 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         return expandedDeployScripts;
     }
 
-    private List<DeployScript> ExpandDeployScriptsFromDirectory(FileInfo directoryPath, SchemaIdentifier schemaId, DirectoryInfo schemaRootDirectory, DirectoryInfo? parentRootDirectory, string? parentUniqueId, DeployScriptType? parentType)
+    private List<DeployScript> ExpandDeployScriptsFromDirectory(DirectoryInfo directoryPath, SchemaIdentifier schemaId, DirectoryInfo schemaRootDirectory, DirectoryInfo? parentRootDirectory, string? parentUniqueId, DeployScriptType? parentType)
     {
         s_logSearchingForDeployScriptsInDirectory(_logger, directoryPath);
-        if (!directoryPath.Attributes.HasFlag(FileAttributes.Directory))
-        {
-            throw new DirectoryNotFoundException($"Deploy script directory not found: {directoryPath.FullName}");
-        }
 
         return ExpandDeployScripts(
             Directory.EnumerateFiles(directoryPath.FullName, "*", SearchOption.AllDirectories)
@@ -116,10 +111,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         DirectoryInfo schemaRootDirectory, DirectoryInfo? parentRootDirectory, string? parentUniqueId, DeployScriptType? parentType)
     {
         s_logReadingDeployScriptFromYaml(_logger, yamlFile);
-        if (!yamlFile.Exists)
-        {
-            throw new FileNotFoundException($"YAML file '{yamlFile.FullName}' not found.", yamlFile.FullName);
-        }
+
         using var reader = new StreamReader(yamlFile.FullName);
         List<ConfigParsing.DeployScript> rawDeployScripts = Serialization.ParseConfig<List<ConfigParsing.DeployScript>>(reader, yamlFile.FullName);
         return ExpandDeployScripts(rawDeployScripts, schemaId, schemaRootDirectory, parentRootDirectory, parentUniqueId, parentType);
@@ -529,7 +521,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
     private static partial void s_logReadingDeployScriptFromYaml(ILogger logger, FileInfo filePath);
 
     [LoggerMessage(EventId = 6, Level = LogLevel.Information, Message = "Searching for deploy scripts in directory: {FilePath}")]
-    private static partial void s_logSearchingForDeployScriptsInDirectory(ILogger logger, FileInfo filePath);
+    private static partial void s_logSearchingForDeployScriptsInDirectory(ILogger logger, DirectoryInfo filePath);
 
 
     #endregion

@@ -40,9 +40,7 @@
 
     <!-- Common Testing Dependencies -->
     <ItemGroup>
-        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-        <PackageVersion Include="xunit.v3" Version="4.0.0" />
-        <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+        <PackageVersion Include="xunit.v3" Version="4.0.1" />
         <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
         <PackageVersion Include="FluentAssertions" Version="7.2.0" />
         <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />

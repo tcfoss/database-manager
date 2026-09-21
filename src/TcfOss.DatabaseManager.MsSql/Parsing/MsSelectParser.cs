@@ -17,7 +17,7 @@ public class MsSelectParser(Parser parser) : SelectParser(parser)
     /// Wraps the core alias predicate to also treat T-SQL DML continuation
     /// keywords (<c>OUTPUT</c>, <c>OPTION</c>) as reserved.
     /// </summary>
-    public override Identifier? ParseOptionalAlias(ParserState state, Func<Keyword?, bool> isReserved)
+    public override Identifier? ParseOptionalAlias(ParserState state, Func<Keyword, bool> isReserved)
     {
         return base.ParseOptionalAlias(state, k => IsTSqlReserved(k) || isReserved(k));
     }

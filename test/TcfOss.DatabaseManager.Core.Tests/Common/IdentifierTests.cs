@@ -20,7 +20,7 @@ public partial class IdentifierTests
 
     [Theory]
     [ClassData(typeof(ToSimpleIdentifierTestData))]
-    public void Test_To_Simple_Identifier(Identifier full, Identifier simple, QuoteStyle? quoteStyle)
+    public void To_Simple_Identifier(Identifier full, Identifier simple, QuoteStyle? quoteStyle)
     {
         // Act
         var result = full.ToSimpleIdentifier(quoteStyle);
@@ -73,7 +73,7 @@ public partial class IdentifierTests
 
     [Theory]
     [ClassData(typeof(FromObjectNameTestData))]
-    public void Test_From_Object_Name(ObjectName objectName, SchemaIdentifier? expectedSchema, ObjectIdentifier? expectedObject, ColumnIdentifier? expectedColumn, QuoteStyle? quoteStyle)
+    public void From_Object_Name(ObjectName objectName, SchemaIdentifier? expectedSchema, ObjectIdentifier? expectedObject, ColumnIdentifier? expectedColumn, QuoteStyle? quoteStyle)
     {
         if (expectedSchema != null)
         {
@@ -182,7 +182,7 @@ public partial class IdentifierTests
 
     [Theory]
     [ClassData(typeof(ToObjectNameTestData))]
-    public void Test_To_Object_Name(ObjectIdentifier objectIdentifier, ObjectName expectedObjectName, int depth)
+    public void To_Object_Name(ObjectIdentifier objectIdentifier, ObjectName expectedObjectName, int depth)
     {
         // Act
         var result = objectIdentifier.ToObjectName(depth);
@@ -194,7 +194,7 @@ public partial class IdentifierTests
     [Theory]
     [InlineData(0)]
     [InlineData(4)]
-    public void Test_To_Object_Name_Invalid_Depth_Throws(int depth)
+    public void To_Object_Name_Invalid_Depth_Throws(int depth)
     {
         // Act & Assert
         Assert.Throws<IdentifierMismatchException.IdentifierLengthException>(() => s_object.ToObjectName(depth));
@@ -236,7 +236,7 @@ public partial class IdentifierTests
 
     [Theory]
     [ClassData(typeof(ToSimpleStringTestData))]
-    public void Test_ToSimpleString(ObjectIdentifier objectIdentifier)
+    public void ToSimpleString(ObjectIdentifier objectIdentifier)
     {
         // Act
         var result = objectIdentifier.ToSimpleString();
@@ -277,11 +277,30 @@ public partial class IdentifierTests
     [InlineData(QuoteStyle.Backticks, ExtendedQuoteStyle.SingleQuote, ExtendedQuoteStyle.Backticks)]
     [InlineData(QuoteStyle.Brackets, ExtendedQuoteStyle.SingleQuote, ExtendedQuoteStyle.Brackets)]
     [InlineData(QuoteStyle.None, ExtendedQuoteStyle.SingleQuote, ExtendedQuoteStyle.None)]
-    public void Test_ExtendedIdentifier_WithQuoteStyle(QuoteStyle quoteStyle, ExtendedQuoteStyle initialQuoteStyle, ExtendedQuoteStyle expectedQuoteStyle)
+    public void ExtendedIdentifier_WithQuoteStyle(QuoteStyle quoteStyle, ExtendedQuoteStyle initialQuoteStyle, ExtendedQuoteStyle expectedQuoteStyle)
     {
         var actual = new ExtendedIdentifier("name", initialQuoteStyle).WithQuoteStyle(quoteStyle);
         var expected = new ExtendedIdentifier("name", expectedQuoteStyle);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(new[] { "mycat", "myschema", "mytable" }, QuoteStyle.Brackets, "[mycat].[myschema].[mytable]")]
+    [InlineData(new[] { "myschema", "mytable" }, QuoteStyle.Brackets, "[def].[myschema].[mytable]")]
+    [InlineData(new[] { "mytable" }, QuoteStyle.Brackets, "[def].[schema].[mytable]")]
+    public void ObjectIdentifier_FromStrings(IReadOnlyList<string> parts, QuoteStyle quoteStyle, string expected)
+    {
+        var objectName = ObjectIdentifier.FromStrings(parts, s_schema, quoteStyle);
+        Assert.Equal(expected, objectName.ToString());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    public void ObjectIdentifier_FromStrings_InvalidLengthThrows(int length)
+    {
+        var parts = Enumerable.Repeat("part", length).ToArray();
+        Assert.Throws<IdentifierMismatchException.IdentifierLengthException>(() => ObjectIdentifier.FromStrings(parts, s_schema, QuoteStyle.Brackets));
     }
 
     public class IdentifierSerializer : IXunitSerializer
