@@ -1,4 +1,4 @@
-name: Release
+name: Pull Request Merged
 
 on:
   pull_request:
@@ -14,6 +14,19 @@ on:
         default: false
 
 jobs:
+
+  resolve-work-items:
+    if: github.event.pull_request.merged == true
+    uses: tcfoss/github-actions/.github/workflows/resolve-pr-work-items.yml@v1
+    permissions:
+      contents: read
+    with:
+      pull-request-description: ${{ github.event.pull_request.body }}
+      api-url: ${{ vars.ISSUETRACKER_API_URL }}
+      target-status: Done
+    secrets:
+      issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
+
   parse-version:
     if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/') && github.base_ref == 'master')
     runs-on: ubuntu-latest
@@ -170,7 +183,7 @@ jobs:
             --skip-duplicate
 
   finalize-release:
-    needs: [parse-version, tag, publish-app, publish-dotnet]
+    needs: [parse-version, tag, publish-app, publish-dotnet, resolve-work-items]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,6 +201,8 @@ jobs:
           api-url: ${{ vars.ISSUETRACKER_API_URL }}
           version: ${{ needs.parse-version.outputs.version }}
           token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
+          status: Released
+          work-item-status: Released
           release-url: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.parse-version.outputs.version }}
 
       - name: Release notes

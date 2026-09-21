@@ -1,6 +1,6 @@
 using System.Text;
-using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Resources;
+using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.Errors;
 
@@ -18,10 +18,16 @@ public class ConfigurationException(string message, Exception? innerException = 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_MissingField);
     }
 
-    public class DeployScriptMissingType(DeployScript deployScript)
+    public class DeployScriptMissingType(ConfigParsing.DeployScript deployScript)
         : ConfigurationException(s_compositeFormat.Apply(deployScript))
     {
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_DeployScriptMissingType);
+    }
+
+    public class DeployScriptInvalidType(ConfigParsing.DeployScript deployScript)
+        : ConfigurationException(s_compositeFormat.Apply(deployScript))
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_DeployScriptInvalidType);
     }
 
     public class InvalidFieldTypeException(string fieldName, string expectedType)

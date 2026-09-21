@@ -76,8 +76,8 @@ public partial class MyDbDefinitionLoader(
                 {
                     continue;
                 }
-                string bodyText = await File.ReadAllTextAsync(deployScript.FilePath);
-                SqlValueList<Statement> statements = _tp.ParseText(bodyText, deployScript.FilePath);
+                string bodyText = await File.ReadAllTextAsync(deployScript.FilePath.FullName);
+                SqlValueList<Statement> statements = _tp.ParseText(bodyText, deployScript.FilePath.FullName);
                 foreach (Statement statement in statements)
                 {
                     if (statement is IHaveBodyStatement haveBodyStatement)
@@ -89,7 +89,7 @@ public partial class MyDbDefinitionLoader(
                         statement.Meta.RawText = SourceManager.GetText(bodyText, statement.Meta);
                     }
                 }
-                deployScripts.Add(new DeployScript(deployScript.Type, schema.SchemaName, deployScript.FileName, deployScript.FilePath, statements)
+                deployScripts.Add(new DeployScript(deployScript.Type, schema.SchemaName, deployScript.FileName, deployScript.FilePath.FullName, statements)
                 {
                     UniqueId = deployScript.UniqueId,
                     RawBodyText = bodyText

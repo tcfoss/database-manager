@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -42,41 +43,43 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         return schemaMappings;
     }
 
-    protected List<DeployScript> ExpandDeployScripts(IEnumerable<DeployScript> deployScripts, string schemaRootPath, SchemaIdentifier schemaId, string? parentUniqueId = null)
+    protected List<DeployScript> ExpandDeployScripts(IEnumerable<ConfigParsing.DeployScript> deployScripts, SchemaIdentifier schemaId, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath, string? parentUniqueId = null, DeployScriptType? parentType = null)
     {
         var expandedDeployScripts = new List<DeployScript>();
 
-        foreach (DeployScript deployScript in deployScripts)
+        foreach (ConfigParsing.DeployScript deployScript in deployScripts)
         {
-            deployScript.FilePath = deployScript.FilePath.GetAbsolutePath(schemaRootPath);
+            FileInfo fullPath = ExtractDeployScriptPath(deployScript.FilePath, schemaRootPath, parentRootPath ?? schemaRootPath, maybeDirectory: true);
+            string? uniqueId = null;
+            DeployScriptType? scriptType = ExtractDeployScriptType(deployScript, parentType, optional: true);
 
-            if (string.IsNullOrWhiteSpace(deployScript.UniqueId))
+            if (!string.IsNullOrWhiteSpace(deployScript.UniqueId))
             {
-                deployScript.UniqueId = parentUniqueId;
+                uniqueId = deployScript.UniqueId;
+            }
+            else if (!string.IsNullOrWhiteSpace(parentUniqueId))
+            {
+                uniqueId = parentUniqueId;
             }
 
-            if (Directory.Exists(deployScript.FilePath))
+            if (fullPath.Attributes.HasFlag(FileAttributes.Directory))
             {
-                List<DeployScript> expandedScripts = ExpandDeployScriptsFromDirectory(deployScript.FilePath, schemaRootPath, schemaId, deployScript);
-                expandedDeployScripts.AddRange(expandedScripts);
+                expandedDeployScripts.AddRange(ExpandDeployScriptsFromDirectory(fullPath, schemaId, schemaRootPath, parentRootPath, uniqueId, scriptType));
             }
-            else if (deployScript.FilePath.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) ||
-                     deployScript.FilePath.EndsWith(".yml", StringComparison.OrdinalIgnoreCase))
+            else if (fullPath.Extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.Extension.Equals(".yml", StringComparison.OrdinalIgnoreCase))
             {
-                List<DeployScript> expandedScripts = ExpandDeployScriptsFromYaml(deployScript.FilePath, schemaRootPath, schemaId, deployScript.UniqueId);
-                expandedDeployScripts.AddRange(expandedScripts);
+                expandedDeployScripts.AddRange(ExpandDeployScriptsFromYaml(fullPath, schemaId, schemaRootPath, parentRootPath, uniqueId, scriptType));
             }
-            else if (File.Exists(deployScript.FilePath) && deployScript.FilePath.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+            else if (fullPath.Extension.Equals(".sql", StringComparison.OrdinalIgnoreCase))
             {
-                if (!Enum.TryParse(deployScript.Type.ToString(), out DeployScriptType realType) || !Enum.IsDefined(realType))
+                DeployScriptType realType = ExtractDeployScriptType(deployScript, scriptType, false).Value;
+                expandedDeployScripts.Add(new DeployScript()
                 {
-                    throw new ConfigurationException.DeployScriptMissingType(deployScript);
-                }
-                expandedDeployScripts.Add(deployScript with { Type = realType });
-            }
-            else if (!File.Exists(deployScript.FilePath))
-            {
-                throw new FileNotFoundException($"Deploy script file not found: {deployScript.FilePath}");
+                    FilePath = fullPath,
+                    Type = realType,
+                    UniqueId = uniqueId,
+                });
             }
             else
             {
@@ -86,26 +89,92 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         return expandedDeployScripts;
     }
 
-    private List<DeployScript> ExpandDeployScriptsFromDirectory(string directoryPath, string schemaRootPath, SchemaIdentifier schemaId, DeployScript deployScript)
+    private List<DeployScript> ExpandDeployScriptsFromDirectory(FileInfo directoryPath, SchemaIdentifier schemaId, DirectoryInfo schemaRootDirectory, DirectoryInfo? parentRootDirectory, string? parentUniqueId, DeployScriptType? parentType)
     {
-        List<DeployScript> deployScripts = ExpandDeployScripts(
-            Directory.EnumerateFiles(directoryPath, "*", SearchOption.AllDirectories)
-            .OrderBy(subFile => subFile)
-            .Select(subFile => new DeployScript
-            {
-                Type = deployScript.Type,
-                FilePath = subFile,
-                UniqueId = deployScript.UniqueId
-            }), schemaRootPath, schemaId);
+        s_logSearchingForDeployScriptsInDirectory(_logger, directoryPath);
+        if (!directoryPath.Attributes.HasFlag(FileAttributes.Directory))
+        {
+            throw new DirectoryNotFoundException($"Deploy script directory not found: {directoryPath.FullName}");
+        }
 
-        return deployScripts;
+        return ExpandDeployScripts(
+            Directory.EnumerateFiles(directoryPath.FullName, "*", SearchOption.AllDirectories)
+            .OrderBy(subFile => subFile)
+            .Select(subFile => new ConfigParsing.DeployScript
+            {
+                FilePath = subFile,
+            }),
+            schemaId,
+            schemaRootDirectory,
+            parentRootDirectory,
+            parentUniqueId,
+            parentType
+        );
     }
 
-    private List<DeployScript> ExpandDeployScriptsFromYaml(string yamlPath, string schemaRootPath, SchemaIdentifier schemaId, string? parentUniqueId = null)
+    private List<DeployScript> ExpandDeployScriptsFromYaml(FileInfo yamlFile, SchemaIdentifier schemaId,
+        DirectoryInfo schemaRootDirectory, DirectoryInfo? parentRootDirectory, string? parentUniqueId, DeployScriptType? parentType)
     {
-        using var reader = new StreamReader(yamlPath);
-        List<DeployScript> rawDeployScripts = Serialization.ParseConfig<List<DeployScript>>(reader, yamlPath);
-        return ExpandDeployScripts(rawDeployScripts, schemaRootPath, schemaId, parentUniqueId);
+        s_logReadingDeployScriptFromYaml(_logger, yamlFile);
+        if (!yamlFile.Exists)
+        {
+            throw new FileNotFoundException($"YAML file '{yamlFile.FullName}' not found.", yamlFile.FullName);
+        }
+        using var reader = new StreamReader(yamlFile.FullName);
+        List<ConfigParsing.DeployScript> rawDeployScripts = Serialization.ParseConfig<List<ConfigParsing.DeployScript>>(reader, yamlFile.FullName);
+        return ExpandDeployScripts(rawDeployScripts, schemaId, schemaRootDirectory, parentRootDirectory, parentUniqueId, parentType);
+    }
+
+    private static DeployScriptType? ExtractDeployScriptType(ConfigParsing.DeployScript deployScript, DeployScriptType? parentType, [DoesNotReturnIf(false)] bool optional)
+    {
+        if (deployScript.Type.HasValue)
+        {
+            if (Enum.TryParse(deployScript.Type.Value.ToString(), out DeployScriptType parsedType) && Enum.IsDefined(parsedType))
+            {
+                return parsedType;
+            }
+            throw new ConfigurationException.DeployScriptInvalidType(deployScript);
+        }
+        if (parentType.HasValue)
+        {
+            return parentType.Value;
+        }
+        if (optional)
+        {
+            return null;
+        }
+        throw new ConfigurationException.DeployScriptMissingType(deployScript);
+    }
+
+    private static FileInfo ExtractDeployScriptPath(string filePath, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath = null, bool maybeDirectory = false)
+    {
+        FileInfo fileInfo;
+        if (Path.IsPathRooted(filePath))
+        {
+            fileInfo = new FileInfo(filePath);
+            if (Exists(fileInfo))
+            {
+                return fileInfo;
+            }
+        }
+
+        if (parentRootPath != null)
+        {
+            fileInfo = new FileInfo(Path.Combine(parentRootPath.FullName, filePath));
+            if (Exists(fileInfo))
+            {
+                return fileInfo;
+            }
+        }
+        fileInfo = new FileInfo(Path.Combine(schemaRootPath.FullName, filePath));
+        if (Exists(fileInfo))
+        {
+            return fileInfo;
+        }
+
+        throw new FileNotFoundException($"Deploy script file '{filePath}' not found in schema root or parent root.", filePath);
+
+        bool Exists(FileInfo fileToCheck) => fileToCheck.Exists || (maybeDirectory && fileToCheck.Attributes.HasFlag(FileAttributes.Directory) && Directory.Exists(fileToCheck.FullName));
     }
 
     protected Refactor[] GetRefactors(SchemaIdentifier schemaId, string schemaRootPath, IReadOnlyCollection<string>? refactorFiles, QuoteStyle quoteStyle)
@@ -455,6 +524,13 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Skipping unsupported deploy script file type: {FilePath}")]
     private static partial void s_logSkippingNonSqlDeployScript(ILogger logger, string filePath, Exception? ex);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "Reading deploy script from yaml: {FilePath}")]
+    private static partial void s_logReadingDeployScriptFromYaml(ILogger logger, FileInfo filePath);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Information, Message = "Searching for deploy scripts in directory: {FilePath}")]
+    private static partial void s_logSearchingForDeployScriptsInDirectory(ILogger logger, FileInfo filePath);
+
 
     #endregion
 }

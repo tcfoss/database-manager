@@ -43,7 +43,10 @@
         <value>The configuration is missing the required field '{0}'.</value>
     </data>
     <data name="Err_Conf_DeployScriptMissingType" xml:space="preserve">
-        <value>The Type field on DeployScript entry {0} is missing or invalid. It should be one of {{ PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }}.</value>
+        <value>The Type field on DeployScript entry {0} could not be determined. It should be one of {{ PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }}.</value>
+    </data>
+    <data name="Err_Conf_DeployScriptInvalidType" xml:space="preserve">
+        <value>The Type field on DeployScript entry {0} is invalid. It should be one of {{ PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }}.</value>
     </data>
     <data name="Err_Conf_InvalidFieldType" xml:space="preserve">
         <value>The field '{0}' in the configuration file has an invalid type. Expected type: '{1}'.</value>
