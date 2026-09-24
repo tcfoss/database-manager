@@ -175,21 +175,8 @@ jobs:
       - id: today
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
 
-  get-work-items-to-resolve:
-    needs: [today, validate-work-items]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      work-item-ids: ${{ steps.work-items.outputs.work-item-ids }}
-    steps:
-      - id: work-items
-        uses: tcfoss/github-actions/.github/actions/issuetracker-work-items-from-pr-description@v1
-        with:
-          description: ${{ github.event.pull_request.body }}
-
   validate-release:
-    needs: [today, validate-work-items, get-work-items-to-resolve]
+    needs: [today, validate-work-items]
     if: startsWith(github.head_ref, 'release/')
     uses: tcfoss/github-actions/.github/workflows/validate-release.yml@v1
     permissions:
@@ -200,7 +187,7 @@ jobs:
       api-url: ${{ vars.ISSUETRACKER_API_URL }}
       status: Released
       work-item-status: Released
-      work-items-to-be-resolved: ${{ needs.get-work-items-to-resolve.outputs.work-item-ids }}
+      work-items-to-be-resolved: ${{ needs.validate-work-items.outputs.work-item-ids }}
       release-date: ${{ needs.today.outputs.date }}
     secrets:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
