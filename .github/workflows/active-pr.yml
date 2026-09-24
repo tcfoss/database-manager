@@ -175,8 +175,16 @@ jobs:
       - id: today
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
 
-  validate-release:
+  get-work-items-to-resolve:
     needs: [today, validate-work-items]
+    uses: tcfoss/github-actions/.github/actions/issuetracker-work-items-from-pr-description@v1
+    permissions:
+      contents: read
+    with:
+      description: ${{ github.event.pull_request.body }}
+
+  validate-release:
+    needs: [today, validate-work-items, get-work-items-to-resolve]
     if: startsWith(github.head_ref, 'release/')
     uses: tcfoss/github-actions/.github/workflows/validate-release.yml@v1
     permissions:
@@ -187,6 +195,7 @@ jobs:
       api-url: ${{ vars.ISSUETRACKER_API_URL }}
       status: Released
       work-item-status: Released
+      work-items-to-be-closed: ${{ needs.get-work-items-to-resolve.outputs.work-item-ids }}
       release-date: ${{ needs.today.outputs.date }}
     secrets:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}

@@ -235,7 +235,9 @@ public static partial class Serialization
             .WithTypeConverter(new YamlStringEnumConverter<IndexMethod>())
             .WithTypeConverter(new YamlStringEnumConverter<MySqlNumericAttribute>())
             .WithTypeConverter(new YamlCatalogIdentifierConverter())
-            .WithTypeConverter(new YamlSchemaIdentifierConverter());
+            .WithTypeConverter(new YamlSchemaIdentifierConverter())
+            .WithTypeConverter(new YamlFileInfoConverter())
+            .DisableAliases();
         ISerializer serializer = serializerBuilder.Build();
         return serializer.Serialize(obj);
     }
