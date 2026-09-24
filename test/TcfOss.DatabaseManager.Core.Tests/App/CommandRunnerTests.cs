@@ -17,7 +17,7 @@ public class CommandRunnerTests
     public void ParseDefinitionThrows()
     {
         var config = GetConfig();
-        var (writer, formatter) = GetFileWriterAndFormatter(config);
+        (FileWriter writer, SqlFormatter<ConfigBase> formatter) = GetFileWriterAndFormatter(config);
         var runner = new CommandRunner<ConfigBase>(config, writer, formatter);
 
         Assert.Throws<CommandException.SpecificDialectRequired>(() =>
@@ -30,7 +30,7 @@ public class CommandRunnerTests
     public async Task DownloadSchemaThrows()
     {
         var config = GetConfig();
-        var (writer, formatter) = GetFileWriterAndFormatter(config);
+        (FileWriter writer, SqlFormatter<ConfigBase> formatter) = GetFileWriterAndFormatter(config);
         var runner = new CommandRunner<ConfigBase>(config, writer, formatter);
 
         await Assert.ThrowsAsync<CommandException.SpecificDialectRequired>(async () =>
@@ -43,7 +43,7 @@ public class CommandRunnerTests
     public async Task ComputeChangesThrows()
     {
         var config = GetConfig();
-        var (writer, formatter) = GetFileWriterAndFormatter(config);
+        (FileWriter writer, SqlFormatter<ConfigBase> formatter) = GetFileWriterAndFormatter(config);
         var runner = new CommandRunner<ConfigBase>(config, writer, formatter);
 
         await Assert.ThrowsAsync<CommandException.SpecificDialectRequired>(async () =>

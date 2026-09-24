@@ -62,8 +62,10 @@ public class CommandRunner<T>(T config, IWriteFiles fileWriter, IFormatSqlFiles 
             string configJson = Serialization.ToYaml(Config);
             output.WriteLine(configJson);
         }
-        output.WriteLine();
-        output.WriteLine($"Database connection available: {Config.DatabaseAvailable}");
+        else
+        {
+            output.WriteLine($"Database connection available: {Config.DatabaseAvailable}");
+        }
     }
 
     protected virtual FileParser CreateFileParser()

@@ -1093,9 +1093,69 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         Assert.Contains($"SignedIntWidth: {DefaultIntWidth}", actual);
         Assert.Contains("AllowNamedColumnDefault: false", actual);
         Assert.Contains($"CharacterSet: {DefaultCharset}", actual);
+        Assert.Contains("AllowUniqueOnColumn: true", actual);
 
-        Assert.Contains($"Database connection available: {ConnectionAvailable}", actual);
+        Assert.DoesNotContain($"Database connection available: {ConnectionAvailable}", actual);
     }
+
+    [Fact]
+    public void ValidateConfig_Success_PrintConfig_WithDeployScript()
+    {
+        var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test1").FullName);
+
+        UpdateConfiguration(fileFixture.RootDirectory.FullName);
+
+        var cli = new CommandLineInterface();
+        var writer = new StringWriter();
+        cli.Out = writer;
+        var result = cli.Run([
+            "--working-dir",
+            fileFixture.RootDirectory.FullName,
+            "validate-config",
+            "--print-config"
+        ]);
+
+        Assert.Equal(0, result);
+
+        var actual = writer.ToString().Trim();
+        Assert.Contains(fileFixture.CombinePath("Scripts", "01_preserve_book_info.sql"), actual);
+        Assert.Contains(fileFixture.CombinePath("Scripts", "02_preserve_active_rental.sql"), actual);
+        Assert.Contains(fileFixture.CombinePath("LibraryActivity", "Tables", "misplaced_script.sql"), actual);
+    }
+
+    [Fact]
+    public void ValidateConfig_Success_Print_Strict_NoUniqueOnColumn()
+    {
+        var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
+
+        UpdateConfiguration(fileFixture.RootDirectory.FullName);
+
+        var cli = new CommandLineInterface();
+        var writer = new StringWriter();
+        cli.Out = writer;
+        var result = cli.Run([
+            "--working-dir",
+            fileFixture.RootDirectory.FullName,
+            "validate-config",
+            "--print-config",
+            "--strict"
+        ]);
+
+        Assert.Equal(0, result);
+
+        var actual = writer.ToString().Trim();
+        Assert.Contains($"Dialect: {Dialect}", actual);
+        Assert.Contains("FunctionDataRelation: CONTAINS SQL", actual);
+        Assert.Contains($"SignedIntWidth: {DefaultIntWidth}", actual);
+        Assert.Contains("AllowNamedColumnDefault: false", actual);
+        Assert.Contains($"CharacterSet: {DefaultCharset}", actual);
+        Assert.Contains("AllowUniqueOnColumn: false", actual);
+
+        Assert.DoesNotContain($"Database connection available: {ConnectionAvailable}", actual);
+    }
+
 
     [Fact]
     public async Task ValidateConfig_Error_InvalidEnum()

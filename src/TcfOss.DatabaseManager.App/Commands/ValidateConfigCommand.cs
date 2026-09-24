@@ -20,6 +20,12 @@ public class ValidateConfigCommand(Action<ILogger>? loggerCallback = null, Actio
         DefaultValueFactory = _ => false
     };
 
+    private static readonly Option<bool> s_strictOption = new("--strict", "-s")
+    {
+        Description = "Validate the configuration assuming strict mode will be enabled.",
+        Required = false,
+    };
+
     protected override IEnumerable<Argument> Arguments => [];
 
     protected override IEnumerable<Option> Options
@@ -27,10 +33,11 @@ public class ValidateConfigCommand(Action<ILogger>? loggerCallback = null, Actio
         get
         {
             yield return s_printConfigOption;
+            yield return s_strictOption;
         }
     }
 
-    protected override bool GetRelaxed(ParseResult parseResult) => true;
+    protected override bool GetRelaxed(ParseResult parseResult) => !parseResult.GetValue(s_strictOption);
 
     protected override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
     {

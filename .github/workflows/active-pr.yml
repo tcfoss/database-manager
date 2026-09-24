@@ -2,7 +2,7 @@ name: Active Pull Request
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled]
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited]
 
 jobs:
 
@@ -187,6 +187,7 @@ jobs:
       api-url: ${{ vars.ISSUETRACKER_API_URL }}
       status: Released
       work-item-status: Released
+      work-items-to-be-resolved: ${{ needs.validate-work-items.outputs.work-item-ids }}
       release-date: ${{ needs.today.outputs.date }}
     secrets:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
