@@ -41,36 +41,15 @@ jobs:
 
   tag:
     needs: parse-version
-    runs-on: ubuntu-latest
+    uses: tcfoss/github-actions/.github/workflows/tag-release.yml@v1
     permissions:
       contents: write
-    steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ secrets.TAGGER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.TAGGER_APP_PRIVATE_KEY }}
-
-      - uses: actions/checkout@v6
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          fetch-depth: 0
-
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Tag release
-        run: |
-          version="v${{ needs.parse-version.outputs.version }}"
-          if [[ "${{ inputs.force-retag }}" == "true" ]]; then
-            git push origin ":refs/tags/$version" || true
-            git tag -d "$version" 2>/dev/null || true
-          fi
-          git tag -a "$version" -m "Release $version"
-          git push origin "$version"
+    with:
+      version: ${{ needs.parse-version.outputs.version }}
+      force-retag: ${{ inputs.force-retag == true }}
+    secrets:
+      TAGGER_APP_CLIENT_ID: ${{ secrets.TAGGER_APP_CLIENT_ID }}
+      TAGGER_APP_PRIVATE_KEY: ${{ secrets.TAGGER_APP_PRIVATE_KEY }}
 
   publish-app:
     needs: [parse-version, tag]
@@ -184,38 +163,21 @@ jobs:
 
   finalize-release:
     needs: [parse-version, tag, publish-app, publish-dotnet, resolve-work-items]
-    runs-on: ubuntu-latest
+    # resolve-work-items is skipped on workflow_dispatch
+    if: >
+      !cancelled() &&
+      needs.publish-app.result == 'success' &&
+      needs.publish-dotnet.result == 'success' &&
+      (needs.resolve-work-items.result == 'success' || needs.resolve-work-items.result == 'skipped')
+    uses: tcfoss/github-actions/.github/workflows/finalize-release.yml@v1
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Download CLI binaries artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: cli-binaries
-
-      - name: Resolve release
-        uses: tcfoss/github-actions/.github/actions/issuetracker-resolve@v1
-        with:
-          api-url: ${{ vars.ISSUETRACKER_API_URL }}
-          version: ${{ needs.parse-version.outputs.version }}
-          token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
-          status: Released
-          work-item-status: Released
-          release-url: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.parse-version.outputs.version }}
-
-      - name: Release notes
-        id: notes
-        uses: tcfoss/github-actions/.github/actions/issuetracker-notes@v1
-        with:
-          api-url: ${{ vars.ISSUETRACKER_API_URL }}
-          version: ${{ needs.parse-version.outputs.version }}
-          token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
-
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ needs.parse-version.outputs.version }}
-          body_path: ${{ steps.notes.outputs.notes-file }}
-          files: database-manager-*.tar.gz
+    with:
+      version: ${{ needs.parse-version.outputs.version }}
+      api-url: ${{ vars.ISSUETRACKER_API_URL }}
+      release-status: Released
+      work-item-status: Released
+      artifact-name: cli-binaries
+      files: database-manager-*.tar.gz
+    secrets:
+      issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
