@@ -21,6 +21,14 @@ jobs:
 
   lint:
     name: Lint
+    uses: tcfoss/github-actions/.github/workflows/dotnet-lint.yml@v1
+    permissions:
+      contents: read
+    with:
+      solution: DatabaseManager.slnx
+
+  lint-dbman-dev:
+    name: Lint dbman-dev
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,84 +36,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v5
+      - uses: tcfoss/github-actions/.github/actions/setup-poetry@v1
         with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore DatabaseManager.slnx
-
-      - name: Lint C#
-        run: dotnet format DatabaseManager.slnx --verify-no-changes --severity info --no-restore
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Poetry
-        run: pipx install poetry
+          working-directory: tools/dbman-dev
+          install-args: --no-root
 
       - name: Lint dbman-dev (mypy)
-        run: |
-          cd tools/dbman-dev
-          poetry install --no-root
-          poetry run mypy ./src
+        working-directory: tools/dbman-dev
+        run: poetry run mypy ./src
 
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    uses: tcfoss/github-actions/.github/workflows/dotnet-test.yml@v1
     permissions:
       contents: read
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore solutions/UnitTests.slnx
-
-      - name: Build
-        run: dotnet build solutions/UnitTests.slnx --no-restore --configuration Release
-
-      - name: Test
-        run: |
-          dotnet test solutions/UnitTests.slnx \
-            --no-build \
-            --configuration Release \
-            --results-directory TestResults
-
-      - name: Normalize coverage reports
-        run: |
-          mkdir -p CoverageResults
-          shopt -s globstar nullglob
-          files=(TestResults/**/*.cobertura.*.xml)
-          if (( ${#files[@]} == 0 )); then
-            echo "::error::No coverage reports found in TestResults"
-            exit 1
-          fi
-
-          index=0
-          for file in "${files[@]}"; do
-            index=$((index + 1))
-            cp "$file" "CoverageResults/coverage-unit-${index}.cobertura.xml"
-          done
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-unit
-          path: CoverageResults/*.cobertura.xml
+    with:
+      solution: solutions/UnitTests.slnx
+      project: solutions/UnitTests.slnx
+      name: unit
 
   integration-tests:
     name: Integration Test (${{ matrix.name }})
     if: >
       startsWith(github.head_ref, 'release/') ||
       contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -120,52 +74,14 @@ jobs:
             project: test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj
           - name: App
             project: test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj
+    uses: tcfoss/github-actions/.github/workflows/dotnet-test.yml@v1
     permissions:
       contents: read
-    env:
-      TESTCONTAINERS_RYUK_DISABLED: "true"
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore DatabaseManager.slnx
-
-      - name: Build
-        run: dotnet build DatabaseManager.slnx --no-restore --configuration Release
-
-      - name: Test
-        run: |
-          dotnet test "${{ matrix.project }}" \
-            --no-build \
-            --configuration Release \
-            --results-directory TestResults
-
-      - name: Normalize coverage reports
-        run: |
-          mkdir -p CoverageResults
-          shopt -s globstar nullglob
-          files=(TestResults/**/*.cobertura.*.xml)
-          if (( ${#files[@]} == 0 )); then
-            echo "::error::No coverage reports found in TestResults"
-            exit 1
-          fi
-
-          index=0
-          for file in "${files[@]}"; do
-            index=$((index + 1))
-            cp "$file" "CoverageResults/coverage-${{ matrix.name }}-${index}.cobertura.xml"
-          done
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-integration-${{ matrix.name }}
-          path: CoverageResults/*.cobertura.xml
+    with:
+      solution: DatabaseManager.slnx
+      project: ${{ matrix.project }}
+      name: integration-${{ matrix.name }}
+      integration: true
 
   today:
     runs-on: ubuntu-latest
