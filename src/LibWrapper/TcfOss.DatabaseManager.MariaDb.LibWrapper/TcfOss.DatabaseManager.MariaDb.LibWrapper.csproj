@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <Description>Convenience startup, configuration loading, logging, and dependency-injection setup for the DatabaseManager MariaDB provider.</Description>
+    <PackageTags>database;sql;mariadb;database-management;dependency-injection;hosting</PackageTags>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

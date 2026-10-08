@@ -21,9 +21,10 @@ __pycache__/
 build/
 dist/
 .venv/
+/site/
 
 BuildInfo.cs
 
-
+*.sln.DotSettings.user
 
 traces/

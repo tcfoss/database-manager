@@ -60,6 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: refs/tags/v${{ needs.parse-version.outputs.version }}
           fetch-depth: 0
 
       - name: Fetch tags
@@ -104,6 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: refs/tags/v${{ needs.parse-version.outputs.version }}
           fetch-depth: 0
 
       - name: Fetch tags
@@ -139,6 +141,11 @@ jobs:
               --configuration Release \
               -p:PackageVersion="$version" \
               --output ./nupkg
+            package_name="$(basename "$proj" .csproj)"
+            if [[ ! -f "./nupkg/${package_name}.${version}.snupkg" ]]; then
+              echo "::error::Missing symbol package for ${package_name} ${version}"
+              exit 1
+            fi
           done
 
       - name: Push to GitHub Packages
@@ -146,6 +153,7 @@ jobs:
           dotnet nuget push ./nupkg/*.nupkg \
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --no-symbols \
             --skip-duplicate
 
       - name: NuGet login (OIDC -> temp API key)
@@ -159,7 +167,88 @@ jobs:
           dotnet nuget push ./nupkg/*.nupkg \
             --source "https://api.nuget.org/v3/index.json" \
             --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --no-symbols \
             --skip-duplicate
+
+      - name: Push symbols to NuGet.org
+        run: |
+          dotnet nuget push ./nupkg/*.snupkg \
+            --source "https://api.nuget.org/v3/index.json" \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --skip-duplicate
+
+  build-docs:
+    name: Build Release Documentation
+    needs: [parse-version, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/v${{ needs.parse-version.outputs.version }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-docs.txt
+
+      - name: Build and validate documentation
+        run: mkdocs build --strict
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy-docs:
+    name: Deploy Latest Release Documentation
+    needs: [parse-version, build-docs, finalize-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check release is the latest stable version
+        id: latest
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: v${{ needs.parse-version.outputs.version }}
+        with:
+          script: |
+            const { isLatestStableRelease } = require('./.github/scripts/docs-release.cjs');
+            const releaseTag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              ...context.repo,
+              per_page: 100
+            });
+            const deploy = isLatestStableRelease(releaseTag, releases);
+            core.setOutput('deploy', String(deploy));
+            if (!deploy) {
+              core.info(`Skipping Pages deployment: ${releaseTag} is not the latest stable release.`);
+            }
+
+      - name: Configure GitHub Pages
+        if: steps.latest.outputs.deploy == 'true'
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        if: steps.latest.outputs.deploy == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v5
 
   finalize-release:
     needs: [parse-version, tag, publish-app, publish-dotnet, resolve-work-items]

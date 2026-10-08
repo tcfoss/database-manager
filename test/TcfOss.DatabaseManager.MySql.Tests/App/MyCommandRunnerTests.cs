@@ -106,7 +106,7 @@ public class MyCommandRunnerTests
             fsLoader,
             new MyDownloadSchema(config, factory.CreateLogger<MyDownloadSchema>(), dbLoader),
             writer,
-            new MyChangeComputer(config, writer, AppServiceProvider.ScopeFactory, dbLoader, dbLoader, factory.CreateLogger<MyChangeComputer>()),
+            new MyChangeComputer(config, writer, dbLoader, fsLoader, dbLoader, dbLoader, factory.CreateLogger<MyChangeComputer>()),
             new SourceManager(),
             factory.CreateLogger<MyCommandRunner>());
     }

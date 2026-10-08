@@ -8,13 +8,18 @@ This page lists the constructs that are deliberately not supported. If your
 definition uses one of them, DatabaseManager will surface a `Definition Error`
 pointing to the offending statement.
 
+These rules describe MySQL/MariaDB definition building. Dialect-specific rules
+such as `DEFINER`, events, trigger ordering, and character sets do not describe
+SQL Server syntax. SQL Server definition building and migration generation are
+not implemented yet.
+
 ## Tables
 
 ### Column-level PRIMARY KEY, UNIQUE, and CHECK constraints are not allowed
 
 Constraints must be declared at the table level so that they can be named and
 referenced explicitly. Writing `PRIMARY KEY`, `UNIQUE`, or `CHECK (...)` as
-part of a column definition is rejected — move the constraint into a separate
+part of a column definition is rejected—move the constraint into a separate
 table-level clause instead.
 
 ```sql
@@ -95,7 +100,7 @@ Stored programs must declare `DEFINER = '<user>'@'<host>'` explicitly. Omitting
 the clause causes the RDBMS to record the connecting user, which is not
 reproducible.
 
-A default value can be specified in the [configuration file](./ConfigurationFile.md).
+A default value can be specified in the [configuration file](./configuration.md).
 If values are provided in the configuration, `DEFINER` must be explicitly provided
 only in routines where the value should differ from the default.
 
@@ -133,11 +138,11 @@ A foreign key's referencing columns must be covered by an index that is
 declared explicitly in the table definition. DatabaseManager will not rely
 on the engine's automatic backing-index behavior for two reasons:
 
-1. **The auto-created index is a separate database object.** In MySQL and
+1. **The auto-created index is a separate table component.** In MySQL and
    MariaDB the foreign key constraint and its backing index (conceptually,
-   at least) different entities. The name the engine gives the auto-created
+  at least) are different entities. The name the engine gives the auto-created
    index is not documented and therefore cannot be relied on to remain
-   stable across versions. It would be unclear how to map an indexes when
+  stable across versions. It would be unclear how to map indexes when
    they are created implicitly.
 
 2. **Dropping a foreign key would silently drop an index.** If the index

@@ -1,6 +1,14 @@
+---
+description: Basic usage guide for DatabaseManager.
+---
+
 # DatabaseManager Basic Usage
 
-<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
+MySQL and MariaDB support database-definition comparison and script generation.
+The SQL Server provider currently supports parsing and formatting; definition
+loading, schema download, and migration generation are not yet implemented.
+
+
 
 DatabaseManager lets you specify a database definition in version-controlled
 files and use those files to update a live RDBMS.
@@ -11,48 +19,48 @@ files and use those files to update a live RDBMS.
 There are many programs for managing database data, and they all use terms
 somewhat differently. For the purposes of DatabaseManager, I try to pick terms
 that can be used _consistently_, even if those terms might be "wrong" in the
-contects of one application/dialect or another.
+context of one application/dialect or another.
 
 Here is what is meant throughout this documentation (and the application)
 by various terms:
 
 RDBMS (Relational Database Management System)
-: The database server installed and running on some computer. You can make a connection
+
+:   The database server installed and running on some computer. You can make a connection
 to an RDBMS and run queries against it.
 
 Catalog
-: A **catalog** is the highest hierarchical level of data organization within an RDBMS.
-: This corresponds to a "database" in PostgreSQL and Microsoft SQL Server. (PostgreSQL
-also uses the term "catalog" as we're using it here.) Currently, a MySQL or MariaDB
-installation only permits _one_ catalog.
+
+:   A **catalog** is the highest hierarchical level of data organization within an RDBMS.
+
+    This corresponds to a "database" in PostgreSQL and Microsoft SQL Server. (PostgreSQL also uses the term "catalog" as we're using it here.) Currently, a MySQL or MariaDB installation only permits _one_ catalog, and it's always named `def`.
 
 Schema
-: A **schema** is the next level of hierarchical organization after a Catalog.
-: PostgreSQL and Microsoft SQL Server use the term in the same way. MySQL and
-MariaDB also do, but it is more common for them to refer to it as a "database".
+:   A **schema** is the next level of hierarchical organization after a Catalog.
+
+    PostgreSQL and Microsoft SQL Server use the term in the same way. MySQL and MariaDB also do, but it is more common for them to refer to it as a "database".
 
 Object
-: An **object**, or **database object** is a top-level member of a Schema.
-: Objects include tables, views, stored procedures, stored functions, and triggers.
-In MySQL/MariaDB, events are also objects.
-: Even though some RDBMSs treat indexes as top-level members, DatabaseManager
-will not — an index remains a child of a table (or, in some RDBMSs, a view).
+:   An **object**, or **database object** is a top-level member of a Schema.
+
+    Objects include tables, views, stored procedures, stored functions, and triggers. In MySQL/MariaDB, events are also objects.
+
+    Even though some RDBMSs treat indexes as top-level members, DatabaseManager will not—an index remains a child of a table (or, in some RDBMSs, a view).
 
 Database Definition
-: A **database definition** (or sometimes just **definition**) is the complete set
-of database objects, grouped into schemas, under a catalog. It's a complete
-specification of the structure of the catalog.
-: In the context of the `compute-changes` command (coming soon), there are two
-database definitions of note:
+:   A **database definition** (or sometimes just **definition**) is the complete set of database objects, grouped into schemas, under a catalog. It's a complete specification of the structure of the catalog.
 
-1. The database definition specified by a set of files on your filesystem.
-2. The database definition already active on your installed RDBMS.
+    In the context of the `compute-changes` command, there are two database definitions of note:
 
-The purpose of `compute-changes` is to generate a sequence of statements
-that will bring definition (2) into line with definition (1).
+    1. The database definition specified by a set of files on your filesystem.
+    2. The database definition already active on your installed RDBMS.
+
+    The purpose of `compute-changes` is to generate a sequence of statements that will bring definition (2) into line with definition (1).
 
 
 ## The `compute-changes` Command
+
+This command is the reason this project exists.
 
 | Asset               | Required |
 | ------------------- | :------: |
@@ -78,6 +86,10 @@ If `output_path` is omitted, it defaults to `changes.sql`.
 
 The `--file-exists-action` flag determines what happens if `output_path` already
 exists. The default action is `rename`.
+
+!!! warning
+
+    Until this project matures, you should carefully review the generated SQL script before executing it.
 
 When this project is more mature, an additional command may be added so that it
 actually **executes** those statements, but I don't think it would be wise to
@@ -154,7 +166,7 @@ you can specify the path at the command line:
 dbman { --config | -c } config_file_path subcommand [options...]
 ```
 
-The structure of the configuration file is described [here](./ConfigurationFile.md).
+The structure of the configuration file is described [here](./configuration.md).
 
 
 ## Other Commands
@@ -171,10 +183,10 @@ The `download-schema` command inspects the RDBMS and constructs a database
 definition from it. It then saves files on your computer to represent that
 definition.
 
-It does not accept any arguments, so the invocation is simply
+It does not accept any arguments (other than the global `--config config_file_path`), so the invocation is simply
 
 ```sh
-database-manager download-schema
+dbman download-schema
 ```
 
 ### The `parse-files` Command

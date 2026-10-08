@@ -1,14 +1,14 @@
 # Deploy Scripts
 
 Each schema mapping can specify one or more scripts to run at various points in the
-deployment (for now, that means their text is insert into the database update script).
+deployment (for now, that means their text is inserted into the generated update script).
 
 ## Basic Syntax
 
 The basic syntax for specifying a deploy script under a schema mapping in the configuration
 file is
 
-```yaml
+```text
 Type: { PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment } # Required*
 FilePath: <path to script, relative to schema root> # Required
 UniqueId: <guid for the script> # Optional
@@ -18,6 +18,7 @@ If `UniqueId` is specified, the script will only be included if a script with th
 has not been executed before. Otherwise, the script will be included every time.
 
 The `FilePath` can be
+
 1. A path to a `.sql` file.
 2. A path to a `.yaml` file listing more scripts in the format given above.
 3. A path to a directory.
@@ -39,7 +40,7 @@ standard string sort order** before proceeding to the next reference.
 
 File paths in the main configuration file are assumed to be relative to the schema root. File paths in YAML files may be relative either to the location of the YAML file itself or to the schema root (the former takes precedence). If a file path is absolute, it is used as-is.
 
-Script execution order is determined (1) by the script type and then, within a script
+Script execution order is determined by the script type and then, within a script
 type, by the resolution order described above.
 
 ### A Somewhat Convoluted Example
@@ -62,11 +63,11 @@ Schemas:
 and the contents of `current-scripts.yaml` is
 
 ```yaml
-FilePath: MoreScripts/script4.sql
-Type: PreAddConstraints
-FilePath: GeneralScripts
-Type: PostDeployment
-FilePath: MoreScripts/script5.sql
+- FilePath: MoreScripts/script4.sql
+  Type: PreAddConstraints
+- FilePath: GeneralScripts
+  Type: PostDeployment
+- FilePath: MoreScripts/script5.sql
 ```
 
 Further suppose that your directory layout looks like this:
@@ -91,7 +92,7 @@ SchemaDefinition/
 `-- current-scripts.yaml
 ```
 
-The script path resolver then does down the deploy-script list in order, first
+The script path resolver then goes down the deploy-script list in order, first
 giving
 
 1. SchemaDefinition/SomeScripts/script1.sql (PreDeployment)

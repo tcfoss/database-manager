@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.DatabaseComms;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -13,7 +12,8 @@ namespace TcfOss.DatabaseManager.MySql.App;
 public partial class MyChangeComputer(
     MyConfig config,
     IWriteFiles fileWriter,
-    IServiceScopeFactory scopeFactory,
+    ILoadDbDefinition<MyDefinition> dbDefinitionLoader,
+    ILoadFsDefinition<MyDefinition> fsDefinitionLoader,
     IGetUnappliedRefactors unappliedRefactorLoader,
     IGetUnappliedDeployScripts unappliedDeployScriptLoader,
     ILogger<MyChangeComputer> logger
@@ -22,29 +22,23 @@ public partial class MyChangeComputer(
     private readonly MyConfig _config = config;
     private readonly ILogger<MyChangeComputer> _logger = logger;
     private readonly IWriteFiles _fileWriter = fileWriter;
-    private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
+    private readonly ILoadDbDefinition<MyDefinition> _dbDefinitionLoader = dbDefinitionLoader;
+    private readonly ILoadFsDefinition<MyDefinition> _fsDefinitionLoader = fsDefinitionLoader;
     private readonly IGetUnappliedRefactors _unappliedRefactorLoader = unappliedRefactorLoader;
     private readonly IGetUnappliedDeployScripts _unappliedDeployScriptLoader = unappliedDeployScriptLoader;
 
     public async Task ExecuteAsync(string? outputFilePath, FileExistsAction fileExistsAction = FileExistsAction.Error, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         s_computingChanges(_logger, _config.ProjectDirectory);
 
         s_loadingDefinitionFromDatabase(_logger);
-        Task<MyDefinition> dbTask = Task.Run(async () =>
-        {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            ILoadDbDefinition<MyDefinition> loader = scope.ServiceProvider.GetRequiredService<ILoadDbDefinition<MyDefinition>>();
-            return await loader.LoadDefinitionAsync(cancellationToken);
-        }, cancellationToken);
+        Task<MyDefinition> dbTask = _dbDefinitionLoader.LoadDefinitionAsync(cancellationToken);
 
         s_loadingDefinitionFromFileSystem(_logger);
-        Task<MyDefinition> fileTask = Task.Run(() =>
-        {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            ILoadFsDefinition<MyDefinition> loader = scope.ServiceProvider.GetRequiredService<ILoadFsDefinition<MyDefinition>>();
-            return loader.LoadDefinition(relaxed: false);
-        }, cancellationToken);
+        Task<MyDefinition> fileTask = Task.Run(
+            () => _fsDefinitionLoader.LoadDefinition(relaxed: false),
+            cancellationToken);
 
         try
         {

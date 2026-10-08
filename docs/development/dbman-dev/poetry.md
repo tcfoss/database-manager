@@ -61,7 +61,7 @@ make sure you are somewhere under the `tools/dbman-dev` directory, and call
 poetry env activate
 ```
 
-This will output a command you can execute to enter the `dbman-dev` virtual envionment. Execute
+This will output a command you can execute to enter the `dbman-dev` virtual environment. Execute
 the command, and then the scripts can be invoked with just the name, without the `poetry`
 prefix:
 

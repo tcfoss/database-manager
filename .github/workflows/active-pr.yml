@@ -6,6 +6,33 @@ on:
 
 jobs:
 
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-docs.txt
+
+      - name: Build and validate documentation
+        run: mkdocs build --strict
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Test documentation release policy
+        run: node --test .github/scripts/docs-release.test.cjs
+
   validate-work-items:
     if: github.event.sender.type != 'Bot'
     uses: tcfoss/github-actions/.github/workflows/validate-pr-work-items.yml@v1

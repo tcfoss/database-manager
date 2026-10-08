@@ -2,4 +2,7 @@
 
 A convenience wrapper for starting applications that use the core DatabaseManager services.
 
-For full documentation, see the [home page](https://github.com/tcfoss/database-manager)
+See the [offline quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/) and
+[customization guide](https://tcfoss.github.io/database-manager/libraries/customization/).
+
+[Source repository](https://github.com/tcfoss/database-manager)

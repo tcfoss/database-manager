@@ -2,4 +2,7 @@
 
 The command-line application for comparing and managing database definitions.
 
-For full documentation, see the [home page](https://github.com/tcfoss/database-manager)
+See the [CLI guide](https://tcfoss.github.io/database-manager/app/) and
+[configuration reference](https://tcfoss.github.io/database-manager/app/configuration/).
+
+[Source repository](https://github.com/tcfoss/database-manager)

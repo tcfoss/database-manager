@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
+    <Description>MariaDB provider for DatabaseManager with SQL parsing and formatting, MariaDB metadata and defaults, and migration-script generation.</Description>
+    <PackageTags>database;sql;mariadb;ddl;database-management;schema;migrations</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

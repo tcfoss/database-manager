@@ -1,0 +1,61 @@
+site_name: DatabaseManager
+site_description: Manage SQL database definitions with the DatabaseManager CLI and .NET libraries.
+site_url: https://tcfoss.github.io/database-manager/
+repo_url: https://github.com/tcfoss/database-manager
+repo_name: tcfoss/database-manager
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  palette:
+    primary: teal
+    accent: green
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - def_list
+  - attr_list
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - CLI Guide:
+    - Overview: app/index.md
+    - Configuration: app/configuration.md
+    - Formatting: app/formatting.md
+    - Deploy Scripts: app/deploy-scripts.md
+    - Refactors: app/refactors.md
+    - Limitations: app/limitations.md
+  - Libraries:
+      - Package Selection: libraries/index.md
+      - Quick Start: libraries/quickstart.md
+      - Provider Workflows: libraries/providers.md
+      - Customization and Hosting: libraries/customization.md
+      - Without DI: libraries/without-di.md
+  - Contributing:
+    - Getting Started: development/index.md
+    - Integration Tests: development/integration-tests.md
+    - Releases: development/releases.md
+    - Development Tools:
+      - Overview: development/dbman-dev/index.md
+      - Poetry and pipx: development/dbman-dev/poetry.md

@@ -1,14 +1,19 @@
+---
+description: Configure SQL dialects, schemas, credentials, formatting, and logging for DatabaseManager.
+---
+
 # The Configuration File
 
 The execution of the application is mostly controlled by a configuration file
 at the root of your database project named `database-manager.yaml`. If your
 file has a non-standard name, or you are running the application from a
 different directory, see the `--config` flag described in
-[the basic usage page](./README.md#the-configuration-file).
+[the basic usage page](./index.md#the-configuration-file).
 
 ## Minimal example
 
-The smallest configuration file that connects to a real RDBMS looks like this:
+A minimal MySQL configuration looks like this. MariaDB uses the same shape
+with `Dialect: MariaDb`:
 
 ```yaml
 Dialect: MySql
@@ -23,16 +28,30 @@ Credentials:
   Password: ${ENV:DB_PASSWORD}
 ```
 
-## Full shape
+For SQL Server, specify the catalog explicitly:
 
-The block below shows every supported top-level setting. It is **a shape, not
-a copy-pasteable file**—placeholders in `<angle brackets>` and `{ A | B }`
-alternations are not valid YAML.
+```yaml
+Dialect: MsSql
+Catalog: my_catalog
+Schemas:
+  - SchemaName: dbo
+    RootPath: dbo
+Credentials:
+  Hostname: localhost
+  Username: my_user
+  Password: ${ENV:DB_PASSWORD}
+```
 
-```text
+SQL Server definition loading and migration generation are not implemented.
+
+## Common Settings and MySQL/MariaDB Shape
+
+The block below shows the common settings and MySQL/MariaDB-specific options.
+
+```yaml
 ProjectDirectory: <path to project root, defaults to the directory of this file>
-Catalog: <catalog name, defaults to "def">
-Dialect: { MySql | MariaDb | Generic }    # required
+Catalog: <catalog name> # defaults to "def" in MySQL/MariaDB; required in SQL Server
+Dialect: { MySql | MariaDb | MsSql | Generic } # required
 Version: <e.g. 8.0.36>
 QuoteStyle: { Ansi | Backticks | Brackets }
 
@@ -47,7 +66,7 @@ Schemas:                                  # required, at least one entry
       - <object name>
     DeployScripts:
       - FilePath: <path>
-        Type: { PreDeployment | PostDropConstraints | PreAddConstraints | PostDeployment }
+        Type: { PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }
         UniqueId: <guid>
     RefactorFiles:
       - <path>
@@ -59,11 +78,14 @@ Credentials:
   Port: <port, defaults to 3306>
   SocketPath: <unix socket path>
 
-Formatting: { ... }                       # see Formatting.md
-DifferFormatting: { ... }                 # see Formatting.md
+Formatting: { ... }                       # see formatting reference
+DifferFormatting: { ... }                 # see formatting reference
 
 DefaultDefinerAccount: <account>
 DefaultDefinerHost: <hostname>
+
+MinPoolSize: <minimum pooled connections, defaults to 0>
+MaxPoolSize: <maximum pooled connections, defaults to 100>
 
 Logging:
   Target: { File | Console }
@@ -80,33 +102,36 @@ Logging:
 | `Dialect`               |   yes    | —                                    |
 | `Schemas`               |   yes    | — (must contain at least one entry)  |
 | `Credentials`           |  yes\*   | —                                    |
-| `Catalog`               |    no    | `def`                                |
+| `Catalog`               | provider-specific | `def` for MySQL/MariaDB; required in a SQL Server file |
 | `ProjectDirectory`      |    no    | directory containing the config file |
-| `Version`               |    no    | inferred from the live RDBMS         |
-| `QuoteStyle`            |    no    | `Backticks`                          |
-| `Formatting`            |    no    | see [Formatting](./Formatting.md)    |
-| `DifferFormatting`      |    no    | see [Formatting](./Formatting.md)    |
+| `Version`               |    no    | provider-specific; see below         |
+| `QuoteStyle`            |    no    | `Backticks` for MySQL/MariaDB; `Brackets` for SQL Server |
+| `Formatting`            |    no    | see [Formatting](./formatting.md)    |
+| `DifferFormatting`      |    no    | see [Formatting](./formatting.md)    |
 | `DefaultDefinerAccount` |   no\*   | —                                    |
 | `DefaultDefinerHost`    |    no    | —                                    |
 | `Logging`               |    no    | console at `Information` level       |
 
 \* `Credentials` is required for any command that connects to the RDBMS. See
-the per-command tables in [the basic usage page](./README.md).
+the per-command tables in [the basic usage page](./index.md).
 
 ### `Catalog`
 
-A catalog is the top-level organizational element of the RDBMS — see the
-[glossary](./README.md#definitions-of-terms). For MySQL and MariaDB it is
-always `def`, at least for now. (The next MariaDB version is expected to
+A catalog is the top-level organizational element of the RDBMS—see the
+[glossary](./index.md#definitions-of-terms). For MySQL and MariaDB it is
+always `def`, at least for now. (An upcoming MariaDB version is expected to
 support multiple catalogs as part of multi-tenancy work; how that will
 interact with this project is not yet clear.)
 
 What Microsoft SQL Server calls a "database" is what this application calls
-a catalog.
+a catalog. Catalog is required in SQL Server configuration files.
 
 ### `Dialect`
 
-One of `MySql`, `MariaDb`, or `Generic`.
+One of `MySql`, `MariaDb`, `MsSql`, or `Generic`.
+
+`MsSql` selects Microsoft SQL Server syntax. Its current capabilities are
+parsing and formatting, not definition comparison or migration generation.
 
 The `MySql` and `MariaDb` dialects are very similar but **not interchangeable**.
 Picking the wrong one will, in the best case, produce subtly wrong output, and
@@ -123,8 +148,7 @@ differences include:
 
 The `Generic` dialect is intentionally limited: it supports some basic parsing
 of SQL files to JSON, but does **not** support connecting to an RDBMS or any
-form of definition analysis. It will support formatting parsed statements once
-that functionality is ready.
+form of definition analysis. It can format parsed statements without a definition.
 
 ### `Version`
 
@@ -140,15 +164,12 @@ available, the live server is queried instead, and `Version` is ignored.
 Determines how identifiers are quoted in **generated** SQL scripts. It does
 not change how input files are parsed. Options:
 
-- `Backticks` — `` `name` `` (default; the MySQL/MariaDB native style)
+- `Backticks` — `` `name` `` (the default for MySQL/MariaDB)
 - `Ansi` — `"name"`
-- `Brackets` — `[name]`
+- `Brackets` — `[name]` (the default for SQL Server)
 
 MySQL and MariaDB have `sql_mode` flags that allow them to accept ANSI quotes,
-but `Brackets` is included primarily for forward compatibility with future
-dialects. PostgreSQL and Microsoft SQL Server are not yet supported, but if
-they are added the default `QuoteStyle` will follow the dialect (`Ansi` for
-Postgres, `Brackets` for SQL Server).
+while SQL Server natively uses brackets.
 
 ### `ProjectDirectory`
 
@@ -165,7 +186,7 @@ functions, triggers, views, and events) which do not explicitly specify a define
 the default definer should be a role, it should be specified in the `DefaultDefinerAccount`
 property.
 
-`DefaultDefinerHost` **cannot** be specified unless `DefaultDefinerHost` is.
+`DefaultDefinerHost` **cannot** be specified unless `DefaultDefinerAccount` is.
 
 If a default definer is not specified, then a `DEFINER` clause **must** be specified
 in **every** routine definition. Definers specified in a routine definition take
@@ -192,7 +213,7 @@ A list of glob patterns (using `.gitignore`-style syntax) that determine which
 files under `RootPath` are parsed when building the database definition. If
 omitted, the default is `**/*.sql`.
 
-Quote glob entries that begin with `*` — YAML treats a leading `*` as an
+Quote glob entries that begin with `*`—YAML treats a leading `*` as an
 alias reference and will reject the document otherwise:
 
 ```yaml
@@ -224,12 +245,12 @@ to leave it alone.
 #### `DeployScripts`
 
 A list of scripts to splice into the output of `compute-changes` at various
-stages. See [Deploy scripts](./DeployScripts.md) for full details.
+stages. See [Deploy scripts](./deploy-scripts.md) for full details.
 
 #### `RefactorFiles`
 
 A list of paths to YAML files defining refactors. In this project, "refactor"
-means **renames** of tables and columns. See [Refactors](./Refactors.md) for
+means **renames** of tables and columns. See [Refactors](./refactors.md) for
 the file format.
 
 ### Path resolution
@@ -248,6 +269,7 @@ Paths inside the configuration file are resolved as follows:
 ## Credentials
 
 The `Credentials` section tells DatabaseManager how to connect to your RDBMS.
+The following table applies to MySQL/MariaDB:
 
 | Key          | Required | Default |
 | ------------ | :------: | ------- |
@@ -263,9 +285,23 @@ connection is used; otherwise a TCP connection to `Hostname:Port` is used.
 Whether `Password` is required depends on your server's authentication
 configuration.
 
+### SQL Server Credentials
+
+SQL Server uses `Hostname`, optional `Username` and `Password`, and a `Port`
+that defaults to `1433`. Omitting `Username` selects integrated authentication;
+its availability depends on your platform and SQL Server setup.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `Instance` | none | Named SQL Server instance; takes precedence over `Port`. |
+| `Encrypt` | `true` | Encrypt the connection. |
+| `TrustServerCertificate` | `false` | Skip certificate validation when encryption is enabled. |
+| `ConnectionTimeout` | `30` | Connection timeout in seconds. |
+
+
 ### Environment-variable interpolation
 
-Any value under `Credentials` may reference an environment variable with the
+String values under `Credentials` may reference an environment variable with the
 syntax `${ENV:VARIABLE_NAME}`. The literal `ENV` is **case-sensitive**;
 whether `VARIABLE_NAME` is case-sensitive depends on your operating system.
 
@@ -277,7 +313,7 @@ Credentials:
   Port: ${ENV:DB_PORT}
 ```
 
-This substitution currently applies only inside `Credentials`.
+This substitution applies only inside `Credentials`.
 
 ## Formatting and DifferFormatting
 
@@ -285,7 +321,7 @@ The `Formatting` block controls how the application emits SQL when formatting
 or rewriting files. The `DifferFormatting` block controls SQL emitted by the
 diffing pipeline (`compute-changes`). Both blocks are optional.
 
-See [Formatting](./Formatting.md) for the full list of keys.
+See [Formatting](./formatting.md) for the full list of keys.
 
 ## Logging
 
@@ -302,11 +338,6 @@ The `Logging` section is optional and controls diagnostic output.
 `LogLevel` controls the application's own log output. `DatabaseLogLevel`
 controls how verbosely the underlying database driver and ORM are logged.
 
-`EnableSensitiveDataLogging` allows credentials and parameter values to appear
-in logs. Leave it `false` unless you are actively debugging a connection or
-query problem.
-
 When `Target` is `File`, each run of the application writes a new log file
 named `database-manager_YYYYMMDD_HHMMSS_ffffff.json` (microsecond-precision
-timestamp) inside `LogDirectory`. There is no rotation; cleanup is your
-responsibility.
+timestamp) inside `LogDirectory`.
