@@ -25,6 +25,6 @@ dist/
 
 BuildInfo.cs
 
-
+*.sln.DotSettings.user
 
 traces/
