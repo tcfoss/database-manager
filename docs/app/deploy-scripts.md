@@ -1,14 +1,14 @@
 # Deploy Scripts
 
 Each schema mapping can specify one or more scripts to run at various points in the
-deployment (for now, that means their text is insert into the database update script).
+deployment (for now, that means their text is inserted into the generated update script).
 
 ## Basic Syntax
 
 The basic syntax for specifying a deploy script under a schema mapping in the configuration
 file is
 
-```yaml
+```text
 Type: { PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment } # Required*
 FilePath: <path to script, relative to schema root> # Required
 UniqueId: <guid for the script> # Optional
@@ -62,11 +62,11 @@ Schemas:
 and the contents of `current-scripts.yaml` is
 
 ```yaml
-FilePath: MoreScripts/script4.sql
-Type: PreAddConstraints
-FilePath: GeneralScripts
-Type: PostDeployment
-FilePath: MoreScripts/script5.sql
+- FilePath: MoreScripts/script4.sql
+  Type: PreAddConstraints
+- FilePath: GeneralScripts
+  Type: PostDeployment
+- FilePath: MoreScripts/script5.sql
 ```
 
 Further suppose that your directory layout looks like this:
@@ -91,7 +91,7 @@ SchemaDefinition/
 `-- current-scripts.yaml
 ```
 
-The script path resolver then does down the deploy-script list in order, first
+The script path resolver then goes down the deploy-script list in order, first
 giving
 
 1. SchemaDefinition/SomeScripts/script1.sql (PreDeployment)

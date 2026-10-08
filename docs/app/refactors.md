@@ -1,6 +1,6 @@
 # Refactors
 
-Refactors--table and column renames--are defined in dedicated configuration
+Refactors—table and column renames—are defined in dedicated configuration
 files (in YAML format). Each refactor file contains a list of one or
 more refactors like this:
 

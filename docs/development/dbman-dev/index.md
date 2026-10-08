@@ -1,6 +1,6 @@
 # The DbMan-Dev Project
 
-Under `tools/dbman-dev` is a Poetry-based Python project for doing assorted routine development activities. If you're unfamiliar with Poetry, see [Using Poetry and pipx](./PyPoetry.md).
+Under `tools/dbman-dev` is a Poetry-based Python project for doing assorted routine development activities. If you're unfamiliar with Poetry, see [Using Poetry and pipx](./poetry.md).
 
 The project defines several scripts.
 

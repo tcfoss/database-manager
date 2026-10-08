@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
+    <Description>Shared SQL parsing, AST, configuration, database-definition comparison, and SQL generation infrastructure for DatabaseManager providers.</Description>
+    <PackageTags>database;sql;ddl;parsing;database-management;schema</PackageTags>
     <GenerateResourceDesignerFiles>true</GenerateResourceDesignerFiles>
     <CoreCompileDependsOn>PrepareResources;$(CompileDependsOn)</CoreCompileDependsOn>
   </PropertyGroup>

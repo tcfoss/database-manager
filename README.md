@@ -6,6 +6,10 @@ DatabaseManager is an open source tool for syncing a database definition, in the
 `CREATE VIEW`, etc., statements in (presumably version-controlled)
 flat files, with the structure of a live database server.
 
+Documentation: [CLI guide](https://tcfoss.github.io/database-manager/app/),
+[.NET libraries](https://tcfoss.github.io/database-manager/libraries/), and
+[contributing](https://tcfoss.github.io/database-manager/development/).
+
 
 ## Getting Started
 
@@ -19,7 +23,7 @@ The simplest way to install it is using [NET Install Manager](https://github.com
 ```shell
 pipx install net-install-manager
 # pipx ensurepath  # NOTE BELOW
-ninman install-release tcfoss database-manager
+ninman install tcfoss:database-manager
 ```
 
 **Note**: The `pipx ensurepath` invocation is only needed if you haven't called it before or added `~/.local/bin` to your path manually. On Windows, if you *do* need to call it, you will have to close your shell and open a new one before running the next command.
@@ -32,7 +36,7 @@ dbman --help
 
 You should see a description of the available commands.
 
-For more information, see the [App Documentation](docs/App/README.md).
+For more information, see the [CLI guide](https://tcfoss.github.io/database-manager/app/).
 
 
 ### Other Installation Methods
@@ -45,9 +49,19 @@ If you do not want to install `ninman`, you can also directly download the compi
 
 You can alternatively download the source code and build it yourself (then create a link or launcher script as above).
 
+## Using the .NET Packages
+
+The Core, MySQL, MariaDB, and SQL Server libraries are available as NuGet packages
+targeting .NET 10. Convenience `LibWrapper` packages handle configuration, logging,
+and dependency-injection startup. See the
+[package-selection guide](https://tcfoss.github.io/database-manager/libraries/) and
+[offline quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/).
+SQL Server currently supports parsing and formatting, not definition loading or
+migration generation.
+
 ## Reporting Issues and Contributing
 
-If you want to contribute to this app, start with the [Development Documentation](docs/Development/README.md).
+If you want to contribute to this app, start with the [contributor guide](https://tcfoss.github.io/database-manager/development/).
 
 Issues for this project are tracked on [IssueTracker](https://issues.tcflanagan.net/database-manager). If you encounter any bugs or have feature requests, please submit them there.
 

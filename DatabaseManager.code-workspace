@@ -17,6 +17,9 @@
 			"https://schemastore.org": true,
 			"https://raw.githubusercontent.com/microsoft/testfx/main/docs/testconfig.schema.json": true
 		},
-		"json.schemaDownload.enable": true
+		"json.schemaDownload.enable": true,
+		"chat.tools.terminal.autoApprove": {
+			"actionlint": true
+		}
 	}
 }

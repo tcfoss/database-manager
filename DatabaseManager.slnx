@@ -26,4 +26,6 @@
     <Project Path="test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj" />
     <Project Path="test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj" />
   </Folder>
+  <Project Path="../../../../tmp/database-manager-doc-examples/Examples.csproj" />
+  <Project Path="../../../../tmp/database-manager-symbol-inspector/Inspector.csproj" />
 </Solution>

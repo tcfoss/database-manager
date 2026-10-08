@@ -1,6 +1,14 @@
+---
+description: Basic usage guide for DatabaseManager.
+---
+
 # DatabaseManager Basic Usage
 
-<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
+MySQL and MariaDB support database-definition comparison and script generation.
+The SQL Server provider currently supports parsing and formatting; definition
+loading, schema download, and migration generation are not yet implemented.
+
+
 
 DatabaseManager lets you specify a database definition in version-controlled
 files and use those files to update a live RDBMS.
@@ -11,7 +19,7 @@ files and use those files to update a live RDBMS.
 There are many programs for managing database data, and they all use terms
 somewhat differently. For the purposes of DatabaseManager, I try to pick terms
 that can be used _consistently_, even if those terms might be "wrong" in the
-contects of one application/dialect or another.
+context of one application/dialect or another.
 
 Here is what is meant throughout this documentation (and the application)
 by various terms:
@@ -42,7 +50,7 @@ Database Definition
 : A **database definition** (or sometimes just **definition**) is the complete set
 of database objects, grouped into schemas, under a catalog. It's a complete
 specification of the structure of the catalog.
-: In the context of the `compute-changes` command (coming soon), there are two
+: In the context of the `compute-changes` command, there are two
 database definitions of note:
 
 1. The database definition specified by a set of files on your filesystem.
@@ -154,7 +162,7 @@ you can specify the path at the command line:
 dbman { --config | -c } config_file_path subcommand [options...]
 ```
 
-The structure of the configuration file is described [here](./ConfigurationFile.md).
+The structure of the configuration file is described [here](./configuration.md).
 
 
 ## Other Commands
@@ -174,7 +182,7 @@ definition.
 It does not accept any arguments, so the invocation is simply
 
 ```sh
-database-manager download-schema
+dbman download-schema
 ```
 
 ### The `parse-files` Command

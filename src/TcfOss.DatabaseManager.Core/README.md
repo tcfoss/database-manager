@@ -2,4 +2,8 @@
 
 Core parsing, database definition, comparison, and SQL generation functionality shared by the providers.
 
-For full documentation, see the [home page](https://github.com/tcfoss/database-manager)
+See the [.NET library guide](https://tcfoss.github.io/database-manager/libraries/) and
+[manual hosting example](https://tcfoss.github.io/database-manager/libraries/customization/#manual-hosting-without-libwrapper).
+For convenient startup, use `TcfOss.DatabaseManager.Core.LibWrapper`.
+
+[Source repository](https://github.com/tcfoss/database-manager)

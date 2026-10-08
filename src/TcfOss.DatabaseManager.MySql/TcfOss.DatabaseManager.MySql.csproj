@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
+    <Description>MySQL provider for DatabaseManager with SQL parsing and formatting, database-definition loading, and migration-script generation.</Description>
+    <PackageTags>database;sql;mysql;ddl;database-management;schema;migrations</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

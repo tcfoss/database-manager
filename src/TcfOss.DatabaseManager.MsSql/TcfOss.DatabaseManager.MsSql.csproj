@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
+    <Description>Microsoft SQL Server provider for DatabaseManager with T-SQL parsing and formatting. Database-definition loading and migration generation are not yet implemented.</Description>
+    <PackageTags>database;sql;sql-server;tsql;ddl;parsing;formatting</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

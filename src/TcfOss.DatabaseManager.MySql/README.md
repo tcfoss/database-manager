@@ -2,4 +2,8 @@
 
 MySQL database provider support for parsing, communicating with, and managing MySQL databases.
 
-For full documentation, see the [home page](https://github.com/tcfoss/database-manager)
+See the [.NET library guide](https://tcfoss.github.io/database-manager/libraries/) and
+[provider workflows](https://tcfoss.github.io/database-manager/libraries/providers/).
+For convenient startup, use `TcfOss.DatabaseManager.MySql.LibWrapper`.
+
+[Source repository](https://github.com/tcfoss/database-manager)
