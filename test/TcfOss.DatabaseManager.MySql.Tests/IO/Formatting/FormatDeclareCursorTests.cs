@@ -12,12 +12,9 @@ public class FormatDeclareCursorTests
                 1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -31,12 +28,9 @@ public class FormatDeclareCursorTests
             FROM `schema1`.`books`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -52,11 +46,8 @@ public class FormatDeclareCursorTests
         /* block comment */
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

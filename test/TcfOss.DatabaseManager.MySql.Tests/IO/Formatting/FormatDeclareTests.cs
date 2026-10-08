@@ -10,12 +10,9 @@ public class FormatDeclareTests
         DECLARE `my_cond` CONDITION FOR 1234;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -26,12 +23,9 @@ public class FormatDeclareTests
         DECLARE `my_cond` CONDITION FOR SQLSTATE '42000';
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -42,12 +36,9 @@ public class FormatDeclareTests
         DECLARE `my_cond` CONDITION FOR SQLSTATE VALUE '42000';
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -58,12 +49,9 @@ public class FormatDeclareTests
         DECLARE `x` INT;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -74,12 +62,9 @@ public class FormatDeclareTests
         DECLARE `x` INT DEFAULT 5;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -90,12 +75,9 @@ public class FormatDeclareTests
         DECLARE `x`, `y` VARCHAR(100);
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -106,11 +88,8 @@ public class FormatDeclareTests
         DECLARE `x` VARCHAR(100) DEFAULT 'hello';
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

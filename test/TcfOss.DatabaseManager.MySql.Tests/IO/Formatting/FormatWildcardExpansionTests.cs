@@ -14,13 +14,9 @@ public class FormatWildcardExpansionTests
         FROM `schema1`.`books`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -38,13 +34,9 @@ public class FormatWildcardExpansionTests
         INNER JOIN `schema1`.`authors` ON `books`.`author_id` = `authors`.`id`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -59,13 +51,9 @@ public class FormatWildcardExpansionTests
         FROM `schema1`.`books`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -80,13 +68,9 @@ public class FormatWildcardExpansionTests
         FROM `schema1`.`books` AS `b`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -101,13 +85,9 @@ public class FormatWildcardExpansionTests
         INNER JOIN `schema1`.`authors` ON `books`.`author_id` = `authors`.`id`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -123,13 +103,9 @@ public class FormatWildcardExpansionTests
         INNER JOIN `schema1`.`authors` ON `books`.`author_id` = `authors`.`id`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -142,12 +118,9 @@ public class FormatWildcardExpansionTests
         FROM `schema1`.`books`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -160,13 +133,9 @@ public class FormatWildcardExpansionTests
         FROM `books`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -179,12 +148,8 @@ public class FormatWildcardExpansionTests
         FROM `schema1`.`books`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ExpandWildcards = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

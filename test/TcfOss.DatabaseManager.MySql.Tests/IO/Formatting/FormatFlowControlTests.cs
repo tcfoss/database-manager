@@ -10,12 +10,9 @@ public class FormatFlowControlTests
         CLOSE `cur`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -26,12 +23,9 @@ public class FormatFlowControlTests
         OPEN `cur`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -42,12 +36,9 @@ public class FormatFlowControlTests
         ITERATE `loop_label`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -58,12 +49,9 @@ public class FormatFlowControlTests
         LEAVE `loop_label`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -74,12 +62,9 @@ public class FormatFlowControlTests
         RETURN 1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -90,12 +75,9 @@ public class FormatFlowControlTests
         RETURN NULL;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -106,12 +88,9 @@ public class FormatFlowControlTests
         FETCH `cur` INTO `x`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -122,12 +101,9 @@ public class FormatFlowControlTests
         FETCH FROM `cur` INTO `x`, `y`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -138,12 +114,9 @@ public class FormatFlowControlTests
         FETCH NEXT FROM `cur` INTO `x`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -154,11 +127,8 @@ public class FormatFlowControlTests
         FETCH GROUP NEXT ROW;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

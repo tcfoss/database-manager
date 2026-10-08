@@ -19,12 +19,9 @@ public class FormatSelectTests
         ORDER BY `title`, `published_year`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -39,12 +36,9 @@ public class FormatSelectTests
         INNER JOIN `table2` AS `b` USING (`id`, `name`);
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -60,13 +54,9 @@ public class FormatSelectTests
             USING (`id`, `name`);
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables3);
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables3, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -81,12 +71,9 @@ public class FormatSelectTests
         NATURAL INNER JOIN `table2` AS `b`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -100,12 +87,9 @@ public class FormatSelectTests
         CROSS JOIN `table2` AS `b`;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -124,16 +108,9 @@ public class FormatSelectTests
         ORDER BY `books`.`title`, `books`.`published_year` DESC;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.Quoting = IdentifierQuotationHandling.Always;
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.SelectItemPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, selectItemPrefixWithObject: true, objectNamePrefixWithSchema: true, joinConditionIndent: 4, quoting: IdentifierQuotationHandling.Always);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -152,16 +129,9 @@ public class FormatSelectTests
         ORDER BY `books`.`title`, `books`.`published_year`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.Quoting = IdentifierQuotationHandling.Always;
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.SelectItemPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, selectItemPrefixWithObject: true, objectNamePrefixWithSchema: false, joinConditionIndent: 4, quoting: IdentifierQuotationHandling.Always);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -180,16 +150,9 @@ public class FormatSelectTests
         ORDER BY `books`.`title`, `books`.`published_year`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.Quoting = IdentifierQuotationHandling.Always;
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.SelectItemPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = null;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, selectItemPrefixWithObject: true, objectNamePrefixWithSchema: false, joinConditionIndent: null, quoting: IdentifierQuotationHandling.Always);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -208,16 +171,9 @@ public class FormatSelectTests
         ORDER BY `books`.`title`, `books`.`published_year`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.Quoting = IdentifierQuotationHandling.Always;
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.SelectItemPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = 0;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, selectItemPrefixWithObject: true, objectNamePrefixWithSchema: false, joinConditionIndent: 0, quoting: IdentifierQuotationHandling.Always);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -238,13 +194,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -267,14 +219,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -329,20 +276,14 @@ public class FormatSelectTests
         ORDER BY `b`.`title`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
     public void Select_SubqueryInSelectList()
     {
-
         var text = """
         SELECT b.title,
                published_year,
@@ -370,14 +311,9 @@ public class FormatSelectTests
         WHERE `b`.`published_year` > 2000;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -419,14 +355,9 @@ public class FormatSelectTests
         WHERE `b`.`published_year` >= 2010;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -457,14 +388,9 @@ public class FormatSelectTests
         ORDER BY `b`.`published_year`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -505,14 +431,9 @@ public class FormatSelectTests
         ORDER BY `b`.`title`;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -533,14 +454,9 @@ public class FormatSelectTests
         HAVING COUNT(*) > 1;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -561,14 +477,9 @@ public class FormatSelectTests
         HAVING COUNT(`b`.*) > 1;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
 
@@ -594,14 +505,9 @@ public class FormatSelectTests
         LIMIT 10 OFFSET 5;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -628,14 +534,9 @@ public class FormatSelectTests
         LIMIT 10 OFFSET 5;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -662,14 +563,9 @@ public class FormatSelectTests
         LIMIT 10 OFFSET 5;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -695,14 +591,9 @@ public class FormatSelectTests
         INTO OUTFILE 'myfile.txt';
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables2);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables2, objectNamePrefixWithSchema: false, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -715,12 +606,9 @@ public class FormatSelectTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -733,12 +621,9 @@ public class FormatSelectTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -753,12 +638,9 @@ public class FormatSelectTests
             2;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     /// <summary>
@@ -788,12 +670,9 @@ public class FormatSelectTests
             2;  -- line after
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     /// <summary>
@@ -828,12 +707,9 @@ public class FormatSelectTests
             2;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -849,13 +725,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 3;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 3);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -867,13 +739,9 @@ public class FormatSelectTests
         (1, 'a', `mycol`);
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -890,14 +758,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 3;
-        config.Formatting.OpeningParensOnNewLine = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 3, openingParensOnNewLine: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -913,14 +776,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 3;
-        config.Formatting.OpeningParensOnNewLine = false;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 3, openingParensOnNewLine: false);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -932,13 +790,9 @@ public class FormatSelectTests
         ROW (1, 'a', `mycol1`);
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -959,13 +813,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 3;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 3);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -978,13 +828,9 @@ public class FormatSelectTests
         (2, 'b', `mycol`);
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -1007,14 +853,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 3;
-        config.Formatting.OpeningParensOnNewLine = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 3, openingParensOnNewLine: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -1035,14 +876,9 @@ public class FormatSelectTests
         );
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 3;
-        config.Formatting.OpeningParensOnNewLine = false;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 3, openingParensOnNewLine: false);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -1055,12 +891,8 @@ public class FormatSelectTests
         ROW (2, 'b', `mycol2`);
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(null);
-        config.Formatting.ValueListMultiLineThreshold = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

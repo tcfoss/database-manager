@@ -9,12 +9,9 @@ public class FormatComponentsTests
     [InlineData("CALL schema1.myfunc('a', 'b')", "CALL `schema1`.`myfunc`('a', 'b');", Label = "Call user-defined function with schema")]
     public void CallFunction(string input, string expected)
     {
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(input);
-            Assert.Equal(expected, actual);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual);
     }
 
     [Theory]
@@ -23,11 +20,8 @@ public class FormatComponentsTests
     [InlineData("CALL func(x := 1)", "CALL `func`(`x` := 1);", Label = "Named arg with := operator")]
     public void FunctionArgument_Named_FormatSql(string input, string expected)
     {
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(input);
-            Assert.Equal(expected, actual);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual);
     }
 }

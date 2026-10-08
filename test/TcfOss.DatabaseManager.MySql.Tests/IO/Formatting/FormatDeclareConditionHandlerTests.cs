@@ -12,12 +12,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -30,12 +27,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -48,12 +42,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -66,12 +57,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -84,12 +72,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -102,12 +87,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -120,12 +102,9 @@ public class FormatDeclareConditionHandlerTests
             ROLLBACK;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -141,12 +120,9 @@ public class FormatDeclareConditionHandlerTests
         END;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -162,11 +138,8 @@ public class FormatDeclareConditionHandlerTests
         /* block comment */
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

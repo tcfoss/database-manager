@@ -14,12 +14,9 @@ public class FormatCreateViewTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -35,12 +32,9 @@ public class FormatCreateViewTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -56,12 +50,9 @@ public class FormatCreateViewTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -77,12 +68,9 @@ public class FormatCreateViewTests
             2;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -98,12 +86,9 @@ public class FormatCreateViewTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -119,12 +104,9 @@ public class FormatCreateViewTests
         WITH CASCADED CHECK OPTION;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -142,12 +124,9 @@ public class FormatCreateViewTests
             1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -165,11 +144,8 @@ public class FormatCreateViewTests
         /* block comment */
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }
