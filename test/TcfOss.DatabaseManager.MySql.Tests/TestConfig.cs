@@ -84,7 +84,7 @@ public static class TestConfig
         DatabaseAvailable = true
     };
 
-    public static MyConfig GetMyTestConfig(ValidationSettings? validationSettings = null)
+    public static MyConfig GetMyTestConfig(ValidationSettings? validationSettings = null, FormattingSettings? formatSettings = null)
     {
         return new MyConfig()
         {
@@ -130,6 +130,7 @@ public static class TestConfig
                 ConnectionTimeout = 30
             },
             ValidationSettings = validationSettings ?? new ValidationSettings(),
+            Formatting = formatSettings ?? new FormattingSettings(),
             ServerDefaults = s_defaultSchemaDefaults,
             CharacterSets = s_defaultCharacterSets,
             DatabaseAvailable = true

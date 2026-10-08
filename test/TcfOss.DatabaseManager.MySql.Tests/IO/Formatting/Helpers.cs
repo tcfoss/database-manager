@@ -1,5 +1,6 @@
 ﻿using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -35,24 +36,47 @@ public static class Helpers
         ]);
     }
 
-    public static (ConfigBase, Formatter) CreateFormatter(
+    public static Formatter CreateFormatter(
         PseudoTableSet? pseudoTables,
-        bool preferTabs = false
+        FormattingSettings? formatSettings = null,
+        bool preferTabs = false,
+        bool openingParensOnNewLine = true,
+        IdentifierQuotationHandling quoting = IdentifierQuotationHandling.Always,
+        bool objectNamePrefixWithSchema = true,
+        int? joinConditionIndent = null,
+        int? valueListMultiLineThreshold = 3,
+        bool selectItemPrefixWithObject = true,
+        bool insertUpdateTargetPrefixWithObject = false,
+        bool insertUpdateSourcePrefixWithObject = true,
+        bool updateTargetPrefixWithObject = true,
+        bool updateSourcePrefixWithObject = true,
+        bool expandWildcards = false,
+        int? routineParameterMultiLineThreshold = 3
     )
     {
-        var config = TestConfig.GetMyTestConfig();
+        formatSettings ??= new FormattingSettings()
+        {
+            ObjectNamePrefixWithSchema = objectNamePrefixWithSchema,
+            OmitModifiersIfDefault = true,
+            OpeningParensOnNewLine = openingParensOnNewLine,
+            PreferTabs = preferTabs,
+            TabSize = 4,
+            Quoting = quoting,
+            JoinConditionIndent = joinConditionIndent,
+            ValueListMultiLineThreshold = valueListMultiLineThreshold,
+            SelectItemPrefixWithObject = selectItemPrefixWithObject,
+            InsertUpdateTargetPrefixWithObject = insertUpdateTargetPrefixWithObject,
+            InsertUpdateSourcePrefixWithObject = insertUpdateSourcePrefixWithObject,
+            UpdateTargetPrefixWithObject = updateTargetPrefixWithObject,
+            UpdateSourcePrefixWithObject = updateSourcePrefixWithObject,
+            ExpandWildcards = expandWildcards,
+            RoutineParameterMultiLineThreshold = routineParameterMultiLineThreshold,
+        };
+        var config = TestConfig.GetMyTestConfig(formatSettings: formatSettings);
 
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.OmitModifiersIfDefault = true;
-        config.Formatting.OpeningParensOnNewLine = true;
-        config.Formatting.PreferTabs = false;
-        config.Formatting.TabSize = 4;
-
-        config.Formatting.PreferTabs = preferTabs;
-        var formatter = new Formatter(config, new TextParser(new MyLexer(), new MyParser()), new MyFunctionNameProvider())
+        return new Formatter(config, new TextParser(new MyLexer(), new MyParser()), new MyFunctionNameProvider())
         {
             PseudoTables = pseudoTables?.CloneExternalOnly(),
         };
-        return (config, formatter);
     }
 }

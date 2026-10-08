@@ -12,12 +12,9 @@ public class FormatUpdateTests
             `title` = 'New Title';
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -32,12 +29,9 @@ public class FormatUpdateTests
         WHERE `id` = 1;
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -53,15 +47,9 @@ public class FormatUpdateTests
         WHERE `books`.`id` = 1;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.UpdateTargetPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = null;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, updateTargetPrefixWithObject: true, objectNamePrefixWithSchema: true, joinConditionIndent: null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -76,14 +64,9 @@ public class FormatUpdateTests
         WHERE `books`.`published_year` > 2000;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.UpdateTargetPrefixWithObject = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, updateTargetPrefixWithObject: true, objectNamePrefixWithSchema: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -100,14 +83,9 @@ public class FormatUpdateTests
         WHERE `books`.`published_year` > 2000;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.UpdateTargetPrefixWithObject = false;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, updateTargetPrefixWithObject: false, objectNamePrefixWithSchema: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -122,15 +100,9 @@ public class FormatUpdateTests
         WHERE `books`.`published_year` > 2000;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.UpdateTargetPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = null;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, updateTargetPrefixWithObject: true, objectNamePrefixWithSchema: true, joinConditionIndent: null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -146,15 +118,9 @@ public class FormatUpdateTests
         WHERE `books`.`published_year` > 2000;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ObjectNamePrefixWithSchema = true;
-        config.Formatting.UpdateTargetPrefixWithObject = true;
-        config.Formatting.JoinConditionIndent = 4;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, updateTargetPrefixWithObject: true, objectNamePrefixWithSchema: true, joinConditionIndent: 4);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -168,14 +134,9 @@ public class FormatUpdateTests
         WHERE `books`.`published_year` > 2000;
         """;
 
-        var (config, formatter) = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
-        config.Formatting.ObjectNamePrefixWithSchema = false;
-        config.Formatting.UpdateTargetPrefixWithObject = true;
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, updateTargetPrefixWithObject: true, objectNamePrefixWithSchema: false);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -191,12 +152,9 @@ public class FormatUpdateTests
         /* block comment */
         """;
 
-        var (_, formatter) = Helpers.CreateFormatter(null);
-        using (formatter)
-        {
-            var actual = formatter.GetFormatted(text);
-            Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
-        }
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }
 
