@@ -47,13 +47,10 @@ SQL Server definition loading and migration generation are not implemented.
 ## Common Settings and MySQL/MariaDB Shape
 
 The block below shows the common settings and MySQL/MariaDB-specific options.
-Advanced parser and normalization settings are not listed. It is **a shape, not
-a copy-pasteable file**—placeholders in `<angle brackets>` and `{ A | B }`
-alternations are not valid YAML.
 
-```text
+```yaml
 ProjectDirectory: <path to project root, defaults to the directory of this file>
-Catalog: <catalog name, defaults to "def">
+Catalog: <catalog name> # defaults to "def" in MySQL/MariaDB; required in SQL Server
 Dialect: { MySql | MariaDb | MsSql | Generic } # required
 Version: <e.g. 8.0.36>
 QuoteStyle: { Ansi | Backticks | Brackets }
@@ -122,7 +119,7 @@ the per-command tables in [the basic usage page](./index.md).
 
 A catalog is the top-level organizational element of the RDBMS—see the
 [glossary](./index.md#definitions-of-terms). For MySQL and MariaDB it is
-always `def`, at least for now. (The next MariaDB version is expected to
+always `def`, at least for now. (An upcoming MariaDB version is expected to
 support multiple catalogs as part of multi-tenancy work; how that will
 interact with this project is not yet clear.)
 
@@ -172,7 +169,7 @@ not change how input files are parsed. Options:
 - `Brackets` — `[name]` (the default for SQL Server)
 
 MySQL and MariaDB have `sql_mode` flags that allow them to accept ANSI quotes,
-while SQL Server natively uses brackets. PostgreSQL is not currently supported (but hopefully will be in the future).
+while SQL Server natively uses brackets.
 
 ### `ProjectDirectory`
 
@@ -216,7 +213,7 @@ A list of glob patterns (using `.gitignore`-style syntax) that determine which
 files under `RootPath` are parsed when building the database definition. If
 omitted, the default is `**/*.sql`.
 
-Quote glob entries that begin with `*` — YAML treats a leading `*` as an
+Quote glob entries that begin with `*`—YAML treats a leading `*` as an
 alias reference and will reject the document otherwise:
 
 ```yaml
@@ -301,8 +298,6 @@ its availability depends on your platform and SQL Server setup.
 | `TrustServerCertificate` | `false` | Skip certificate validation when encryption is enabled. |
 | `ConnectionTimeout` | `30` | Connection timeout in seconds. |
 
-Keep certificate validation enabled in production. `SocketPath` and
-`DefaultCharset` are MySQL/MariaDB options, not SQL Server options.
 
 ### Environment-variable interpolation
 
@@ -318,7 +313,7 @@ Credentials:
   Port: ${ENV:DB_PORT}
 ```
 
-This substitution currently applies only inside `Credentials`.
+This substitution applies only inside `Credentials`.
 
 ## Formatting and DifferFormatting
 
@@ -343,11 +338,6 @@ The `Logging` section is optional and controls diagnostic output.
 `LogLevel` controls the application's own log output. `DatabaseLogLevel`
 controls how verbosely the underlying database driver and ORM are logged.
 
-`EnableSensitiveDataLogging` allows credentials and parameter values to appear
-in logs. Leave it `false` unless you are actively debugging a connection or
-query problem.
-
 When `Target` is `File`, each run of the application writes a new log file
 named `database-manager_YYYYMMDD_HHMMSS_ffffff.json` (microsecond-precision
-timestamp) inside `LogDirectory`. There is no rotation; cleanup is your
-responsibility.
+timestamp) inside `LogDirectory`.

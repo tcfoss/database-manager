@@ -30,6 +30,14 @@ Package consumers should use the [library guide](../libraries/index.md) rather
 than these contributor instructions.
 
 
+## Feedback and Pull Requests
+
+Report bugs and feature requests on
+[IssueTracker](https://issues.tcflanagan.net/database-manager).
+See the [repository contribution checklist](https://github.com/tcfoss/database-manager#reporting-issues-and-contributing)
+before opening a pull request.
+
+
 ## Documentation
 
 Create a Python virtual environment and install the pinned documentation tools:
@@ -60,19 +68,10 @@ versions do not replace the site.
 
 Documentation builds and deployment appear as separate jobs in the release
 workflow. If documentation fails to build or deploy, the existing site remains
-available; inspect the failed job and rerun it after addressing the cause.
-Use `master` when manually running the release workflow.
+available.
 
 With Node.js 24 installed, run the release-policy regression tests locally:
 
 ```sh
 node --test .github/scripts/docs-release.test.cjs
 ```
-
-
-## Feedback and Pull Requests
-
-Report bugs and feature requests on
-[IssueTracker](https://issues.tcflanagan.net/database-manager).
-See the [repository contribution checklist](https://github.com/tcfoss/database-manager#reporting-issues-and-contributing)
-before opening a pull request.

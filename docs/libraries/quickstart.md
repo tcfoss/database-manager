@@ -82,11 +82,3 @@ Scopes dispose services resolved within them. The result itself is not
 `IDisposable` and does not expose the host for shutdown. Applications needing
 explicit host ownership should use [manual hosting](customization.md#manual-hosting-without-libwrapper).
 Avoid repeated wrapper startup as a replacement for service scopes.
-
-
-## Errors and Supported Workflows
-
-Configuration and parsing failures are reported as exceptions; handle them at
-your application's boundary and preserve diagnostic details. Generic mode
-supports parsing and formatting, not live-server access or definition comparison.
-Use the matching [provider](providers.md) for provider-specific workflows.

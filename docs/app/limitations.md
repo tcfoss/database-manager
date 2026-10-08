@@ -19,7 +19,7 @@ not implemented yet.
 
 Constraints must be declared at the table level so that they can be named and
 referenced explicitly. Writing `PRIMARY KEY`, `UNIQUE`, or `CHECK (...)` as
-part of a column definition is rejected — move the constraint into a separate
+part of a column definition is rejected—move the constraint into a separate
 table-level clause instead.
 
 ```sql

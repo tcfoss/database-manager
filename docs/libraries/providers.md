@@ -17,11 +17,9 @@ description: Select DatabaseManager providers and load MySQL/MariaDB definitions
 Each entry-point class is in its package's namespace, for example
 `TcfOss.DatabaseManager.MariaDb.LibWrapper`. SQL Server does not currently register
 filesystem/database definition loaders, schema download, or `IComputeChanges`.
-Do not resolve those services from its wrapper.
 
 MySQL and MariaDB share parsing code and definition types, but their server
-defaults and metadata processing differ. Select the wrapper matching the server,
-not whichever happens to accept your SQL.
+defaults and metadata processing differ. Select the wrapper matching the server.
 
 
 ## Load a Filesystem Definition
@@ -91,7 +89,7 @@ statements, configured [deploy scripts](../app/deploy-scripts.md), and
 `FileExistsAction.Error` protects an existing output file. Other supported actions
 include `Rename`, `Overwrite`, and `Skip`.
 
-!!! warning "Generation is not execution"
+!!! warning
     Review and test the script before applying it, and back up affected data.
     This API generates the script; it does not apply the generated changes to the server.
 

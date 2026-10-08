@@ -8,14 +8,16 @@ DatabaseManager compares SQL database definitions stored in version-controlled f
 with the objects on a live server and generates SQL scripts to reconcile them.
 It also parses and formats SQL files.
 
-## CLI Users
+!!! warning
+    Because this project is fairly new, you are **strongly** encouraged to review all generated SQL scripts carefully before executing them on a live server, or at least back up your database first.
 
-Start with the [CLI guide](app/index.md), then configure your project using the
-[configuration reference](app/configuration.md). Review generated changes before
-executing them against a server.
+## Prerequisites
 
 The CLI requires the [.NET 10 runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
-Install it with [NET Install Manager](https://github.com/tcfoss/net-install-manager):
+
+## Installing
+
+The simplest way to install DatabaseManager is with [NET Install Manager](https://github.com/tcfoss/net-install-manager):
 
 ```sh
 pipx install net-install-manager
@@ -26,6 +28,13 @@ dbman --help
 Alternatively, download the archive for your platform from the
 [latest release](https://github.com/tcfoss/database-manager/releases/latest).
 Extract it and put a launcher or symlink pointing to `TcfOss.DatabaseManager.App` on your `PATH`.
+
+
+## Getting Started
+
+Start with the [CLI guide](app/index.md), then configure your project using the
+[configuration reference](app/configuration.md).
+
 
 ## .NET Package Consumers
 

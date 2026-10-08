@@ -18,6 +18,7 @@ If `UniqueId` is specified, the script will only be included if a script with th
 has not been executed before. Otherwise, the script will be included every time.
 
 The `FilePath` can be
+
 1. A path to a `.sql` file.
 2. A path to a `.yaml` file listing more scripts in the format given above.
 3. A path to a directory.
@@ -39,7 +40,7 @@ standard string sort order** before proceeding to the next reference.
 
 File paths in the main configuration file are assumed to be relative to the schema root. File paths in YAML files may be relative either to the location of the YAML file itself or to the schema root (the former takes precedence). If a file path is absolute, it is used as-is.
 
-Script execution order is determined (1) by the script type and then, within a script
+Script execution order is determined by the script type and then, within a script
 type, by the resolution order described above.
 
 ### A Somewhat Convoluted Example

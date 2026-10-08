@@ -41,10 +41,6 @@ Substitute `MariaDb` or `MsSql` for the other providers. For manual hosting, ins
 the underlying package, such as `TcfOss.DatabaseManager.MySql`, and the
 `Microsoft.Extensions.Hosting` package. See [customization](customization.md).
 
-These are libraries, not the CLI distribution. See the [CLI guide](../app/index.md)
-for application commands. Consult the package version on NuGet when selecting a
-release. This site documents the latest stable release, not unreleased changes
-on `master`; older packages may not expose every API documented here.
 
 ## Debugging Package Code
 
@@ -61,11 +57,3 @@ commit; generated and other untracked source files are embedded in the PDB.
 - [Customization and hosting](customization.md): register services and own your host.
 - [Without dependency injection](without-di.md): construct parsers, formatters, and definition-processing objects directly.
 - [Configuration](../app/configuration.md): the shared YAML configuration reference.
-- [Source](https://github.com/tcfoss/database-manager/tree/master/src): implementation and public contracts.
-
-The parser is oriented toward database-definition management, not every SQL
-construct supported by every server. See the [definition limitations](../app/limitations.md).
-
-!!! warning "Review generated SQL"
-    Migration scripts can contain destructive changes. Review and test them, and
-    back up data before execution. Generating a script does not execute it.

@@ -39,8 +39,7 @@ pair for dialect-specific syntax:
 
 For example, MySQL and MariaDB syntax both use
 `new TextParser(new MyLexer(), new MyParser())`. The other provider workflows
-still have distinct configuration and metadata behavior; sharing a parser does
-not make MySQL and MariaDB interchangeable.
+still have distinct configuration and metadata behavior.
 
 
 ## Format SQL in Memory
@@ -85,10 +84,10 @@ an application can supply its own logger instead.
 Filesystem definition loading needs a larger graph. This example uses an existing
 MySQL [project configuration](../app/configuration.md) and SQL definition files.
 Configuration processing can contact the configured server to discover defaults,
-just as it does during wrapper startup. No host or DI container is constructed.
+just as it does during wrapper startup.
 
-The comparison uses an empty starting definition, producing a create script from
-the definition files. It does **not** load or compare the live server's objects.
+!!! note
+    The comparison uses an empty starting definition, producing a create script from the definition files. It does **not** load or compare the live server's objects.
 
 ```csharp
 using Microsoft.Extensions.Logging.Abstractions;
@@ -161,12 +160,6 @@ Direct construction does not initialize `AppServiceProvider` convenience
 accessors, and none of these examples uses them. A manually constructed object
 has no DI scope; the application owns its dependencies and disposes resources
 such as formatters, writers, and database contexts itself.
-
-The [provider migration API](providers.md#generate-a-migration-script),
-`MyChangeComputer.ExecuteAsync`, uses `IServiceScopeFactory` internally to resolve
-filesystem and live-server definition loaders. It is not a container-free entry
-point even if you construct it with `new`. Container-free callers can compose
-definition loading, `MyDiffer`, and SQL writing themselves, as above.
 
 The [DI and LibWrapper approaches](customization.md) register these dependencies,
 provide matching provider services, and manage scoped database resources. The

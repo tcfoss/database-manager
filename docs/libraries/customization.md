@@ -33,25 +33,15 @@ var result = new GenericStartApp().Start(
         ConfigureServices = services => services.AddSingleton(TimeProvider.System)
     });
 
-using var scope = result.Services.CreateScope();
-var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
+var clock = result.Services.GetRequiredService<TimeProvider>();
 Console.WriteLine(clock.GetUtcNow());
 ```
 
 Use the same hooks with `MySqlStartApp`, `MariaDbStartApp`, or `SqlServerStartApp`.
-Provider startup still needs its own valid configuration. If replacing a library
-service, preserve its contract and lifetime; registration order alone is not a
-substitute for understanding its dependencies.
+Provider startup still needs its own valid configuration.
 
 
-## Scopes and Convenience Access
-
-Services that interact with a live database are scoped. Resolve them from a
-scope, not directly from the root provider, and dispose the scope after work
-finishes. Parsing and lexing operations are thread-safe, but each concurrent
-parsing operation must use its own `ParserState`. (This is handled automatically
-when using `ParseText(string)` or `Parse(Token[])` rather than overloads that take
-an explicit `ParserState`).
+## Convenience Access
 
 `AppServiceProvider` convenience accessors use thread-static state initialized by
 startup. They are not per-result state and should not be carried across async
@@ -60,7 +50,7 @@ injection, especially in asynchronous applications.
 
 Wrapper startup builds a host but does not expose it through the returned result
 for explicit shutdown. Use the following approach when your application needs to
-own and dispose the host. Creating scopes does not shut down a wrapper-created host.
+own and dispose the host.
 
 
 ## Manual Hosting Without LibWrapper
@@ -93,8 +83,7 @@ builder.RegisterCommonServices(config);
 builder.Services.RegisterGenericServices(config);
 
 using var host = builder.Build();
-using var scope = host.Services.CreateScope();
-var parser = scope.ServiceProvider.GetRequiredService<IParseText>();
+var parser = host.Services.GetRequiredService<IParseText>();
 var statements = parser.ParseText("CREATE TABLE widgets (id INT);");
 Console.WriteLine($"Parsed {statements.Count} statement(s).");
 ```
@@ -120,5 +109,4 @@ substitute a generic configuration object. See the [provider prerequisites](prov
 
 Choose one dialect registration per service container. Static shortcut access
 also requires separate initialization; the manual example intentionally uses DI
-instead. Host ownership does not imply supported multi-dialect isolation for all
-library internals.
+instead.
