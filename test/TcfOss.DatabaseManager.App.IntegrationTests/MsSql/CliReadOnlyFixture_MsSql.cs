@@ -20,7 +20,31 @@ public abstract class CliReadOnlyFixture_MsSql<TBuilderEntity, TContainerEntity>
 
     public override async ValueTask InitializeAsync()
     {
-        await DbFixture.Container.StartAsync();
+        try
+        {
+            await DbFixture.Container.StartAsync();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            Console.WriteLine($"Container id: {DbFixture.Container.Id}");
+
+            try
+            {
+                var (stdout, stderr) = await DbFixture.Container.GetLogsAsync();
+                Console.WriteLine("Container stdout:");
+                Console.WriteLine(stdout);
+
+                Console.WriteLine("Container stderr:");
+                Console.WriteLine(stderr);
+            }
+            catch (Exception logException)
+            {
+                Console.WriteLine("Failed to get container logs:");
+                Console.WriteLine(logException);
+            }
+            throw;
+        }
     }
 
     public override async ValueTask DisposeAsync()

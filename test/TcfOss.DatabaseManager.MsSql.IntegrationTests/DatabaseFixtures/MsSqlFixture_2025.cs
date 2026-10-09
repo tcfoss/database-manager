@@ -8,7 +8,7 @@ public sealed class MsSqlFixture_2025(IMessageSink messageSink)
 {
     protected override MsSqlBuilder Configure()
     {
-        return new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest")
+        return new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04")
             .WithStandardOptions();
     }
 }
