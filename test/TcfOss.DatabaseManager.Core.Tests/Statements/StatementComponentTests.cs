@@ -82,8 +82,7 @@ public class StatementComponentTests
         string expectedFormatted = """
         (
             SELECT
-                1
-        )
+                1)
         """;
 
         Assert.Equal(expectedFormatted, FormatComponent(factor).ReplaceLineEndings("\n"));

@@ -3,7 +3,7 @@
   "platformOptions": {
     "Coverlet": {
       "format": "cobertura",
-      "excludeByFile": "**/*.g.cs",
+      "excludeByFile": "**/*.g.cs,**/Program.cs",
       "exclude": "[System.Text.*]*,[Testcontainers*]*,[MySqlConnector*]*,[Docker.DotNet*]*,[*.Tests]*,[*.IntegrationTests]*,[TcfOss.DatabaseManager.Core*]*Errors.*",
       "excludeByAttribute": "ExcludeFromCodeCoverage,GeneratedCode",
       "skipAutoProps": true
