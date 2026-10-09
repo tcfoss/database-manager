@@ -1,10 +1,13 @@
 using System.Text;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.MsSql.BuiltIn;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -14,6 +17,48 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 
 public class FormatComponentsTests
 {
+    [Theory]
+    [InlineData("TOP (5)", "TOP (5)")]
+    [InlineData("TOP (@count) PERCENT WITH TIES", "TOP (@count) PERCENT WITH TIES")]
+    public void Top_FormatsItsExpressionAndOptions(string clause, string expected)
+    {
+        var parser = new TextParser(new MsLexer(), new MsParser());
+        var select = Assert.IsType<Select>(Assert.Single(parser.ParseText($"SELECT {clause} col1 FROM mytable ORDER BY col1")));
+        var top = Assert.IsType<SelectBody.SimpleSelectQuery>(select.Body).Query.Top;
+        Assert.NotNull(top);
+
+        Assert.Equal(expected, FormatComponent(top));
+    }
+
+    [Theory]
+    [InlineData(false, false, "()")]
+    [InlineData(true, false, "(PARTITION BY col1)")]
+    [InlineData(false, true, "(ORDER BY col2)")]
+    [InlineData(true, true, "(PARTITION BY col1 ORDER BY col2)")]
+    public void WindowSpec_FormatsOptionalClauses(bool partition, bool order, string expected)
+    {
+        var window = new WindowSpec
+        {
+            PartitionBy = partition ? [new SingleIdentifier(new Identifier("col1"))] : null,
+            OrderBy = order ? [new OrderBy(new SingleIdentifier(new Identifier("col2")), null)] : null,
+        };
+
+        Assert.Equal(expected, FormatComponent(window));
+    }
+
+    [Fact]
+    public void TableHint_UsesInheritedFormatter()
+    {
+        var parser = new TextParser(new MsLexer(), new MsParser());
+        var select = Assert.IsType<Select>(Assert.Single(parser.ParseText("SELECT col1 FROM mytable WITH (NOLOCK)")));
+        var from = Assert.IsType<SelectBody.SimpleSelectQuery>(select.Body).Query.From;
+        Assert.NotNull(from);
+        var hints = Assert.IsType<TableFactor.Table>(Assert.Single(from).Relation).Hints;
+        Assert.NotNull(hints);
+
+        Assert.Equal("NOLOCK", FormatComponent(Assert.Single(hints)));
+    }
+
     [Theory]
     [InlineData("declare @count int", "DECLARE @count INT;")]
     [InlineData("declare @count int = 1", "DECLARE @count INT = 1;")]

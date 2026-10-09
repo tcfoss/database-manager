@@ -11,6 +11,17 @@ namespace TcfOss.DatabaseManager.MySql.Tests.IO.Formatting;
 public class FormatComponentsTests
 {
     [Theory]
+    [InlineData("DROP TEMPORARY TABLE IF EXISTS first_table, second_table", "DROP TEMPORARY TABLE IF EXISTS `first_table`, `second_table`;")]
+    [InlineData("ROLLBACK WORK AND NO CHAIN NO RELEASE", "ROLLBACK WORK AND NO CHAIN NO RELEASE;")]
+    [InlineData(" \t/*first\n\tsecond*/\nSELECT 1", "/*first\nsecond*/\nSELECT\n    1;")]
+    public void Statement_FormatsRemainingMySqlBranches(string input, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+
+        Assert.Equal(expected, formatter.GetFormatted(input), ignoreLineEndingDifferences: true);
+    }
+
+    [Theory]
     [InlineData("CALL CONCAT('a', 'b')", "CALL CONCAT('a', 'b');", Label = "Call built-in function")]
     [InlineData("CALL `myfunc`('a', 'b')", "CALL `myfunc`('a', 'b');", Label = "Call quoted user-defined function")]
     [InlineData("CALL myfunc('a', 'b')", "CALL `myfunc`('a', 'b');", Label = "Call user-defined function")]

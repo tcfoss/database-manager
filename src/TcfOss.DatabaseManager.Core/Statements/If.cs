@@ -140,12 +140,30 @@ public abstract record If(Expression Condition) : Statement
             manager.WriteBlockPart(writer, "IF");
             writer.Write(" ");
             Condition.FormatSql(writer, manager);
-            writer.Write(" ");
+            bool indentStatement = Statement is not BeginEnd;
+            if (indentStatement)
+            {
+                manager.IncreaseIndent();
+            }
             Statement.FormatSql(writer, manager);
+            if (indentStatement)
+            {
+                manager.DecreaseIndent();
+            }
             if (ElseStatement != null)
             {
-                writer.Write(" ELSE ");
+                manager.ExpectingNewLineBeforeStatement = true;
+                manager.WriteBlockPart(writer, "ELSE");
+                bool indentElseStatement = ElseStatement is not BeginEnd;
+                if (indentElseStatement)
+                {
+                    manager.IncreaseIndent();
+                }
                 ElseStatement.FormatSql(writer, manager);
+                if (indentElseStatement)
+                {
+                    manager.DecreaseIndent();
+                }
             }
             Meta.FormatPostNonSql(writer, manager);
         }

@@ -23,6 +23,12 @@ public static partial class TestHelpers
         return N(itemRef.Identifiers);
     }
 
+    public static void AssertEqualItemNames(this IReadOnlyCollection<ItemRef> items, params string[] expectedNames)
+    {
+        Assert.Collection(items,
+            [.. expectedNames.Select(name => new Action<ItemRef>(item => Assert.Equal(name, item.N())))]);
+    }
+
     [GeneratedRegex(@"\s+")]
     private static partial Regex CreateWhitespaceRegex();
 }

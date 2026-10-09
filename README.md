@@ -8,8 +8,8 @@ DatabaseManager is an open source tool for syncing a database definition, in the
 `CREATE VIEW`, etc., statements in (presumably version-controlled)
 flat files, with the structure of a live database server.
 
-Documentation: [CLI guide](https://tcfoss.github.io/database-manager/app/),
-[.NET libraries](https://tcfoss.github.io/database-manager/libraries/), and
+Documentation: [App usage](https://tcfoss.github.io/database-manager/app/),
+[for developers](https://tcfoss.github.io/database-manager/libraries/), and
 [contributing](https://tcfoss.github.io/database-manager/development/).
 
 
@@ -18,9 +18,9 @@ Documentation: [CLI guide](https://tcfoss.github.io/database-manager/app/),
 > [!NOTE]
 > Everything in this section is geared toward application *users*. If you are interested in contributing, see [below](#reporting-issues-and-contributing).
 
-To run the application, you need the [.NET 10+ runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0/runtime) if you don't already have one.
+To run the application, you need the [.NET 10+ runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0/runtime) if you don't already have it.
 
-The simplest way to install it is using [NET Install Manager](https://github.com/tcfoss/net-install-manager). If you don't have it but do have `pipx`, you can install it using
+The simplest way to install it is using [.NET Install Manager](https://github.com/tcfoss/net-install-manager). If you don't have it but do have `pipx`, you can install it using
 
 ```shell
 pipx install net-install-manager

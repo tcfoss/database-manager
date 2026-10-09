@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MsSql.BuiltIn;
@@ -15,6 +16,37 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.StatementAnalysis;
 
 public class MsReferencedItemsTests
 {
+    [Fact]
+    public void UpdateFrom_ReferencesSourceAndAssignmentValue()
+    {
+        var statement = Assert.IsType<Update>(ParseStatement("UPDATE t SET t.col1 = @value FROM mytable t WHERE t.col2 > 0"));
+
+        var items = statement.GetReferencedItems(CreateReferencedItemsManager()).ToList();
+
+        Assert.Collection(items,
+            item => Assert.Equal("t", item.N()),
+            item => Assert.Equal("mytable", item.N()),
+            item => Assert.Equal("value", item.N()),
+            item => Assert.Equal("t.col2", item.N())
+        );
+        Assert.Equal(ItemType.Table, items[1].Type);
+        Assert.Equal(ItemType.Variable, items[2].Type);
+        Assert.Equal(ItemType.TableColumn, items[3].Type);
+    }
+
+    [Fact]
+    public void Top_ReferencesCountExpression()
+    {
+        var select = Assert.IsType<Select>(ParseStatement("SELECT TOP (@count) col1 FROM mytable"));
+        var query = Assert.IsType<SelectBody.SimpleSelectQuery>(select.Body).Query;
+        Assert.NotNull(query.Top);
+
+        var item = Assert.Single(query.Top.GetReferencedItems(CreateReferencedItemsManager()));
+
+        Assert.Equal(ItemType.Variable, item.Type);
+        Assert.Equal("count", item.N());
+    }
+
     [Fact]
     public void MsExecute_WithProcedure()
     {
@@ -281,6 +313,7 @@ public class MsReferencedItemsTests
     [Theory]
     [InlineData("BREAK")]
     [InlineData("CONTINUE")]
+    [InlineData("RETURN")]
     [InlineData("WHILE 1 = 1 BREAK")]
     [InlineData("WHILE 1 = 1 CONTINUE")]
     [InlineData("WHILE 1 = 1 BEGIN BREAK; CONTINUE; END")]

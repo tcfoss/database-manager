@@ -17,13 +17,17 @@ The CLI requires the [.NET 10 runtime](https://dotnet.microsoft.com/en-us/downlo
 
 ## Installing
 
-The simplest way to install DatabaseManager is with [NET Install Manager](https://github.com/tcfoss/net-install-manager):
+The simplest way to install DatabaseManager is with [.NET Install Manager](https://github.com/tcfoss/net-install-manager):
 
 ```sh
 pipx install net-install-manager
+# pipx ensurepath (1)
 ninman install tcfoss:database-manager
 dbman --help
 ```
+
+1.   The `pipx ensurepath` invocation is only needed if you haven't called it before or added `~/.local/bin` to your path manually. On Windows, if you *do* need to call it, you will have to close your shell and open a new one before running the next command.
+
 
 Alternatively, download the archive for your platform from the
 [latest release](https://github.com/tcfoss/database-manager/releases/latest).
