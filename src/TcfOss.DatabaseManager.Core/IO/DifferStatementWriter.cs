@@ -151,7 +151,7 @@ public class DifferStatementWriter
     private void WriteProgramStatement(Statement statement, WriteOptions options)
     {
         string delimiter = ";";
-        string sql = statement.ToSql(options);
+        string sql = statement is IWriteSqlWithOptions withOptions ? withOptions.ToSql(options) : statement.ToSql();
 
         if (options.UseDelimiterAroundPrograms)
         {
@@ -179,7 +179,7 @@ public class DifferStatementWriter
 
     private void WriteNonProgramStatement(Statement statement)
     {
-        string sql = statement.ToSql(_writeOptions);
+        string sql = statement.ToSql();
         _writer.Write(sql);
         if (_writeOptions.TerminateStatements && !sql.TrimEnd().EndsWith(';'))
         {

@@ -82,6 +82,16 @@ public class FileWriterTests
     }
 
     [Fact]
+    public void WriteTextToFile_Invalid()
+    {
+        var filePath = Path.Combine(RootDirectory.FullName, "testfile.txt");
+        File.WriteAllText(filePath, "Initial content");
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            FileWriter.WriteTextToFile(filePath, "New content", (FileExistsAction)999));
+    }
+
+    [Fact]
     public void GetFileStreamWriter_Skip()
     {
         var filePath = Path.Combine(RootDirectory.FullName, "testfile.txt");
@@ -160,6 +170,16 @@ public class FileWriterTests
 
         Assert.Throws<CommandException.FileExists>(() =>
             FileWriter.GetFileStreamWriter(filePath, FileExistsAction.Error));
+    }
+
+    [Fact]
+    public void GetFileStreamWriter_Invalid()
+    {
+        var filePath = Path.Combine(RootDirectory.FullName, "testfile.txt");
+        File.WriteAllText(filePath, "Initial content");
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            FileWriter.GetFileStreamWriter(filePath, (FileExistsAction)999));
     }
 
     [Fact]

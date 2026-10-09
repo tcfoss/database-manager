@@ -8,7 +8,7 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateView(ObjectName Name, Select Body) : Statement, ICreateStatement
+public record CreateView(ObjectName Name, Select Body) : Statement, ICreateStatement, IWriteSqlWithOptions
 {
     public SqlValueList<Identifier>? Columns { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
@@ -21,10 +21,10 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
 
     public override void ToSql(SqlTextWriter writer)
     {
-        ToSql(writer, IWriteSql.DefaultWriteOptions);
+        ToSql(writer, new WriteOptions());
     }
 
-    public override void ToSql(SqlTextWriter writer, WriteOptions options)
+    public void ToSql(SqlTextWriter writer, WriteOptions options)
     {
         writer.Write("CREATE");
         if (CreateOrLabel != null)

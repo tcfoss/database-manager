@@ -13,11 +13,6 @@ public abstract record Statement : IWriteSql, IHaveMeta, IReferenceItems
 
     public abstract IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context);
 
-    public virtual void ToSql(SqlTextWriter writer, WriteOptions options)
-    {
-        ToSql(writer);
-    }
-
     public virtual void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);

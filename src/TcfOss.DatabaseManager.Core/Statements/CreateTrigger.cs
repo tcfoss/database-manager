@@ -14,7 +14,7 @@ public record CreateTrigger(
     TriggerTime TriggerTime,
     SqlValueList<TriggerEvent> Events,
     ObjectName TableName,
-    Statement Body) : Statement, ICreateStatement, IHaveBodyStatement
+    Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public Definer? Definer { get; init; }
     public TriggerOrder? Order { get; init; }
@@ -26,10 +26,10 @@ public record CreateTrigger(
 
     public override void ToSql(SqlTextWriter writer)
     {
-        ToSql(writer, IWriteSql.DefaultWriteOptions);
+        ToSql(writer, new WriteOptions());
     }
 
-    public override void ToSql(SqlTextWriter writer, WriteOptions options)
+    public void ToSql(SqlTextWriter writer, WriteOptions options)
     {
         writer.Write("CREATE");
         if (CreateOrLabel != null)
