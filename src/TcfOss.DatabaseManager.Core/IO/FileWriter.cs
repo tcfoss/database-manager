@@ -61,7 +61,7 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
             {
                 FileExistsAction.Skip => () => s_logFileExistsSkippingWrite(_logger, filePath, null),
                 FileExistsAction.Rename => () => RenameExistingFile(filePath),
-                FileExistsAction.Overwrite => () => { },
+                FileExistsAction.Overwrite => NoOp,
                 FileExistsAction.Error => () => throw new CommandException.FileExists(filePath),
                 _ => throw new ArgumentOutOfRangeException(nameof(fileExistsAction), fileExistsAction, null)
             };
@@ -85,7 +85,7 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
             {
                 FileExistsAction.Skip => () => s_logFileExistsSkippingWrite(_logger, filePath, null),
                 FileExistsAction.Rename => () => RenameExistingFile(filePath),
-                FileExistsAction.Overwrite => () => { },
+                FileExistsAction.Overwrite => NoOp,
                 FileExistsAction.Error => () => throw new CommandException.FileExists(filePath),
                 _ => throw new ArgumentOutOfRangeException(nameof(fileExistsAction), fileExistsAction, null)
             };
@@ -99,6 +99,11 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
         }
 
         return new StreamWriter(filePath);
+    }
+
+    private static void NoOp()
+    {
+        // Don't do anything. This is to work around what I think is a bug in dotnet-format
     }
 
     [GeneratedRegex(@"^(.+)\.bak\.(\d+)$", RegexOptions.Compiled)]
@@ -115,5 +120,4 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "File '{FilePath}' already exists. Skipping write.")]
     private static partial void s_logFileExistsSkippingWrite(ILogger logger, string filePath, Exception? ex);
-
 }

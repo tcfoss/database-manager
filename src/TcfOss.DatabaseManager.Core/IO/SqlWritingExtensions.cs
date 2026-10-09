@@ -27,14 +27,14 @@ public static class SqlWritingExtensions
         return StringBuilderPool.Return(builder);
     }
 
-    public static void ToSql<T>(this IStringEnum<T>? enumLike, SqlTextWriter writer)
+    public static void ToSql<T>(this IStringEnum<T> enumLike, SqlTextWriter writer)
     {
-        writer.Write(enumLike?.ToString()!);
+        writer.Write(enumLike.ToString());
     }
 
-    public static string ToSql<T>(this IStringEnum<T>? enumLike)
+    public static string ToSql<T>(this IStringEnum<T> enumLike)
     {
-        return enumLike?.ToString() ?? "";
+        return enumLike.ToString()!;
     }
 
     public static string ToSqlDelimited<T>(this IEnumerable<T> list, string delimiter = ", ") where T : IWriteSql
