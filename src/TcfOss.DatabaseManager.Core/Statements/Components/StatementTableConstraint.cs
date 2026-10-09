@@ -92,6 +92,10 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         {
             FormatConstraintName(writer, manager);
             writer.Write("PRIMARY KEY ");
+            if (IndexOrganization != null)
+            {
+                writer.WriteSql($"{IndexOrganization} ");
+            }
             if (IndexMethod != null)
             {
                 writer.WriteSql($"USING {IndexMethod} ");
@@ -187,8 +191,9 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             }
             if (Options != null)
             {
-                writer.Write(" ");
+                writer.Write(" WITH (");
                 writer.FormatDelimited(Options, manager);
+                writer.Write(")");
             }
             if (StorageLocation != null)
             {
@@ -337,6 +342,10 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.Write(" ");
                 IndexName.FormatSql(writer, manager);
+            }
+            if (IndexOrganization != null)
+            {
+                writer.WriteSql($" {IndexOrganization}");
             }
             if (IndexMethod != null)
             {
@@ -504,6 +513,11 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.Write(" ");
                 IndexName.FormatSql(writer, manager);
+            }
+            writer.Write(" UNIQUE");
+            if (IndexOrganization != null)
+            {
+                writer.WriteSql($" {IndexOrganization}");
             }
             if (IndexMethod != null)
             {

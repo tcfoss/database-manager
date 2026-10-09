@@ -1,5 +1,7 @@
 # DatabaseManager
 
+[![codecov](https://codecov.io/gh/tcfoss/database-manager/branch/master/graph/badge.svg?token=NK2W9ZRKRW)](https://codecov.io/gh/tcfoss/database-manager)
+
 ## About the Project
 
 DatabaseManager is an open source tool for syncing a database definition, in the form of `CREATE TABLE`,

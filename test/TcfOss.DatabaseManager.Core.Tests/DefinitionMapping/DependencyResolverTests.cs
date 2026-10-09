@@ -1,7 +1,13 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
+using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
+using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.Tests.DefinitionMapping;
@@ -9,6 +15,32 @@ namespace TcfOss.DatabaseManager.Core.Tests.DefinitionMapping;
 public class DependencyResolverTests
 {
     private readonly DependencyResolver _resolver = new(NullLogger.Instance);
+
+    private static ItemRef.SingleIdentifierRef Reference(ItemType type, ObjectHandle? handle)
+    {
+        return new ItemRef.SingleIdentifierRef(type, new SingleIdentifier(new Identifier("reference"))) { ObjectHandle = handle };
+    }
+
+    private sealed class ReferencingObject(ObjectIdentifier name, ObjectType objectType, List<ItemRef> references) : IDatabaseObject
+    {
+        public ObjectIdentifier Name { get; } = name;
+        public ObjectType ObjectType { get; } = objectType;
+        public Statement CreateStatement { get; } = new StartTransaction();
+        public bool IncludeSchema { get; private set; }
+        public SchemaIdentifier? ActiveSchema { get; private set; }
+
+        public Statement ToCreateStatement(bool includeSchema, DifferFormatManager manager)
+        {
+            IncludeSchema = includeSchema;
+            return CreateStatement;
+        }
+
+        public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            ActiveSchema = context.ActiveSchema;
+            return references;
+        }
+    }
 
     private static ObjectHandle Handle(string schema, string name)
     {
@@ -358,4 +390,67 @@ public class DependencyResolverTests
     }
 
     #endregion
+
+    [Theory]
+    [InlineData(ObjectType.View, DependencyType.Hard, true)]
+    [InlineData(ObjectType.Function, DependencyType.Hard, false)]
+    [InlineData(ObjectType.Procedure, DependencyType.Soft, true)]
+    [InlineData(ObjectType.Trigger, DependencyType.Soft, false)]
+    public void ConstructNodeMap_FiltersReferencesAndClassifiesDependencies(ObjectType objectType, DependencyType expectedType, bool includeSchema)
+    {
+        var ownerName = ObjectIdentifier.FromStrings("def", "s", "owner");
+        var viewName = ObjectIdentifier.FromStrings("def", "s", "target_view");
+        var tableName = ObjectIdentifier.FromStrings("def", "other", "target_table");
+        var ownerHandle = ObjectHandle.Create(ownerName, NameHandling.None);
+        var viewHandle = ObjectHandle.Create(viewName, NameHandling.None);
+        var tableHandle = ObjectHandle.Create(tableName, NameHandling.None);
+        var owner = new ReferencingObject(ownerName, objectType,
+        [
+            Reference(ItemType.View, ownerHandle),
+            Reference(ItemType.View, Handle("s", "external_view")),
+            Reference(ItemType.Unknown, null),
+            Reference(ItemType.View, viewHandle),
+            Reference(ItemType.Table, tableHandle),
+        ]);
+        var targetView = new ReferencingObject(viewName, ObjectType.View, []);
+        var targetTable = new ReferencingObject(tableName, ObjectType.Table, []);
+        var manager = new DifferFormatManager
+        {
+            QuoteStyle = QuoteStyle.Ansi,
+            Formatting = new DifferFormattingSettings { ObjectNamePrefixWithSchema = includeSchema },
+            AttributeDefaults = new AttributeDefaults(),
+        };
+        var provider = new SimpleObjectProvider(new Dictionary<ObjectHandle, ObjectType>
+        {
+            [ownerHandle] = objectType,
+            [viewHandle] = ObjectType.View,
+            [tableHandle] = ObjectType.Table,
+        });
+
+        var actual = _resolver.ConstructNodeMap([owner, targetView, targetTable], provider, new PseudoTableSet(ownerName.Schema, []), new FunctionNameProvider(), manager, NameHandling.None);
+
+        Assert.Equal(3, actual.Count);
+        DbObjectNode node = actual[ownerHandle];
+        Assert.Equal(ownerName, node.Name);
+        Assert.Equal(objectType, node.ObjectType);
+        Assert.Same(owner.CreateStatement, node.CreateStatement);
+        Assert.Equal(includeSchema, owner.IncludeSchema);
+        Assert.Equal(ownerName.Schema, owner.ActiveSchema);
+        Assert.Equal(tableName.Schema, targetTable.ActiveSchema);
+        Assert.Equal(new[]
+        {
+            (viewHandle, ItemType.View, expectedType),
+            (tableHandle, ItemType.Table, DependencyType.Soft),
+        }, node.Dependencies.Select(dependency => (dependency.Handle, dependency.ItemType, dependency.DependencyType)));
+        if (expectedType == DependencyType.Hard)
+        {
+            Assert.Equal(viewHandle, Assert.Single(node.HardDependencyHandles));
+        }
+        else
+        {
+            Assert.Empty(node.HardDependencyHandles);
+        }
+        Assert.Empty(actual[viewHandle].Dependencies);
+        Assert.Empty(actual[tableHandle].Dependencies);
+    }
 }
