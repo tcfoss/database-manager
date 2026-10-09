@@ -83,17 +83,16 @@ public abstract class StartupBase
                 $@"^({dirNamePattern}database-?manager|dbman)\.ya?ml$",
                 RegexOptions.IgnoreCase);
 
-            string[] matches = [.. dir.EnumerateFiles()
-                .Where(f => pattern.IsMatch(f.Name))
-                .Select(f => f.FullName)];
+            FileInfo[] matches = [.. dir.EnumerateFiles()
+                .Where(f => pattern.IsMatch(f.Name))];
 
             if (matches.Length == 1)
             {
-                return new FileInfo(matches[0]);
+                return matches[0];
             }
             if (matches.Length > 1)
             {
-                throw new ConfigurationException.AmbiguousConfigFile(dir.FullName, matches);
+                throw new ConfigurationException.AmbiguousConfigFile(dir.FullName, [.. matches.Select(f => f.Name)]);
             }
 
             dir = dir.Parent;

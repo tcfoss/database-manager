@@ -38,6 +38,55 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
 
     [Fact]
+    public void ComputeChanges_WorkingDirectoryNotFound_Fails()
+    {
+        var cli = new CommandLineInterface();
+        var computeResult = cli.Run([
+            "--working-dir",
+            Path.Combine(Path.GetTempPath(), "non-existent-directory"),
+            "compute-changes",
+            "changes.sql"
+        ]);
+
+        Assert.NotEqual(0, computeResult);
+
+        var actual = GetOutputLines(TestOutputHelper);
+        Assert.StartsWith("Directory not found", actual);
+    }
+
+    [Fact]
+    public async Task ComputeChanges_AmbiguousConfig_Fails()
+    {
+        var fileFixture = new FsProjectFixture();
+        string[] fileNames = [
+            "database-manager.yaml",
+            "databasemanager.yaml",
+            "database-manager.yml",
+            "databasemanager.yml",
+            "dbman.yaml",
+            "dbman.yml"
+        ];
+        foreach (var fileName in fileNames)
+        {
+            await fileFixture.WriteTextAsync(fileName, "ambiguous: true", TestContext.Current.CancellationToken);
+        }
+
+        var cli = new CommandLineInterface();
+        var computeResult = cli.Run([
+            "--working-dir",
+            fileFixture.RootDirectory.FullName,
+            "compute-changes",
+            "changes.sql"
+        ]);
+
+        Assert.NotEqual(0, computeResult);
+
+        var actual = GetOutputLines(TestOutputHelper);
+        var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.AmbiguousConfigurationTemplate, fileFixture.RootDirectory.FullName, string.Join(", ", fileNames.OrderBy(name => name).Select(name => $"'{name}'")));
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
     public void ComputeChanges_NoConfig_NoDialect_Fails()
     {
         var fileFixture = new FsProjectFixture();

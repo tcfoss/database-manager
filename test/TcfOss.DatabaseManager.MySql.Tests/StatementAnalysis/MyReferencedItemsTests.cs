@@ -89,7 +89,7 @@ public class MyReferencedItemsTests
         Assert.Equal(4, items.Count);
         Assert.All(items, i => Assert.Equal(ItemType.Unknown, i.Type));
 
-        items.AssertEqualItemNames(["a", "b", "c", "d"]);
+        items.AssertEqualItemNames("a", "b", "c", "d");
     }
 
     private static Expression ParseExpression(string sql)

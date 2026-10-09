@@ -18,4 +18,5 @@ public static class MessageTemplates
     public static readonly string NoSqlSecurityTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Def, ErrorMessages.Err_Def_ObjectNoSecurityContext);
     public static readonly string TriggerOrderViaPrecedesTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Def, ErrorMessages.Err_Def_Trigger_PrecedesUnsupported);
     public static readonly string TriggerOrderUndefinedTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Def, ErrorMessages.Err_Def_Trigger_UndefinedOrder);
+    public static readonly string AmbiguousConfigurationTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Conf, ErrorMessages.Err_Conf_AmbiguousConfigFile);
 }

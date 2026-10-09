@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.App.Commands;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -130,6 +131,12 @@ public partial class CommandLineInterface
             return 1;
         }
         catch (Exception ex)
+        {
+            return HandleUnexpectedError(ex);
+        }
+
+        [ExcludeFromCodeCoverage]
+        int HandleUnexpectedError(Exception ex)
         {
 #if DEBUG
             string outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Errors");

@@ -7,7 +7,7 @@ namespace TcfOss.DatabaseManager.Core.Errors;
 public class ConfigurationException(string message, Exception? innerException = null) : Exception(GetMessage(message), innerException)
 {
     public class AmbiguousConfigFile(string directory, string[] fileNames)
-        : ConfigurationException(s_compositeFormat.Apply(directory, string.Join(", ", fileNames.Select(name => $"'{name}'"))))
+        : ConfigurationException(s_compositeFormat.Apply(directory, string.Join(", ", fileNames.OrderBy(name => name).Select(name => $"'{name}'"))))
     {
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_AmbiguousConfigFile);
     }
