@@ -281,6 +281,9 @@ public class MsReferencedItemsTests
     [Theory]
     [InlineData("BREAK")]
     [InlineData("CONTINUE")]
+    [InlineData("WHILE 1 = 1 BREAK")]
+    [InlineData("WHILE 1 = 1 CONTINUE")]
+    [InlineData("WHILE 1 = 1 BEGIN BREAK; CONTINUE; END")]
     [InlineData("GO")]
     [InlineData("COMMIT")]
     [InlineData("COMMIT TRAN")]
@@ -299,6 +302,22 @@ public class MsReferencedItemsTests
         var stmt = ParseStatement(text);
         var items = stmt.GetReferencedItems(CreateReferencedItemsManager()).ToList();
         Assert.Empty(items);
+    }
+
+    [Theory]
+    [InlineData("WHILE @condition = 1 PRINT @body", "condition", "body")]
+    [InlineData("WHILE @condition = 1 BREAK", "condition")]
+    [InlineData("WHILE 1 = 1 PRINT @body", "body")]
+    [InlineData("WHILE @condition = 1 BEGIN PRINT @body; CONTINUE; BREAK; END", "condition", "body")]
+    [InlineData("WHILE @outer > 0 WHILE @inner > 0 PRINT @body", "outer", "inner", "body")]
+    public void While_ReferencesConditionBeforeBody(string text, params string[] expectedNames)
+    {
+        var stmt = Assert.IsType<While>(ParseStatement(text));
+
+        var items = stmt.GetReferencedItems(CreateReferencedItemsManager()).ToList();
+
+        Assert.Equal(expectedNames, items.Select(item => item.N()));
+        Assert.Equal(Enumerable.Repeat(ItemType.Variable, expectedNames.Length), items.Select(item => item.Type));
     }
 
     [Fact]

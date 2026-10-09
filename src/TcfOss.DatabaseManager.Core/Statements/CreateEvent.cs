@@ -9,7 +9,7 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateEvent(ObjectName Name, EventSchedule Schedule, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement
+public record CreateEvent(ObjectName Name, EventSchedule Schedule, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public CreateOrLabel? CreateOrLabel { get; init; }
     public Definer? Definer { get; init; }
@@ -20,10 +20,10 @@ public record CreateEvent(ObjectName Name, EventSchedule Schedule, Statement Bod
 
     public override void ToSql(SqlTextWriter writer)
     {
-        ToSql(writer, IWriteSql.DefaultWriteOptions);
+        ToSql(writer, new WriteOptions());
     }
 
-    public override void ToSql(SqlTextWriter writer, WriteOptions options)
+    public void ToSql(SqlTextWriter writer, WriteOptions options)
     {
         writer.Write("CREATE");
         if (CreateOrLabel != null)

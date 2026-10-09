@@ -3,6 +3,58 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 public class FormatStatementsTests
 {
     [Theory]
+    [InlineData("break", "BREAK;")]
+    [InlineData("continue", "CONTINUE;")]
+    [InlineData("while @count < 3 break", "WHILE @count < 3\n    BREAK;")]
+    [InlineData("while @count < 3 continue", "WHILE @count < 3\n    CONTINUE;")]
+    [InlineData("-- before\nbreak; -- after", "-- before\nBREAK;  -- after")]
+    [InlineData("-- before\ncontinue; -- after", "-- before\nCONTINUE;  -- after")]
+    public void LoopControl(string input, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void While_BeginEndBody_FormatsLoopControls()
+    {
+        var input = "WHILE @count < 3 BEGIN CONTINUE; BREAK; END";
+        var expected = """
+        WHILE @count < 3
+        BEGIN
+            CONTINUE;
+            BREAK;
+        END;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void While_NestedLoops_RestoresIndentationForFollowingStatements()
+    {
+        var input = "BEGIN WHILE @outer > 0 BEGIN WHILE @inner > 0 CONTINUE; BREAK; END; PRINT 'done'; END";
+        var expected = """
+        BEGIN
+            WHILE @outer > 0
+            BEGIN
+                WHILE @inner > 0
+                    CONTINUE;
+                BREAK;
+            END;
+            PRINT 'done';
+        END;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Theory]
     [InlineData("begin transaction", "BEGIN TRANSACTION;")]
     [InlineData("begin tran", "BEGIN TRAN;")]
     [InlineData("begin transaction my_tx", "BEGIN TRANSACTION [my_tx];")]

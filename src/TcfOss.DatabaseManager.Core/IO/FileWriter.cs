@@ -20,7 +20,7 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
         }
         string fileName = Path.GetFileName(filePath);
 
-        string? nextBakExtension = GetNextBackupExtension(directory, fileName, alreadyIncludesBakExtension: false);
+        string? nextBakExtension = GetNextBackupExtension(directory, fileName);
         if (nextBakExtension == null)
         {
             return;
@@ -32,13 +32,8 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
         s_logRenamedExistingFile(_logger, filePath, newFilePath, null);
     }
 
-    public string? GetNextBackupExtension(string directory, string fileName, bool alreadyIncludesBakExtension = false)
+    public string? GetNextBackupExtension(string directory, string fileName)
     {
-        if (alreadyIncludesBakExtension)
-        {
-            fileName = fileName.Substring(0, fileName.LastIndexOf(".bak", StringComparison.OrdinalIgnoreCase));
-        }
-
         string filePath = Path.Combine(directory, fileName);
         if (!File.Exists(filePath))
         {
@@ -62,21 +57,20 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
     {
         if (File.Exists(filePath))
         {
-            switch (fileExistsAction)
+            Action action = fileExistsAction switch
             {
-                case FileExistsAction.Skip:
-                    s_logFileExistsSkippingWrite(_logger, filePath, null);
-                    return;
-                case FileExistsAction.Rename:
-                    RenameExistingFile(filePath);
-                    break;
-                case FileExistsAction.Overwrite:
-                    // Overwrite the existing file
-                    break;
-                case FileExistsAction.Error:
-                    throw new CommandException.FileExists(filePath);
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(fileExistsAction), fileExistsAction, null);
+                FileExistsAction.Skip => () => s_logFileExistsSkippingWrite(_logger, filePath, null),
+                FileExistsAction.Rename => () => RenameExistingFile(filePath),
+                FileExistsAction.Overwrite => NoOp,
+                FileExistsAction.Error => () => throw new CommandException.FileExists(filePath),
+                _ => throw new ArgumentOutOfRangeException(nameof(fileExistsAction), fileExistsAction, null)
+            };
+
+            action();
+
+            if (fileExistsAction == FileExistsAction.Skip)
+            {
+                return;
             }
         }
 
@@ -87,25 +81,29 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
     {
         if (File.Exists(filePath))
         {
-            switch (fileExistsAction)
+            Action action = fileExistsAction switch
             {
-                case FileExistsAction.Skip:
-                    s_logFileExistsSkippingWrite(_logger, filePath, null);
-                    return null;
-                case FileExistsAction.Rename:
-                    RenameExistingFile(filePath);
-                    break;
-                case FileExistsAction.Overwrite:
-                    // Overwrite the existing file
-                    break;
-                case FileExistsAction.Error:
-                    throw new CommandException.FileExists(filePath);
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(fileExistsAction), fileExistsAction, null);
+                FileExistsAction.Skip => () => s_logFileExistsSkippingWrite(_logger, filePath, null),
+                FileExistsAction.Rename => () => RenameExistingFile(filePath),
+                FileExistsAction.Overwrite => NoOp,
+                FileExistsAction.Error => () => throw new CommandException.FileExists(filePath),
+                _ => throw new ArgumentOutOfRangeException(nameof(fileExistsAction), fileExistsAction, null)
+            };
+
+            action();
+
+            if (fileExistsAction == FileExistsAction.Skip)
+            {
+                return null;
             }
         }
 
         return new StreamWriter(filePath);
+    }
+
+    private static void NoOp()
+    {
+        // Don't do anything. This is to work around what I think is a bug in dotnet-format
     }
 
     [GeneratedRegex(@"^(.+)\.bak\.(\d+)$", RegexOptions.Compiled)]
@@ -122,5 +120,4 @@ public partial class FileWriter(ILogger<FileWriter> logger) : IWriteFiles
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "File '{FilePath}' already exists. Skipping write.")]
     private static partial void s_logFileExistsSkippingWrite(ILogger logger, string filePath, Exception? ex);
-
 }

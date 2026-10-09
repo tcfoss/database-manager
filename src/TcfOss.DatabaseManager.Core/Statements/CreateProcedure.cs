@@ -8,7 +8,7 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateProcedure(ObjectName Name, SqlValueList<RoutineParameter> Parameters, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement
+public record CreateProcedure(ObjectName Name, SqlValueList<RoutineParameter> Parameters, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool IfNotExists { get; init; }
@@ -22,10 +22,10 @@ public record CreateProcedure(ObjectName Name, SqlValueList<RoutineParameter> Pa
 
     public override void ToSql(SqlTextWriter writer)
     {
-        ToSql(writer, IWriteSql.DefaultWriteOptions);
+        ToSql(writer, new WriteOptions());
     }
 
-    public override void ToSql(SqlTextWriter writer, WriteOptions options)
+    public void ToSql(SqlTextWriter writer, WriteOptions options)
     {
         writer.Write("CREATE");
         if (CreateOrLabel != null)

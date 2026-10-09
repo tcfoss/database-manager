@@ -1,6 +1,7 @@
 ﻿using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
@@ -8,6 +9,7 @@ using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Resources;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Tests.Resources;
+using YamlDotNet.Serialization;
 
 namespace TcfOss.DatabaseManager.Core.Tests.IO;
 
@@ -111,6 +113,37 @@ public class SerializationTests
         Assert.Contains("\"PreNonSql\":", json);
         Assert.Contains("\"RawBodyText\":", json);
         Assert.DoesNotContain("\"Source\":", json);
+    }
+
+    [Fact]
+    public void ToYaml_UsesRegisteredConverters()
+    {
+        var catalog = new CatalogIdentifier("catalog", QuoteStyle.Brackets);
+        var schema = new SchemaIdentifier("schema", catalog, QuoteStyle.Brackets);
+        string filePath = Path.Combine(Path.GetTempPath(), "coverage_output.yaml");
+        var value = new
+        {
+            Catalog = catalog,
+            Schema = schema,
+            File = new FileInfo(filePath),
+            Action = ReferentialAction.SetNull,
+            NullCatalog = (CatalogIdentifier?)null,
+            NullSchema = (SchemaIdentifier?)null,
+            NullFile = (FileInfo?)null,
+            NullAction = (ReferentialAction?)null,
+        };
+
+        string yaml = Serialization.ToYaml(value);
+        var actual = new DeserializerBuilder().Build().Deserialize<Dictionary<string, string?>>(yaml);
+
+        Assert.Equal("[catalog]", actual["Catalog"]);
+        Assert.Equal("[catalog].[schema]", actual["Schema"]);
+        Assert.Equal(filePath, actual["File"]);
+        Assert.Equal("SET NULL", actual["Action"]);
+        Assert.Null(actual["NullCatalog"]);
+        Assert.Null(actual["NullSchema"]);
+        Assert.Null(actual["NullFile"]);
+        Assert.Null(actual["NullAction"]);
     }
 
     protected record TestView(ObjectIdentifier Name, Select Body) : View(Name, Body)

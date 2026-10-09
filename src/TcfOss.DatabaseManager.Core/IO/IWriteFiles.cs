@@ -10,5 +10,5 @@ public interface IWriteFiles
 
     public StreamWriter? GetFileStreamWriter(string filePath, FileExistsAction fileExistsAction);
 
-    public string? GetNextBackupExtension(string directory, string fileName, bool alreadyIncludesBakExtension = false);
+    public string? GetNextBackupExtension(string directory, string fileName);
 }

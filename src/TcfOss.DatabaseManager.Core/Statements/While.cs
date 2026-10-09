@@ -26,8 +26,16 @@ public record While(Expression Condition, Statement Body) : Statement
         manager.WriteBlockPart(writer, "WHILE");
         writer.Write(" ");
         Condition.FormatSql(writer, manager);
-        writer.Write(" ");
+        bool indentBody = Body is not BeginEnd;
+        if (indentBody)
+        {
+            manager.IncreaseIndent();
+        }
         Body.FormatSql(writer, manager);
+        if (indentBody)
+        {
+            manager.DecreaseIndent();
+        }
         Meta.FormatPostNonSql(writer, manager);
     }
 
