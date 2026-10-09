@@ -61,15 +61,6 @@ public class AppServiceProvider
         }
     }
 
-    public static IServiceScopeFactory ScopeFactory
-    {
-        get
-        {
-            GuardServiceProvider();
-            return _serviceProvider.GetRequiredService<IServiceScopeFactory>();
-        }
-    }
-
     public static ILogger<T> GetLogger<T>()
     {
         GuardServiceProvider();

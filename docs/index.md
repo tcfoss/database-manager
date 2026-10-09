@@ -17,17 +17,48 @@ The CLI requires the [.NET 10 runtime](https://dotnet.microsoft.com/en-us/downlo
 
 ## Installing
 
-The simplest way to install DatabaseManager is with [NET Install Manager](https://github.com/tcfoss/net-install-manager):
+### Using `ninman`
+
+The simplest way to install DatabaseManager is with [.NET Install Manager](https://github.com/tcfoss/net-install-manager):
 
 ```sh
 pipx install net-install-manager
+# pipx ensurepath (1)
 ninman install tcfoss:database-manager
 dbman --help
 ```
 
-Alternatively, download the archive for your platform from the
-[latest release](https://github.com/tcfoss/database-manager/releases/latest).
-Extract it and put a launcher or symlink pointing to `TcfOss.DatabaseManager.App` on your `PATH`.
+1. The `pipx ensurepath` invocation is only needed if you haven't called it before or added `~/.local/bin` to your path manually. On Windows, if you *do* need to call it, you will have to close your shell and open a new one before running the next command.
+
+
+!!! tip
+    Using `ninman` to install DatabaseManager will also make it upgradable via `ninman upgrade dbman`.
+
+
+### Release Artifact
+
+1. Go to the [latest release page](https://github.com/tcfoss/database-manager/releases/latest).
+2. Download the `.tar.gz` file that corresponds to your operating system, and unpack it. Move the contents to some reasonable directory.
+3. Create a link to the `TcfOss.DatabaseManager.App` (+ `.exe` on Windows) executable in some place on your system `PATH`, or create a launcher script that invokes it.
+
+### Compile from Source
+
+You can also clone the repository and compile DatabaseManager from source. Here are the general steps:
+
+1. Clone the repository:
+
+    ```sh
+    git clone https://github.com/tcfoss/database-manager.git
+    ```
+
+2. Build the project using the .NET SDK:
+
+    ```sh
+    cd database-manager
+    dotnet publish -c Release -o ./publish src/TcfOss.DatabaseManager.App/TcfOss.DatabaseManager.App.csproj
+    ```
+
+3. The compiled executable will be located at `publish/TcfOss.DatabaseManager.App` (+ `.exe` on Windows). Create a link to it or add this directory to your system `PATH`.
 
 
 ## Getting Started

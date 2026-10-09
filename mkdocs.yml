@@ -15,6 +15,7 @@ theme:
     - navigation.indexes
     - navigation.top
     - content.code.copy
+    - content.code.annotate
 
 plugins:
   - search

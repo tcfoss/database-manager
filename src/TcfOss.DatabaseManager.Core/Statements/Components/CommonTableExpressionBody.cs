@@ -40,7 +40,7 @@ public record CommonTableExpressionBody(Identifier Name, SqlValueList<Identifier
 
         if (From != null)
         {
-            writer.WriteSqlI($"FROM {From}");
+            writer.WriteSql($" FROM {From}");
         }
     }
 

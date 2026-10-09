@@ -4,68 +4,32 @@
 
 ## About the Project
 
-DatabaseManager is an open source tool for syncing a database definition, in the form of `CREATE TABLE`,
-`CREATE VIEW`, etc., statements in (presumably version-controlled)
-flat files, with the structure of a live database server.
+DatabaseManager is an open source tool for syncing a database definition, in the form of `CREATE TABLE`, `CREATE VIEW`, etc., statements in (presumably version-controlled) flat files, with the structure of a live database server.
 
-Documentation: [CLI guide](https://tcfoss.github.io/database-manager/app/),
-[.NET libraries](https://tcfoss.github.io/database-manager/libraries/), and
+> [!NOTE]
+> Support for MySQL and MariaDB is mostly complete—any parsing failures at this stage should be reported as bugs. SQL Server support is *currently* limited to parsing and formatting, and even that is not entirely complete. I hope to eventually add support for PostgreSQL as well.
+
+Documentation: [App usage](https://tcfoss.github.io/database-manager/app/),
+[for developers](https://tcfoss.github.io/database-manager/libraries/), and
 [contributing](https://tcfoss.github.io/database-manager/development/).
 
 
 ## Getting Started
 
-> [!NOTE]
-> Everything in this section is geared toward application *users*. If you are interested in contributing, see [below](#reporting-issues-and-contributing).
+See the [documentation](https://tcfoss.github.io/database-manager/) for  instructions on installing and using DatabaseManager.
 
-To run the application, you need the [.NET 10+ runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0/runtime) if you don't already have one.
-
-The simplest way to install it is using [NET Install Manager](https://github.com/tcfoss/net-install-manager). If you don't have it but do have `pipx`, you can install it using
-
-```shell
-pipx install net-install-manager
-# pipx ensurepath  # NOTE BELOW
-ninman install tcfoss:database-manager
-```
-
-**Note**: The `pipx ensurepath` invocation is only needed if you haven't called it before or added `~/.local/bin` to your path manually. On Windows, if you *do* need to call it, you will have to close your shell and open a new one before running the next command.
-
-To verify success, run
-
-```shell
-dbman --help
-```
-
-You should see a description of the available commands.
-
-For more information, see the [CLI guide](https://tcfoss.github.io/database-manager/app/).
-
-
-### Other Installation Methods
-
-If you do not want to install `ninman`, you can also directly download the compiled application:
-
-1. Go to the [latest release page](https://github.com/tcfoss/database-manager/releases/latest).
-2. Download the `.tar.gz` file that corresponds to your operating system, and unpack it. Move the contents to some reasonable directory.
-3. Create a link to the `TcfOss.DatabaseManager.App` (+ `.exe` on Windows) executable in some place on your system `PATH`, or create a launcher script that invokes it.
-
-You can alternatively download the source code and build it yourself (then create a link or launcher script as above).
 
 ## Using the .NET Packages
 
-The Core, MySQL, MariaDB, and SQL Server libraries are available as NuGet packages
-targeting .NET 10. Convenience `LibWrapper` packages handle configuration, logging,
-and dependency-injection startup. See the
-[package-selection guide](https://tcfoss.github.io/database-manager/libraries/) and
-[offline quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/).
-SQL Server currently supports parsing and formatting, not definition loading or
-migration generation.
+The Core, MySQL, MariaDB, and SQL Server libraries are available as NuGet packages targeting .NET 10. Convenience `LibWrapper` packages handle configuration, logging, and dependency-injection startup. See the
+[package-selection guide](https://tcfoss.github.io/database-manager/libraries/) and [quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/).
+
 
 ## Reporting Issues and Contributing
 
 If you want to contribute to this app, start with the [contributor guide](https://tcfoss.github.io/database-manager/development/).
 
-Issues for this project are tracked on [IssueTracker](https://issues.tcflanagan.net/database-manager). If you encounter any bugs or have feature requests, please submit them there.
+If you find bugs or have feature requests, please report them. You can do so on GitHub, though the "source of truth" for this project is [IssueTracker](https://issues.tcflanagan.net/database-manager). It would create slightly less work for me if you reported them there instead. You can log in via GitHub.
 
 Contributions are welcome. Follow the usual fork-and-pull request workflow. Before submitting a pull request, make sure
 

@@ -52,6 +52,17 @@ public class FsProjectFixture : IDisposable
         File.Copy(sourceFile, destFile, true);
     }
 
+    public async Task WriteTextAsync(string relativePath, string content, CancellationToken cancellationToken = default)
+    {
+        var targetPath = CombinePath(relativePath);
+        var targetDirectory = Path.GetDirectoryName(targetPath)!;
+        if (!Directory.Exists(targetDirectory))
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
+        await File.WriteAllTextAsync(targetPath, content, cancellationToken);
+    }
+
     /// <summary>
     /// Adds the given path segments to the root directory of the fixture.
     /// </summary>

@@ -3,6 +3,48 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 public class FormatStatementsTests
 {
     [Theory]
+    [InlineData("INSERT INTO mytable (col1) OUTPUT inserted.col1 VALUES (@value)", "INSERT INTO [mytable]\n(\n    [col1]\n)\nOUTPUT\n    [inserted].[col1]\nVALUES\n(@value);")]
+    [InlineData("DELETE FROM mytable OUTPUT deleted.col1 WHERE col1 = @value", "DELETE\nFROM [mytable]\nOUTPUT\n    [deleted].[col1]\nWHERE [col1] = @value;")]
+    [InlineData("SELECT col1 FROM mytable WITH (NOLOCK)", "SELECT\n    [col1]\nFROM [mytable] WITH (NOLOCK);")]
+    [InlineData("CREATE VIEW myview (col1) WITH SCHEMABINDING AS SELECT 1", "CREATE\nVIEW [myview] ([col1])\nWITH SCHEMABINDING\nAS\nSELECT\n    1;")]
+    [InlineData("CREATE TRIGGER mytrigger ON mytable AFTER INSERT AS PRINT 'changed'", "CREATE\nTRIGGER [mytrigger]\nON [mytable]\nAFTER INSERT\nAS \n    PRINT 'changed';")]
+    [InlineData("DROP INDEX ix ON mytable", "DROP INDEX [ix] ON mytable;")]
+    [InlineData("RETURN", "RETURN;")]
+    public void SqlServerSpecificClauses(string input, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        Assert.Equal(expected, formatter.GetFormatted(input), ignoreLineEndingDifferences: true);
+    }
+
+    [Theory]
+    [InlineData("IF @condition > 0 PRINT 'yes'", "IF @condition > 0\n    PRINT 'yes';")]
+    [InlineData("IF @condition > 0 PRINT 'yes' ELSE PRINT 'no'", "IF @condition > 0\n    PRINT 'yes'\nELSE\n    PRINT 'no';")]
+    [InlineData("IF @condition > 0 BEGIN PRINT 'yes'; END ELSE BEGIN PRINT 'no'; END", "IF @condition > 0\nBEGIN\n    PRINT 'yes';\nEND\nELSE\nBEGIN\n    PRINT 'no';\nEND;")]
+    public void If_FormatsSingleStatementAndBlockBranches(string input, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        Assert.Equal(expected, formatter.GetFormatted(input), ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void UpdateAlias_From_OutputAndWhere()
+    {
+        var input = "UPDATE t SET t.col1 = @value OUTPUT inserted.col1 FROM mytable t WHERE t.col2 > 0";
+        var expected = """
+        UPDATE [t]
+        SET
+            [t].[col1] = @value
+        OUTPUT
+            [inserted].[col1]
+        FROM [mytable] AS [t]
+        WHERE [t].[col2] > 0;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null);
+        Assert.Equal(expected, formatter.GetFormatted(input), ignoreLineEndingDifferences: true);
+    }
+
+    [Theory]
     [InlineData("break", "BREAK;")]
     [InlineData("continue", "CONTINUE;")]
     [InlineData("while @count < 3 break", "WHILE @count < 3\n    BREAK;")]
