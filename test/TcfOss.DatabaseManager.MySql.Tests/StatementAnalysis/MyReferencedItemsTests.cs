@@ -13,8 +13,6 @@ namespace TcfOss.DatabaseManager.MySql.Tests.StatementAnalysis;
 
 public class MyReferencedItemsTests
 {
-    private static string N(ItemRef item) => string.Join(".", item.Identifiers.Select(i => i.Name));
-
     [Theory]
     [InlineData("CREATE PROCEDURE proc() SELECT col1 FROM mytable", "mytable", "col1")]
     [InlineData("CREATE FUNCTION func() RETURNS INT RETURN (SELECT col1 FROM mytable)", "mytable", "col1")]
@@ -90,10 +88,8 @@ public class MyReferencedItemsTests
 
         Assert.Equal(4, items.Count);
         Assert.All(items, i => Assert.Equal(ItemType.Unknown, i.Type));
-        Assert.Equal("a", N(items[0]));
-        Assert.Equal("b", N(items[1]));
-        Assert.Equal("c", N(items[2]));
-        Assert.Equal("d", N(items[3]));
+
+        items.AssertEqualItemNames(["a", "b", "c", "d"]);
     }
 
     private static Expression ParseExpression(string sql)

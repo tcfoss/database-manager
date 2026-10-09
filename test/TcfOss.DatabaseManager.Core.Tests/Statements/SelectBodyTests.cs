@@ -37,11 +37,6 @@ public class SelectBodyTests
         Assert.Throws<DefinitionException.ViewNonUniqueSelectionName>(() => duplicate.ToPseudoTable("view1", null, null, PseudoTableType.View));
     }
 
-    private static readonly string[] s_expectedTwoColumnOneAlias = ["col1", "col2", "alias1"];
-    private static readonly string[] s_expectedCol1 = ["col1"];
-    private static readonly string[] s_expectedCol2 = ["col2"];
-    private static readonly string[] s_expectedFirstSecond = ["first", "second"];
-
     [Fact]
     public void RelaxedPseudoTable_InfersOnlyNamedColumns()
     {
@@ -49,24 +44,38 @@ public class SelectBodyTests
 
         var actual = query.ToPseudoTableRelaxed("derived", null, null, PseudoTableType.DerivedTable);
 
-        Assert.Equal(s_expectedTwoColumnOneAlias, actual.SelectableItems);
+        Assert.Collection(actual.SelectableItems,
+            item => Assert.Equal("col1", item),
+            item => Assert.Equal("col2", item),
+            item => Assert.Equal("alias1", item));
     }
 
     [Fact]
     public void SelectQueryWrapper_DelegatesFormattingReferencesAndPseudoTables()
     {
-        var query = ParseSelect("SELECT col1");
+        Select query = ParseSelect("SELECT col1");
         var wrapper = new SelectBody.SelectQuery(query);
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
-        var pseudoTables = new PseudoTableSet(null, []);
 
+        var pseudoTables = new PseudoTableSet(null, []);
         wrapper.AddTablesToContext(pseudoTables);
+
         var reference = Assert.Single(wrapper.GetReferencedItems(context));
-        Assert.Equal("col1", reference.Identifiers.Last().Name);
-        Assert.Equal(s_expectedCol1, wrapper.ToPseudoTable("derived", null, null, PseudoTableType.DerivedTable).SelectableItems);
-        Assert.Equal(s_expectedCol1, wrapper.ToPseudoTableRelaxed("derived", null, null, PseudoTableType.DerivedTable).SelectableItems);
+
+        Assert.Equal("col1", reference.Identifiers.N());
+
+        var actualItem = Assert.Single(wrapper.ToPseudoTable("derived", null, null, PseudoTableType.DerivedTable).SelectableItems);
+        Assert.Equal("col1", actualItem);
+
+        actualItem = Assert.Single(wrapper.ToPseudoTableRelaxed("derived", null, null, PseudoTableType.DerivedTable).SelectableItems);
+        Assert.Equal("col1", actualItem);
+
         using var formatter = CreateFormatter();
-        Assert.Equal("SELECT\n    \"col1\";", formatter.GetFormatted(new Select(wrapper)), ignoreLineEndingDifferences: true);
+        var expected = """
+        SELECT
+            "col1";
+        """;
+        Assert.Equal(expected, formatter.GetFormatted(new Select(wrapper)), ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -76,7 +85,8 @@ public class SelectBodyTests
 
         var actual = operation.ToPseudoTable("derived", null, null, PseudoTableType.DerivedTable);
 
-        Assert.Equal(s_expectedCol2, actual.SelectableItems);
+        var actualItem = Assert.Single(actual.SelectableItems);
+        Assert.Equal("col2", actualItem);
     }
 
     [Fact]
@@ -90,7 +100,9 @@ public class SelectBodyTests
 
         var items = body.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }).ToList();
 
-        Assert.Equal(s_expectedFirstSecond, items.Select(item => item.Identifiers.Last().Name));
+        Assert.Collection(items,
+            item => Assert.Equal("first", item.Identifiers.Last().Name),
+            item => Assert.Equal("second", item.Identifiers.Last().Name));
         Assert.Throws<InvalidOperationException>(() => body.ToPseudoTable("derived", null, null, PseudoTableType.DerivedTable));
         Assert.Throws<InvalidOperationException>(() => body.ToPseudoTableRelaxed("derived", null, null, PseudoTableType.DerivedTable));
     }

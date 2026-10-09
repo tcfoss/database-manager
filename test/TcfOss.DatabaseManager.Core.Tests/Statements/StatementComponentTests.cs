@@ -17,8 +17,8 @@ public class StatementComponentTests
 {
     [Theory]
     [InlineData(0, "()")]
-    [InlineData(1, "(\"col0\")")]
-    [InlineData(2, "(\"col0\", \"col1\")")]
+    [InlineData(1, """("col0")""")]
+    [InlineData(2, """("col0", "col1")""")]
     public void AssignmentTuple_FormatsAllNames(int count, string expected)
     {
         var target = new AssignmentTarget.Tuple([.. Enumerable.Range(0, count).Select(index => new ObjectName([new Identifier($"col{index}")]))]);
@@ -37,10 +37,10 @@ public class StatementComponentTests
     }
 
     [Theory]
-    [InlineData(false, false, "(\"col1\")")]
-    [InlineData(true, false, "(DISTINCT \"col1\")")]
-    [InlineData(false, true, "(\"col1\" LIMIT 5)")]
-    [InlineData(true, true, "(DISTINCT \"col1\" LIMIT 5)")]
+    [InlineData(false, false, """("col1")""")]
+    [InlineData(true, false, """(DISTINCT "col1")""")]
+    [InlineData(false, true, """("col1" LIMIT 5)""")]
+    [InlineData(true, true, """(DISTINCT "col1" LIMIT 5)""")]
     public void FunctionArguments_List_FormatsDuplicateTreatmentAndClauses(bool distinct, bool clause, string expected)
     {
         var arguments = new FunctionArguments.List(
@@ -62,8 +62,15 @@ public class StatementComponentTests
             Alias = alias ? new Identifier("nested") : null,
         };
 
-        Assert.Equal("(mytable)" + (alias ? " AS nested" : ""), factor.ToSql());
-        Assert.Equal("(\n    \"mytable\"\n)" + (alias ? " AS nested" : ""), FormatComponent(factor).ReplaceLineEndings("\n"));
+        string aliasString = alias ? " AS nested" : "";
+
+        Assert.Equal($"(mytable){aliasString}", factor.ToSql());
+        string expectedFormatted = $"""
+        (
+            "mytable"
+        ){aliasString}
+        """;
+        Assert.Equal(expectedFormatted, FormatComponent(factor).ReplaceLineEndings("\n"));
     }
 
     [Fact]
@@ -72,7 +79,14 @@ public class StatementComponentTests
         var query = new Select(new SelectBody.SimpleSelectQuery(new SimpleSelect([new SimpleSelectItem.UnnamedExpression(new LiteralValue(new Value.Number("1", false)))])));
         var factor = new TableFactor.Derived(query);
 
-        Assert.Equal("(\n    SELECT\n        1)", FormatComponent(factor).ReplaceLineEndings("\n"));
+        string expectedFormatted = """
+        (
+            SELECT
+                1
+        )
+        """;
+
+        Assert.Equal(expectedFormatted, FormatComponent(factor).ReplaceLineEndings("\n"));
     }
 
     [Fact]
@@ -82,7 +96,12 @@ public class StatementComponentTests
         var body = new CommonTableExpressionBody(new Identifier("cte"), [new Identifier("col1")], query, new Identifier("previous"));
 
         Assert.Equal("cte (col1) AS (SELECT 1) FROM previous", body.ToSql());
-        Assert.Equal("\"cte\" (col1) AS (\n    SELECT\n        1) FROM previous", FormatComponent(body).ReplaceLineEndings("\n"));
+        string expectedFormatted = """
+        "cte" (col1) AS (
+            SELECT
+                1) FROM previous
+        """;
+        Assert.Equal(expectedFormatted, FormatComponent(body).ReplaceLineEndings("\n"));
         var cte = new CommonTableExpression([body with { From = null }, body with { Name = new Identifier("second"), From = null }], true);
         Assert.StartsWith("WITH RECURSIVE \"cte\" (col1) AS (", FormatComponent(cte));
         Assert.Contains(",\n\"second\" (col1) AS (", FormatComponent(cte).ReplaceLineEndings("\n"));
