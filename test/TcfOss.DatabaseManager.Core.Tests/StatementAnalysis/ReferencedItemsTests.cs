@@ -2,6 +2,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.DefinitionMapping;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -1137,6 +1138,52 @@ public class ReferencedItemsTests
         Assert.Equal("sometable", items[0].N());
         Assert.False(items[1].IsColumn);
         Assert.Equal("x.col1", items[1].N());
+    }
+
+    [Fact]
+    public void StatementGroup()
+    {
+        var statement1 = ParseSelect("SELECT col1 FROM mytable1");
+        var statement2 = ParseSelect("SELECT col2 FROM mytable2");
+        var statement3 = ParseSelect("SELECT t1.col1, t2.col2 FROM mytable1 AS t1 JOIN mytable2 AS t2 ON t1.col1 = t2.col2");
+
+        var group = new StatementGroup([statement1, statement2, statement3]);
+
+        var catalog = new CatalogIdentifier("def");
+        var schema = new SchemaIdentifier("myschema", catalog);
+        var pseudoTables = new PseudoTableSet(schema, [
+            new PseudoTable("mytable1", new ObjectIdentifier("mytable1", schema), ["col1", "col2", "col3"], PseudoTableType.Table),
+            new PseudoTable("mytable2", new ObjectIdentifier("mytable2", schema), ["col1", "col2", "col3"], PseudoTableType.Table),
+            new PseudoTable("mytable3", new ObjectIdentifier("mytable3", schema), ["col1", "col2", "col3"], PseudoTableType.Table),
+        ]);
+
+        List<ItemRef> items = [.. group.GetReferencedItems(new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.TableColumn,
+            PseudoTables = pseudoTables,
+        })];
+
+        Assert.Collection(items,
+            i => Assert.Equal("col1", i.N()),
+            i => Assert.Equal("col2", i.N()),
+            i => Assert.Equal("t1.col1", i.N()),
+            i => Assert.Equal("t2.col2", i.N()),
+            i => Assert.Equal("t1.col1", i.N()),
+            i => Assert.Equal("t2.col2", i.N())
+        );
+
+        items = [.. group.GetReferencedItems(new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.Table,
+            PseudoTables = pseudoTables,
+        })];
+
+        Assert.Collection(items,
+            i => Assert.Equal("mytable1", i.N()),
+            i => Assert.Equal("mytable2", i.N()),
+            i => Assert.Equal("mytable1", i.N()),
+            i => Assert.Equal("mytable2", i.N())
+        );
     }
 
     // ===== Parse helpers =====

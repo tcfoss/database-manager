@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseComms;
+using TcfOss.DatabaseManager.Core.Errors;
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.IntegrationTests.Configuration;
@@ -208,6 +209,82 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
         {
             Directory.Delete(schemaRootPath, recursive: true);
         }
+    }
+
+    [Fact]
+    public void AbsoluteDeployScriptPath_UsesExistingFile()
+    {
+        string scriptPath = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", "my_script.sql");
+        var config = GetConfig(DeployScriptConfig(scriptPath));
+        var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+
+        var script = Assert.Single(schema.DeployScripts);
+        Assert.Equal(scriptPath, script.FilePath.FullName);
+        Assert.Equal(DeployScriptType.PreDeployment, script.Type);
+    }
+
+    [Fact]
+    public void DeployScriptManifest_FallsBackToSchemaRoot()
+    {
+        string manifestDirectory = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", $"Manifests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(manifestDirectory);
+        string manifestPath = Path.Combine(manifestDirectory, "deploy.yaml");
+        File.WriteAllText(manifestPath, "- FilePath: my_script.sql\n  Type: PostDeployment\n");
+
+        try
+        {
+            var config = GetConfig(DeployScriptConfig(manifestPath));
+            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+
+            var script = Assert.Single(schema.DeployScripts);
+            Assert.Equal(Path.Combine(Fixture.RootDirectory.FullName, "Schema2", "my_script.sql"), script.FilePath.FullName);
+            Assert.Equal(DeployScriptType.PostDeployment, script.Type);
+        }
+        finally
+        {
+            Directory.Delete(manifestDirectory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingDeployScriptPath_Throws(bool absolutePath)
+    {
+        string scriptPath = $"missing-{Guid.NewGuid():N}.sql";
+        if (absolutePath)
+        {
+            scriptPath = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", scriptPath);
+        }
+
+        var exception = Assert.Throws<FileNotFoundException>(() => GetConfig(DeployScriptConfig(scriptPath)));
+
+        Assert.Equal(scriptPath, exception.FileName);
+    }
+
+    [Fact]
+    public void InvalidDeployScriptType_Throws()
+    {
+        var rawConfig = DeployScriptConfig("my_script.sql", (DeployScriptType)9999);
+
+        Assert.Throws<ConfigurationException.DeployScriptInvalidType>(() => GetConfig(rawConfig));
+    }
+
+    private static ConfigParsing.Config DeployScriptConfig(string filePath, DeployScriptType type = DeployScriptType.PreDeployment)
+    {
+        return new ConfigParsing.Config
+        {
+            Dialect = SqlDialect.MySql,
+            Schemas =
+            [
+                new ConfigParsing.SchemaMapping
+                {
+                    SchemaName = "schema",
+                    RootPath = "Schema2",
+                    DeployScripts = [new ConfigParsing.DeployScript { FilePath = filePath, Type = type }],
+                },
+            ],
+        };
     }
 
     private ConfigGeneric GetConfig(ConfigParsing.Config? rawConfig = null)

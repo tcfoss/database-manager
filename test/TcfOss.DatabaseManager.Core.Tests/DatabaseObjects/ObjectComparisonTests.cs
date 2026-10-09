@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
@@ -122,5 +123,335 @@ public class ObjectComparisonTests
         Assert.NotEqual(procedure, otherProcedure);
         Assert.False(procedure.Equals(otherProcedure));
         Assert.NotEqual(procedure.GetHashCode(), otherProcedure?.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_DefaultExpression_EqualsIfNormalizedExpressionEqual()
+    {
+        var obj1 = new ColumnOption.ColumnDefault.DefaultExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("NOW")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.ColumnDefault.DefaultExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.Equal(obj1, obj2);
+        Assert.True(obj1.Equals(obj2));
+        Assert.Equal(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_DefaultExpression_NotEqualsIfNormalizedExpressionDifferent()
+    {
+        var obj1 = new ColumnOption.ColumnDefault.DefaultExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("NOW")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("NOW")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.ColumnDefault.DefaultExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.NotEqual(obj1, obj2);
+        Assert.False(obj1.Equals(obj2));
+        Assert.NotEqual(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_DefaultExpression_NotEqualIfNameDifferent()
+    {
+        var obj1 = new ColumnOption.ColumnDefault.DefaultExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.ColumnDefault.DefaultExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            new Identifier("MyBadlyNamedDefaultConstraint"))
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CURRENT_TIMESTAMP")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.NotEqual(obj1, obj2);
+        Assert.False(obj1.Equals(obj2));
+        Assert.NotEqual(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_CheckConstraint_EqualIfNormalizedExpressionSame()
+    {
+        var obj1 = new ColumnOption.CheckConstraint(
+            new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.CheckConstraint(
+            new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.Equal(obj1, obj2);
+        Assert.True(obj1.Equals(obj2));
+        Assert.Equal(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_CheckConstraint_NotEqualIfNormalizedExpressionDifferent()
+    {
+        var obj1 = new ColumnOption.CheckConstraint(
+            new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.CheckConstraint(
+            new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("DIFFERENT_CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.NotEqual(obj1, obj2);
+        Assert.False(obj1.Equals(obj2));
+        Assert.NotEqual(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_CheckConstraint_NotEqualIfNameDifferent()
+    {
+        var obj1 = new ColumnOption.CheckConstraint(
+            new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            })
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.CheckConstraint(
+            new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            new Identifier("MyCheckConstraintName"))
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("CHECK_CONSTRAINT")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.NotEqual(obj1, obj2);
+        Assert.False(obj1.Equals(obj2));
+        Assert.NotEqual(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_GeneratedAsExpression_EqualIfEqual()
+    {
+        var obj1 = new ColumnOption.Generated.AsExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_1")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            GenerationMode.Stored)
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_NORM")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.Generated.AsExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_2")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            GenerationMode.Stored)
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_NORM")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        Assert.Equal(obj1, obj2);
+        Assert.True(obj1.Equals(obj2));
+        Assert.Equal(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_GeneratedAsExpression_NotEqualIfNormalizedExpressionDifferent()
+    {
+        var obj1 = new ColumnOption.Generated.AsExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_1")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            GenerationMode.Stored)
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_NORM_1")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.Generated.AsExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_2")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            GenerationMode.Stored)
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_NORM_2")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+        Assert.NotEqual(obj1, obj2);
+        Assert.False(obj1.Equals(obj2));
+        Assert.NotEqual(obj1.GetHashCode(), obj2.GetHashCode());
+    }
+
+    [Fact]
+    public void ColumnOption_GeneratedAsExpression_NotEqualIfGenerationModeDifferent()
+    {
+        var obj1 = new ColumnOption.Generated.AsExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_1")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            GenerationMode.Stored)
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_NORM")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+
+        var obj2 = new ColumnOption.Generated.AsExpression(
+            new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_2")]))
+            {
+                Arguments = new FunctionArguments.None()
+            },
+            GenerationMode.Virtual)
+        {
+            NormalizedExpression = new FunctionCall(
+                new ObjectName([new Identifier("GENERATED_AS_EXPRESSION_NORM")]))
+            {
+                Arguments = new FunctionArguments.None()
+            }
+        };
+        Assert.NotEqual(obj1, obj2);
+        Assert.False(obj1.Equals(obj2));
+        Assert.NotEqual(obj1.GetHashCode(), obj2.GetHashCode());
     }
 }

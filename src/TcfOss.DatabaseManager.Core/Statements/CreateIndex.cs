@@ -169,10 +169,6 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
 
         public StatementTableConstraint.UniqueIndex ToStatementIndex()
         {
-            if (Filter != null)
-            {
-                throw new InvalidOperationException("Unique indexes with filters cannot be represented as unique constraints.");
-            }
             return new StatementTableConstraint.UniqueIndex(Columns, Name)
             {
                 IndexMethod = IndexMethod,

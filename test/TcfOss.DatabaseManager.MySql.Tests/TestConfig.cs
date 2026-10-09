@@ -84,7 +84,7 @@ public static class TestConfig
         DatabaseAvailable = true
     };
 
-    public static MyConfig GetMyTestConfig(ValidationSettings? validationSettings = null, FormattingSettings? formatSettings = null)
+    public static MyConfig GetMyTestConfig(ValidationSettings? validationSettings = null, FormattingSettings? formatSettings = null, NormalizationSettings? normalizationSettings = null)
     {
         return new MyConfig()
         {
@@ -131,6 +131,7 @@ public static class TestConfig
             },
             ValidationSettings = validationSettings ?? new ValidationSettings(),
             Formatting = formatSettings ?? new FormattingSettings(),
+            NormalizationSettings = normalizationSettings ?? new NormalizationSettings(),
             ServerDefaults = s_defaultSchemaDefaults,
             CharacterSets = s_defaultCharacterSets,
             DatabaseAvailable = true
