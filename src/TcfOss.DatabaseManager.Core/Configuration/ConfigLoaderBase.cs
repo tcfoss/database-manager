@@ -112,8 +112,14 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
     {
         s_logReadingDeployScriptFromYaml(_logger, yamlFile);
 
-        using var reader = new StreamReader(yamlFile.FullName);
-        List<ConfigParsing.DeployScript> rawDeployScripts = Serialization.ParseConfig<List<ConfigParsing.DeployScript>>(reader, yamlFile.FullName);
+        string yaml = File.ReadAllText(yamlFile.FullName);
+        if (string.IsNullOrWhiteSpace(yaml))
+        {
+            s_logEmptyDeployScriptYaml(_logger, yamlFile);
+            return [];
+        }
+
+        List<ConfigParsing.DeployScript> rawDeployScripts = Serialization.ParseConfig<List<ConfigParsing.DeployScript>>(yaml, yamlFile.FullName);
         return ExpandDeployScripts(rawDeployScripts, schemaId, schemaRootDirectory, parentRootDirectory, parentUniqueId, parentType);
     }
 
@@ -522,6 +528,9 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
     [LoggerMessage(EventId = 6, Level = LogLevel.Information, Message = "Searching for deploy scripts in directory: {FilePath}")]
     private static partial void s_logSearchingForDeployScriptsInDirectory(ILogger logger, DirectoryInfo filePath);
+
+    [LoggerMessage(EventId = 7, Level = LogLevel.Information, Message = "Deploy script YAML file is empty; no scripts to expand: {FilePath}")]
+    private static partial void s_logEmptyDeployScriptYaml(ILogger logger, FileInfo filePath);
 
 
     #endregion

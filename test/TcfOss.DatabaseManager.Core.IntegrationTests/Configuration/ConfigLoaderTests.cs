@@ -212,6 +212,27 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
     }
 
     [Fact]
+    public void DeployScriptManifest_EmptyFileReturnsNoScripts()
+    {
+        string schemaRootPath = Path.Combine(Fixture.RootDirectory.FullName, $"Schema-{Guid.NewGuid():N}");
+        string manifestPath = Path.Combine(schemaRootPath, "deploy.yaml");
+        Directory.CreateDirectory(schemaRootPath);
+        File.WriteAllText(manifestPath, string.Empty);
+
+        try
+        {
+            var config = GetConfig(DeployScriptConfig(manifestPath));
+            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+
+            Assert.Empty(schema.DeployScripts);
+        }
+        finally
+        {
+            Directory.Delete(schemaRootPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public void AbsoluteDeployScriptPath_UsesExistingFile()
     {
         string scriptPath = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", "my_script.sql");
