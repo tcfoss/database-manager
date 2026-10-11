@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.MsSql.Configuration;
 
 namespace TcfOss.DatabaseManager.MsSql.Hosting;
 
-public class MsStartup : Startup<MsConfig>
+public class MsStartup : StartupBase<MsConfig>
 {
     protected override ConfigurationBuilder<MsConfig> ConfigurationBuilder { get; } = new MsConfigurationBuilder();
 

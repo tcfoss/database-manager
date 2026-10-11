@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.MySql.Configuration;
 
 namespace TcfOss.DatabaseManager.MySql.Hosting;
 
-public class MyStartup : Startup<MyConfig>
+public class MyStartup : StartupBase<MyConfig>
 {
     protected override ConfigurationBuilder<MyConfig> ConfigurationBuilder { get; } = new MyConfigurationBuilder();
 

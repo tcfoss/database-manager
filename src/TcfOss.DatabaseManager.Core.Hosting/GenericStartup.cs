@@ -3,7 +3,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 
 namespace TcfOss.DatabaseManager.Core.Hosting;
 
-public class GenericStartup : Startup<ConfigGeneric>
+public class GenericStartup : StartupBase<ConfigGeneric>
 {
     protected override ConfigurationBuilder<ConfigGeneric> ConfigurationBuilder { get; } = new GenericConfigurationBuilder();
 

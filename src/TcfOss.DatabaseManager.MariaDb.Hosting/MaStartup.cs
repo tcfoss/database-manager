@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.MySql.Configuration;
 
 namespace TcfOss.DatabaseManager.MariaDb.Hosting;
 
-public class MaStartup : Startup<MyConfig>
+public class MaStartup : StartupBase<MyConfig>
 {
     protected override ConfigurationBuilder<MyConfig> ConfigurationBuilder { get; } = new MaConfigurationBuilder();
 

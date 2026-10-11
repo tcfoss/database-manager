@@ -188,7 +188,7 @@ public static partial class CommonHelpers
             rawConfig.Schemas[2].RefactorFiles = ["refactors.yaml"];
         }
 
-        Core.Hosting.Startup<MyConfig> startup;
+        Core.Hosting.StartupBase<MyConfig> startup;
         if (dialect == SqlDialect.MySql)
         {
             startup = new MyStartup();
@@ -263,7 +263,7 @@ public static partial class CommonHelpers
             },
         };
 
-        Core.Hosting.Startup<MyConfig> startup = dialect == SqlDialect.MySql ? new MyStartup() : new MaStartup();
+        Core.Hosting.StartupBase<MyConfig> startup = dialect == SqlDialect.MySql ? new MyStartup() : new MaStartup();
         return (MyConfig)startup.StartApp(rootPath, rawConfig, relaxed: false);
     }
 
