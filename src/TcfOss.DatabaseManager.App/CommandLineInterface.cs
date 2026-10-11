@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.App.Commands;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App;
