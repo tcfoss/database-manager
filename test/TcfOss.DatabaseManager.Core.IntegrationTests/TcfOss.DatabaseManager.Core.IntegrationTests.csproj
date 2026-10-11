@@ -5,16 +5,6 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <!--
-    To enable the Microsoft Testing Platform 'dotnet test' experience, add property:
-      <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-
-    To enable the Microsoft Testing Platform native command line experience, add property:
-      <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
-
-    For more information on Microsoft Testing Platform support in xUnit.net, please visit:
-      https://xunit.net/docs/getting-started/v3/microsoft-testing-platform
-    -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\TcfOss.DatabaseManager.Core.Hosting\TcfOss.DatabaseManager.Core.Hosting.csproj" />
     <ProjectReference Include="..\..\src\TcfOss.DatabaseManager.Core\TcfOss.DatabaseManager.Core.csproj" />
   </ItemGroup>
 

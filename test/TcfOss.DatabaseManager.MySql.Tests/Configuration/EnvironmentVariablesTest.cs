@@ -3,7 +3,6 @@ using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
 using TcfOss.DatabaseManager.Core.Errors;
-using TcfOss.DatabaseManager.MySql.App;
 using TcfOss.DatabaseManager.MySql.Configuration;
 
 namespace TcfOss.DatabaseManager.MySql.Tests.Configuration;
@@ -129,9 +128,9 @@ public class EnvironmentVariablesTest
 
     private static MyConfig BuildConfig(Credentials creds, Dictionary<string, string> envVariables)
     {
-        var startup = new MyStartup();
+        var builder = new MyConfigurationBuilder();
         var rawConfig = GetTestRawConfig(creds);
-        return startup.BuildConfiguration("/my/root/dir", rawConfig, CreateEnvironmentVariableReader(envVariables), relaxed: false, logger: NullLogger.Instance);
+        return builder.BuildConfiguration("/my/root/dir", rawConfig, CreateEnvironmentVariableReader(envVariables), relaxed: false, logger: NullLogger.Instance);
     }
 
     private static Config GetTestRawConfig(Credentials creds)

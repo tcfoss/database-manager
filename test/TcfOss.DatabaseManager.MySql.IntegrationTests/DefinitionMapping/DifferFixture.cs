@@ -2,16 +2,16 @@
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging;
-using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
+using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
-using TcfOss.DatabaseManager.MySql.App;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseComms;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.DefinitionMapping;
+using TcfOss.DatabaseManager.MySql.Hosting;
 using TcfOss.DatabaseManager.MySql.IntegrationTests.DatabaseFixtures;
 
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests.DefinitionMapping;

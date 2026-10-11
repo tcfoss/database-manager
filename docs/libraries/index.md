@@ -4,11 +4,11 @@ description: Choose and install DatabaseManager .NET packages for SQL parsing, f
 
 # .NET Libraries
 
-DatabaseManager packages target **.NET 10**. Use a provider's `LibWrapper` package
+DatabaseManager packages target **.NET 10**. Use a provider's `Hosting` package
 for configuration loading, logging, and dependency-injection setup. Use the
-underlying library when your application owns its host and service registration or when
-you would prefer to `new`-up all needed objects manually.
-Provider and wrapper packages bring their Core dependencies transitively.
+same package for service registration in a caller-owned host. Use the underlying
+library when constructing the needed objects manually.
+Provider and hosting packages bring their Core dependencies transitively.
 
 ## Package Selection
 
@@ -18,28 +18,44 @@ Provider and wrapper packages bring their Core dependencies transitively.
 | [TcfOss.DatabaseManager.MySql](https://www.nuget.org/packages/TcfOss.DatabaseManager.MySql) | MySQL parsing, formatting, definition loading, and migration-script generation. |
 | [TcfOss.DatabaseManager.MariaDb](https://www.nuget.org/packages/TcfOss.DatabaseManager.MariaDb) | MariaDB services, sharing MySQL syntax parsing while applying MariaDB defaults and server metadata behavior. |
 | [TcfOss.DatabaseManager.MsSql](https://www.nuget.org/packages/TcfOss.DatabaseManager.MsSql) | SQL Server parsing and formatting. Definition loading, schema download, and migration generation are not implemented. |
-| [TcfOss.DatabaseManager.Core.LibWrapper](https://www.nuget.org/packages/TcfOss.DatabaseManager.Core.LibWrapper) | Generic startup and shared wrapper configuration/logging infrastructure. |
-| [TcfOss.DatabaseManager.MySql.LibWrapper](https://www.nuget.org/packages/TcfOss.DatabaseManager.MySql.LibWrapper) | MySQL startup through `MySqlStartApp`. |
-| [TcfOss.DatabaseManager.MariaDb.LibWrapper](https://www.nuget.org/packages/TcfOss.DatabaseManager.MariaDb.LibWrapper) | MariaDB startup through `MariaDbStartApp`. |
-| [TcfOss.DatabaseManager.MsSql.LibWrapper](https://www.nuget.org/packages/TcfOss.DatabaseManager.MsSql.LibWrapper) | SQL Server startup through `SqlServerStartApp`. |
+| [TcfOss.DatabaseManager.Core.Hosting](https://www.nuget.org/packages/TcfOss.DatabaseManager.Core.Hosting) | Generic startup, shared service registration, and logging infrastructure. |
+| [TcfOss.DatabaseManager.MySql.Hosting](https://www.nuget.org/packages/TcfOss.DatabaseManager.MySql.Hosting) | MySQL startup through `MySqlStartApp`. |
+| [TcfOss.DatabaseManager.MariaDb.Hosting](https://www.nuget.org/packages/TcfOss.DatabaseManager.MariaDb.Hosting) | MariaDB startup through `MariaDbStartApp`. |
+| [TcfOss.DatabaseManager.MsSql.Hosting](https://www.nuget.org/packages/TcfOss.DatabaseManager.MsSql.Hosting) | SQL Server startup through `SqlServerStartApp`. |
 
 ## Installation
 
 For the offline [quick start](quickstart.md):
 
 ```sh
-dotnet add package TcfOss.DatabaseManager.Core.LibWrapper
+dotnet add package TcfOss.DatabaseManager.Core.Hosting
 ```
 
-For a provider, choose the matching wrapper instead:
+For a provider, choose the matching hosting package instead:
 
 ```sh
-dotnet add package TcfOss.DatabaseManager.MySql.LibWrapper
+dotnet add package TcfOss.DatabaseManager.MySql.Hosting
 ```
 
-Substitute `MariaDb` or `MsSql` for the other providers. For manual hosting, install
-the underlying package, such as `TcfOss.DatabaseManager.MySql`, and the
-`Microsoft.Extensions.Hosting` package. See [customization](customization.md).
+Substitute `MariaDb` or `MsSql` for the other providers. The hosting packages also
+provide registration APIs for caller-owned hosts. See [customization](customization.md).
+
+## Breaking Migration
+
+The former `TcfOss.DatabaseManager.*.LibWrapper` packages and namespaces are now
+`TcfOss.DatabaseManager.*.Hosting`. Replace the package references and imports.
+
+Startup classes, service-registration extensions, and service-provider accessors
+previously in the Core/provider `.App` namespaces now live in the matching
+`.Hosting` packages and namespaces. Runtime command runners, formatters, and
+environment-reading interfaces remain in the underlying libraries. The CLI uses
+the same hosting integration as library consumers.
+
+Configuration discovery and preparation are available independently in the base
+packages: use `ConfigurationFile` and the corresponding `.Configuration` builder
+(`GenericConfigurationBuilder`, `MyConfigurationBuilder`, `MaConfigurationBuilder`,
+or `MsConfigurationBuilder`). Hosting startup delegates to these same APIs. See
+[Without dependency injection](without-di.md#configuration-files).
 
 
 ## Debugging Package Code

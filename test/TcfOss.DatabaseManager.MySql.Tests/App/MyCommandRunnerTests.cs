@@ -1,7 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
@@ -65,22 +62,13 @@ public class MyCommandRunnerTests
         var contextFixture = new MyInfoSchemaContextFixture();
         var contextFactory = contextFixture.CreateFactory();
 
-        var serviceCollection = new ServiceCollection();
-        serviceCollection.AddLogging(sc =>
-        {
-            sc.AddProvider(NullLoggerProvider.Instance);
-        });
-
-        var serviceProvider = serviceCollection.BuildServiceProvider();
-        AppServiceProvider.ServiceProvider = serviceProvider;
-
         var fsLoader = new MyFsDefinitionLoader(
             config,
             reader,
             textParser,
             new SourceManager(),
             new MyFunctionNameProvider(),
-            AppServiceProvider.GetLogger<MyFsDefinitionLoader>(),
+            factory.CreateLogger<MyFsDefinitionLoader>(),
             factory
         );
         var dbLoader = new MyDbDefinitionLoader(
@@ -88,7 +76,7 @@ public class MyCommandRunnerTests
             new InfoSchemaRepo(config, contextFactory, new FakeRawEntityRetriever()),
             textParser,
             new MyFunctionNameProvider(),
-            AppServiceProvider.GetLogger<MyDbDefinitionLoader>()
+            factory.CreateLogger<MyDbDefinitionLoader>()
         );
         var formatter = new MySqlFormatter(
             config,
@@ -96,7 +84,7 @@ public class MyCommandRunnerTests
             textParser,
             new MyFunctionNameProvider(),
             fsLoader,
-            AppServiceProvider.GetLogger<MySqlFormatter>());
+            factory.CreateLogger<MySqlFormatter>());
 
         return new MyCommandRunner(
             configForRunner!,

@@ -1,17 +1,16 @@
 ---
-description: Parse SQL offline with the DatabaseManager Core LibWrapper and scoped dependency injection.
+description: Parse SQL offline with DatabaseManager Core.Hosting and scoped dependency injection.
 ---
 
 # Quick Start
 
-Install `TcfOss.DatabaseManager.Core.LibWrapper` in a .NET 10 console application.
-This complete example uses an explicit generic configuration and needs no
+Install `TcfOss.DatabaseManager.Core.Hosting` in a .NET 10 application. This complete example uses an explicit generic configuration and needs no
 configuration file or database connection:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using TcfOss.DatabaseManager.Core.App;
-using TcfOss.DatabaseManager.Core.LibWrapper;
+using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.Parsing;
 
 var workingDirectory = Directory.GetCurrentDirectory();
@@ -56,7 +55,7 @@ are used.
 For a project using a configuration file:
 
 ```csharp
-using TcfOss.DatabaseManager.MySql.LibWrapper;
+using TcfOss.DatabaseManager.MySql.Hosting;
 
 var result = new MySqlStartApp().Start(
     configFilePath: "/path/to/project/database-manager.yaml",
@@ -80,5 +79,4 @@ startup, MySQL/MariaDB startup can contact the server to discover defaults.
 
 Scopes dispose services resolved within them. The result itself is not
 `IDisposable` and does not expose the host for shutdown. Applications needing
-explicit host ownership should use [manual hosting](customization.md#manual-hosting-without-libwrapper).
-Avoid repeated wrapper startup as a replacement for service scopes.
+explicit host ownership should use [manual hosting](customization.md#manual-hosting).

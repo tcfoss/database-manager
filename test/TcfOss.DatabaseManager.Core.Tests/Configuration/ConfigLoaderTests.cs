@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
@@ -9,6 +11,23 @@ namespace TcfOss.DatabaseManager.Core.Tests.Configuration;
 
 public class ConfigLoaderTests
 {
+    [Fact]
+    public void GenericConfigurationBuilder_PreparesDefaultsWithoutHosting()
+    {
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new GenericConfigurationBuilder();
+        var rawConfig = builder.GetDefaultConfig(rootDirectory);
+
+        var config = builder.BuildConfiguration(rootDirectory, rawConfig, new EnvironmentVariableReader(), false, NullLogger.Instance);
+
+        Assert.Equal(SqlDialect.Generic, config.Dialect);
+        Assert.Equal(rootDirectory, config.ProjectDirectory);
+        Assert.Equal("def", config.Catalog.Name);
+        Assert.Equal(QuoteStyle.Ansi, config.QuoteStyle);
+        Assert.Equal("DEFAULT_SCHEMA", Assert.Single(config.Schemas.Values).SchemaName.Name);
+        Assert.False(config.DatabaseAvailable);
+    }
+
     [Fact]
     public void Test_Basic_Config_Loads()
     {
