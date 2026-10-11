@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.App;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
-using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.MariaDb.DatabaseComms.EntityFramework;
 using TcfOss.DatabaseManager.MariaDb.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.Configuration;

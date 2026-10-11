@@ -1,8 +1,6 @@
-using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
 using TcfOss.DatabaseManager.Core.Hosting;
-using TcfOss.DatabaseManager.MySql.App;
 using TcfOss.DatabaseManager.MySql.Configuration;
 
 namespace TcfOss.DatabaseManager.MySql.Hosting;

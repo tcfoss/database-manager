@@ -2,8 +2,8 @@
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
-using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using Testcontainers.Xunit;
 

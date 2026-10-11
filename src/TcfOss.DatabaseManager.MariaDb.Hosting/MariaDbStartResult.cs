@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core.Hosting;
-using TcfOss.DatabaseManager.MySql.App;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.Hosting;
 

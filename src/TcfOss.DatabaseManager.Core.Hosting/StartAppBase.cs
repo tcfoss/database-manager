@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.App;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
-using TcfOss.DatabaseManager.Core.Configuration;
 
 namespace TcfOss.DatabaseManager.Core.Hosting;
 

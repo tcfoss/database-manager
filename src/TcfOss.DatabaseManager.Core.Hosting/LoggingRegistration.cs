@@ -1,12 +1,12 @@
 using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
 using Serilog.Core;
 using Serilog.Extensions.Hosting;
 using Serilog.Extensions.Logging;
-using Serilog;
-using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 
 namespace TcfOss.DatabaseManager.Core.Hosting;
 
