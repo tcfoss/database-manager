@@ -1,9 +1,10 @@
 ﻿using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
-using TcfOss.DatabaseManager.MySql.App;
+using TcfOss.DatabaseManager.MySql.Hosting;
 
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
+
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests;
 
 public class EnvironmentConfigTests

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.MariaDb.Configuration;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -11,6 +12,18 @@ namespace TcfOss.DatabaseManager.MariaDb.Tests.Configuration;
 
 public class MaConfigLoaderTests
 {
+    [Fact]
+    public void MaConfigurationBuilder_SuppliesMariaDbDefaultsWithoutHosting()
+    {
+        var rawConfig = new MaConfigurationBuilder().GetDefaultConfig(Path.GetTempPath());
+
+        Assert.Equal(SqlDialect.MariaDb, rawConfig.Dialect);
+        Assert.Equal(QuoteStyle.Backticks, rawConfig.QuoteStyle);
+        Assert.Equal("def", rawConfig.Catalog);
+        Assert.Equal("3306", rawConfig.Credentials!.Port);
+        Assert.Equal("INFORMATION_SCHEMA", Assert.Single(rawConfig.Schemas).SchemaName);
+    }
+
     private static MyConfig LoadConfig(ConfigParsing.Config rawConfig, Dictionary<string, object>? otherInfo = null)
     {
         otherInfo ??= MaGetOtherData.GetData(rawConfig);

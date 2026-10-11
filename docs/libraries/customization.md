@@ -7,9 +7,10 @@ description: Customize DatabaseManager startup or register its services in a cal
 For direct construction without a host or DI container, see
 [Without dependency injection](without-di.md).
 
+
 ## Startup Hooks
 
-`StartupOptions` lives in `TcfOss.DatabaseManager.Core.LibWrapper`, including when
+`StartupOptions` lives in `TcfOss.DatabaseManager.Core.Hosting`, including when
 you use a provider wrapper. Hooks run after the library configures its services
 and before the host is built. `ConfigureBuilder` runs first, then
 `ConfigureServices`.
@@ -20,7 +21,7 @@ types:
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using TcfOss.DatabaseManager.Core.App;
-using TcfOss.DatabaseManager.Core.LibWrapper;
+using TcfOss.DatabaseManager.Core.Hosting;
 
 var workingDirectory = Directory.GetCurrentDirectory();
 var rawConfig = new GenericStartup().GetDefaultConfig(workingDirectory);
@@ -53,17 +54,17 @@ for explicit shutdown. Use the following approach when your application needs to
 own and dispose the host.
 
 
-## Manual Hosting Without LibWrapper
+## Manual Hosting
 
-Install `TcfOss.DatabaseManager.Core` and `Microsoft.Extensions.Hosting` for this
-standalone example. It registers generic services in a host owned by the caller,
-without using a wrapper or static service-provider shortcuts:
+Install `TcfOss.DatabaseManager.Core.Hosting` for this
+standalone example. It registers generic services in a host owned by the caller.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core.App;
+using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.Parsing;
 
 var workingDirectory = Directory.GetCurrentDirectory();
@@ -97,9 +98,9 @@ registration instead of `RegisterGenericServices`:
 
 | Package | Startup/configuration builder | Service registration | Extension namespace |
 | --- | --- | --- | --- |
-| `MySql` | `MyStartup` / `MyConfig` | `RegisterMySqlServices` | `TcfOss.DatabaseManager.MySql.App` |
-| `MariaDb` | `MaStartup` / `MyConfig` | `RegisterMariaDbServices` | `TcfOss.DatabaseManager.MariaDb.App` |
-| `MsSql` | `MsStartup` / `MsConfig` | `RegisterMsSqlServices` | `TcfOss.DatabaseManager.MsSql.App` |
+| `MySql.Hosting` | `MyStartup` / `MyConfig` | `RegisterMySqlServices` | `TcfOss.DatabaseManager.MySql.Hosting` |
+| `MariaDb.Hosting` | `MaStartup` / `MyConfig` | `RegisterMariaDbServices` | `TcfOss.DatabaseManager.MariaDb.Hosting` |
+| `MsSql.Hosting` | `MsStartup` / `MsConfig` | `RegisterMsSqlServices` | `TcfOss.DatabaseManager.MsSql.Hosting` |
 
 Build configuration using the selected startup's `BuildConfiguration` with a
 valid raw configuration, environment-variable reader, and logger, then call

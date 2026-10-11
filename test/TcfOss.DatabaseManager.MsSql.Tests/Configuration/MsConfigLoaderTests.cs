@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -10,6 +12,23 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.Configuration;
 
 public class MsConfigLoaderTests
 {
+    [Fact]
+    public void MsConfigurationBuilder_PreparesDefaultsWithoutHosting()
+    {
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new MsConfigurationBuilder();
+        var rawConfig = builder.GetDefaultConfig(rootDirectory);
+
+        var config = builder.BuildConfiguration(rootDirectory, rawConfig, new EnvironmentVariableReader(), false, NullLogger.Instance);
+
+        Assert.Equal(SqlDialect.MsSql, config.Dialect);
+        Assert.Equal(rootDirectory, config.ProjectDirectory);
+        Assert.Equal("master", config.Catalog.Name);
+        Assert.Equal(1433, config.DatabaseCredentials.Port);
+        Assert.Equal(QuoteStyle.Brackets, config.QuoteStyle);
+        Assert.False(config.DatabaseAvailable);
+    }
+
     private static MsConfig LoadConfig(ConfigParsing.Config rawConfig, Dictionary<string, object>? otherInfo = null)
     {
         otherInfo ??= MsGetOtherData.GetData(rawConfig);

@@ -2,8 +2,8 @@
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
-using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using Testcontainers.Xunit;
 
@@ -38,7 +38,7 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
         _ = GetConfig(fileFixture, includeScripts, includeRefactors);
 
         var changesPath = Path.Combine(fileFixture.RootDirectory.FullName, "Changes.sql");
-        var computer = Core.App.AppServiceProvider.ChangeComputer;
+        var computer = Core.Hosting.AppServiceProvider.ChangeComputer;
 
         await computer.ExecuteAsync(changesPath, FileExistsAction.Error, ct);
 

@@ -2,6 +2,7 @@
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.IntegrationTests.DatabaseFixtures;
@@ -26,7 +27,7 @@ public abstract class DownloadSchemaFixture<TBuilderEntity, TContainerEntity> : 
         DbFixture.InitializeLibrarySchema();
         MyConfig = DbFixture.GetLibrarySchemaConfig(RootDirectory.FullName, false, false, Dialect, RemoveSlashesBeforeQuotesGenerationExpression, objectNamePrefixWithSchema: false);
 
-        var schemaDownloader = Core.App.AppServiceProvider.SchemaDownloader;
+        var schemaDownloader = AppServiceProvider.SchemaDownloader;
         await schemaDownloader.ExecuteAsync();
     }
 

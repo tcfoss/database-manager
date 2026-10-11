@@ -71,9 +71,9 @@ Start with the [CLI guide](app/index.md), then configure your project using the
 
 Use the [.NET libraries](libraries/index.md) to embed parsing, formatting, or
 MySQL/MariaDB definition comparison in your own application. Start with the
-[offline quick start](libraries/quickstart.md), or use
-[manual hosting](libraries/customization.md#manual-hosting-without-libwrapper)
-when your application owns its dependency-injection container or you'd prefer to `new`-up objects directly.
+[quick start](libraries/quickstart.md), or use
+[manual hosting](libraries/customization.md#manual-hosting)
+when your application owns its dependency-injection container. If you'd prefer to bypass DI entirely and construct objects manually as needed, see [consuming without DI](libraries/without-di.md).
 
 ## Contributors
 

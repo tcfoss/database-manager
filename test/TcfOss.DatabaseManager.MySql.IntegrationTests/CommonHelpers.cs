@@ -9,11 +9,12 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.IntegrationTests.FakeDatabaseTestContainer;
-using TcfOss.DatabaseManager.MariaDb.App;
-using TcfOss.DatabaseManager.MySql.App;
+using TcfOss.DatabaseManager.MariaDb.Hosting;
 using TcfOss.DatabaseManager.MySql.Configuration;
+using TcfOss.DatabaseManager.MySql.Hosting;
 using Testcontainers.MariaDb;
 using Testcontainers.MySql;
+
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.MySql.IntegrationTests;
@@ -187,7 +188,7 @@ public static partial class CommonHelpers
             rawConfig.Schemas[2].RefactorFiles = ["refactors.yaml"];
         }
 
-        MyStartup startup;
+        Core.Hosting.Startup<MyConfig> startup;
         if (dialect == SqlDialect.MySql)
         {
             startup = new MyStartup();
@@ -262,7 +263,7 @@ public static partial class CommonHelpers
             },
         };
 
-        MyStartup startup = dialect == SqlDialect.MySql ? new MyStartup() : new MaStartup();
+        Core.Hosting.Startup<MyConfig> startup = dialect == SqlDialect.MySql ? new MyStartup() : new MaStartup();
         return (MyConfig)startup.StartApp(rootPath, rawConfig, relaxed: false);
     }
 

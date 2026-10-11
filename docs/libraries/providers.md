@@ -7,15 +7,15 @@ description: Select DatabaseManager providers and load MySQL/MariaDB definitions
 
 ## Entry Points and Capabilities
 
-| Wrapper | Entry point | Processed configuration | Current capabilities |
+| Hosting package | Entry point | Processed configuration | Current capabilities |
 | --- | --- | --- | --- |
-| `Core.LibWrapper` | `GenericStartApp` | `ConfigGeneric` | Generic parsing and formatting. |
-| `MySql.LibWrapper` | `MySqlStartApp` | `MyConfig` | Parsing, formatting, definition loading, schema download, and migration-script generation. |
-| `MariaDb.LibWrapper` | `MariaDbStartApp` | `MyConfig` | MariaDB versions of the MySQL-family workflows. |
-| `MsSql.LibWrapper` | `SqlServerStartApp` | `MsConfig` | SQL Server parsing and formatting only. |
+| `Core.Hosting` | `GenericStartApp` | `ConfigGeneric` | Generic parsing and formatting. |
+| `MySql.Hosting` | `MySqlStartApp` | `MyConfig` | Parsing, formatting, definition loading, schema download, and migration-script generation. |
+| `MariaDb.Hosting` | `MariaDbStartApp` | `MyConfig` | MariaDB versions of the MySQL-family workflows. |
+| `MsSql.Hosting` | `SqlServerStartApp` | `MsConfig` | SQL Server parsing and formatting only. |
 
 Each entry-point class is in its package's namespace, for example
-`TcfOss.DatabaseManager.MariaDb.LibWrapper`. SQL Server does not currently register
+`TcfOss.DatabaseManager.MariaDb.Hosting`. SQL Server does not currently register
 filesystem/database definition loaders, schema download, or `IComputeChanges`.
 
 MySQL and MariaDB share parsing code and definition types, but their server
@@ -24,7 +24,7 @@ defaults and metadata processing differ. Select the wrapper matching the server.
 
 ## Load a Filesystem Definition
 
-Install `TcfOss.DatabaseManager.MySql.LibWrapper` and prepare an existing project
+Install `TcfOss.DatabaseManager.MySql.Hosting` and prepare an existing project
 directory with `database-manager.yaml`, schema mappings, and SQL definition files
 as described in the [configuration reference](../app/configuration.md).
 Startup may connect to the configured server to retrieve metadata/defaults.
@@ -33,7 +33,7 @@ Startup may connect to the configured server to retrieve metadata/defaults.
 using Microsoft.Extensions.DependencyInjection;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
-using TcfOss.DatabaseManager.MySql.LibWrapper;
+using TcfOss.DatabaseManager.MySql.Hosting;
 
 var result = new MySqlStartApp().Start(
     configFilePath: "/path/to/project/database-manager.yaml",
@@ -63,7 +63,7 @@ Choose an output path that your application can write:
 using Microsoft.Extensions.DependencyInjection;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
 using TcfOss.DatabaseManager.Core.IO;
-using TcfOss.DatabaseManager.MySql.LibWrapper;
+using TcfOss.DatabaseManager.MySql.Hosting;
 
 var result = new MySqlStartApp().Start(
     configFilePath: "/path/to/project/database-manager.yaml",
@@ -96,12 +96,12 @@ include `Rename`, `Overwrite`, and `Skip`.
 
 ## SQL Server Parsing
 
-Install `TcfOss.DatabaseManager.MsSql.LibWrapper`, start `SqlServerStartApp`, and
+Install `TcfOss.DatabaseManager.MsSql.Hosting`, start `SqlServerStartApp`, and
 resolve `IParseText` in a scope as in the [quick start](quickstart.md). Use
 `Dialect: MsSql` and an explicit catalog in a supplied configuration file.
 The default SQL Server startup configuration is also available from
 `new MsStartup().GetDefaultConfig(workingDirectory)` in
-`TcfOss.DatabaseManager.MsSql.App`.
+`TcfOss.DatabaseManager.MsSql.Hosting`.
 
 Since SQL Server support is in its infancy and does not yet support any actual communication with a
 live server, Startup currently uses a configured/default server version rather than

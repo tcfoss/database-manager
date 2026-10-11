@@ -44,7 +44,7 @@ Here are the procedures for when it's time to bump versions and issue a new rele
    3. Publish the application with the new version for all currently-supported platforms (currently
       `linux-x64`, `win-x64`, and `osx-arm64`).
    4. Upload the published artifacts.
-   5. Pack and publish the Core, provider, and LibWrapper NuGet packages and their
+   5. Pack and publish the Core, provider, and Hosting NuGet packages and their
       matching `.snupkg` symbol packages.
    6. Create a release for version `X.Y.Z` with the corresponding tag and link the published artifacts.
    7. Deploy documentation to GitHub Pages only after successful release finalization

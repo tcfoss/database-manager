@@ -6,9 +6,11 @@ using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
-using TcfOss.DatabaseManager.MariaDb.App;
-using TcfOss.DatabaseManager.MsSql.App;
-using TcfOss.DatabaseManager.MySql.App;
+using TcfOss.DatabaseManager.Core.Hosting;
+using TcfOss.DatabaseManager.MariaDb.Hosting;
+using TcfOss.DatabaseManager.MsSql.Hosting;
+using TcfOss.DatabaseManager.MySql.Hosting;
+
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.App;

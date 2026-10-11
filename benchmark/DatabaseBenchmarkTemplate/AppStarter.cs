@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
-using TcfOss.DatabaseManager.Core.LibWrapper;
-using TcfOss.DatabaseManager.MariaDb.LibWrapper;
+using TcfOss.DatabaseManager.Core.Hosting;
+using TcfOss.DatabaseManager.MariaDb.Hosting;
 
 namespace DatabaseBenchmarkTemplate;
 

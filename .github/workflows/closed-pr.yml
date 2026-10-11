@@ -129,10 +129,10 @@ jobs:
             "src/TcfOss.DatabaseManager.MySql/TcfOss.DatabaseManager.MySql.csproj"
             "src/TcfOss.DatabaseManager.MariaDb/TcfOss.DatabaseManager.MariaDb.csproj"
             "src/TcfOss.DatabaseManager.MsSql/TcfOss.DatabaseManager.MsSql.csproj"
-            "src/LibWrapper/TcfOss.DatabaseManager.Core.LibWrapper/TcfOss.DatabaseManager.Core.LibWrapper.csproj"
-            "src/LibWrapper/TcfOss.DatabaseManager.MySql.LibWrapper/TcfOss.DatabaseManager.MySql.LibWrapper.csproj"
-            "src/LibWrapper/TcfOss.DatabaseManager.MariaDb.LibWrapper/TcfOss.DatabaseManager.MariaDb.LibWrapper.csproj"
-            "src/LibWrapper/TcfOss.DatabaseManager.MsSql.LibWrapper/TcfOss.DatabaseManager.MsSql.LibWrapper.csproj"
+            "src/TcfOss.DatabaseManager.Core.Hosting/TcfOss.DatabaseManager.Core.Hosting.csproj"
+            "src/TcfOss.DatabaseManager.MySql.Hosting/TcfOss.DatabaseManager.MySql.Hosting.csproj"
+            "src/TcfOss.DatabaseManager.MariaDb.Hosting/TcfOss.DatabaseManager.MariaDb.Hosting.csproj"
+            "src/TcfOss.DatabaseManager.MsSql.Hosting/TcfOss.DatabaseManager.MsSql.Hosting.csproj"
           )
           for proj in "${projects[@]}"; do
             echo "Packing $proj..."

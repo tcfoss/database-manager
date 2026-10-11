@@ -21,7 +21,7 @@ See the [documentation](https://tcfoss.github.io/database-manager/) for  instruc
 
 ## Using the .NET Packages
 
-The Core, MySQL, MariaDB, and SQL Server libraries are available as NuGet packages targeting .NET 10. Convenience `LibWrapper` packages handle configuration, logging, and dependency-injection startup. See the
+The Core, MySQL, MariaDB, and SQL Server libraries are available as NuGet packages targeting .NET 10. The corresponding `*.Hosting` packages handle configuration, logging, and dependency-injection startup for both the CLI and library consumers. See the
 [package-selection guide](https://tcfoss.github.io/database-manager/libraries/) and [quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/).
 
 

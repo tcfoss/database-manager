@@ -16,6 +16,18 @@ namespace TcfOss.DatabaseManager.MySql.Tests.Configuration;
 
 public class MyConfigLoaderTests
 {
+    [Fact]
+    public void MyConfigurationBuilder_SuppliesMySqlDefaultsWithoutHosting()
+    {
+        var rawConfig = new MyConfigurationBuilder().GetDefaultConfig(Path.GetTempPath());
+
+        Assert.Equal(SqlDialect.MySql, rawConfig.Dialect);
+        Assert.Equal(QuoteStyle.Backticks, rawConfig.QuoteStyle);
+        Assert.Equal("def", rawConfig.Catalog);
+        Assert.Equal("3306", rawConfig.Credentials!.Port);
+        Assert.Equal("INFORMATION_SCHEMA", Assert.Single(rawConfig.Schemas).SchemaName);
+    }
+
     private static MyConfig LoadConfig(ConfigParsing.Config rawConfig, Dictionary<string, object>? otherInfo = null)
     {
         otherInfo ??= MyGetOtherData.GetData(rawConfig);

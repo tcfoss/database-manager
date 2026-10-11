@@ -5,5 +5,9 @@
     <Project Path="../src/TcfOss.DatabaseManager.MariaDb/TcfOss.DatabaseManager.MariaDb.csproj" />
     <Project Path="../src/TcfOss.DatabaseManager.MsSql/TcfOss.DatabaseManager.MsSql.csproj" />
     <Project Path="../src/TcfOss.DatabaseManager.MySql/TcfOss.DatabaseManager.MySql.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.Core.Hosting/TcfOss.DatabaseManager.Core.Hosting.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.MySql.Hosting/TcfOss.DatabaseManager.MySql.Hosting.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.MariaDb.Hosting/TcfOss.DatabaseManager.MariaDb.Hosting.csproj" />
+    <Project Path="../src/TcfOss.DatabaseManager.MsSql.Hosting/TcfOss.DatabaseManager.MsSql.Hosting.csproj" />
   </Folder>
 </Solution>

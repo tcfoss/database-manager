@@ -5,7 +5,7 @@ description: Construct DatabaseManager parsers, formatters, definition loaders, 
 # Without Dependency Injection
 
 The underlying libraries can be used without a host, service provider, or
-`LibWrapper`. Construct the objects directly and supply their dependencies.
+hosting integration. Construct the objects directly and supply their dependencies.
 Install `TcfOss.DatabaseManager.Core` for the parsing and formatting examples,
 or `TcfOss.DatabaseManager.MySql` for the MySQL definition example.
 
@@ -45,22 +45,22 @@ still have distinct configuration and metadata behavior.
 ## Format SQL in Memory
 
 Formatting also needs configuration and a built-in function-name provider.
-`BuildConfiguration` processes configuration without creating a host or DI
-container. This complete generic example uses defaults and does not contact a
+`GenericConfigurationBuilder` prepares configuration. This complete generic example uses defaults and does not contact a
 server:
 
 ```csharp
 using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 
 var workingDirectory = Directory.GetCurrentDirectory();
-var startup = new GenericStartup();
-var rawConfig = startup.GetDefaultConfig(workingDirectory);
-var config = startup.BuildConfiguration(
+var configurationBuilder = new GenericConfigurationBuilder();
+var rawConfig = configurationBuilder.GetDefaultConfig(workingDirectory);
+var config = configurationBuilder.BuildConfiguration(
     workingDirectory, rawConfig, new EnvironmentVariableReader(),
     relaxed: false, logger: NullLogger.Instance);
 
@@ -78,13 +78,40 @@ formatting state; unlike the lexer/parser pair, use a separate formatter for
 each concurrent operation. The null logger suppresses diagnostic output;
 an application can supply its own logger instead.
 
+## Configuration Files
+
+`ConfigurationFile`, in `TcfOss.DatabaseManager.Core.Configuration`, handles
+discovery and raw YAML loading. To find a configuration
+from a working directory, call
+`ConfigurationFile.GetConfigPath(workingDirectory, configPath: null)`. Discovery
+searches that directory and its parents using the same filenames as the CLI.
+An explicit `configPath` is resolved relative to the working directory instead.
+
+Pass the returned `FileInfo` to `ConfigurationFile.LoadRawConfig`. It returns
+`null` for a missing file; the caller chooses whether to throw or use
+`GetDefaultConfig`. Pass the raw configuration to the matching builder:
+
+| Base package | Configuration builder | Processed configuration |
+| --- | --- | --- |
+| `Core` | `GenericConfigurationBuilder` | `ConfigGeneric` |
+| `MySql` | `MyConfigurationBuilder` | `MyConfig` |
+| `MariaDb` | `MaConfigurationBuilder` | `MyConfig` |
+| `MsSql` | `MsConfigurationBuilder` | `MsConfig` |
+
+Each builder lives in its base package's `.Configuration` namespace. Builders
+prepare defaults, substitute credential environment variables where applicable,
+and invoke the configuration loaders. MySQL/MariaDB preparation can contact a
+server to discover defaults; without a connection it retains the existing configured/default
+fallback behavior.
+
 
 ## Load and Compare MySQL Definitions
 
 Filesystem definition loading needs a larger graph. This example uses an existing
 MySQL [project configuration](../app/configuration.md) and SQL definition files.
 Configuration processing can contact the configured server to discover defaults,
-just as it does during wrapper startup.
+just as it does during CLI startup. Only `TcfOss.DatabaseManager.MySql` is needed;
+it includes configuration preparation and brings Core transitively.
 
 !!! note
     The comparison uses an empty starting definition, producing a create script from the definition files. It does **not** load or compare the live server's objects.
@@ -92,10 +119,10 @@ just as it does during wrapper startup.
 ```csharp
 using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core.App;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
-using TcfOss.DatabaseManager.MySql.App;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
@@ -105,9 +132,9 @@ using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
 
 var configFile = new FileInfo("/path/to/project/database-manager.yaml");
-var rawConfig = StartupBase.LoadRawConfig(configFile)
+var rawConfig = ConfigurationFile.LoadRawConfig(configFile)
     ?? throw new FileNotFoundException("Configuration file not found.", configFile.FullName);
-var config = new MyStartup().BuildConfiguration(
+var config = new MyConfigurationBuilder().BuildConfiguration(
     configFile.DirectoryName!, rawConfig, new EnvironmentVariableReader(),
     relaxed: false, logger: NullLogger.Instance);
 
@@ -156,12 +183,7 @@ the differ alone does not determine which scripts or refactors have already run.
 
 ## Where DI Saves Wiring
 
-Direct construction does not initialize `AppServiceProvider` convenience
-accessors, and none of these examples uses them. A manually constructed object
-has no DI scope; the application owns its dependencies and disposes resources
-such as formatters, writers, and database contexts itself.
+The biggest advantage to a [hosted approach](customization.md) is that it spares you from
+having to manually construct and supply dependencies to every object you need and partially
+insulates you from constructor signature changes.
 
-The [DI and LibWrapper approaches](customization.md) register these dependencies,
-provide matching provider services, and manage scoped database resources. The
-underlying operations are the same; the difference is who assembles and owns the
-object graph.
