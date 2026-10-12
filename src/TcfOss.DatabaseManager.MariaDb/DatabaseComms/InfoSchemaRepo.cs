@@ -53,7 +53,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         _quoteStyle = config.QuoteStyle;
         _lexer = new MyLexer();
         _parser = new MyParser();
-        _helper = new InfoSchemaRepoHelper(_lexer, _parser, config);
+        _helper = new InfoSchemaRepoHelper(_lexer, _parser, _quoteStyle);
     }
 
     public async Task<List<ObjectIdentifier>> GetTableIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, bool refreshCache = true, CancellationToken cancellationToken = default)
@@ -421,7 +421,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                     }
                 }
 
-                KeyValuePair<Handle, MyKey> kvp = IndexInfoToKey(indexInfo);
+                KeyValuePair<Handle, MyKey> kvp = _helper.IndexInfoToKey(indexInfo, _config.NameHandling);
                 keys.Add(kvp.Key, kvp.Value);
             }
 
@@ -482,33 +482,6 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
         return new SchemaForeignKeyData(
             rows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<ForeignKeyColumnDto>)[.. g]));
-    }
-
-    private KeyValuePair<Handle, MyKey> IndexInfoToKey(List<IndexInfo> info)
-    {
-        IndexInfo first = info.First();
-        var id = new Identifier(first.IndexName, _quoteStyle);
-        var keyParts = new SqlValueList<KeyPart>([.. info.OrderBy(s => s.SeqInIndex).Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))]);
-        MyKey key;
-
-        if (first.IndexType == "FULLTEXT")
-        {
-            key = new MyKey.FullText(keyParts, id);
-        }
-        else if (first.IndexType == "SPATIAL")
-        {
-            key = new MyKey.Spatial(keyParts, id);
-        }
-        else
-        {
-            IndexMethod indexMethod = IndexMethod.Parse(first.IndexType);
-            key = new MyKey.Standard(keyParts, id)
-            {
-                IndexMethod = indexMethod
-            };
-        }
-
-        return new KeyValuePair<Handle, MyKey>(Handle.Create(id, _config.NameHandling), key);
     }
 
     private DatabaseComponentDict<MyCheck> GetChecks(IReadOnlyList<TableCheckDto> isChecks)

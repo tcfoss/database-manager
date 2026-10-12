@@ -19,23 +19,23 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
     [Fact]
     public async Task Test_Compute_Apply_Compute_No_More_Changes_1()
     {
-        await DoWork("Test1", true, false, TestContext.Current.CancellationToken);
+        await DoWork("Test1", true, false, enableSensitiveLogging: false, TestContext.Current.CancellationToken);
     }
 
     [Fact]
     public async Task Test_Compute_Apply_Compute_No_More_Changes_2()
     {
-        await DoWork("Test2", false, true, TestContext.Current.CancellationToken);
+        await DoWork("Test2", false, true, enableSensitiveLogging: true, TestContext.Current.CancellationToken);
     }
 
-    private async Task DoWork(string sourceDirectoryComponent, bool includeScripts, bool includeRefactors, CancellationToken ct = default)
+    private async Task DoWork(string sourceDirectoryComponent, bool includeScripts, bool includeRefactors, bool enableSensitiveLogging, CancellationToken ct = default)
     {
         await Container.InitializeLibrarySchema();
 
         var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory(sourceDirectoryComponent).FullName);
 
-        _ = GetConfig(fileFixture, includeScripts, includeRefactors);
+        var config = GetConfig(fileFixture, includeScripts, includeRefactors, enableSensitiveLogging: enableSensitiveLogging);
 
         var changesPath = Path.Combine(fileFixture.RootDirectory.FullName, "Changes.sql");
         var computer = Core.Hosting.AppServiceProvider.ChangeComputer;
@@ -49,6 +49,28 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
 
         var result = ExecuteDbScriptInContainer(body, ct);
         Assert.Equal(0, result.ExitCode);
+
+        // Validate logging.
+
+        var logFile = Directory.GetFiles(config.Logging.LogDirectory)
+            .First(x => x.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+        Assert.True(File.Exists(logFile));
+        var logContent = await File.ReadAllTextAsync(logFile, ct);
+        Assert.False(string.IsNullOrWhiteSpace(logContent));
+
+        if (enableSensitiveLogging)
+        {
+            Assert.Contains("='library_catalog'", logContent);
+            Assert.DoesNotContain("='?'", logContent);
+        }
+        else
+        {
+            Assert.DoesNotContain("='library_catalog'", logContent);
+            Assert.Contains("='?'", logContent);
+        }
+
+        // Validate no new changes.
 
         var newChangesPath = Path.Combine(fileFixture.RootDirectory.FullName, "NewChanges.sql");
         await computer.ExecuteAsync(newChangesPath, FileExistsAction.Error, ct);
@@ -64,9 +86,9 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
         return Container.ExecScriptAsync(script, ct).GetAwaiter().GetResult();
     }
 
-    private MyConfig GetConfig(FsProjectFixture fsFixture, bool includeScripts, bool includeRefactors)
+    private MyConfig GetConfig(FsProjectFixture fsFixture, bool includeScripts, bool includeRefactors, bool enableSensitiveLogging)
     {
         var rootPath = fsFixture.RootDirectory.FullName;
-        return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Container.GetPort(), Dialect, true);
+        return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Container.GetPort(), Dialect, true, enableSensitiveLogging: enableSensitiveLogging);
     }
 }

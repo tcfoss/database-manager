@@ -23,6 +23,8 @@ public abstract class SimpleSchemaDifferTests<TBuilderEntity, TContainerEntity, 
 
         List<string> expectedStatements =
         [
+            "ALTER TABLE `index_with_comment` DROP KEY `idx_index_with_comment`",
+            "ALTER TABLE `index_with_comment` COMMENT = 'This is a different table comment'",
             "ALTER TABLE `samples` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
             "ALTER TABLE `widgets` DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci",
             "ALTER TABLE `nulltest` MODIFY COLUMN `name` VARCHAR(50) NULL",
@@ -30,6 +32,7 @@ public abstract class SimpleSchemaDifferTests<TBuilderEntity, TContainerEntity, 
             "UPDATE `nulltest` SET `name` = 'Probably Beta, but more research is needed' WHERE `name` IS NULL;\n",
             "INSERT INTO `simple_schema`.`_database_manager` (`entry_key`, `entry_type`) VALUES ('00000000-0000-0000-0000-000000000001', 'D')",
             "ALTER TABLE `nulltest` MODIFY COLUMN `name` VARCHAR(50) NOT NULL",
+            "ALTER TABLE `index_with_comment` ADD KEY `idx_index_with_comment` (`id`) COMMENT 'This is a different index comment'",
         ];
 
         Assert.Equal(expectedStatements, actualStatements);
