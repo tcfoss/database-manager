@@ -507,7 +507,7 @@ public partial class MyDiffer
 
                 if (tableMap.Start.TableComment != tableMap.End.TableComment)
                 {
-                    tableLevelAlterations.Add(new AlterTableOperation.TableComment(tableMap.End.TableComment?.Text ?? ""));
+                    tableLevelAlterations.Add(new AlterTableOperation.TableComment(tableMap.End.TableComment?.Text));
                 }
 
                 if (tableLevelAlterations.Count > 0)
