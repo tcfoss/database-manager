@@ -72,7 +72,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
     public DataType ParseDataTypeWithDefaults(string text, string? characterSetName, string? collationName)
     {
         DataType dataType = ParseDataType(text);
-        if (dataType is MyDataType.BaseMyStringType myStringType && (myStringType.StringAttribute == null || myStringType.StringAttribute?.EitherSet == false))
+        if (dataType is MyDataType.BaseMyStringType { StringAttribute: null } myStringType)
         {
             dataType = myStringType with
             {

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
@@ -47,6 +48,22 @@ public class InfoSchemaRepoHelperTests
         Assert.Equal(expected, actual);
     }
 
+    [Fact]
+    public void AccountsParse_CurrentUser()
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+        var actual = repoHelper.ParseAccount("CURRENT_USER");
+        var expected = new Account.CurrentUser();
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void AccountsParse_UnknownQuoteStyle_Throws()
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, (QuoteStyle)999);
+        Assert.Throws<UnreachableException>(() => repoHelper.ParseAccount("'myname'@'myhost'"));
+    }
+
     [Theory]
     [InlineData("INT", true)]
     [InlineData("INT SIGNED", true)]
@@ -85,6 +102,17 @@ public class InfoSchemaRepoHelperTests
                 Assert.DoesNotContain("SIGNED", actualString);
             }
         }
+    }
+
+    [Theory]
+    [InlineData("VARCHAR(255)", "VARCHAR(255) CHARACTER SET overridecharset COLLATE overridecollation")]
+    [InlineData("VARCHAR(255) CHARSET utf8mb4", "VARCHAR(255) CHARACTER SET utf8mb4")]
+    [InlineData("VARCHAR(255) COLLATE utf8mb4_general_ci", "VARCHAR(255) COLLATE utf8mb4_general_ci")]
+    public void StringTypesTakeDefaults(string dataType, string expected)
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+        var actual = repoHelper.ParseDataTypeWithDefaults(dataType, "overridecharset", "overridecollation");
+        Assert.Equal(expected, actual.ToSql());
     }
 
     [Theory]
