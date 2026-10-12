@@ -57,7 +57,7 @@ public static partial class CommonHelpers
         };
     }
 
-    public static MyConfig GetLibrarySchemaConfig(this IDatabaseContainer container, string rootPath, bool includeScripts, bool includeRefactors, ushort port, SqlDialect dialect = SqlDialect.MariaDb, bool removeSlashesBeforeQuotesGenerationExpression = false, IReadEnvironmentVariables? environmentVariableReader = null, bool objectNamePrefixWithSchema = true)
+    public static MyConfig GetLibrarySchemaConfig(this IDatabaseContainer container, string rootPath, bool includeScripts, bool includeRefactors, ushort port, SqlDialect dialect = SqlDialect.MariaDb, bool removeSlashesBeforeQuotesGenerationExpression = false, IReadEnvironmentVariables? environmentVariableReader = null, bool objectNamePrefixWithSchema = true, bool enableSensitiveLogging = false)
     {
         ConfigParsing.DeployScript[] catalogScripts = [];
         ConfigParsing.DeployScript[] activityScripts = [];
@@ -166,6 +166,8 @@ public static partial class CommonHelpers
             {
                 DatabaseLogLevel = LogLevel.Information,
                 Target = LogTarget.File,
+                EnableSensitiveDataLogging = enableSensitiveLogging,
+                LogDirectory = Path.Combine(rootPath, "Logs")
             },
             DifferFormatting = new ConfigParsing.DifferFormattingSettings
             {

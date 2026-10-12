@@ -497,4 +497,10 @@ public class LexerSimpleTests : LexerTestBase
         Assert.False(first.Equals(other));
         Assert.False(first.Equals((object?)other));
     }
+
+    [Fact]
+    public void EofSymbolType()
+    {
+        Assert.Equal(StringSymbols.EndOfFile, Eof.TypeSymbol);
+    }
 }

@@ -51,6 +51,24 @@ public class FormatAlterTableTests
         Assert.Equal(expected, formatter.GetFormatted(statement), ignoreLineEndingDifferences: true);
     }
 
+    [Theory]
+    [InlineData("This is a comment", "COMMENT = 'This is a comment'")]
+    [InlineData(null, "COMMENT = ''")]
+    [InlineData("", "COMMENT = ''")]
+    public void AlterTable_FormatsComment(string? comment, string expectedOperation)
+    {
+        var statement = new AlterTable(new ObjectName([new Identifier("books")]),
+            [new AlterTableOperation.TableComment(comment)]);
+        using var formatter = Helpers.CreateFormatter(null);
+
+        var expected = $"""
+        ALTER TABLE `books`
+            {expectedOperation};
+        """;
+
+        Assert.Equal(expected, formatter.GetFormatted(statement), ignoreLineEndingDifferences: true);
+    }
+
     [Fact]
     public void AlterTable_AddColumn()
     {

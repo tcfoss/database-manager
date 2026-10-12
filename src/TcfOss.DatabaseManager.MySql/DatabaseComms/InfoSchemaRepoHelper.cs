@@ -1,30 +1,30 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
-using TcfOss.DatabaseManager.MySql.Configuration;
+using TcfOss.DatabaseManager.MySql.DatabaseComms.InfoSchemaHelperModels;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
-using TcfOss.DatabaseManager.MySql.Lexing;
-using TcfOss.DatabaseManager.MySql.Parsing;
 using GenerationMode = TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes.GenerationMode;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseComms;
 
-public partial class InfoSchemaRepoHelper(ILexer? lexer, IParser? parser, MyConfig config)
+public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteStyle quoteStyle)
 {
     private readonly Regex _isAggregateRegex = BuildAggregateFunctionRegex();
     private readonly Regex _escapedQuoteRegex = BuildEscapedQuoteRegex();
 
-    private readonly ILexer _lexer = lexer ?? new MyLexer();
-    private readonly IParser _parser = parser ?? new MyParser();
-    private readonly QuoteStyle _quoteStyle = config.QuoteStyle;
+    private readonly ILexer _lexer = lexer;
+    private readonly IParser _parser = parser;
+    private readonly QuoteStyle _quoteStyle = quoteStyle;
 
     private ParserState GetState(string text)
     {
@@ -47,11 +47,6 @@ public partial class InfoSchemaRepoHelper(ILexer? lexer, IParser? parser, MyConf
             _ => throw new UnreachableException()
         };
 
-        ExtendedIdentifier ConvertExtended(ExtendedIdentifier ext)
-        {
-            return new ExtendedIdentifier(ext.Name, exQuoteStyle);
-        }
-
         Account account = ComponentParser.ParseAccount(GetState(text));
         if (account is Account.Identity ai)
         {
@@ -62,6 +57,11 @@ public partial class InfoSchemaRepoHelper(ILexer? lexer, IParser? parser, MyConf
             return new Account.IdentityWithHost(ConvertExtended(ah.Name), ConvertExtended(ah.Host));
         }
         return account;
+
+        ExtendedIdentifier ConvertExtended(ExtendedIdentifier ext)
+        {
+            return new ExtendedIdentifier(ext.Name, exQuoteStyle);
+        }
     }
 
     public DataType ParseDataType(string text)
@@ -72,7 +72,7 @@ public partial class InfoSchemaRepoHelper(ILexer? lexer, IParser? parser, MyConf
     public DataType ParseDataTypeWithDefaults(string text, string? characterSetName, string? collationName)
     {
         DataType dataType = ParseDataType(text);
-        if (dataType is MyDataType.BaseMyStringType myStringType)
+        if (dataType is MyDataType.BaseMyStringType { StringAttribute: null } myStringType)
         {
             dataType = myStringType with
             {
@@ -211,6 +211,46 @@ public partial class InfoSchemaRepoHelper(ILexer? lexer, IParser? parser, MyConf
     {
         ParserState state = GetState(text);
         return _parser.ParseStatement(state);
+    }
+
+    public KeyValuePair<Handle, MyKey> IndexInfoToKey(List<IndexInfo> info, NameHandling nameHandling)
+    {
+        IndexInfo first = info.First();
+        var id = new Identifier(first.IndexName, _quoteStyle);
+        var keyParts = new SqlValueList<KeyPart>([.. info.OrderBy(s => s.SeqInIndex).Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))]);
+        MyKey key;
+
+        Comment? comment = null;
+        if (!string.IsNullOrEmpty(first.IndexComment))
+        {
+            comment = new Comment(first.IndexComment);
+        }
+
+        if (first.IndexType == "FULLTEXT")
+        {
+            key = new MyKey.FullText(keyParts, id)
+            {
+                Comment = comment
+            };
+        }
+        else if (first.IndexType == "SPATIAL")
+        {
+            key = new MyKey.Spatial(keyParts, id)
+            {
+                Comment = comment
+            };
+        }
+        else
+        {
+            IndexMethod indexMethod = IndexMethod.Parse(first.IndexType);
+            key = new MyKey.Standard(keyParts, id)
+            {
+                IndexMethod = indexMethod,
+                Comment = comment
+            };
+        }
+
+        return new KeyValuePair<Handle, MyKey>(Handle.Create(id, nameHandling), key);
     }
 
 

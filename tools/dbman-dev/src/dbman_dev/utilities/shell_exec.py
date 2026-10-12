@@ -37,8 +37,17 @@ def run_output(cmd: list[str], cwd: _Path | None = None, quiet: bool = False) ->
         else:
             print(f"{cwd_printable}> {' '.join(cmd)}")
 
-    result = _subproc.run(cmd, shell=False, cwd=cwd, check=True, capture_output=True, text=True)
-    return result.stdout.strip()
+    try:
+        result = _subproc.run(cmd, shell=False, cwd=cwd, check=True, capture_output=True, text=True)
+        return result.stdout.strip()
+    except _subproc.CalledProcessError as e:
+        if not quiet:
+            print(f"Command failed with return code {e.returncode}")
+            print("Stdout:")
+            print(e.stdout)
+            print("Stderr:")
+            print(e.stderr)
+        raise
 
 
 def rsync(

@@ -498,16 +498,29 @@ public partial class MyDiffer
             }
             else
             {
-                if (tableMap.Start!.CharacterSet != tableMap.End!.CharacterSet || tableMap.Start!.Collation != tableMap.End!.Collation)
+                SqlValueList<AlterTableOperation> tableLevelAlterations = [];
+
+                if (tableMap.Start!.CharacterSet != tableMap.End!.CharacterSet || tableMap.Start.Collation != tableMap.End.Collation)
+                {
+                    tableLevelAlterations.Add(new AlterTableOperation.SetCharacterSetCollation(tableMap.End.CharacterSet, tableMap.End.Collation));
+                }
+
+                if (tableMap.Start.TableComment != tableMap.End.TableComment)
+                {
+                    tableLevelAlterations.Add(new AlterTableOperation.TableComment(tableMap.End.TableComment?.Text));
+                }
+
+                if (tableLevelAlterations.Count > 0)
                 {
                     results.Add(
                         new DefinitionAlterStatement(
-                            DefaultWeights.SetCharacterSetCollation,
+                            DefaultWeights.SetTableProperty,
                             tableMap.Start!.Name.Schema,
-                            new AlterTable(tableMap.End.Name.ToObjectName(Depth), [new AlterTableOperation.SetCharacterSetCollation(tableMap.End!.CharacterSet, tableMap.End!.Collation)])
+                            new AlterTable(tableMap.End.Name.ToObjectName(Depth), tableLevelAlterations)
                         )
                     );
                 }
+
                 results.AddRange(GetAlterTableColumns(tableMap.Handle, tableMap.Start!, tableMap.End!));
             }
         }

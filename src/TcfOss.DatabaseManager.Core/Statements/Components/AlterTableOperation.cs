@@ -410,5 +410,12 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
-
+    public record TableComment(string? NewComment) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            string newComment = NewComment ?? "";
+            writer.WriteSql($"COMMENT = '{newComment}'");
+        }
+    }
 }
