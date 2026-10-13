@@ -6,5 +6,5 @@ using TcfOss.DatabaseManager.Core.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.App;
 
-public class GenericSqlFormatter(ConfigGeneric config, IWriteFiles fileWriter, IParseText textParser, IFunctionNameProvider functionNameProvider, ILogger<GenericSqlFormatter> logger)
-    : SqlFormatter<ConfigGeneric>(config, fileWriter, textParser, functionNameProvider, logger);
+public class GenericSqlFormatter(GenericConfig config, IWriteFiles fileWriter, IParseText textParser, IFunctionNameProvider functionNameProvider, ILogger<GenericSqlFormatter> logger)
+    : SqlFormatter<GenericConfig>(config, fileWriter, textParser, functionNameProvider, logger);

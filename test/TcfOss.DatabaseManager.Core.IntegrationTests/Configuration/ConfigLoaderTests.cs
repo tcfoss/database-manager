@@ -308,10 +308,10 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
         };
     }
 
-    private ConfigGeneric GetConfig(ConfigParsing.Config? rawConfig = null)
+    private GenericConfig GetConfig(ConfigParsing.Config? rawConfig = null)
     {
         rawConfig ??= Fixture.LoadRawConfig();
-        var loader = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>());
+        var loader = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>());
         var config = loader.LoadConfig(Fixture.RootDirectory.FullName, rawConfig, []);
         return config;
     }

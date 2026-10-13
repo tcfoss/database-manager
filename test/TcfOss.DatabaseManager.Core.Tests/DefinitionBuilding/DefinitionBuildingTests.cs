@@ -12,7 +12,7 @@ public class DefinitionBuildingTests
     {
         // Arrange
         var loggerFactory = new LoggerFactory();
-        var config = new ConfigLoader(loggerFactory.CreateLogger<ConfigLoader>()).LoadConfig("database", TestDataRawConfig.MyTestRawConfig, []);
+        var config = new GenericConfigLoader(loggerFactory.CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.MyTestRawConfig, []);
         var logger = loggerFactory.CreateLogger<DefinitionFileLoader<SchemaMappingBase>>();
         var fileLoader = new FakeFileLoader<SchemaMappingBase>(config, logger);
 

@@ -63,7 +63,7 @@ public class NormalizerTests
             CteDeclarationNameQuotationHandling = cteDeclarationNameQuotationHandling ?? IdentifierQuotationHandling.Always,
         };
 
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
         var textParser = new TextParser(new GenericLexer(), new Parser());
         var statement = (Select)textParser.ParseText(sqlText).First();
 
@@ -535,7 +535,7 @@ public class NormalizerTests
 
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
     {
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var parser = new Parser();
         var expression = parser.ExpressionParser.ParseExpr(new ParserState([.. new GenericLexer().Tokenize(sqlText)]));
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));

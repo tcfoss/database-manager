@@ -132,7 +132,7 @@ public class ProviderSpecificStartAppTests
         });
 
         Assert.NotNull(result.Services);
-        Assert.IsType<ConfigGeneric>(result.Config);
+        Assert.IsType<GenericConfig>(result.Config);
         Assert.IsType<AppServiceProvider>(result.ServiceProvider);
         Assert.NotNull(result.Services.GetRequiredService<ITestRegistration>());
     }

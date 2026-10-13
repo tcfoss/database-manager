@@ -52,7 +52,7 @@ public class BootstrapHelpersTests
             Assert.Same(callbackLogger, context.Logger);
             Assert.True(context.Logger.IsEnabled(LogLevel.Debug));
             Assert.NotNull(callbackSources);
-            Assert.IsType<CommandRunner<ConfigGeneric>>(context.CommandRunner);
+            Assert.IsType<CommandRunner<GenericConfig>>(context.CommandRunner);
             Assert.True(AppServiceProvider.GetLogger<BootstrapHelpersTests>().IsEnabled(LogLevel.Debug));
         }
         finally

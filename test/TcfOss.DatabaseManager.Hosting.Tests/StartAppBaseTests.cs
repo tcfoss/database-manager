@@ -106,7 +106,7 @@ public class StartAppBaseTests
             var startResult = StartCommon(configFilePath, rawConfig, workingDirectory, relaxed, options);
             return new FakeStartResult
             {
-                Config = (ConfigGeneric)startResult.Config,
+                Config = (GenericConfig)startResult.Config,
                 ServiceProvider = new AppServiceProvider(),
                 Services = startResult.Services,
                 UsingDefaultConfig = startResult.UsingDefaultConfig
@@ -145,7 +145,7 @@ public class StartAppBaseTests
             (ILogger logger, _) = loggingSetupFunc(builder, rawConfig.Logging);
             logSetupAction?.Invoke(logger, null);
 
-            var config = new ConfigGeneric
+            var config = new GenericConfig
             {
                 ProjectDirectory = rootDirectory,
                 Catalog = new Core.Common.CatalogIdentifier("def"),
@@ -163,9 +163,9 @@ public class StartAppBaseTests
         }
     }
 
-    private sealed record FakeStartResult : IStartResult<ConfigGeneric, AppServiceProvider>
+    private sealed record FakeStartResult : IStartResult<GenericConfig, AppServiceProvider>
     {
-        public required ConfigGeneric Config { get; init; }
+        public required GenericConfig Config { get; init; }
         public required AppServiceProvider ServiceProvider { get; init; }
         public required IServiceProvider Services { get; init; }
         public required bool UsingDefaultConfig { get; init; }

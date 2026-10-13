@@ -7,7 +7,7 @@ using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class GenericConfigurationBuilder : ConfigurationBuilder<ConfigGeneric>
+public class GenericConfigurationBuilder : ConfigurationBuilder<GenericConfig>
 {
     private const SqlDialect DefaultDialect = SqlDialect.Generic;
     private const QuoteStyle DefaultQuoteStyle = QuoteStyle.Ansi;
@@ -30,9 +30,9 @@ public class GenericConfigurationBuilder : ConfigurationBuilder<ConfigGeneric>
         };
     }
 
-    public override ConfigGeneric BuildConfiguration(string rootDirectory, ConfigParsing.Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
+    public override GenericConfig BuildConfiguration(string rootDirectory, ConfigParsing.Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
     {
-        var loader = new ConfigLoader(logger);
+        var loader = new GenericConfigLoader(logger);
         return loader.LoadConfig(rootDirectory, rawConfig, [], relaxed);
     }
 
