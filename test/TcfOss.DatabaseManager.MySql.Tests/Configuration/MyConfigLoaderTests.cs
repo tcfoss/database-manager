@@ -837,7 +837,7 @@ public class MyConfigLoaderTests
 
         var ex = Assert.Throws<ConfigurationException.InvalidFieldTypeException>(() => LoadConfig(rawConfig));
         Assert.Contains("Version", ex.Message);
-        Assert.Equal("invalid", ex.Message);
+        Assert.Contains("invalid", ex.Message);
     }
 
     class NumericLengthTestData : IEnumerable<TheoryDataRow<int?, int?, NumericLength?, ExceptionType?, string?>>
