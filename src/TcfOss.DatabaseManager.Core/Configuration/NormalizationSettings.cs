@@ -3,7 +3,7 @@ using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class NormalizationSettings
+public record NormalizationSettings
 {
     public IdentifierQuotationHandling IdentifierQuotationHandling { get; init; } = IdentifierQuotationHandling.Always;
     public IdentifierQuotationHandling CteDeclarationNameQuotationHandling { get; init; } = IdentifierQuotationHandling.LeaveOriginal;

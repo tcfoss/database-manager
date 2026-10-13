@@ -89,6 +89,6 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
     private MyConfig GetConfig(FsProjectFixture fsFixture, bool includeScripts, bool includeRefactors, bool enableSensitiveLogging)
     {
         var rootPath = fsFixture.RootDirectory.FullName;
-        return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Container.GetPort(), Dialect, true, enableSensitiveLogging: enableSensitiveLogging);
+        return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Container.GetPort(), Dialect, enableSensitiveLogging: enableSensitiveLogging);
     }
 }

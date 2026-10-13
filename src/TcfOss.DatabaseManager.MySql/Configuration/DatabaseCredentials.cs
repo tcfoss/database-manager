@@ -2,7 +2,7 @@ using MySqlConnector;
 
 namespace TcfOss.DatabaseManager.MySql.Configuration;
 
-public class DatabaseCredentials
+public record DatabaseCredentials
 {
     public required string Host { get; init; }
     public required string Username { get; init; }

@@ -24,9 +24,9 @@ public abstract class DbFixture<TBuilderEntity, TContainerEntity>(IMessageSink m
         Container.ExecAsync(["sh", "/InitialSchemas/Init/initialize_library.sh"]).GetAwaiter().GetResult();
     }
 
-    public MyConfig GetLibrarySchemaConfig(string rootPath, bool includeScripts, bool includeRefactors, SqlDialect dialect = SqlDialect.MariaDb, bool removeSlashesBeforeQuotesGenerationExpression = false, bool objectNamePrefixWithSchema = true, bool enableSensitiveLogging = false)
+    public MyConfig GetLibrarySchemaConfig(string rootPath, bool includeScripts, bool includeRefactors, SqlDialect dialect = SqlDialect.MariaDb, bool objectNamePrefixWithSchema = true, bool enableSensitiveLogging = false)
     {
-        return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Port, dialect, removeSlashesBeforeQuotesGenerationExpression, objectNamePrefixWithSchema: objectNamePrefixWithSchema, enableSensitiveLogging: enableSensitiveLogging);
+        return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Port, dialect, objectNamePrefixWithSchema: objectNamePrefixWithSchema, enableSensitiveLogging: enableSensitiveLogging);
     }
 
     public MyConfig GetSimpleSchemaConfig(string rootPath, SqlDialect dialect)

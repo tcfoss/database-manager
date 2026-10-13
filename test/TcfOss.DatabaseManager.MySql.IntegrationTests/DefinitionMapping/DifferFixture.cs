@@ -24,7 +24,6 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
     protected DbFixture<TBuilderEntity, TContainerEntity> DbFixture { get; init; } = null!;
     private MyConfig MyConfig { get; set; } = null!;
     protected virtual SqlDialect Dialect => SqlDialect.MySql;
-    protected virtual bool RemoveSlashesBeforeQuotesGenerationExpression => false;
 
     public List<TestChangeConfig> TestSets { get; } = [
         new() {
@@ -81,7 +80,7 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
     {
         await DbFixture.Container.StartAsync();
         DbFixture.InitializeLibrarySchema();
-        MyConfig = DbFixture.GetLibrarySchemaConfig(_fsFixtureInitial.RootDirectory.FullName, false, false, Dialect, RemoveSlashesBeforeQuotesGenerationExpression);
+        MyConfig = DbFixture.GetLibrarySchemaConfig(_fsFixtureInitial.RootDirectory.FullName, false, false, Dialect);
         var dbLoader = (MyDbDefinitionLoader)MyAppServiceProvider.DatabaseDefinitionLoader;
 
         return await dbLoader.LoadDefinitionAsync();
@@ -90,7 +89,7 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
     private MyDefinition GetEndDefinition(TestChangeConfig testSet)
     {
         testSet.FsFixture.CopyFiles(testSet.SourcePath, testSet.FsFixture.RootDirectory.FullName);
-        MyConfig = DbFixture.GetLibrarySchemaConfig(testSet.FsFixture.RootDirectory.FullName, testSet.IncludeScripts, testSet.IncludeRefactors, Dialect, RemoveSlashesBeforeQuotesGenerationExpression);
+        MyConfig = DbFixture.GetLibrarySchemaConfig(testSet.FsFixture.RootDirectory.FullName, testSet.IncludeScripts, testSet.IncludeRefactors, Dialect);
         var fsLoader = (MyFsDefinitionLoader)MyAppServiceProvider.FilesystemDefinitionLoader;
 
         return fsLoader.LoadDefinition(false);

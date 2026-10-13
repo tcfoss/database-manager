@@ -8,11 +8,11 @@ namespace TcfOss.DatabaseManager.Core.Configuration;
 // ReSharper disable UnusedMemberInSuper.Global
 public interface ISchemaMapping
 {
-    SchemaIdentifier SchemaName { get; set; }
-    string RootPath { get; set; }
-    string[] IncludeFilePatterns { get; set; }
-    string[] ExcludeFilePatterns { get; set; }
-    string[] ExcludeDatabaseObjectNames { get; set; }
-    Refactor[] Refactors { get; set; }
-    DeployScript[] DeployScripts { get; set; }
+    SchemaIdentifier SchemaName { get; }
+    string RootPath { get; }
+    string[] IncludeFilePatterns { get; }
+    string[] ExcludeFilePatterns { get; }
+    string[] ExcludeDatabaseObjectNames { get; }
+    Refactor[] Refactors { get; }
+    DeployScript[] DeployScripts { get; }
 }

@@ -1,6 +1,6 @@
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class ParseSettings
+public record ParseSettings
 {
-    public bool RemoveSlashesBeforeQuotesGenerationExpression { get; set; }
+    public bool RemoveSlashesBeforeQuotesGenerationExpression { get; init; }
 }

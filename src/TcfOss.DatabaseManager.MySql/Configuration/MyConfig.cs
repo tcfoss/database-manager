@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 
 namespace TcfOss.DatabaseManager.MySql.Configuration;
 
-public class MyConfig : ConfigWithSchemaMapsBase<MySchemaMapping>
+public record MyConfig : ConfigWithSchemaMapsBase<MySchemaMapping>
 {
     public required DatabaseCredentials DatabaseCredentials { get; init; }
     public required Version Version { get; init; }

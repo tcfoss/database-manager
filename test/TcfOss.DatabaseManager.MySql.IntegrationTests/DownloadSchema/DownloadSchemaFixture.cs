@@ -19,13 +19,12 @@ public abstract class DownloadSchemaFixture<TBuilderEntity, TContainerEntity> : 
     public DirectoryInfo RootDirectory => FsProjectFixture.RootDirectory;
 
     protected abstract SqlDialect Dialect { get; }
-    protected virtual bool RemoveSlashesBeforeQuotesGenerationExpression => false;
 
     public virtual async ValueTask InitializeAsync()
     {
         await DbFixture.Container.StartAsync();
         DbFixture.InitializeLibrarySchema();
-        MyConfig = DbFixture.GetLibrarySchemaConfig(RootDirectory.FullName, false, false, Dialect, RemoveSlashesBeforeQuotesGenerationExpression, objectNamePrefixWithSchema: false);
+        MyConfig = DbFixture.GetLibrarySchemaConfig(RootDirectory.FullName, false, false, Dialect, objectNamePrefixWithSchema: false);
 
         var schemaDownloader = AppServiceProvider.SchemaDownloader;
         await schemaDownloader.ExecuteAsync();

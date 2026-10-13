@@ -49,11 +49,10 @@ public class MyConfigLoader(ILogger logger)
         }
         else
         {
-            parseSettings = new ParseSettings();
-            if (rawConfig.Dialect == SqlDialect.MySql)
+            parseSettings = new ParseSettings()
             {
-                parseSettings.RemoveSlashesBeforeQuotesGenerationExpression = true;
-            }
+                RemoveSlashesBeforeQuotesGenerationExpression = rawConfig.Dialect == SqlDialect.MySql
+            };
         }
 
         NormalizationSettings viewNormalizationSettings = GetViewNormalizationDefaults();

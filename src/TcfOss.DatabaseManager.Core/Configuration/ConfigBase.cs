@@ -3,7 +3,7 @@ using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class ConfigBase
+public record ConfigBase
 {
     public required string ProjectDirectory { get; init; }
     public required CatalogIdentifier Catalog { get; init; }

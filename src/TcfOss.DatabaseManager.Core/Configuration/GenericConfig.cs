@@ -1,3 +1,3 @@
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class GenericConfig : ConfigWithSchemaMapsBase<SchemaMappingBase>;
+public record GenericConfig : ConfigWithSchemaMapsBase<SchemaMappingBase>;

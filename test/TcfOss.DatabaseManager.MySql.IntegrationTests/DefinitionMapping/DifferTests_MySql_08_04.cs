@@ -19,7 +19,6 @@ public class DifferTests_MySql_08_04 : DifferTests<MySqlBuilder, MySqlContainer,
 
     public class ThisFixture : DifferFixture<MySqlBuilder, MySqlContainer>
     {
-        protected override bool RemoveSlashesBeforeQuotesGenerationExpression => true;
         public ThisFixture(IMessageSink messageSink)
         {
             DbFixture = new MySqlFixture_08_04(messageSink);
