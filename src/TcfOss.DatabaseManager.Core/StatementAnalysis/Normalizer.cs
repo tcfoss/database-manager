@@ -398,7 +398,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         };
     }
 
-    private SimpleSelect NormalizeSimpleSelectInternal(SimpleSelect select, bool returnsValues, bool flatten = false)
+    private SimpleSelect NormalizeSimpleSelectWithPseudoTableIsolation(SimpleSelect select, bool returnsValues, bool flatten = false)
     {
         PseudoTableSet? pseudoTables = _pseudoTables;
         _pseudoTables = _pseudoTables?.Clone();
@@ -410,45 +410,40 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return select;
     }
 
-    private SelectBody NormalizeSelectBody(SelectBody body, bool topLevel = false, bool returnsValues = false, bool flatten = false)
+    private SelectBody NormalizeSelectBody(SelectBody body, bool pseudoTablesAlreadyIsolated = false, bool returnsValues = false, bool flatten = false)
     {
         if (body is SelectBody.SimpleSelectQuery ssq)
         {
-            SimpleSelect newSelect = topLevel
+            SimpleSelect newSelect = pseudoTablesAlreadyIsolated
                 ? NormalizeSimpleSelect(ssq.Query, returnsValues, flatten: flatten)
-                : NormalizeSimpleSelectInternal(ssq.Query, returnsValues, flatten: flatten);
+                : NormalizeSimpleSelectWithPseudoTableIsolation(ssq.Query, returnsValues, flatten: flatten);
             return new SelectBody.SimpleSelectQuery(newSelect);
         }
-        else if (body is SelectBody.SelectQuery sq)
+        if (body is SelectBody.SelectQuery sq)
         {
-            SelectBody newSelect = NormalizeSelectBody(sq.Query.Body, false, returnsValues, flatten: flatten);
-            return new SelectBody.SelectQuery(new Select(newSelect)
-            {
-                OrderBy = sq.Query.OrderBy?.Select(x => x with { Expression = NormalizeExpression(x.Expression, inSelect: true, flatten: flatten) }).ToSequence(),
-                Limit = sq.Query.Limit != null ? NormalizeLimit(sq.Query.Limit, flatten: flatten) : null,
-            });
+            return new SelectBody.SelectQuery(NormalizeSelect(sq.Query, topLevel: false, returnsValues, flatten: flatten));
         }
-        else if (body is SelectBody.SetOperation so)
+        if (body is SelectBody.SetOperation so)
         {
             SelectBody left = NormalizeSelectBody(so.Left, false, returnsValues, flatten: flatten);
             SelectBody right = NormalizeSelectBody(so.Right, false, returnsValues, flatten: flatten);
             return new SelectBody.SetOperation(left, so.Operator, right, so.Quantifier);
         }
-        else if (body is SelectBody.ValuesQuery)
+        if (body is SelectBody.ValuesQuery)
         {
             throw new NotImplementedException("VALUES in views is not (yet) supported.");
         }
         throw new UnreachableException();
     }
 
-    private SqlValueList<OrderBy>? NormalizeSelectOrderBy(SqlValueList<OrderBy>? orderBy, bool flatten = false)
+    private SqlValueList<OrderBy>? NormalizeSelectOrderBy(SqlValueList<OrderBy>? orderBy, bool inSelect, bool flatten = false)
     {
         if (orderBy == null)
         {
             return null;
         }
 
-        return orderBy.Select(ob => ob with { Expression = NormalizeExpression(ob.Expression, inSelect: true, flatten: flatten) }).ToSequence();
+        return orderBy.Select(ob => ob with { Expression = NormalizeExpression(ob.Expression, inSelect: inSelect, flatten: flatten) }).ToSequence();
     }
 
     private (CommonTableExpressionBody, PseudoTableSet?) NormalizeCteBody(CommonTableExpressionBody cteBody, PseudoTableSet? pseudoTables)
@@ -504,14 +499,29 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
     private Select NormalizeSelect(Select select, bool topLevel, bool returnsValues, bool flatten = false)
     {
+        PseudoTableSet? outerPseudoTables = _pseudoTables;
+        if (!topLevel)
+        {
+            _pseudoTables = outerPseudoTables?.Clone();
+        }
+
         _pseudoTables?.EnterSelectScope();
 
         CommonTableExpression? cte = select.CommonTableExpression != null ? NormalizeCte(select.CommonTableExpression) : null;
-        SelectBody body = NormalizeSelectBody(select.Body, topLevel, returnsValues, flatten: flatten);
-        SqlValueList<OrderBy>? orderBy = NormalizeSelectOrderBy(select.OrderBy, flatten: flatten);
+        SelectBody body = NormalizeSelectBody(select.Body, pseudoTablesAlreadyIsolated: true, returnsValues, flatten: flatten);
+        // ORDER BY over a set operation or parenthesized query names output columns, not source tables.
+        bool orderByUsesSources = select.Body is SelectBody.SimpleSelectQuery;
+        SqlValueList<OrderBy>? orderBy = NormalizeSelectOrderBy(select.OrderBy, orderByUsesSources, flatten: flatten);
         Limit? limit = select.Limit != null ? NormalizeLimit(select.Limit, flatten: flatten) : null;
 
-        _pseudoTables?.LeaveSelectScope();
+        if (topLevel)
+        {
+            _pseudoTables?.LeaveSelectScope();
+        }
+        else
+        {
+            _pseudoTables = outerPseudoTables;
+        }
 
         return new Select(body)
         {
