@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class ComputeChangesCommand(Action<ILogger>? loggerCallback = null, Action<SourceManager>? sourceManagerCallback = null) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class ComputeChangesCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
 {
     protected override string CommandName => "compute-changes";
     protected override string Description => "Compute changes based on the current database state and write them to an SQL script file.";

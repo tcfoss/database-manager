@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.Core.Errors;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public abstract class CommandSpec(Action<ILogger>? loggerCallback = null, Action<SourceManager>? sourceManagerCallback = null)
+public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback)
 {
     public TextWriter Out { get; set; } = Console.Out;
 

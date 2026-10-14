@@ -3,11 +3,10 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
-using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public record StoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, Statement Body) : IDatabaseObject
+public abstract record StoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, Statement Body) : IDatabaseObject
 {
     public ObjectType ObjectType => ObjectType.Procedure;
 
@@ -31,13 +30,7 @@ public record StoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParamet
         return HashCode.Combine(Name, Parameters, Body);
     }
 
-    public virtual CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
-    {
-        return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1), Parameters, Body)
-        {
-            Meta = new MetaData { RawText = RawBodyText }
-        };
-    }
+    public abstract CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null);
 
     Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager? manager) => ToCreateStatement(includeSchema, manager);
 

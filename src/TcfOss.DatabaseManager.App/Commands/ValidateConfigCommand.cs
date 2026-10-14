@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class ValidateConfigCommand(Action<ILogger>? loggerCallback = null, Action<SourceManager>? sourceManagerCallback = null) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class ValidateConfigCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
 {
     protected override string CommandName => "validate-config";
     protected override string Description => "Validate the configuration and optionally print it to the console.";

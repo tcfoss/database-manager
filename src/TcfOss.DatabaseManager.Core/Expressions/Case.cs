@@ -1,4 +1,3 @@
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
@@ -20,12 +19,9 @@ public record Case(SqlValueList<Expression> Conditions, SqlValueList<Expression>
             writer.WriteSql($" {Operand}");
         }
 
-        if (Conditions.SafeAny())
+        for (int i = 0; i < Conditions.Count; i++)
         {
-            for (int i = 0; i < Conditions.Count; i++)
-            {
-                writer.WriteSql($" WHEN {Conditions[i]} THEN {Results[i]}");
-            }
+            writer.WriteSql($" WHEN {Conditions[i]} THEN {Results[i]}");
         }
 
         if (ElseResult != null)

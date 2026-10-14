@@ -51,7 +51,7 @@ public class MaConfigLoaderTests
     }
 
     [Fact]
-    public void Attribute_Defaults_Non_Overrides_MariaDb()
+    public void AttributeDefaults_NonOverrides_MariaDb()
     {
         var rawConfig = TestDataRawConfig.MyTestRawConfigSillyDefaults;
         rawConfig.Dialect = SqlDialect.MariaDb;
@@ -71,5 +71,22 @@ public class MaConfigLoaderTests
         Assert.Null(config.AttributeDefaults.FloatPrecision);
         Assert.Null(config.AttributeDefaults.DoublePrecision);
         Assert.Equal<uint?>(4, config.AttributeDefaults.YearPrecision);
+    }
+
+    [Fact]
+    public void AttributeDefaults_OverrideWithNull_MariaDb()
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        rawConfig.Dialect = SqlDialect.MariaDb;
+        rawConfig.AttributeDefaults = new()
+        {
+            SignedIntWidth = null,
+            UnsignedIntWidth = 4,
+        };
+
+        var config = new MaConfigLoader(new LoggerFactory().CreateLogger<MaConfigLoader>()).LoadConfig("/home/username/database", rawConfig, MaGetOtherData.GetData(rawConfig));
+
+        Assert.Null(config.AttributeDefaults.SignedIntWidth);
+        Assert.Equal<uint?>(4, config.AttributeDefaults.UnsignedIntWidth);
     }
 }

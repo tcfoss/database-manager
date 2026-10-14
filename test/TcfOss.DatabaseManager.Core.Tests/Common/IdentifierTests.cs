@@ -31,7 +31,6 @@ public partial class IdentifierTests
 
     public class ToSimpleIdentifierTestData : IEnumerable<TheoryDataRow<Identifier, Identifier, QuoteStyle?>>
     {
-
         public IEnumerator<TheoryDataRow<Identifier, Identifier, QuoteStyle?>> GetEnumerator()
         {
             foreach (var data in GetTestData())

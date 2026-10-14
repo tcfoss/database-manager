@@ -9,5 +9,5 @@ public interface IRunCommands
     public void FormatSql(string[] files, string? outputPattern, bool noBackup = false, bool relaxed = true, FileExistsAction fileExistsAction = FileExistsAction.Overwrite, string? definitionFile = null);
     public Task DownloadSchemaAsync();
     public Task ComputeChangesAsync(string? outputPath, FileExistsAction fileExistsAction = FileExistsAction.Error);
-    public void ValidateConfiguration(bool printConfig, TextWriter? output = null);
+    public void ValidateConfiguration(bool printConfig, TextWriter output);
 }

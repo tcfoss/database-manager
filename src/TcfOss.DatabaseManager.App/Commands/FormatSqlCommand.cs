@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class FormatSqlCommand(Action<ILogger>? loggerCallback = null, Action<SourceManager>? sourceManagerCallback = null) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class FormatSqlCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
 {
 
     protected override string CommandName => "format-sql";

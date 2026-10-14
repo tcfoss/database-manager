@@ -1,6 +1,5 @@
 ﻿using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
-using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
@@ -8,6 +7,7 @@ using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Resources;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Tests.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.Tests.Resources;
 using YamlDotNet.Serialization;
 
@@ -144,14 +144,6 @@ public class SerializationTests
         Assert.Null(actual["NullSchema"]);
         Assert.Null(actual["NullFile"]);
         Assert.Null(actual["NullAction"]);
-    }
-
-    protected record TestView(ObjectIdentifier Name, Select Body) : View(Name, Body)
-    {
-        public override CreateView ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
-        {
-            return new CreateView(Name.ToObjectName(includeSchema ? 2 : 1), Body);
-        }
     }
 
     [Fact]

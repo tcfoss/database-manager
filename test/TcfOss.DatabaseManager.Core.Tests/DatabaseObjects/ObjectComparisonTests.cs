@@ -47,7 +47,7 @@ public class ObjectComparisonTests
     [Fact]
     public void FunctionComparison()
     {
-        var function = new StoredFunction(new ObjectIdentifier("myfunction", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+        var function = new TestStoredFunction(new ObjectIdentifier("myfunction", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
             [
                 new RoutineParameter.Directed(new Identifier("param1"), new DataType.Int(), RoutineParameterDirection.In),
             ],
@@ -88,7 +88,7 @@ public class ObjectComparisonTests
     [Fact]
     public void ProcedureComparison()
     {
-        var procedure = new StoredProcedure(new ObjectIdentifier("myprocedure", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+        var procedure = new TestStoredProcedure(new ObjectIdentifier("myprocedure", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
             [
                 new RoutineParameter.Directed(new Identifier("param1"), new DataType.Int(), RoutineParameterDirection.In),
             ],
@@ -101,7 +101,7 @@ public class ObjectComparisonTests
             RawBodyText = "RAW BODY TEXT 1"
         };
 
-        StoredProcedure? otherProcedure = procedure with { RawBodyText = "RAW BODY TEXT 2" };
+        TestStoredProcedure? otherProcedure = procedure with { RawBodyText = "RAW BODY TEXT 2" };
 
         Assert.Equal(procedure, otherProcedure);
         Assert.True(procedure.Equals(otherProcedure));
@@ -123,6 +123,65 @@ public class ObjectComparisonTests
         Assert.NotEqual(procedure, otherProcedure);
         Assert.False(procedure.Equals(otherProcedure));
         Assert.NotEqual(procedure.GetHashCode(), otherProcedure?.GetHashCode());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ViewComparison(bool normalizeLeft, bool normalizeRight)
+    {
+        var body = new Select(new SelectBody.SimpleSelectQuery(new SimpleSelect([
+            new SimpleSelectItem.ExpressionWithAlias(new SingleIdentifier(new Identifier("mycolumn", QuoteStyle.None)),
+                new Identifier("col", QuoteStyle.None))
+        ])));
+        var differentBody = new Select(new SelectBody.SimpleSelectQuery(new SimpleSelect([
+            new SimpleSelectItem.Wildcard()
+        ])));
+
+        var view = new TestView(new ObjectIdentifier("myview", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+            normalizeLeft ? differentBody : body
+        )
+        {
+            RawBodyText = "RAW BODY TEXT 1",
+            NormalizedBody = normalizeLeft ? body : null
+        };
+
+        TestView? otherView = view with
+        {
+            Body = normalizeRight ? differentBody : body,
+            NormalizedBody = normalizeRight ? body : null,
+            RawBodyText = "RAW BODY TEXT 2"
+        };
+
+        Assert.Equal(view, otherView);
+        Assert.True(view.Equals(otherView));
+        Assert.Equal(view.GetHashCode(), otherView.GetHashCode());
+
+        otherView = otherView with
+        {
+            Body = differentBody,
+            NormalizedBody = normalizeRight ? differentBody : null
+        };
+
+        Assert.NotEqual(view, otherView);
+        Assert.False(view.Equals(otherView));
+        Assert.NotEqual(view.GetHashCode(), otherView.GetHashCode());
+
+        otherView = view with
+        {
+            Name = new ObjectIdentifier("myview_different", new SchemaIdentifier("myschema", new CatalogIdentifier("def")))
+        };
+
+        Assert.NotEqual(view, otherView);
+        Assert.False(view.Equals(otherView));
+        Assert.NotEqual(view.GetHashCode(), otherView.GetHashCode());
+
+        otherView = null;
+        Assert.NotEqual(view, otherView);
+        Assert.False(view.Equals(otherView));
+        Assert.NotEqual(view.GetHashCode(), otherView?.GetHashCode());
     }
 
     [Fact]

@@ -70,6 +70,32 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
         Assert.Contains("MODIFY COLUMN `changed_charset`", initialChangesText);
     }
 
+    [Fact]
+    public virtual async Task Verify_SameSchema_NoChanges_SimpleSchema()
+    {
+        string initializationScript = CommonHelpers.GetSimpleSchemaInitializationScript();
+        await Container.ExecScriptAsync(initializationScript, TestContext.Current.CancellationToken);
+
+        var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Initial").FullName);
+
+        UpdateConfiguration(fileFixture.RootDirectory.FullName, Container.Hostname, Container.GetMappedPublicPort(Container.GetPort()));
+
+        var cli = new CommandLineInterface();
+        var diffResult = cli.Run([
+            "--working-dir",
+            fileFixture.RootDirectory.FullName,
+            "compute-changes",
+        ]);
+
+        Assert.Equal(0, diffResult);
+
+        var changesPath = Path.Combine(fileFixture.RootDirectory.FullName, "changes.sql");
+        Assert.True(File.Exists(changesPath), "Changes file was not created.");
+        var changesText = await File.ReadAllTextAsync(changesPath, TestContext.Current.CancellationToken);
+        Assert.True(string.IsNullOrWhiteSpace(changesText), "There should be no changes.");
+    }
+
     protected async Task<string> Verify_DoubleDiff_NoChanges(string workingDir, TContainerEntity container)
     {
         UpdateConfiguration(workingDir, container.Hostname, container.GetMappedPublicPort(container.GetPort()));

@@ -92,7 +92,7 @@ public static partial class BootstrapHelpers
         ExecutionConfig execConfig,
         bool relaxed,
         TextWriter outputWriter,
-        Action<ILogger>? loggerCallback = null,
+        Action<ILogger> loggerCallback,
         Action<SourceManager>? sourceManagerCallback = null
     )
     {
@@ -127,7 +127,7 @@ public static partial class BootstrapHelpers
             logSetupAction: (innerLogger, _) =>
             {
                 logger = innerLogger;
-                loggerCallback?.Invoke(innerLogger);
+                loggerCallback.Invoke(innerLogger);
 
                 if (execConfig is { CliDialect: not null, ConfigDialect: not null } && execConfig.CliDialect != execConfig.ConfigDialect)
                 {
@@ -140,11 +140,9 @@ public static partial class BootstrapHelpers
         IHost host = builder.Build();
         startup.ConfigureAppServiceProvider(host.Services);
 
-        SourceManager? sm = host.Services.GetService<SourceManager>();
-        if (sm != null)
-        {
-            sourceManagerCallback?.Invoke(sm);
-        }
+        SourceManager sm = host.Services.GetRequiredService<SourceManager>();
+        sourceManagerCallback?.Invoke(sm);
+
 
         return new ExecutionContext
         {
