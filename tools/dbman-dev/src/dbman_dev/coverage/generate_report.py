@@ -29,6 +29,7 @@ class _RunConfig:
     history_dir: _p.Path | None = None
     license: str | None = None
     keep_raw_coverage_files: bool = False
+    release_mode: bool = False
 
 
 def _check_reportgenerator_installed():
@@ -237,6 +238,10 @@ def _run_tests(config: _RunConfig) -> list[str]:
         print(f"Using test results directory: {config.test_results_dir}")
         cmd.extend(["--results-directory", str(config.test_results_dir)])
 
+    if config.release_mode:
+        print("Running tests in release mode.")
+        cmd.extend(["--configuration", "Release"])
+
     result_lines = _shell_exec.run_output(cmd, cwd=config.solution.parent).splitlines()
 
     file_paths = []
@@ -298,6 +303,11 @@ def _parse_args() -> _RunConfig:
         action="store_true",
         help="Keep raw coverage files after report generation.",
     )
+    parser.add_argument(
+        "--release-mode",
+        action="store_true",
+        help="Run tests in release mode."
+    )
     args = parser.parse_args()
 
     solution = _get_solution_file(_p.Path.cwd(), args.solution)
@@ -311,6 +321,7 @@ def _parse_args() -> _RunConfig:
         history_dir=_get_history_dir(solution.parent, args.history_dir),
         test_results_dir=test_results_dir,
         keep_raw_coverage_files=args.keep_raw_coverage_files,
+        release_mode=args.release_mode,
     )
 
 

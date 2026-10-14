@@ -74,6 +74,9 @@ jobs:
 
   unit-tests:
     name: Unit Tests
+    if: >
+      !startsWith(github.head_ref, 'release/') &&
+      !contains(github.event.pull_request.labels.*.name, 'full-ci')
     uses: tcfoss/github-actions/.github/workflows/dotnet-test.yml@v1
     permissions:
       contents: read
@@ -82,32 +85,18 @@ jobs:
       project: solutions/UnitTests.slnx
       name: unit
 
-  integration-tests:
-    name: Integration Test (${{ matrix.name }})
+  all-tests:
+    name: Full Test Suite
     if: >
       startsWith(github.head_ref, 'release/') ||
       contains(github.event.pull_request.labels.*.name, 'full-ci')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Core
-            project: test/TcfOss.DatabaseManager.Core.IntegrationTests/TcfOss.DatabaseManager.Core.IntegrationTests.csproj
-          - name: MySQL
-            project: test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj
-          - name: MariaDB
-            project: test/TcfOss.DatabaseManager.MariaDb.IntegrationTests/TcfOss.DatabaseManager.MariaDb.IntegrationTests.csproj
-          - name: MSSQL
-            project: test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj
-          - name: App
-            project: test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj
     uses: tcfoss/github-actions/.github/workflows/dotnet-test.yml@v1
     permissions:
       contents: read
     with:
       solution: DatabaseManager.slnx
-      project: ${{ matrix.project }}
-      name: integration-${{ matrix.name }}
+      project: DatabaseManager.slnx
+      name: full-suite
       integration: true
 
   today:
@@ -136,11 +125,10 @@ jobs:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
 
   coverage:
-    needs: [unit-tests, integration-tests]
+    needs: [unit-tests, all-tests]
     if: >
       always() &&
-      needs.unit-tests.result == 'success' &&
-      (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped')
+      (needs.all-tests.result == 'success' || needs.all-tests.result == 'skipped')
     uses: tcfoss/github-actions/.github/workflows/coverage.yml@v1
     permissions:
       contents: read
