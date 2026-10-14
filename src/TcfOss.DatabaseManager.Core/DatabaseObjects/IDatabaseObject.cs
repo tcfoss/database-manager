@@ -4,9 +4,10 @@ using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public interface IDatabaseObject : IHaveObjectIdentifierName
+public interface IDatabaseObject<out TStatement> : IHaveObjectIdentifierName
+    where TStatement : Statement
 {
     public ObjectType ObjectType { get; }
-    public Statement ToCreateStatement(bool includeSchema, DifferFormatManager manager);
+    public TStatement ToCreateStatement(bool includeSchema, DifferFormatManager manager);
     public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context);
 }

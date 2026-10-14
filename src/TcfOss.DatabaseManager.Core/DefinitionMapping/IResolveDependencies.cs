@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DefinitionMapping;
 
@@ -11,5 +12,5 @@ namespace TcfOss.DatabaseManager.Core.DefinitionMapping;
 // ReSharper disable UnusedMemberInSuper.Global
 public interface IResolveDependencies
 {
-    Dictionary<ObjectHandle, DbObjectNode> ConstructNodeMap(List<IDatabaseObject> databaseObjects, IHaveObjects objectProvider, PseudoTableSet pseudoTableSet, IFunctionNameProvider functionNameProvider, DifferFormatManager formatManager, NameHandling nameHandling);
+    Dictionary<ObjectHandle, DbObjectNode> ConstructNodeMap(List<IDatabaseObject<Statement>> databaseObjects, IHaveObjects objectProvider, PseudoTableSet pseudoTableSet, IFunctionNameProvider functionNameProvider, DifferFormatManager formatManager, NameHandling nameHandling);
 }

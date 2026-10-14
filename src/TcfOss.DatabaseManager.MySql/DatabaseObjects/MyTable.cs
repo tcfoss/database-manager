@@ -13,7 +13,7 @@ using TcfOss.DatabaseManager.MySql.Statements.Components;
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
 
 public record MyTable(ObjectIdentifier Name, SqlValueList<MyColumn> Columns)
-    : IDatabaseObject
+    : IDatabaseObject<CreateTable>
 {
     public ObjectType ObjectType => ObjectType.Table;
 
@@ -30,8 +30,6 @@ public record MyTable(ObjectIdentifier Name, SqlValueList<MyColumn> Columns)
     public Comment? TableComment { get; init; }
 
     public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context) => throw new NotImplementedException();
-
-    Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager manager) => ToCreateStatement(includeSchema, manager);
 
     public CreateTable ToCreateStatement(bool includeSchema, DifferFormatManager manager)
     {

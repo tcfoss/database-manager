@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
 public record Trigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Statement Body)
-    : IDatabaseObject
+    : IDatabaseObject<CreateTrigger>
 {
     public ObjectType ObjectType => ObjectType.Trigger;
     public string? RawBodyText { get; init; }
@@ -30,8 +30,6 @@ public record Trigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Statement
     }
 
     public virtual CreateTrigger ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null) => throw new NotSupportedException();
-
-    Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager? manager) => ToCreateStatement(includeSchema, manager);
 
     public virtual IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {

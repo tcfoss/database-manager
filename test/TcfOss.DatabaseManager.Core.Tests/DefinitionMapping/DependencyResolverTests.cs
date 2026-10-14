@@ -21,7 +21,7 @@ public class DependencyResolverTests
         return new ItemRef.SingleIdentifierRef(type, new SingleIdentifier(new Identifier("reference"))) { ObjectHandle = handle };
     }
 
-    private sealed class ReferencingObject(ObjectIdentifier name, ObjectType objectType, List<ItemRef> references) : IDatabaseObject
+    private sealed class ReferencingObject(ObjectIdentifier name, ObjectType objectType, List<ItemRef> references) : IDatabaseObject<Statement>
     {
         public ObjectIdentifier Name { get; } = name;
         public ObjectType ObjectType { get; } = objectType;
