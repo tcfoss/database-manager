@@ -42,7 +42,7 @@ public abstract class MyDifferTestsBase
     {
         var loggerFactory = new LoggerFactory();
         rawConfig ??= GetRawConfiguration();
-        var config = LoadConfig(rawConfig, loggerFactory.CreateLogger<ConfigLoader>());
+        var config = LoadConfig(rawConfig, loggerFactory.CreateLogger<GenericConfigLoader>());
 
         var builderLogger = loggerFactory.CreateLogger<MyDefinitionBuilder>();
 

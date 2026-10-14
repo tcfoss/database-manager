@@ -3,7 +3,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class AttributeDefaults
+public record AttributeDefaults
 {
     public MySqlNumericAttribute? NumericAttribute { get; init; } = MySqlNumericAttribute.Signed;
 

@@ -142,7 +142,7 @@ public class MyConfigLoaderTests
         var rawConfig = TestDataRawConfig.MyTestRawConfigSillyDefaults;
         var config = LoadConfig(rawConfig);
 
-        Assert.Equal<MySqlNumericAttribute>(MySqlNumericAttribute.Unsigned, config.AttributeDefaults.NumericAttribute);
+        Assert.Equal(MySqlNumericAttribute.Unsigned, config.AttributeDefaults.NumericAttribute);
         Assert.Equal<uint?>(25, config.AttributeDefaults.UnsignedBigIntWidth);
         Assert.Equal<uint?>(3, config.AttributeDefaults.SignedIntWidth);
         Assert.Equal(IndexMethod.Hash, config.AttributeDefaults.IndexMethod);
@@ -237,6 +237,44 @@ public class MyConfigLoaderTests
             ]
         };
         Assert.Throws<KeyNotFoundException>(() => LoadConfig(rawConfig));
+    }
+
+    [Theory]
+    [InlineData(ExtendedQuoteStyle.Backticks)]
+    [InlineData(ExtendedQuoteStyle.Ansi)]
+    [InlineData(ExtendedQuoteStyle.SingleQuote)]
+    [InlineData(ExtendedQuoteStyle.Brackets)]
+    [InlineData(ExtendedQuoteStyle.None)]
+    public void DefaultDefiner_ParsesExtendedQuotes(ExtendedQuoteStyle quoteStyle)
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        var definerAccount = "my_user";
+        var definerHost = "localhost";
+        rawConfig.DefaultDefinerAccount = quoteStyle switch
+        {
+            ExtendedQuoteStyle.Backticks => $"`{definerAccount}`",
+            ExtendedQuoteStyle.Ansi => $"\"{definerAccount}\"",
+            ExtendedQuoteStyle.SingleQuote => $"'{definerAccount}'",
+            ExtendedQuoteStyle.Brackets => $"[{definerAccount}]",
+            _ => definerAccount
+        };
+        rawConfig.DefaultDefinerHost = quoteStyle switch
+        {
+            ExtendedQuoteStyle.Backticks => $"`{definerHost}`",
+            ExtendedQuoteStyle.Ansi => $"\"{definerHost}\"",
+            ExtendedQuoteStyle.SingleQuote => $"'{definerHost}'",
+            ExtendedQuoteStyle.Brackets => $"[{definerHost}]",
+            _ => definerHost
+        };
+
+        var config = LoadConfig(rawConfig);
+
+        Assert.NotNull(config.DefaultDefiner);
+        var asIdentity = Assert.IsType<Account.IdentityWithHost>(config.DefaultDefiner.Account, exactMatch: true);
+        Assert.Equal(definerAccount, asIdentity.Name.Name);
+        Assert.Equal(quoteStyle, asIdentity.Name.QuoteStyle);
+        Assert.Equal(definerHost, asIdentity.Host.Name);
+        Assert.Equal(quoteStyle, asIdentity.Host.QuoteStyle);
     }
 
     [Fact]
@@ -765,6 +803,41 @@ public class MyConfigLoaderTests
 
         Assert.Equal(IdentifierQuotationHandling.IfSpecial, config.NormalizationSettings.IdentifierQuotationHandling);
         Assert.Equal(IdentifierQuotationHandling.OnlyIfSpecial, config.NormalizationSettings.CteDeclarationNameQuotationHandling);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ParseSettings_RemoveSlashes_Overrides(bool removeSlashes)
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        rawConfig.ParseSettings = new Core.Configuration.ParseSettings { RemoveSlashesBeforeQuotesGenerationExpression = removeSlashes };
+
+        var config = LoadConfig(rawConfig);
+
+        Assert.Equal(removeSlashes, config.ParseSettings.RemoveSlashesBeforeQuotesGenerationExpression);
+    }
+
+    [Fact]
+    public void Version_ValidValue_Used()
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        rawConfig.Version = "1.0.0";
+
+        var config = LoadConfig(rawConfig);
+
+        Assert.Equal("1.0.0", config.Version.ToString());
+    }
+
+    [Fact]
+    public void Version_InvalidValue_Throws()
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        rawConfig.Version = "invalid";
+
+        var ex = Assert.Throws<ConfigurationException.InvalidFieldTypeException>(() => LoadConfig(rawConfig));
+        Assert.Contains("Version", ex.Message);
+        Assert.Contains("invalid", ex.Message);
     }
 
     class NumericLengthTestData : IEnumerable<TheoryDataRow<int?, int?, NumericLength?, ExceptionType?, string?>>

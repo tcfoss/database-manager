@@ -32,7 +32,7 @@ public class ConfigLoaderTests
     public void Test_Basic_Config_Loads()
     {
         var rawConfig = TestDataRawConfig.MyTestRawConfig;
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
 
         // Validate the loaded config
         Assert.NotNull(config);
@@ -63,7 +63,7 @@ public class ConfigLoaderTests
     {
         var rawConfig = TestDataRawConfig.MyTestRawConfigNoOptionalStuff;
         var configPath = Path.GetFullPath("/home/username/database");
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig(configPath, rawConfig, []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig(configPath, rawConfig, []);
 
         // Validate defaults
         Assert.Equal(QuoteStyle.Ansi, config.QuoteStyle);
@@ -90,7 +90,7 @@ public class ConfigLoaderTests
                 }
             ]
         };
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
 
         Assert.Equal(Path.GetFullPath("/home/username/database/relative/path/to/project"), config.ProjectDirectory);
         Assert.StartsWith(Path.GetFullPath("/home/username/database/relative/path/to/project/test_schema_path"), config.Schemas.Values.First().RootPath);
@@ -111,7 +111,7 @@ public class ConfigLoaderTests
                 }
             ]
         };
-        Assert.Throws<ConfigurationException.MissingFieldException>(() => new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []));
+        Assert.Throws<ConfigurationException.MissingFieldException>(() => new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []));
     }
 
     [Fact]
@@ -129,14 +129,14 @@ public class ConfigLoaderTests
                 }
             ]
         };
-        Assert.Throws<ConfigurationException.MissingFieldException>(() => new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []));
+        Assert.Throws<ConfigurationException.MissingFieldException>(() => new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []));
     }
 
     [Fact]
     public void DifferFormatting_UseDelimiterAroundViews_DefaultsToFalse()
     {
         var rawConfig = TestDataRawConfig.MyTestRawConfigNoOptionalStuff;
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
 
         Assert.False(config.DifferFormatting.UseDelimiterAroundViews);
     }

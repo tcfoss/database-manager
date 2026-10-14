@@ -10,12 +10,12 @@ namespace TcfOss.DatabaseManager.Core.Hosting;
 
 public static class GenericServiceRegistration
 {
-    public static void RegisterGenericServices(this IServiceCollection services, ConfigGeneric config)
+    public static void RegisterGenericServices(this IServiceCollection services, GenericConfig config)
     {
-        services.AddScoped<ConfigGeneric>(_ => config);
+        services.AddScoped<GenericConfig>(_ => config);
         services.AddScoped<ILexer, GenericLexer>();
         services.AddScoped<IParser, Parser>();
-        services.AddScoped<IRunCommands, CommandRunner<ConfigGeneric>>();
+        services.AddScoped<IRunCommands, CommandRunner<GenericConfig>>();
         services.AddScoped<IReadSchemaMapFiles, DefinitionFileLoader<SchemaMappingBase>>();
         services.AddScoped<IFormatSqlFiles, GenericSqlFormatter>();
         services.AddSingleton<IFunctionNameProvider, FunctionNameProvider>();

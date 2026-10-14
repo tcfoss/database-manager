@@ -7,10 +7,10 @@ using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class ConfigLoader(ILogger logger)
-    : ConfigLoaderBase<ConfigGeneric, SchemaMappingBase>(logger)
+public class GenericConfigLoader(ILogger logger)
+    : ConfigLoaderBase<GenericConfig, SchemaMappingBase>(logger)
 {
-    public override ConfigGeneric LoadConfig(
+    public override GenericConfig LoadConfig(
         string configDirectory,
         ConfigParsing.Config rawConfig,
         Dictionary<string, object> otherInformation,
@@ -41,7 +41,7 @@ public class ConfigLoader(ILogger logger)
             differFormattingSettings = MergeDifferFormattingSettings(differFormattingSettings, rawConfig.DifferFormatting);
         }
 
-        return new ConfigGeneric
+        return new GenericConfig
         {
             ProjectDirectory = projectDirectory,
             Catalog = catalogIdentifier,

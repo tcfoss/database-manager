@@ -3,7 +3,7 @@ namespace TcfOss.DatabaseManager.MsSql.Configuration;
 /// <summary>
 /// Connection credentials for a SQL Server instance.
 /// </summary>
-public class MsDatabaseCredentials
+public record MsDatabaseCredentials
 {
     /// <summary>Hostname or IP address of the SQL Server instance.</summary>
     public required string Host { get; init; }

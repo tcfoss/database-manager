@@ -3,13 +3,13 @@ using TcfOss.DatabaseManager.Core.DefinitionMapping;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class SchemaMappingBase : ISchemaMapping
+public record SchemaMappingBase : ISchemaMapping
 {
-    public required SchemaIdentifier SchemaName { get; set; }
-    public required string RootPath { get; set; }
-    public string[] IncludeFilePatterns { get; set; } = [];
-    public string[] ExcludeFilePatterns { get; set; } = [];
-    public string[] ExcludeDatabaseObjectNames { get; set; } = [];
-    public Refactor[] Refactors { get; set; } = [];
-    public DeployScript[] DeployScripts { get; set; } = [];
+    public required SchemaIdentifier SchemaName { get; init; }
+    public required string RootPath { get; init; }
+    public string[] IncludeFilePatterns { get; init; } = [];
+    public string[] ExcludeFilePatterns { get; init; } = [];
+    public string[] ExcludeDatabaseObjectNames { get; init; } = [];
+    public Refactor[] Refactors { get; init; } = [];
+    public DeployScript[] DeployScripts { get; init; } = [];
 }

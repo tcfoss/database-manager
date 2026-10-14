@@ -90,6 +90,15 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Fact]
+    public void ParseWildcardOrExpression_TextMatch()
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseWildcardOrExpr, "*", "*");
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
     public static void And_Higher_Precedence_Than_Or()
     {
         var parser = new Parser();

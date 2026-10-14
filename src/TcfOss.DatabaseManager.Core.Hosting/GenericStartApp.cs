@@ -14,7 +14,7 @@ public class GenericStartApp : StartAppBase<GenericStartResult>
 
         return new GenericStartResult()
         {
-            Config = (ConfigGeneric)result.Config,
+            Config = (GenericConfig)result.Config,
             ServiceProvider = new AppServiceProvider(),
             Services = result.Services,
             UsingDefaultConfig = result.UsingDefaultConfig

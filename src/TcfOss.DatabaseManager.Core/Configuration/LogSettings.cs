@@ -6,7 +6,7 @@ namespace TcfOss.DatabaseManager.Core.Configuration;
 // YAML parsing target
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
 // ReSharper disable UnusedAutoPropertyAccessor.Global
-public class LogSettings
+public record LogSettings
 {
     public LogTarget Target { get; init; } = LogTarget.Console;
     public string LogDirectory { get; init; } = Path.GetTempPath();

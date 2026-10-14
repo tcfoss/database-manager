@@ -194,6 +194,51 @@ public class ReferencedItemsTests
         Assert.Equal("COUNT", item.N());
     }
 
+    [Fact]
+    public void WildcardExpression_ReturnsNothing()
+    {
+        var tokens = new GenericLexer().Tokenize("*");
+        var state = new ParserState([.. tokens]);
+        var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
+
+        var items = expr.GetReferencedItems(new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.All
+        });
+
+        Assert.Empty(items);
+    }
+
+    [Fact]
+    public void QualifiedWildcardExpression_IncludesQualifierIfBroad()
+    {
+        var tokens = new GenericLexer().Tokenize("mytable.*");
+        var state = new ParserState([.. tokens]);
+        var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
+
+        var items = expr.GetReferencedItems(new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.All,
+        });
+
+        var item = Assert.Single(items);
+        Assert.Equal("mytable", item.N());
+    }
+
+    [Fact]
+    public void QualifiedWildcardExpression_ReturnsNothingIfNarrow()
+    {
+        var tokens = new GenericLexer().Tokenize("mytable.*");
+        var state = new ParserState([.. tokens]);
+        var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
+
+        var items = expr.GetReferencedItems(new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.Table,
+        });
+        Assert.Empty(items);
+    }
+
     [Theory]
     [InlineData("a IS NULL")]
     [InlineData("a IS NOT NULL")]

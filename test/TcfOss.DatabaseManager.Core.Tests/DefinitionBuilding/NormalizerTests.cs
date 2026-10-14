@@ -54,7 +54,8 @@ public class NormalizerTests
     private string GetActualSelectText(
         string sqlText,
         IdentifierQuotationHandling? identifierQuotationHandling = null,
-        IdentifierQuotationHandling? cteDeclarationNameQuotationHandling = null)
+        IdentifierQuotationHandling? cteDeclarationNameQuotationHandling = null,
+        bool usePseudoTables = true)
     {
         var normalizationSettings = new Core.Configuration.Parsing.NormalizationSettings
         {
@@ -62,7 +63,7 @@ public class NormalizerTests
             CteDeclarationNameQuotationHandling = cteDeclarationNameQuotationHandling ?? IdentifierQuotationHandling.Always,
         };
 
-        var config = new ConfigLoader(new LoggerFactory().CreateLogger<ConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
         var textParser = new TextParser(new GenericLexer(), new Parser());
         var statement = (Select)textParser.ParseText(sqlText).First();
 
@@ -70,7 +71,7 @@ public class NormalizerTests
         var componentNormalizer = new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider());
         var normalizer = new Normalizer(config, componentNormalizer);
 
-        var normalizedSelect = normalizer.NormalizeSelect(statement, config.Schemas.Keys.First(), _selectableSources, name);
+        var normalizedSelect = normalizer.NormalizeSelect(statement, config.Schemas.Keys.First(), usePseudoTables ? _selectableSources : null, name);
 
         return normalizedSelect.ToSql();
     }
@@ -530,6 +531,225 @@ public class NormalizerTests
 
         var actual = GetActualSelectText(text);
         Assert.Contains("NOT `library_catalog`.`book`.`publication_year` > 2000", actual);
+    }
+
+    private static string GetNormalizedExpressionText(string sqlText, bool flatten)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var parser = new Parser();
+        var expression = parser.ExpressionParser.ParseExpr(new ParserState([.. new GenericLexer().Tokenize(sqlText)]));
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var normalized = flatten ? normalizer.NormalizeExpression(expression) : normalizer.NormalizeExpressionNoFlatten(expression);
+        return normalized.ToSql();
+    }
+
+    [Fact]
+    public void NormalizeExpression_Flatten_StripsNesting()
+    {
+        var actual = GetNormalizedExpressionText("(a + b) IS NULL", flatten: true);
+        Assert.DoesNotContain("(", actual);
+        Assert.Contains("IS NULL", actual);
+    }
+
+    [Fact]
+    public void NormalizeExpression_NoFlatten_KeepsNesting()
+    {
+        var actual = GetNormalizedExpressionText("(a + b) IS NULL", flatten: false);
+        Assert.Contains("(", actual);
+    }
+
+    [Fact]
+    public void NormalizeExpression_CompoundIdentifier_WithoutPseudoTables()
+    {
+        var actual = GetNormalizedExpressionText("t.col = col2", flatten: true);
+        Assert.Contains("t", actual);
+        Assert.Contains("col2", actual);
+    }
+
+    [Fact]
+    public void IsNullExpression_IsNormalized()
+    {
+        var text = "SELECT book_id FROM book WHERE description IS NOT NULL;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("`library_catalog`.`book`.`description` IS NOT NULL", actual);
+    }
+
+    [Fact]
+    public void CastExpression_IsNormalized()
+    {
+        var text = "SELECT CAST(publication_year AS CHAR(10)) AS year_text FROM book;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("CAST(`library_catalog`.`book`.`publication_year` AS CHAR(10))", actual);
+    }
+
+    [Fact]
+    public void CountQualifiedWildcard_IsNormalized()
+    {
+        var text = "SELECT COUNT(b.*) AS cnt FROM book AS b;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("COUNT(`b`.*)", actual);
+    }
+
+    [Fact]
+    public void CountWildcard_IsPreserved()
+    {
+        var text = "SELECT COUNT(*) AS cnt FROM book;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("COUNT(*)", actual);
+    }
+
+    [Fact]
+    public void NamedFunctionArgument_IsNormalized()
+    {
+        var text = "SELECT FOO(name => publication_year) AS val FROM book;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("`library_catalog`.`book`.`publication_year`", actual);
+        Assert.Contains("=>", actual);
+    }
+
+    [Theory]
+    [InlineData("RIGHT JOIN")]
+    [InlineData("FULL OUTER JOIN")]
+    [InlineData("LEFT JOIN")]
+    public void OuterJoins_AreNormalized(string joinText)
+    {
+        var text = $"SELECT b.book_id AS book_id FROM book AS b {joinText} book_author AS ba ON b.book_id = ba.book_id;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("`library_catalog`.`book_author` AS `ba` ON `b`.`book_id` = `ba`.`book_id`", actual);
+    }
+
+    [Fact]
+    public void JoinUsing_IsNotSupported()
+    {
+        var text = "SELECT b.book_id AS book_id FROM book AS b JOIN book_author AS ba USING (book_id);";
+
+        Assert.Throws<NotImplementedException>(() => GetActualSelectText(text));
+    }
+
+    [Fact]
+    public void ValuesQuery_IsNotSupported()
+    {
+        Assert.Throws<NotImplementedException>(() => GetActualSelectText("VALUES (1, 2)"));
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM book")]
+    [InlineData("SELECT b.* FROM book AS b")]
+    public void SelectWildcard_Throws(string text)
+    {
+        Assert.Throws<Errors.DefinitionException.ViewSelectWildcard>(() => GetActualSelectText(text));
+    }
+
+    [Fact]
+    public void SelectExpressionWithoutAlias_Throws()
+    {
+        Assert.Throws<Errors.DefinitionException.ViewSelectWithoutAlias>(() => GetActualSelectText("SELECT 1 + 1 FROM book"));
+    }
+
+    [Fact]
+    public void DerivedTable_IsNormalized()
+    {
+        var text = "SELECT d.book_id AS book_id FROM (SELECT book_id FROM book) AS d;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("FROM (SELECT `library_catalog`.`book`.`book_id` AS `book_id` FROM `library_catalog`.`book`) AS `d`", actual);
+    }
+
+    [Fact]
+    public void GroupByAndHaving_AreNormalized()
+    {
+        var text = "SELECT publisher AS publisher, COUNT(book_id) AS cnt FROM book GROUP BY publisher HAVING COUNT(book_id) > 1;";
+
+        var actual = GetActualSelectText(text);
+        Assert.Contains("GROUP BY `library_catalog`.`book`.`publisher` HAVING COUNT(`library_catalog`.`book`.`book_id`) > 1", actual);
+    }
+
+    [Fact]
+    public void LimitOffset_IsNormalized()
+    {
+        var actual = GetActualSelectText("SELECT book_id FROM book ORDER BY book_id LIMIT 5 OFFSET 10");
+        Assert.Contains("ORDER BY `library_catalog`.`book`.`book_id` LIMIT 5 OFFSET 10", actual);
+    }
+
+    [Fact]
+    public void LimitCommaSeparated_IsNormalized()
+    {
+        var actual = GetActualSelectText("SELECT book_id FROM book ORDER BY book_id LIMIT 10, 5");
+        Assert.Contains("SELECT `library_catalog`.`book`.`book_id`", actual);
+        Assert.Contains("ORDER BY `library_catalog`.`book`.`book_id` LIMIT 10, 5", actual);
+    }
+
+    [Fact]
+    public void ParenthesizedSelectWithOrderByLimit_IsNormalized()
+    {
+        var actual = GetActualSelectText("(SELECT book_id FROM book) ORDER BY 1 LIMIT 5");
+        Assert.DoesNotContain("(", actual);
+        Assert.Contains("SELECT `library_catalog`.`book`.`book_id`", actual);
+        Assert.Contains("ORDER BY", actual);
+        Assert.Contains("LIMIT 5", actual);
+    }
+
+    [Fact]
+    public void ParenthesizedSelectOrderByColumn_UsesOutputColumnName()
+    {
+        var actual = GetActualSelectText("(SELECT book_id FROM book) ORDER BY book_id");
+        Assert.Contains("ORDER BY `book_id`", actual);
+    }
+
+    [Fact]
+    public void UnionOrderByColumn_UsesOutputColumnName()
+    {
+        var actual = GetActualSelectText("(SELECT book_id FROM book) UNION (SELECT book_id FROM book_author) ORDER BY book_id");
+        Assert.Contains("ORDER BY `book_id`", actual);
+    }
+
+    [Fact]
+    public void NoPseudoTables_IdentifiersAreOnlyQuoted()
+    {
+        var actual = GetActualSelectText("SELECT book_id, b.full_title FROM book AS b", usePseudoTables: false);
+        Assert.Equal("SELECT `book_id` AS `book_id`, `b`.`full_title` AS `full_title` FROM `book` AS `b`", actual);
+    }
+
+    [Fact]
+    public void AliasedNestedJoin_IsPreserved()
+    {
+        var actual = GetActualSelectText("SELECT n.book_id AS book_id FROM (book AS b JOIN book_author AS ba ON b.book_id = ba.book_id) AS n", usePseudoTables: false);
+        Assert.Contains(") AS `n`", actual);
+    }
+
+    [Fact]
+    public void InnerSelectQueryOrderByAndLimit_AreNormalized()
+    {
+        var actual = GetActualSelectText("(SELECT book_id FROM book ORDER BY book_id LIMIT 5)");
+        Assert.Contains("ORDER BY `library_catalog`.`book`.`book_id`", actual);
+        Assert.Contains("LIMIT 5", actual);
+    }
+
+    [Fact]
+    public void DerivedTableOrderBy_ResolvesAgainstItsOwnSources()
+    {
+        var actual = GetActualSelectText("SELECT d.book_id AS book_id FROM (SELECT book_id FROM book ORDER BY full_title LIMIT 5) AS d");
+        Assert.Contains("ORDER BY `library_catalog`.`book`.`full_title` LIMIT 5) AS `d`", actual);
+    }
+
+    [Fact]
+    public void CrossJoin_IsPreserved()
+    {
+        var actual = GetActualSelectText("SELECT b.book_id AS book_id FROM book AS b CROSS JOIN book_author AS ba");
+        Assert.Contains("CROSS JOIN `library_catalog`.`book_author` AS `ba`", actual);
+    }
+
+    [Fact]
+    public void SelectWithoutFrom_IsNormalized()
+    {
+        var actual = GetActualSelectText("SELECT 1 AS x");
+        Assert.Equal("SELECT 1 AS `x`", actual);
     }
 
     [Theory]

@@ -20,7 +20,6 @@ public class DownloadSchemaTests_MySql_08_04 : DownloadSchemaTests<MySqlBuilder,
 
     public class ThisFixture : DownloadSchemaFixture<MySqlBuilder, MySqlContainer>
     {
-        protected override bool RemoveSlashesBeforeQuotesGenerationExpression => true;
         protected override SqlDialect Dialect => SqlDialect.MySql;
 
         public ThisFixture(IMessageSink messageSink)

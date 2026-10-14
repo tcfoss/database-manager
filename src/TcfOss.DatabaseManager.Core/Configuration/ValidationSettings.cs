@@ -1,6 +1,6 @@
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class ValidationSettings
+public record ValidationSettings
 {
     public bool AllowUniqueOnColumn { get; init; }
     public bool AllowCheckOnColumn { get; init; }
