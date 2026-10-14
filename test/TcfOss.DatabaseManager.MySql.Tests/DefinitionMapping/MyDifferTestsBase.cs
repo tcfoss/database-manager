@@ -2660,4 +2660,27 @@ public abstract class MyDifferTestsBase
         Assert.Single(second.Operations);
         Assert.Equal("ALTER TABLE `mytable` ADD KEY `idx_name_lower` ((LOWER(`name`)))", second.ToSql());
     }
+
+    [Fact]
+    public void CreateTable_WithComment()
+    {
+        var startText = """
+
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            id INT,
+            name VARCHAR(100),
+            PRIMARY KEY (id)
+        ) COMMENT='This is a table comment';
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var single = Assert.IsType<DefinitionAlterStatement>(Assert.Single(changes));
+        var createTable = Assert.IsType<CreateTable>(single.Statement);
+        var sql = createTable.ToSql();
+        Assert.Contains("COMMENT 'This is a table comment'", sql);
+        Assert.Contains("CREATE TABLE `mytable`", sql);
+    }
 }
