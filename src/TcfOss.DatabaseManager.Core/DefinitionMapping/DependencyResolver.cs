@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DefinitionMapping;
 
@@ -13,7 +14,7 @@ public partial class DependencyResolver(ILogger logger)
 {
     private readonly ILogger _logger = logger;
 
-    public Dictionary<ObjectHandle, DbObjectNode> ConstructNodeMap(List<IDatabaseObject> databaseObjects, IHaveObjects objectProvider, PseudoTableSet pseudoTableSet, IFunctionNameProvider functionNameProvider, DifferFormatManager formatManager, NameHandling nameHandling)
+    public Dictionary<ObjectHandle, DbObjectNode> ConstructNodeMap(List<IDatabaseObject<Statement>> databaseObjects, IHaveObjects objectProvider, PseudoTableSet pseudoTableSet, IFunctionNameProvider functionNameProvider, DifferFormatManager formatManager, NameHandling nameHandling)
     {
         var allHandles = new HashSet<ObjectHandle>(databaseObjects.Select(o => ObjectHandle.Create(o.Name, nameHandling)));
 
@@ -27,7 +28,7 @@ public partial class DependencyResolver(ILogger logger)
             Filters = ObjectNameFilters.AnyObject,
         };
 
-        foreach (IDatabaseObject dbObject in databaseObjects)
+        foreach (IDatabaseObject<Statement> dbObject in databaseObjects)
         {
             var handle = ObjectHandle.Create(dbObject.Name, nameHandling);
             manager.ActiveSchema = dbObject.Name.Schema;

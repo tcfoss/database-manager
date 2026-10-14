@@ -121,7 +121,6 @@ public class GenericConfigLoader(ILogger logger)
             FunctionPreferRawText = true,
             TriggerPreferRawText = true,
             ViewPreferRawText = true,
-            ViewPreferNormalizedBody = false,
             TerminateStatements = true,
             UseDelimiterAroundPrograms = false,
             UseDelimiterAroundViews = false,

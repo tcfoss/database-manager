@@ -17,7 +17,6 @@ public class DifferFormattingSettings
     public bool? TriggerPreferRawTextInScript { get; set; }
     public bool? ViewPreferRawTextInScript { get; set; }
     public bool? EventPreferRawTextInScript { get; set; }
-    public bool? ViewPreferNormalizedBody { get; set; }
 
     public bool? TerminateStatements { get; set; } = true;
     public bool? UseDelimiterAroundPrograms { get; set; }

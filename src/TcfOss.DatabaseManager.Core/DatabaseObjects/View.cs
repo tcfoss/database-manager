@@ -7,7 +7,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
 public abstract record View(ObjectIdentifier Name, Select Body)
-    : IDatabaseObject
+    : IDatabaseObject<CreateView>
 {
     public ObjectType ObjectType => ObjectType.View;
     public string? RawBodyText { get; init; }
@@ -41,8 +41,6 @@ public abstract record View(ObjectIdentifier Name, Select Body)
     }
 
     public abstract CreateView ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null);
-
-    Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager? manager) => ToCreateStatement(includeSchema, manager);
 
     public virtual IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {

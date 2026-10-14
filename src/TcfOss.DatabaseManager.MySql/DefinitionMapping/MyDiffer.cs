@@ -571,7 +571,7 @@ public partial class MyDiffer
     private List<DefinitionAlterStatement> GetProgramChanges()
     {
         var results = new List<DefinitionAlterStatement>();
-        var unsortedObjectsToCreate = new List<IDatabaseObject>();
+        var unsortedObjectsToCreate = new List<IDatabaseObject<Statement>>();
         List<ObjectKeyMapping<MyStoredProcedure>> procedureMaps = MyObjectMapper.GetMappings(_start.Procedures, _end.Procedures, excludeEquals: true);
         foreach (ObjectKeyMapping<MyStoredProcedure> map in procedureMaps)
         {

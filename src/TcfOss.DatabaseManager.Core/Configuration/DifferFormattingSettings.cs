@@ -15,7 +15,6 @@ public record DifferFormattingSettings
     public bool TriggerPreferRawTextInScript { get; init; } = true;
     public bool ViewPreferRawTextInScript { get; init; } = true;
     public bool EventPreferRawTextInScript { get; init; } = true;
-    public bool ViewPreferNormalizedBody { get; init; }
 
     public bool TerminateStatements { get; init; } = true;
     public bool UseDelimiterAroundPrograms { get; init; } = true;

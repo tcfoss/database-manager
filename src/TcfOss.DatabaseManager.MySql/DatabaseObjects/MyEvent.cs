@@ -10,7 +10,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
 
 public record MyEvent(ObjectIdentifier Name, EventSchedule Schedule, Statement Body)
-    : IDatabaseObject
+    : IDatabaseObject<CreateEvent>
 {
     public ObjectType ObjectType => ObjectType.Event;
 
@@ -42,7 +42,7 @@ public record MyEvent(ObjectIdentifier Name, EventSchedule Schedule, Statement B
         return HashCode.Combine(Name, Schedule, Body, Definer, OnCompletionPreserve, EventEnabledStatus, Comment);
     }
 
-    public CreateEvent ToCreateStatement(bool includeSchema)
+    public CreateEvent ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
         return new CreateEvent(Name.ToObjectName(includeSchema ? 2 : 1), Schedule, Body)
         {
@@ -53,8 +53,6 @@ public record MyEvent(ObjectIdentifier Name, EventSchedule Schedule, Statement B
             Meta = new MetaData { RawText = RawBodyText }
         };
     }
-
-    Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager? manager) => ToCreateStatement(includeSchema);
 
     public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {

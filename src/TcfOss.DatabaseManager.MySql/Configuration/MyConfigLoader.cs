@@ -197,7 +197,6 @@ public class MyConfigLoader(ILogger logger)
             FunctionPreferRawText = true,
             TriggerPreferRawText = true,
             ViewPreferRawText = true,
-            ViewPreferNormalizedBody = false,
             EventPreferRawText = true,
             TerminateStatements = true,
             UseDelimiterAroundPrograms = true,

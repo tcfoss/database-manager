@@ -13,7 +13,6 @@ public class DifferTests_MariaDb_10_11 : DifferTests<MariaDbBuilder, MariaDbCont
     protected override string OnDeleteRestrict => "";
     protected override string IntWidth => "(11)";
     protected override string FunctionParameterDirection => "IN ";
-    protected override string CteDeclName => "my_cte";
 
     public DifferTests_MariaDb_10_11(ThisFixture fixture)
     {

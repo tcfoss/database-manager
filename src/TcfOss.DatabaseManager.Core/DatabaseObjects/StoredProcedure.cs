@@ -6,7 +6,8 @@ using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public abstract record StoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, Statement Body) : IDatabaseObject
+public abstract record StoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, Statement Body)
+    : IDatabaseObject<CreateProcedure>
 {
     public ObjectType ObjectType => ObjectType.Procedure;
 
@@ -31,8 +32,6 @@ public abstract record StoredProcedure(ObjectIdentifier Name, SqlValueList<Routi
     }
 
     public abstract CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null);
-
-    Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager? manager) => ToCreateStatement(includeSchema, manager);
 
     public virtual IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {

@@ -173,7 +173,6 @@ public static partial class CommonHelpers
             {
                 ObjectNamePrefixWithSchema = objectNamePrefixWithSchema,
                 OmitModifiersIfDefault = true,
-                ViewPreferNormalizedBody = true,
             },
         };
 

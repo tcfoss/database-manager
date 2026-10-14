@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
 using TcfOss.DatabaseManager.Core.Extensions;
+using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
@@ -11,7 +12,7 @@ namespace TcfOss.DatabaseManager.MySql.DefinitionMapping;
 public static class MyObjectMapper
 {
     public static List<ObjectKeyMapping<TObject>> GetMappings<TObject>(DatabaseObjectDict<TObject> start, DatabaseObjectDict<TObject> end, out HashSet<ObjectHandle> excluded, bool excludeEquals = true, HashSet<ObjectHandle>? neverExclude = null)
-        where TObject : IEquatable<TObject>, IDatabaseObject
+        where TObject : IEquatable<TObject>, IDatabaseObject<Statement>
     {
         var mappings = new List<ObjectKeyMapping<TObject>>();
         neverExclude ??= [];
@@ -35,7 +36,7 @@ public static class MyObjectMapper
     }
 
     public static List<ObjectKeyMapping<TObject>> GetMappings<TObject>(DatabaseObjectDict<TObject> start, DatabaseObjectDict<TObject> end, bool excludeEquals = true, HashSet<ObjectHandle>? neverExclude = null)
-        where TObject : IEquatable<TObject>, IDatabaseObject
+        where TObject : IEquatable<TObject>, IDatabaseObject<Statement>
     {
         return GetMappings(start, end, out _, excludeEquals, neverExclude);
     }

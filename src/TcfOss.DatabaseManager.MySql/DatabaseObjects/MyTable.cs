@@ -13,7 +13,7 @@ using TcfOss.DatabaseManager.MySql.Statements.Components;
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
 
 public record MyTable(ObjectIdentifier Name, SqlValueList<MyColumn> Columns)
-    : ITable
+    : IDatabaseObject<CreateTable>
 {
     public ObjectType ObjectType => ObjectType.Table;
 
@@ -29,12 +29,7 @@ public record MyTable(ObjectIdentifier Name, SqlValueList<MyColumn> Columns)
     public ulong? AutoIncrement { get; init; }
     public Comment? TableComment { get; init; }
 
-    SqlValueList<IColumn> ITable.Columns => [.. Columns];
-    public bool Equals(ITable? other) => Equals(other as MyTable);
-
     public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context) => throw new NotImplementedException();
-
-    Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager manager) => ToCreateStatement(includeSchema, manager);
 
     public CreateTable ToCreateStatement(bool includeSchema, DifferFormatManager manager)
     {
