@@ -93,7 +93,7 @@ public static partial class BootstrapHelpers
         bool relaxed,
         TextWriter outputWriter,
         Action<ILogger> loggerCallback,
-        Action<SourceManager>? sourceManagerCallback = null
+        Action<SourceManager> sourceManagerCallback
     )
     {
         StartupBase startup = execConfig.Dialect switch
@@ -141,7 +141,7 @@ public static partial class BootstrapHelpers
         startup.ConfigureAppServiceProvider(host.Services);
 
         SourceManager sm = host.Services.GetRequiredService<SourceManager>();
-        sourceManagerCallback?.Invoke(sm);
+        sourceManagerCallback.Invoke(sm);
 
 
         return new ExecutionContext
