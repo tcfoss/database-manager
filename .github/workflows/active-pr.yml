@@ -128,9 +128,6 @@ jobs:
     needs: [unit-tests, all-tests]
     if: >
       always() &&
-      (needs.all-tests.result == 'success' || needs.all-tests.result == 'skipped')
-    if: >
-      always() &&
       ((needs.unit-tests.result == 'success' && needs.all-tests.result == 'skipped') ||
        (needs.all-tests.result == 'success' && needs.unit-tests.result == 'skipped'))
     uses: tcfoss/github-actions/.github/workflows/coverage.yml@v1
@@ -141,3 +138,4 @@ jobs:
       upload-to-codecov: ${{ startsWith(github.head_ref, 'release/') || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
+      reportgenerator-license: ${{ secrets.REPORTGENERATOR_LICENSE }}
