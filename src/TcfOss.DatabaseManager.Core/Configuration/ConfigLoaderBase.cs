@@ -182,7 +182,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
             return [];
         }
 
-        refactorFiles = refactorFiles.Select(filePath => filePath.GetAbsolutePath(schemaRootPath)).ToArray();
+        refactorFiles = [.. refactorFiles.Select(filePath => filePath.GetAbsolutePath(schemaRootPath))];
         return GetRefactors(schemaId, refactorFiles, quoteStyle);
     }
 
@@ -376,13 +376,8 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         };
     }
 
-    protected static DifferFormattingSettings MergeDifferFormattingSettings(DifferFormattingSettings baseSettings, ConfigParsing.DifferFormattingSettings? overrideSettings)
+    protected static DifferFormattingSettings MergeDifferFormattingSettings(DifferFormattingSettings baseSettings, ConfigParsing.DifferFormattingSettings overrideSettings)
     {
-        if (overrideSettings == null)
-        {
-            return baseSettings;
-        }
-
         return new DifferFormattingSettings
         {
             ObjectNamePrefixWithSchema = overrideSettings.ObjectNamePrefixWithSchema ?? baseSettings.ObjectNamePrefixWithSchema,
@@ -429,13 +424,8 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         };
     }
 
-    protected static NormalizationSettings MergeNormalizationSettings(NormalizationSettings baseSettings, ConfigParsing.NormalizationSettings? overrideSettings)
+    protected static NormalizationSettings MergeNormalizationSettings(NormalizationSettings baseSettings, ConfigParsing.NormalizationSettings overrideSettings)
     {
-        if (overrideSettings == null)
-        {
-            return baseSettings;
-        }
-
         return new NormalizationSettings
         {
             IdentifierQuotationHandling = overrideSettings.IdentifierQuotationHandling ?? baseSettings.IdentifierQuotationHandling,
@@ -443,7 +433,6 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
             AccountQuoteStyle = overrideSettings.AccountQuoteStyle ?? baseSettings.AccountQuoteStyle,
         };
     }
-
 
     private static NumericLength? GetNumericLengthFromPrecisionAndScale(int? precision, int? scale, NumericLength? defaultValue, string label)
     {
@@ -453,11 +442,6 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         {
             semifinalPrec = (int)basePrecScale.Length;
             semifinalScale = (int)basePrecScale.Scale;
-        }
-        else if (defaultValue is NumericLength.Precision basePrec)
-        {
-            semifinalPrec = (int)basePrec.Length;
-            semifinalScale = null;
         }
         else
         {

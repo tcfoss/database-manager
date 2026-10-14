@@ -1,0 +1,20 @@
+Catalog: def
+QuoteStyle: Backticks
+Dialect: MySql
+
+Schemas:
+  - SchemaName: simple_schema
+    RootPath: Schema
+
+Credentials:
+  HostName: localhost
+  UserName: root
+  Password: mysql
+  Port: 3306
+
+Formatting:
+  PreferTabs: false
+  TabSize: 4
+
+  ObjectNamePrefixWithSchema: false
+  OmitModifiersIfDefault: true

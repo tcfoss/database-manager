@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class DownloadSchemaCommand(Action<ILogger>? loggerCallback = null, Action<SourceManager>? sourceManagerCallback = null) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class DownloadSchemaCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
 {
     protected override string CommandName => "download-schema";
     protected override string Description => "Download the database schema using the specified configuration.";

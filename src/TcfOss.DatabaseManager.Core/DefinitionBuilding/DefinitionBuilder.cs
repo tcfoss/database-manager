@@ -32,9 +32,9 @@ public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TC
     // ReSharper restore MemberCanBeProtected.Global
     // ReSharper restore UnusedMemberInSuper.Global
 
-    protected ObjectNameAndHandle GetAndValidateName<T>(T statement, ObjectIdentifier? objectId, SchemaIdentifier activeSchemaId, SourceRef? sourceRef) where T : ICreateStatement
+    protected ObjectNameAndHandle GetAndValidateName<T>(T statement, SchemaIdentifier activeSchemaId, SourceRef? sourceRef) where T : ICreateStatement
     {
-        objectId ??= ObjectIdentifier.FromObjectName(statement.Name, activeSchemaId, QuoteStyle);
+        ObjectIdentifier objectId = ObjectIdentifier.FromObjectName(statement.Name, activeSchemaId, QuoteStyle);
 
         ObjectHandle handle = ObjectHandle.Create(objectId, _nameHandling);
 

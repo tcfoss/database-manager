@@ -152,6 +152,34 @@ public abstract class MyDefinitionBuilderTestsBase
     }
 
     [Fact]
+    public void DuplicateTableNames_Throws()
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT UNSIGNED NOT NULL,
+            `val` VARCHAR(100) NULL,
+            PRIMARY KEY (`id`),
+            CONSTRAINT `uc_table1` UNIQUE (`val`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4{DefaultCollationSetter};
+
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT UNSIGNED NOT NULL,
+            `val` VARCHAR(100) NULL,
+            PRIMARY KEY (`id`),
+            CONSTRAINT `uc_table1` UNIQUE (`val`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4{DefaultCollationSetter};
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        var ex = Assert.Throws<SqlSyntaxException.DuplicateObject>(() =>
+        {
+            DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        });
+        Assert.Contains("database object name", ex.Message);
+        Assert.Contains("`schema1`.`table1`", ex.Message);
+    }
+
+    [Fact]
     public void PrimaryKey_MissingColumn_Throws()
     {
         var statementText = $"""

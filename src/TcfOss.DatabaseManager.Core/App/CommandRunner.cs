@@ -54,9 +54,8 @@ public class CommandRunner<T>(T config, IWriteFiles fileWriter, IFormatSqlFiles 
         throw new CommandException.SpecificDialectRequired("compute-changes");
     }
 
-    public void ValidateConfiguration(bool printConfig, TextWriter? output = null)
+    public void ValidateConfiguration(bool printConfig, TextWriter output)
     {
-        output ??= Console.Out;
         if (printConfig)
         {
             string configJson = Serialization.ToYaml(Config);

@@ -64,7 +64,7 @@ public class DatabaseObjectReferencedItemsTests
     [Fact]
     public void StoredProcedure_GetReferencedItems_DelegatesToBody()
     {
-        var procedure = new StoredProcedure(new ObjectIdentifier("myproc", s_schema), [], MakeSelect("mytable"));
+        var procedure = new TestStoredProcedure(new ObjectIdentifier("myproc", s_schema), [], MakeSelect("mytable"));
 
         List<ItemRef> items = [.. procedure.GetReferencedItems(CreateManager())];
 
@@ -76,7 +76,7 @@ public class DatabaseObjectReferencedItemsTests
     [Fact]
     public void StoredFunction_GetReferencedItems_DelegatesToBody()
     {
-        var function = new StoredFunction(new ObjectIdentifier("myfunc", s_schema), [], new DataType.Int(), MakeSelect("mytable"));
+        var function = new TestStoredFunction(new ObjectIdentifier("myfunc", s_schema), [], new DataType.Int(), MakeSelect("mytable"));
 
         List<ItemRef> items = [.. function.GetReferencedItems(CreateManager())];
 

@@ -168,7 +168,8 @@
     }
   },
   "ObjectType": "View",
-  "RawBodyText": "SELECT \n    -- comment\n    Column1, \n    Column2\nFROM Schema1.Table1\nWHERE Column1 = 'Value'"
+  "RawBodyText": "SELECT \n    -- comment\n    Column1, \n    Column2\nFROM Schema1.Table1\nWHERE Column1 = 'Value'",
+  "NormalizedBody": null
 }
     </value>
   </data>
@@ -335,7 +336,8 @@
     }
   },
   "ObjectType": "View",
-  "RawBodyText": "SELECT \n    -- comment\n    Column1, \n    Column2\nFROM Schema1.Table1\nWHERE Column1 = 'Value'"
+  "RawBodyText": "SELECT \n    -- comment\n    Column1, \n    Column2\nFROM Schema1.Table1\nWHERE Column1 = 'Value'",
+  "NormalizedBody": null
 }
     </value>
   </data>

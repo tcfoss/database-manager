@@ -69,9 +69,7 @@ public static class ConfigurationFile
 
         while (dir != null)
         {
-            string dirNamePattern = string.IsNullOrEmpty(dir.Name)
-                ? ""
-                : $"{Regex.Escape(dir.Name)}|";
+            string dirNamePattern = $"{Regex.Escape(dir.Name)}|";
 
             var pattern = new Regex(
                 $@"^({dirNamePattern}database-?manager|dbman)\.ya?ml$",

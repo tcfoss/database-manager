@@ -4,11 +4,10 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
-using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public record StoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, DataType ReturnType, Statement Body) : IDatabaseObject
+public abstract record StoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, DataType ReturnType, Statement Body) : IDatabaseObject
 {
     public ObjectType ObjectType => ObjectType.Function;
 
@@ -33,13 +32,7 @@ public record StoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParamete
         return HashCode.Combine(Name, Parameters, ReturnType, Body);
     }
 
-    public virtual CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
-    {
-        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), Parameters, ReturnType, Body)
-        {
-            Meta = new MetaData { RawText = RawBodyText }
-        };
-    }
+    public abstract CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null);
 
     Statement IDatabaseObject.ToCreateStatement(bool includeSchema, DifferFormatManager? manager) => ToCreateStatement(includeSchema, manager);
 

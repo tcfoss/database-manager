@@ -15,24 +15,17 @@ public record MyView(ObjectIdentifier Name, Select Body)
     public required ViewAlgorithm? Algorithm { get; init; }
     public ViewCheckOption? CheckOption { get; init; }
 
-    public Select? NormalizedBody { get; init; }
-
     public virtual bool Equals(MyView? other)
     {
         if (other == null)
         {
             return false;
         }
-
-        Select comparableBody = NormalizedBody ?? Body;
-        Select otherComparableBody = other.NormalizedBody ?? other.Body;
-
-        return Name == other.Name
+        return base.Equals(other)
             && Definer == other.Definer
             && SecurityContext == other.SecurityContext
             && Algorithm == other.Algorithm
-            && CheckOption == other.CheckOption
-            && comparableBody == otherComparableBody;
+            && CheckOption == other.CheckOption;
     }
 
     public override int GetHashCode()

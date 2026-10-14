@@ -4,6 +4,8 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Hosting;
+using TcfOss.DatabaseManager.MsSql.App;
+using TcfOss.DatabaseManager.MsSql.Configuration;
 
 namespace TcfOss.DatabaseManager.App.IntegrationTests.General;
 
@@ -54,6 +56,55 @@ public class BootstrapHelpersTests
             Assert.NotNull(callbackSources);
             Assert.IsType<CommandRunner<GenericConfig>>(context.CommandRunner);
             Assert.True(AppServiceProvider.GetLogger<BootstrapHelpersTests>().IsEnabled(LogLevel.Debug));
+        }
+        finally
+        {
+            AppServiceProvider.ServiceProvider = null!;
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LoadExecutionContext_UsesCliDialectWhenItDiffersFromConfig()
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("dbman-bootstrap-tests-");
+        try
+        {
+            var logDirectory = Path.Combine(directory.FullName, "logs");
+            Directory.CreateDirectory(logDirectory);
+            var rawConfig = new MsConfigurationBuilder().GetDefaultConfig(directory.FullName);
+            rawConfig.ProjectDirectory = null;
+            rawConfig.Dialect = SqlDialect.Generic;
+            rawConfig.Logging = new LogSettings
+            {
+                Target = LogTarget.File,
+                LogDirectory = logDirectory,
+                LogLevel = LogLevel.Debug,
+                DatabaseLogLevel = LogLevel.Error
+            };
+            var executionConfig = new ExecutionConfig
+            {
+                WorkingDirectory = directory.FullName,
+                CliDialect = SqlDialect.MsSql,
+                ConfigDialect = SqlDialect.Generic,
+                Dialect = SqlDialect.MsSql,
+                RawConfig = rawConfig
+            };
+
+            ExecutionContext context = BootstrapHelpers.LoadExecutionContext(
+                executionConfig,
+                relaxed: false,
+                outputWriter: new StringWriter(),
+                loggerCallback: _ => { },
+                sourceManagerCallback: _ => { });
+
+            Assert.IsType<MsCommandRunner>(context.CommandRunner);
+
+            string logFile = Directory.GetFiles(logDirectory).First(f => f.EndsWith(".json"));
+            Assert.True(File.Exists(logFile));
+
+            string logContent = File.ReadAllText(logFile);
+            Assert.Contains("Dialect mismatch", logContent);
         }
         finally
         {

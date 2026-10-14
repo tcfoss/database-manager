@@ -184,7 +184,7 @@ public partial class MyDefinitionBuilder
 
     private ObjectNameAndHandle AddTable(CreateTable createTableStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef = null)
     {
-        ObjectNameAndHandle tableNameAndHandle = GetAndValidateName(createTableStatement, null, currentSchema, sourceRef);
+        ObjectNameAndHandle tableNameAndHandle = GetAndValidateName(createTableStatement, currentSchema, sourceRef);
         MyTableBuilder tableBuilder = ConstructTableBuilder(createTableStatement, tableNameAndHandle.Id, sourceRef);
         _tableBuilders.Add(tableNameAndHandle.Key, tableBuilder);
         s_logAddedObject(Logger, "table", tableNameAndHandle.Id, tableNameAndHandle.Id.Schema, new LogDelegateGetFileWrapper(SourceManager, sourceRef));
@@ -205,7 +205,7 @@ public partial class MyDefinitionBuilder
 
     private ObjectNameAndHandle AddProcedure(CreateProcedure createProcedureStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef = null)
     {
-        ObjectNameAndHandle procedureNameAndHandle = GetAndValidateName(createProcedureStatement, null, currentSchema, sourceRef);
+        ObjectNameAndHandle procedureNameAndHandle = GetAndValidateName(createProcedureStatement, currentSchema, sourceRef);
         MyStoredProcedure proc = ConstructProcedure(createProcedureStatement, procedureNameAndHandle.Id, currentSchema, sourceRef);
         _procedures[procedureNameAndHandle.Key] = proc;
         s_logAddedObject(Logger, "procedure", procedureNameAndHandle.Id, procedureNameAndHandle.Id.Schema, new LogDelegateGetFileWrapper(SourceManager, sourceRef));
@@ -226,7 +226,7 @@ public partial class MyDefinitionBuilder
 
     private ObjectNameAndHandle AddFunction(CreateFunction createFunctionStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef)
     {
-        ObjectNameAndHandle functionNameAndHandle = GetAndValidateName(createFunctionStatement, null, currentSchema, sourceRef);
+        ObjectNameAndHandle functionNameAndHandle = GetAndValidateName(createFunctionStatement, currentSchema, sourceRef);
         MyStoredFunction func = ConstructFunction(createFunctionStatement, functionNameAndHandle.Id, currentSchema, sourceRef);
         _functions[functionNameAndHandle.Key] = func;
         s_logAddedObject(Logger, "function", functionNameAndHandle.Id, functionNameAndHandle.Id.Schema, new LogDelegateGetFileWrapper(SourceManager, sourceRef));
@@ -241,7 +241,7 @@ public partial class MyDefinitionBuilder
 
     private ObjectNameAndHandle AddTrigger(CreateTrigger createTriggerStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef)
     {
-        ObjectNameAndHandle triggerNameAndHandle = GetAndValidateName(createTriggerStatement, null, currentSchema, sourceRef);
+        ObjectNameAndHandle triggerNameAndHandle = GetAndValidateName(createTriggerStatement, currentSchema, sourceRef);
 
         if (createTriggerStatement.Definer == null && Config.DefaultDefiner != null)
         {
@@ -278,7 +278,7 @@ public partial class MyDefinitionBuilder
 
     private ObjectNameAndHandle AddView(CreateView createViewStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef)
     {
-        ObjectNameAndHandle viewNameAndHandle = GetAndValidateName(createViewStatement, null, currentSchema, sourceRef);
+        ObjectNameAndHandle viewNameAndHandle = GetAndValidateName(createViewStatement, currentSchema, sourceRef);
         MyPreView view = ConstructView(createViewStatement, viewNameAndHandle.Id, currentSchema, sourceRef);
         _preViews[viewNameAndHandle.Key] = view;
         s_logAddedObject(Logger, "view", viewNameAndHandle.Id, viewNameAndHandle.Id.Schema, new LogDelegateGetFileWrapper(SourceManager, sourceRef));
@@ -298,7 +298,7 @@ public partial class MyDefinitionBuilder
 
     private ObjectNameAndHandle AddEvent(CreateEvent createEventStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef = null)
     {
-        ObjectNameAndHandle eventNameAndHandle = GetAndValidateName(createEventStatement, null, currentSchema, sourceRef);
+        ObjectNameAndHandle eventNameAndHandle = GetAndValidateName(createEventStatement, currentSchema, sourceRef);
         MyEvent evt = ConstructEvent(createEventStatement, eventNameAndHandle.Id, currentSchema, sourceRef);
         _events[eventNameAndHandle.Key] = evt;
         s_logAddedObject(Logger, "event", eventNameAndHandle.Id, eventNameAndHandle.Id.Schema, new LogDelegateGetFileWrapper(SourceManager, sourceRef));

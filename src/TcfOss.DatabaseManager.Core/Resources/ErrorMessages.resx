@@ -112,7 +112,7 @@
         <value>Syntax Error</value>
     </data>
     <data name="Err_Syntax_DuplicateObject" xml:space="preserve">
-        <value>The database object name '{1}' is used more than once.</value>
+        <value>The database object name '{0}' is used more than once.</value>
     </data>
     <data name="Err_Syntax_DuplicateColumn" xml:space="preserve">
         <value>The column name '{0}' is used more than once in table or view '{1}'.</value>
