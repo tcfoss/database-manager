@@ -33,7 +33,6 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var differFormatSettings = new ConfigParsing.DifferFormattingSettings
         {
             OmitModifiersIfDefault = false,
-            ViewPreferNormalizedBody = true,
         };
         var rawConfig = TestDataRawConfig.GetMyTestRawConfig(
             dialect: SqlDialect.MySql,

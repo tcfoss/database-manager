@@ -9,7 +9,6 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
 public record MyColumn(ColumnIdentifier Name, DataType DataType)
-    : IColumn
 {
     public ColumnOption.Nullability? Nullability { get; init; }
     public ColumnOption.ColumnDefault? Default { get; init; }
@@ -21,8 +20,6 @@ public record MyColumn(ColumnIdentifier Name, DataType DataType)
     public ColumnOption.CheckConstraint? Check { get; init; }
 
     public Comment? Comment { get; init; }
-
-    public bool Equals(IColumn? other) => Equals(other as MyColumn);
 
     public StatementColumn ToStatementColumn(DifferFormatManager manager)
     {

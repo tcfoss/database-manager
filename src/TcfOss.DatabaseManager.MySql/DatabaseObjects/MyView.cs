@@ -35,8 +35,7 @@ public record MyView(ObjectIdentifier Name, Select Body)
 
     public override CreateView ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
-        Select body = manager?.Formatting.ViewPreferNormalizedBody == true && NormalizedBody != null ? NormalizedBody : Body;
-        return new CreateView(Name.ToObjectName(includeSchema ? 2 : 1), body)
+        return new CreateView(Name.ToObjectName(includeSchema ? 2 : 1), Body)
         {
             Definer = Definer,
             ViewAlgorithm = Algorithm,

@@ -414,8 +414,6 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                 ?? overrideSettings.PreferRawText
                 ?? baseSettings.EventPreferRawTextInScript,
 
-            ViewPreferNormalizedBody = overrideSettings.ViewPreferNormalizedBody ?? baseSettings.ViewPreferNormalizedBody,
-
             TerminateStatements = overrideSettings.TerminateStatements ?? baseSettings.TerminateStatements,
             UseDelimiterAroundPrograms = overrideSettings.UseDelimiterAroundPrograms ?? baseSettings.UseDelimiterAroundPrograms,
             UseDelimiterAroundViews = overrideSettings.UseDelimiterAroundViews ?? baseSettings.UseDelimiterAroundViews,

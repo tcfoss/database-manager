@@ -130,7 +130,6 @@ public class MsConfigLoader(ILogger logger)
             TriggerPreferRawText = true,
             ViewPreferRawText = true,
             EventPreferRawText = false, // Does not matter - No events in SQL Server.
-            ViewPreferNormalizedBody = false,
             TerminateStatements = true,
             UseDelimiterAroundPrograms = false,
             UseDelimiterAroundViews = false,

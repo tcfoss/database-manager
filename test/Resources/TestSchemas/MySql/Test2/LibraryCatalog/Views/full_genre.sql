@@ -3,7 +3,7 @@ CREATE
     SQL SECURITY DEFINER
 VIEW `full_genre`
 AS
-    WITH RECURSIVE `my_cte` (`genre_id`, `genre`, `depth`)
+    WITH RECURSIVE my_cte (`genre_id`, `genre`, `depth`)
     AS
     (
         SELECT
