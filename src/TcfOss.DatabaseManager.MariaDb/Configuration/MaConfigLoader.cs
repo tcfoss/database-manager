@@ -61,6 +61,7 @@ public class MaConfigLoader(ILogger logger) : MyConfigLoader(logger)
             AllowNamedColumnUnique = false,
             AllowNamedColumnNullability = false,
             AllowNamedColumnCheck = false,
+            AllowUnnamedIndex = false,
         };
     }
 }

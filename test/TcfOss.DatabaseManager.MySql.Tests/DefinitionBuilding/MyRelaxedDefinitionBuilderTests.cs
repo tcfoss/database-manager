@@ -250,4 +250,48 @@ public class MyRelaxedDefinitionBuilderTests : MyDefinitionBuilderTests
         var exception = Assert.Throws<DefinitionException.MissingTableColumns>(() => builder.ProcessStatements(statements, config.Schemas.Keys.First(), 0));
         Assert.Contains("my_table", exception.Message);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("FULLTEXT ")]
+    [InlineData("SPATIAL ")]
+    public void UnnamedIndex_NotAllowed_Throws(string? keyType)
+    {
+        var (config, builder, parser) = GetCustomDefinitionBuilder(new ValidationSettings { AllowUnnamedIndex = false });
+        var text = $"""
+        CREATE TABLE my_table (
+            id INT,
+            {keyType}INDEX (id)
+        );
+        """;
+
+        var statements = parser.ParseText(text);
+        var exception = Assert.Throws<DefinitionException.TableConstraintNameRequired>(() => builder.ProcessStatements(statements, config.Schemas.Keys.First(), 0));
+        Assert.Contains("my_table", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("FULLTEXT ")]
+    [InlineData("SPATIAL ")]
+    public void UnnamedIndex_Allowed(string? keyType)
+    {
+        var (config, builder, parser) = GetCustomDefinitionBuilder(new ValidationSettings { AllowUnnamedIndex = true });
+        var text = $"""
+        CREATE TABLE my_table (
+            id INT,
+            {keyType}INDEX (id)
+        );
+        """;
+
+        var statements = parser.ParseText(text);
+        builder.ProcessStatements(statements, config.Schemas.Keys.First(), 0);
+
+        var def = builder.ToDefinition();
+        var table = def.Tables.First().Value;
+        Assert.NotNull(table);
+        var key = Assert.Single(table.Keys);
+        var handleAsGuid = key.Key.Name;
+        Assert.True(Guid.TryParse(handleAsGuid, out _));
+    }
 }

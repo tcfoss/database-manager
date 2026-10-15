@@ -198,6 +198,9 @@
     <data name="Err_Def_Table_UnnamedConstraint" xml:space="preserve">
         <value>{0} on table '{1}' must be named.</value>
     </data>
+    <data name="Err_Def_Table_Unique_ConflictingNames" xml:space="preserve">
+        <value>UNIQUE constraint on table '{0}' cannot have different CONSTRAINT ('{1}') and INDEX ('{2}') names.</value>
+    </data>
     <data name="Err_Def_Table_NoColumns" xml:space="preserve">
         <value>The table '{0}' must have at least one column.</value>
     </data>

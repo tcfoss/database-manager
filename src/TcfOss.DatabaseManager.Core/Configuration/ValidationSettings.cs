@@ -16,4 +16,6 @@ public record ValidationSettings
     public bool AllowMissingSecurityContext { get; init; }
     public bool AllowMissingDefiner { get; init; }
     public bool AllowImplicitDefiner { get; init; }
+
+    public bool AllowUnnamedIndex { get; init; }
 }

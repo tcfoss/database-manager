@@ -220,8 +220,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
         if (ukStatement is { Name: not null, IndexName: not null } && ukStatement.Name != ukStatement.IndexName)
         {
-            // throw new SqlSyntaxException.ConflictingConstraintNames(ukStatement.Name, ukStatement.IndexName, "UNIQUE constraint", Name, sourceRef);
-            throw new InvalidOperationException($"UNIQUE constraint cannot have both a constraint name and an index name that are different. Constraint name: {ukStatement.Name}, index name: {ukStatement.IndexName}. Table: {Name}. Source: {sourceRef}");
+            throw new DefinitionException.TableUniqueConflictingNames(Name, ukStatement.Name, ukStatement.IndexName, sourceRef);
         }
 
         Identifier name = (ukStatement.Name ?? ukStatement.IndexName!).ToSimpleIdentifier(_quoteStyle);
@@ -280,7 +279,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
     public void AddKey(StatementTableConstraint.NonConstraintKey keyStatement, SourceRef? sourceRef = null)
     {
-        if (keyStatement.IndexName == null)
+        if (keyStatement.IndexName == null && !_validationSettings.AllowUnnamedIndex)
         {
             throw new DefinitionException.TableConstraintNameRequired("INDEX", Name, sourceRef);
         }
@@ -290,21 +289,21 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             case StatementTableConstraint.Standard k:
                 IndexMethod indexMethod = k.IndexMethod ?? _attributeDefaults.IndexMethod;
-                SqlValueList<KeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.IndexName!.Name);
-                key = new MyKey.Standard(columns, k.IndexName!.ToSimpleIdentifier(_quoteStyle)) { IndexMethod = indexMethod, Comment = k.Comment };
+                SqlValueList<KeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.IndexName?.Name);
+                key = new MyKey.Standard(columns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { IndexMethod = indexMethod, Comment = k.Comment };
                 break;
             case StatementTableConstraint.FullText k:
-                SqlValueList<KeyPart> fullTextColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "FULLTEXT", k.IndexName!.Name);
-                key = new MyKey.FullText(fullTextColumns, k.IndexName!.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
+                SqlValueList<KeyPart> fullTextColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "FULLTEXT", k.IndexName?.Name);
+                key = new MyKey.FullText(fullTextColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             case StatementTableConstraint.Spatial k:
-                SqlValueList<KeyPart> spatialColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "SPATIAL", k.IndexName!.Name);
-                key = new MyKey.Spatial(spatialColumns, k.IndexName!.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
+                SqlValueList<KeyPart> spatialColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "SPATIAL", k.IndexName?.Name);
+                key = new MyKey.Spatial(spatialColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             default:
                 throw new UnreachableException($"Unknown key type {keyStatement.GetType()} in {nameof(TableBuilder<>)}.{nameof(AddKey)}.");
         }
-        _keys[Handle.Create(keyStatement.IndexName, NameHandling)] = key;
+        _keys[Handle.Create(keyStatement.IndexName ?? new Identifier(Guid.NewGuid().ToString(), _quoteStyle), NameHandling)] = key;
     }
 
     public override PseudoTable ToPseudoTable()
