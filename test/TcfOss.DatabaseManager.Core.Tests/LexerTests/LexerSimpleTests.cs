@@ -515,5 +515,6 @@ public class LexerSimpleTests : LexerTestBase
             Location = new Location()
         };
 
-        Assert.Equal(expectedLength, token.Length);    }
+        Assert.Equal(expectedLength, token.Length);
+    }
 }

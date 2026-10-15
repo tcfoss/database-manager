@@ -209,14 +209,14 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData(QuoteStyle.Brackets)]
     public static void CreateTable_QuotedConstraint_TreatedAsColumn(QuoteStyle quoteStyle)
     {
-        #pragma warning disable CS8509 // The switch expression does not handle all possible values of its input type (it is not exhaustive).
+#pragma warning disable CS8509 // The switch expression does not handle all possible values of its input type (it is not exhaustive).
         var quotedName = quoteStyle switch
         {
             QuoteStyle.Backticks => "`CONSTRAINT`",
             QuoteStyle.Ansi => "\"CONSTRAINT\"",
             QuoteStyle.Brackets => "[CONSTRAINT]",
         };
-        #pragma warning restore CS8509
+#pragma warning restore CS8509
 
         var parser = new Parser();
         var result = parser.Parse(GetTokens($"create table mytable ({quotedName} INT)"));

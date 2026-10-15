@@ -496,6 +496,9 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         Assert.Single(table2.Keys.Values, k => k.Name?.Name == "idx_name");
     }
 
+    // [Fact]
+    // public void
+
     [Fact]
     public void PrimaryKey_Named_Throws()
     {
