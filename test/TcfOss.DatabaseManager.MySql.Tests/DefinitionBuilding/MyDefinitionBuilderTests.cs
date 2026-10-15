@@ -4,9 +4,11 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
+using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
@@ -467,7 +469,7 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var statements = TextParser.ParseText(statementText);
 
         DefinitionBuilder.ProcessStatements(statements, Schema, 0);
-        Assert.Throws<Core.Errors.SqlSyntaxException.CreateIndexUnknownTable>(() => DefinitionBuilder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.CreateIndexUnknownTable>(() => DefinitionBuilder.ToDefinition());
     }
 
     [Fact]
@@ -492,5 +494,100 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var table2 = def2.Tables.Values.First(t => t.Name.Name == "table1");
         Assert.Single(table1.Keys.Values, k => k.Name?.Name == "idx_name");
         Assert.Single(table2.Keys.Values, k => k.Name?.Name == "idx_name");
+    }
+
+    // [Fact]
+    // public void
+
+    [Fact]
+    public void PrimaryKey_Named_Throws()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL CONSTRAINT `pk_id` PRIMARY KEY,
+            `name` VARCHAR(100),
+            CONSTRAINT `pk_id` PRIMARY KEY (`id`)
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.ConstraintNameNotAllowedException>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Theory]
+    [InlineData("FULLTEXT", "ASC")]
+    [InlineData("FULLTEXT", "DESC")]
+    [InlineData("SPATIAL", "ASC")]
+    [InlineData("SPATIAL", "DESC")]
+    public void SpecialIndexTypes_WithUnsupportedDirection_Throws(string indexType, string direction)
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            PRIMARY KEY (`id`),
+            {indexType} INDEX `idx_name` (`name` {direction}),
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.IndexDirectionNotSupported>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Theory]
+    [InlineData("HASH", "ASC")]
+    [InlineData("HASH", "DESC")]
+    public void SpecialIndexMethods_WithUnsupportedDirection_Throws(string indexMethod, string direction)
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            PRIMARY KEY (`id`),
+            INDEX `idx_name` (`name` {direction}) USING {indexMethod},
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.IndexDirectionNotSupported>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Fact]
+    public void IndexConstraints_OverrideMethod()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            PRIMARY KEY (`id`) USING HASH,
+            INDEX `idx_name` (`name`) USING HASH
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var def = DefinitionBuilder.ToDefinition();
+        var table = def.Tables.Values.First(t => t.Name.Name == "table1");
+        // var primaryKey = Assert.Single(table.Keys.Values, k => k.Name?.Name == "PRIMARY");
+        var primaryKey = Assert.IsType<MyPrimaryKey>(table.PrimaryKey);
+        Assert.NotNull(primaryKey.IndexMethod);
+        Assert.Equal("HASH", primaryKey.IndexMethod.ToString());
+        var index = Assert.IsType<MyKey.Standard>(Assert.Single(table.Keys.Values, k => k.Name?.Name == "idx_name"));
+        Assert.NotNull(index.IndexMethod);
+        Assert.Equal("HASH", index.IndexMethod.ToString());
+    }
+
+    [Fact]
+    public void UniqueConstraint_ConflictingNames_Throws()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            CONSTRAINT `uc_constraint` UNIQUE `uc_index` (`name`)
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<DefinitionException.TableUniqueConflictingNames>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
     }
 }

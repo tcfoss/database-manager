@@ -71,6 +71,30 @@ public abstract class MyDefinitionBuilderTestsBase
     }
 
     [Fact]
+    public void Add_One_Table_PrimaryKey_OnColumn_Succeeds()
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT UNSIGNED NOT NULL PRIMARY KEY,
+            `val` VARCHAR(100) NULL,
+            CONSTRAINT `uc_table1` UNIQUE (`val`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 {DefaultCollationSetter};
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var def = DefinitionBuilder.ToDefinition();
+
+        Assert.NotNull(def);
+        var table = Assert.Single(def.Tables).Value;
+        Assert.NotNull(table);
+        Assert.NotNull(table.PrimaryKey);
+        var pkColumn = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
+        Assert.Equal("id", pkColumn.Name.Name);
+    }
+
+    [Fact]
     public void Defaults_Applied_To_Table()
     {
         var statementText = """

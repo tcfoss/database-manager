@@ -55,6 +55,65 @@ public class TokenEquatability
         Assert.NotEqual(token1, token2);
     }
 
+    [Fact]
+    public void MyTerminator_Equality()
+    {
+        var token1 = new MyTerminator("//") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new MyTerminator("//") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.Equal(token1, token2);
+        Assert.Equal(token1, (object)token2);
+        Assert.Equal(token1, (Token)token2);
+        Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
+    }
+
+    [Fact]
+    public void MyTerminator_Inequality()
+    {
+        var token1 = new MyTerminator("//") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new MyTerminator(";;") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+#pragma warning disable xUnit2000 // Constants and literals should be the expected argument
+        Assert.NotEqual(token1, null);
+        Assert.False(token1.Equals(null));
+#pragma warning restore xUnit2000 // Constants and literals should be the expected argument
+    }
+
+    [Fact]
+    public void SymbolToken_Equality()
+    {
+        var token1 = new Asterisk() { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new Asterisk() { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.Equal(token1, token2);
+        Assert.Equal<SymbolToken>(token1, token2);
+        Assert.Equal(token1, (object)token2);
+        Assert.Equal(token1, (Token)token2);
+        Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
+    }
+
+    [Fact]
+    public void SymbolToken_Inequality()
+    {
+        var token1 = new Asterisk() { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new Plus() { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual<SymbolToken>(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+#pragma warning disable xUnit2000 // Constants and literals should be the expected argument
+        Assert.NotEqual(token1, null);
+        Assert.False(token1.Equals(null));
+#pragma warning restore xUnit2000 // Constants and literals should be the expected argument
+    }
+
     public class TokenTestData : IEnumerable<TheoryDataRow<Token, Token>>
     {
         public IEnumerator<TheoryDataRow<Token, Token>> GetEnumerator()

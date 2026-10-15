@@ -503,4 +503,18 @@ public class LexerSimpleTests : LexerTestBase
     {
         Assert.Equal(StringSymbols.EndOfFile, Eof.TypeSymbol);
     }
+
+    [Theory]
+    [InlineData(null, 4)]
+    [InlineData("utf8", 8)]
+    public void StringLiteralLengths(string? charSet, int expectedLength)
+    {
+        var token = new StringLiteral("hi")
+        {
+            CharSet = charSet,
+            Location = new Location()
+        };
+
+        Assert.Equal(expectedLength, token.Length);
+    }
 }

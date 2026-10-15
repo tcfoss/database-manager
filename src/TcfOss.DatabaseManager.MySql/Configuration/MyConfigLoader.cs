@@ -214,6 +214,7 @@ public class MyConfigLoader(ILogger logger)
             AllowNamedColumnUnique = false,
             AllowNamedColumnNullability = false,
             AllowNamedColumnCheck = false,
+            AllowUnnamedIndex = false,
         };
     }
 
@@ -229,6 +230,7 @@ public class MyConfigLoader(ILogger logger)
             AllowImplicitDefiner = true,
             AllowMissingDefiner = true,
             AllowMissingSecurityContext = true,
+            AllowUnnamedIndex = true,
         };
     }
 

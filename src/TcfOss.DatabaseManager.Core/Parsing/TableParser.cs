@@ -304,9 +304,10 @@ public class TableParser
             Word { Keyword: Keyword.UNIQUE } => ParseUnique(state, name),
             Word { Keyword: Keyword.FOREIGN } => ParseForeign(state, name),
             Word { Keyword: Keyword.CHECK } => ParseTableCheck(state, name),
-            Word { Keyword: Keyword.INDEX or Keyword.KEY } => ParseIndex(state),
-            Word { Keyword: Keyword.FULLTEXT } => ParseFullText(state),
-            Word { Keyword: Keyword.SPATIAL } => ParseSpatial(state),
+            Word { Keyword: Keyword.INDEX or Keyword.KEY } when name == null => ParseIndex(state),
+            Word { Keyword: Keyword.FULLTEXT } when name == null => ParseFullText(state),
+            Word { Keyword: Keyword.SPATIAL } when name == null => ParseSpatial(state),
+            _ when name != null => throw state.ExpectedCategoryException("table_constraint"),
             _ => null
         };
     }

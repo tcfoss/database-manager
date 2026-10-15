@@ -1,7 +1,9 @@
-﻿using TcfOss.DatabaseManager.Core.Errors;
+﻿using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
@@ -187,6 +189,41 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse(GetTokens(sql)));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("FuLLTEXT")]
+    [InlineData("SPATIAL")]
+    public static void CreateTable_ConstraintBeforeNonConstraintKey_Throws(string? indexType)
+    {
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(GetTokens($"CREATE TABLE mytable (my_id INT NOT NULL, CONSTRAINT my_constraint {indexType} INDEX my_index (my_id))")));
+        Assert.Contains("table_constraint", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(QuoteStyle.Backticks)]
+    [InlineData(QuoteStyle.Ansi)]
+    [InlineData(QuoteStyle.Brackets)]
+    public static void CreateTable_QuotedConstraint_TreatedAsColumn(QuoteStyle quoteStyle)
+    {
+#pragma warning disable CS8509 // The switch expression does not handle all possible values of its input type (it is not exhaustive).
+        var quotedName = quoteStyle switch
+        {
+            QuoteStyle.Backticks => "`CONSTRAINT`",
+            QuoteStyle.Ansi => "\"CONSTRAINT\"",
+            QuoteStyle.Brackets => "[CONSTRAINT]",
+        };
+#pragma warning restore CS8509
+
+        var parser = new Parser();
+        var result = parser.Parse(GetTokens($"create table mytable ({quotedName} INT)"));
+        var createTable = Assert.IsType<CreateTable>(Assert.Single(result));
+        Assert.NotNull(createTable.Columns);
+        var column = Assert.Single(createTable.Columns);
+        Assert.Equal("CONSTRAINT", column.Name.Name);
     }
 
     [Theory]

@@ -220,8 +220,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
         if (ukStatement is { Name: not null, IndexName: not null } && ukStatement.Name != ukStatement.IndexName)
         {
-            // throw new SqlSyntaxException.ConflictingConstraintNames(ukStatement.Name, ukStatement.IndexName, "UNIQUE constraint", Name, sourceRef);
-            throw new InvalidOperationException($"UNIQUE constraint cannot have both a constraint name and an index name that are different. Constraint name: {ukStatement.Name}, index name: {ukStatement.IndexName}. Table: {Name}. Source: {sourceRef}");
+            throw new DefinitionException.TableUniqueConflictingNames(Name, ukStatement.Name, ukStatement.IndexName, sourceRef);
         }
 
         Identifier name = (ukStatement.Name ?? ukStatement.IndexName!).ToSimpleIdentifier(_quoteStyle);
@@ -280,7 +279,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
     public void AddKey(StatementTableConstraint.NonConstraintKey keyStatement, SourceRef? sourceRef = null)
     {
-        if (keyStatement.IndexName == null)
+        if (keyStatement.IndexName == null && !_validationSettings.AllowUnnamedIndex)
         {
             throw new DefinitionException.TableConstraintNameRequired("INDEX", Name, sourceRef);
         }
@@ -290,21 +289,21 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             case StatementTableConstraint.Standard k:
                 IndexMethod indexMethod = k.IndexMethod ?? _attributeDefaults.IndexMethod;
-                SqlValueList<KeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.Name?.Name);
-                key = new MyKey.Standard(columns, k.IndexName!.ToSimpleIdentifier(_quoteStyle)) { IndexMethod = indexMethod, Comment = k.Comment };
+                SqlValueList<KeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.IndexName?.Name);
+                key = new MyKey.Standard(columns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { IndexMethod = indexMethod, Comment = k.Comment };
                 break;
             case StatementTableConstraint.FullText k:
-                SqlValueList<KeyPart> fullTextColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "FULLTEXT", k.Name?.Name);
-                key = new MyKey.FullText(fullTextColumns, k.IndexName!.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
+                SqlValueList<KeyPart> fullTextColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "FULLTEXT", k.IndexName?.Name);
+                key = new MyKey.FullText(fullTextColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             case StatementTableConstraint.Spatial k:
-                SqlValueList<KeyPart> spatialColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "SPATIAL", k.Name?.Name);
-                key = new MyKey.Spatial(spatialColumns, k.IndexName!.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
+                SqlValueList<KeyPart> spatialColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "SPATIAL", k.IndexName?.Name);
+                key = new MyKey.Spatial(spatialColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             default:
                 throw new UnreachableException($"Unknown key type {keyStatement.GetType()} in {nameof(TableBuilder<>)}.{nameof(AddKey)}.");
         }
-        _keys[Handle.Create(keyStatement.IndexName, NameHandling)] = key;
+        _keys[Handle.Create(keyStatement.IndexName ?? new Identifier(Guid.NewGuid().ToString(), _quoteStyle), NameHandling)] = key;
     }
 
     public override PseudoTable ToPseudoTable()
@@ -383,26 +382,29 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         SqlValueList<KeyPart> normalized = [];
         foreach (KeyPart part in keyParts)
         {
-            if (part is KeyPart.Column col)
+            switch (part)
             {
-                Identifier normalizedName = col.Name.ToSimpleIdentifier(quoteStyle);
-                Direction? direction = GetIndexDirection(col.Direction, indexMethod, keyName);
-                normalized.Add(col with { Name = normalizedName, Direction = direction });
-            }
-            else if (part is KeyPart.IndexExpression expr)
-            {
-                // The outer Nested wrapper is semantically required by MySQL functional index syntax —
-                // it marks the column as an expression rather than a plain column name, so it must be
-                // preserved. Only normalize the inner expression.
-                Expression normalizedExpr = expr.Expression is Nested outerNested
-                    ? new Nested(GetNormalizedExpression(outerNested.Expression))
-                    : GetNormalizedExpression(expr.Expression);
-                Direction? direction = GetIndexDirection(expr.Direction, indexMethod, keyName);
-                normalized.Add(new KeyPart.IndexExpression(normalizedExpr, direction));
-            }
-            else
-            {
-                throw new UnreachableException();
+                case KeyPart.Column col:
+                {
+                    Identifier normalizedName = col.Name.ToSimpleIdentifier(quoteStyle);
+                    Direction? direction = GetIndexDirection(col.Direction, indexMethod, keyName);
+                    normalized.Add(col with { Name = normalizedName, Direction = direction });
+                    break;
+                }
+                case KeyPart.IndexExpression expr:
+                {
+                    // The outer Nested wrapper is semantically required by MySQL functional index syntax:
+                    // it marks the column as an expression rather than a plain column name, so it must be
+                    // preserved. Only normalize the inner expression.
+                    Expression normalizedExpr = expr.Expression is Nested outerNested
+                        ? new Nested(GetNormalizedExpression(outerNested.Expression))
+                        : GetNormalizedExpression(expr.Expression);
+                    Direction? direction = GetIndexDirection(expr.Direction, indexMethod, keyName);
+                    normalized.Add(new KeyPart.IndexExpression(normalizedExpr, direction));
+                    break;
+                }
+                default:
+                    throw new UnreachableException();
             }
         }
         return normalized;
@@ -410,26 +412,21 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
     private ColumnOption.ColumnDefault NormalizeDefault(StatementColumnOption.Default givenDefault)
     {
-        if (givenDefault is StatementColumnOption.Default.DefaultExpression { Expression: LiteralValue nested })
+        switch (givenDefault)
         {
-            return new ColumnOption.ColumnDefault.DefaultValue(GetNormalizedValue(nested.Value));
+            case StatementColumnOption.Default.DefaultExpression { Expression: LiteralValue nested }:
+                return new ColumnOption.ColumnDefault.DefaultValue(GetNormalizedValue(nested.Value));
+            case StatementColumnOption.Default.DefaultValue dval:
+                return new ColumnOption.ColumnDefault.DefaultValue(GetNormalizedValue(dval.Value));
+            case StatementColumnOption.Default.DefaultExpression dexp:
+                (Expression normalized, Expression flattened) = GetNormalizedExpressions(dexp.Expression);
+                return new ColumnOption.ColumnDefault.DefaultExpression(normalized)
+                {
+                    NormalizedExpression = flattened
+                };
+            default:
+                throw new NotSupportedException($"Not-implemented default option type {givenDefault}.");
         }
-
-        if (givenDefault is StatementColumnOption.Default.DefaultValue dval)
-        {
-            return new ColumnOption.ColumnDefault.DefaultValue(GetNormalizedValue(dval.Value));
-        }
-
-        if (givenDefault is StatementColumnOption.Default.DefaultExpression dexp)
-        {
-            (Expression normalized, Expression flattened) = GetNormalizedExpressions(dexp.Expression);
-            return new ColumnOption.ColumnDefault.DefaultExpression(normalized)
-            {
-                NormalizedExpression = flattened
-            };
-        }
-
-        throw new NotSupportedException($"Not-implemented default option type {givenDefault}.");
     }
 
     private ColumnOption.Generated.AsExpression NormalizeGenerated(StatementColumnOption.Generated givenGenerated)
@@ -469,7 +466,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("UNIQUE", "column", columnName, sourceRef);
         }
-        if (uniqueOption.Name != null && !_validationSettings.AllowNamedColumnUnique)
+        if (uniqueOption.Name != null)
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(uniqueOption.Name, "UNIQUE", "column", columnName, "MySQL", sourceRef);
         }
@@ -478,24 +475,23 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
     }
 
     // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
-    private ColumnOption.Nullability ConvertColumnNullability(StatementColumnOption.Nullability nullabilityOption, ColumnIdentifier columnName, ColumnOption? existingNullability, SourceRef? sourceRef = null)
+    private static ColumnOption.Nullability ConvertColumnNullability(StatementColumnOption.Nullability nullabilityOption, ColumnIdentifier columnName, ColumnOption? existingNullability, SourceRef? sourceRef = null)
     {
         if (existingNullability != null)
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("nullability", "column", columnName, sourceRef);
         }
-        if (nullabilityOption.Name != null && !_validationSettings.AllowNamedColumnNullability)
+        if (nullabilityOption.Name != null)
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(nullabilityOption.Name, "nullability", "column", columnName, "MySQL", sourceRef);
         }
-        Identifier? name = nullabilityOption.Name?.ToSimpleIdentifier(_quoteStyle);
         if (nullabilityOption is StatementColumnOption.Nullability.Null)
         {
-            return new ColumnOption.Nullability.Null(name);
+            return new ColumnOption.Nullability.Null();
         }
         else
         {
-            return new ColumnOption.Nullability.NotNull(name);
+            return new ColumnOption.Nullability.NotNull();
         }
     }
 
@@ -506,11 +502,10 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("default", "column", columnName, sourceRef);
         }
-        if (defaultOption.Name != null && !_validationSettings.AllowNamedColumnDefault)
+        if (defaultOption.Name != null)
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(defaultOption.Name, "DEFAULT", "column", columnName, "MySQL", sourceRef);
         }
-        defaultOption = defaultOption with { Name = defaultOption.Name?.ToSimpleIdentifier(_quoteStyle) };
         return NormalizeDefault(defaultOption);
     }
 
@@ -525,13 +520,13 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("CHECK", "column", columnName, sourceRef);
         }
-        if (checkOption.Name != null && !_validationSettings.AllowNamedColumnCheck)
+        if (checkOption.Name != null)
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(checkOption.Name, "CHECK", "column", columnName, "MySQL", sourceRef);
         }
 
         (Expression normalized, Expression flattened) = GetNormalizedExpressions(checkOption.Expression);
-        return new ColumnOption.CheckConstraint(normalized, checkOption.Name?.ToSimpleIdentifier(_quoteStyle))
+        return new ColumnOption.CheckConstraint(normalized)
         {
             NormalizedExpression = flattened
         };

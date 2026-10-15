@@ -15,10 +15,10 @@ not implemented yet.
 
 ## Tables
 
-### Column-level PRIMARY KEY, UNIQUE, and CHECK constraints are not allowed
+### Column-level UNIQUE and CHECK constraints are not allowed
 
 Constraints must be declared at the table level so that they can be named and
-referenced explicitly. Writing `PRIMARY KEY`, `UNIQUE`, or `CHECK (...)` as
+referenced explicitly. Writing `UNIQUE` or `CHECK (...)` as
 part of a column definition is rejected—move the constraint into a separate
 table-level clause instead.
 
@@ -32,10 +32,9 @@ CREATE TABLE t (
 
 -- Supported
 CREATE TABLE t (
-    id INT,
+    id INT PRIMARY KEY,
     email VARCHAR(255),
     age INT,
-    PRIMARY KEY (id),
     CONSTRAINT uq_t_email UNIQUE (email),
     CONSTRAINT ck_t_age CHECK (age >= 0)
 );
