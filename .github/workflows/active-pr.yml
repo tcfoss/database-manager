@@ -84,6 +84,7 @@ jobs:
       solution: solutions/UnitTests.slnx
       project: solutions/UnitTests.slnx
       name: unit
+      upload-coverage-filter-inputs: true
 
   all-tests:
     name: Full Test Suite
@@ -98,6 +99,7 @@ jobs:
       project: DatabaseManager.slnx
       name: full-suite
       integration: true
+      upload-coverage-filter-inputs: true
 
   today:
     runs-on: ubuntu-latest
@@ -135,6 +137,7 @@ jobs:
       contents: read
       pull-requests: write
     with:
+      filter-unreachable-coverage: true
       upload-to-codecov: ${{ startsWith(github.head_ref, 'release/') || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
