@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -467,7 +468,7 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var statements = TextParser.ParseText(statementText);
 
         DefinitionBuilder.ProcessStatements(statements, Schema, 0);
-        Assert.Throws<Core.Errors.SqlSyntaxException.CreateIndexUnknownTable>(() => DefinitionBuilder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.CreateIndexUnknownTable>(() => DefinitionBuilder.ToDefinition());
     }
 
     [Fact]
@@ -492,5 +493,58 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var table2 = def2.Tables.Values.First(t => t.Name.Name == "table1");
         Assert.Single(table1.Keys.Values, k => k.Name?.Name == "idx_name");
         Assert.Single(table2.Keys.Values, k => k.Name?.Name == "idx_name");
+    }
+
+    [Fact]
+    public void PrimaryKey_Named_Throws()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL CONSTRAINT `pk_id` PRIMARY KEY,
+            `name` VARCHAR(100),
+            CONSTRAINT `pk_id` PRIMARY KEY (`id`)
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.ConstraintNameNotAllowedException>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Theory]
+    [InlineData("FULLTEXT", "ASC")]
+    [InlineData("FULLTEXT", "DESC")]
+    [InlineData("SPATIAL", "ASC")]
+    [InlineData("SPATIAL", "DESC")]
+    public void SpecialIndexTypes_WithUnsupportedDirection_Throws(string indexType, string direction)
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            PRIMARY KEY (`id`),
+            {indexType} INDEX `idx_name` (`name` {direction}),
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.IndexDirectionNotSupported>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Theory]
+    [InlineData("HASH", "ASC")]
+    [InlineData("HASH", "DESC")]
+    public void SpecialIndexMethods_WithUnsupportedDirection_Throws(string indexMethod, string direction)
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            PRIMARY KEY (`id`),
+            INDEX `idx_name` (`name` {direction}) USING {indexMethod},
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.IndexDirectionNotSupported>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
     }
 }

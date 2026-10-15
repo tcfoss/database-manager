@@ -190,6 +190,18 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("FuLLTEXT")]
+    [InlineData("SPATIAL")]
+    public static void CreateTable_ConstraintBeforeNonConstraintKey_Throws(string? indexType)
+    {
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(GetTokens($"CREATE TABLE mytable (my_id INT NOT NULL, CONSTRAINT my_constraint {indexType} INDEX my_index (my_id))")));
+        Assert.Contains("table_constraint", ex.Message);
+    }
+
+    [Theory]
     /* Add Column */
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT", null)]
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT NOT NULL", null)]

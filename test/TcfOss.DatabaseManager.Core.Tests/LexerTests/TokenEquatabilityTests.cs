@@ -55,6 +55,34 @@ public class TokenEquatability
         Assert.NotEqual(token1, token2);
     }
 
+    [Fact]
+    public void SetDelimiter_Equality()
+    {
+        var token1 = new MyTerminator("//") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new MyTerminator("//") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.Equal(token1, token2);
+        Assert.Equal(token1, (object)token2);
+        Assert.Equal(token1, (Token)token2);
+        Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
+    }
+
+    [Fact]
+    public void SetDelimiter_Inequality()
+    {
+        var token1 = new MyTerminator("//") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new MyTerminator(";;") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+        #pragma warning disable xUnit2003
+        Assert.NotEqual(null, token1);
+        #pragma warning restore xUnit2003
+    }
+
     public class TokenTestData : IEnumerable<TheoryDataRow<Token, Token>>
     {
         public IEnumerator<TheoryDataRow<Token, Token>> GetEnumerator()
