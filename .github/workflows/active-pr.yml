@@ -138,6 +138,7 @@ jobs:
       pull-requests: write
     with:
       filter-unreachable-coverage: true
+      unreachable-coverage-regex: 'throw new (TcfOss\.)?(DatabaseManager\.)?(Core\.)?(Errors\.)?DefensiveGuardException\('
       upload-to-codecov: ${{ startsWith(github.head_ref, 'release/') || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}

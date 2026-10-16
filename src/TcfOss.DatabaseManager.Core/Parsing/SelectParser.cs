@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
@@ -219,7 +219,8 @@ public class SelectParser
         else if (state.ConsumeTokenIs<ParenOpen>())
         {
             Select subquery = ParseSelect(state, null);
-            body = new SelectBody.SelectQuery(subquery);
+            body = new SelectBody.Nested(subquery);
+
             state.ExpectRightParen();
         }
         else if (state.PeekKeyword(Keyword.VALUES))
@@ -399,7 +400,7 @@ public class SelectParser
                         Keyword.LEFT => constraint => new JoinOperator.LeftOuter(constraint),
                         Keyword.RIGHT => constraint => new JoinOperator.RightOuter(constraint),
                         Keyword.FULL => constraint => new JoinOperator.FullOuter(constraint),
-                        _ => throw new UnreachableException()
+                        _ => throw new DefensiveGuardException(true, "SelectParser.ParseTableWithJoins", joinKeywords[0].GetType())
                     };
                 }
                 else if (peeked == Keyword.OUTER)

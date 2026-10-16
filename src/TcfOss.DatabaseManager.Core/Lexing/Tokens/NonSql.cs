@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using TcfOss.DatabaseManager.Core.Errors;
 
 namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
@@ -24,7 +24,7 @@ public sealed class NonSql(NonSqlType nonSqlType, string? value = null) : Token,
                 NonSqlType.Newline => 1,
                 NonSqlType.InlineComment => (Value?.Length ?? 0) + (Prefix?.Length ?? 0),
                 NonSqlType.BlockComment => (Value?.Length ?? 0) + 4,
-                _ => throw new UnreachableException()
+                _ => throw new DefensiveGuardException(true, "NonSql.Length", NonSqlType.GetType())
             };
         }
     }

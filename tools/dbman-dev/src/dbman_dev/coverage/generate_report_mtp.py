@@ -264,7 +264,7 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
         "--output-directory",
         str(output_dir),
         "--exclude-regex",
-        r"throw new (System\.)?(Diagnostics\.)?UnreachableException\(",
+        r"throw new (TcfOss\.)?(DatabaseManager\.)?(Core\.)?(Errors\.)?DefensiveGuardException\(",
         "--source-root",
         str(source_root),
     ]

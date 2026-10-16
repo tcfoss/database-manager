@@ -236,7 +236,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                     new ColumnIdentifier(raw.OldName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.OldName)), tableName ?? throw new ConfigurationException.MissingFieldException(nameof(tableName)), quoteStyle),
                     new ColumnIdentifier(raw.NewName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.NewName)), tableName ?? throw new ConfigurationException.MissingFieldException(nameof(tableName)), quoteStyle)
                 ),
-                _ => throw new NotSupportedException($"Unsupported refactor type: {raw.Type}")
+                _ => throw new DefensiveGuardException("Refactor Conversion", raw.Type.ToString())
             };
             refactors.Add(refactor);
         }

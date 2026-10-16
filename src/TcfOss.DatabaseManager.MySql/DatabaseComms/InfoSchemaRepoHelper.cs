@@ -1,10 +1,10 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -44,7 +44,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
             QuoteStyle.Ansi => ExtendedQuoteStyle.Ansi,
             QuoteStyle.Brackets => ExtendedQuoteStyle.Brackets,
             QuoteStyle.None => ExtendedQuoteStyle.None,
-            _ => throw new UnreachableException()
+            _ => throw new DefensiveGuardException("InfoSchemaRepoHelper.ParseAccount::parse quote style", _quoteStyle.ToString())
         };
 
         Account account = ComponentParser.ParseAccount(GetState(text));

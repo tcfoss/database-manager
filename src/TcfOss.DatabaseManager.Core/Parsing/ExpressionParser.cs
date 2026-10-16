@@ -140,12 +140,13 @@ public class ExpressionParser
                 throw ParserState.ExpectedCategoryException("comparison_operator", token);
             }
 
+            // ReSharper disable once SwitchExpressionHandlesSomeKnownEnumValuesWithExceptionInDefault
             return qualifierKeyword switch
             {
                 Keyword.ALL => new QuantifiedBinaryOperator(left, op, right, AggregateQuantifier.All),
                 Keyword.ANY => new QuantifiedBinaryOperator(left, op, right, AggregateQuantifier.Any),
                 Keyword.SOME => new QuantifiedBinaryOperator(left, op, right, AggregateQuantifier.Some),
-                _ => throw new UnreachableException()
+                _ => throw new DefensiveGuardException("ExpressionParser.ParseInfixBinaryOperator", qualifierKeyword.ToString())
             };
         }
 

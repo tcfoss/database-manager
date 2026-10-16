@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -13,6 +14,12 @@ public class MsOutputParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData(
         "INSERT INTO t (a) OUTPUT inserted.* VALUES (1)",
         Label = "INSERT with OUTPUT inserted.*")]
+    [InlineData(
+        "INSERT INTO t (a, b) OUTPUT inserted.a AS a, inserted.b AS b VALUES (1, 2)",
+        Label = "INSERT with OUTPUT and column aliases")]
+    [InlineData(
+        "INSERT INTO t (a) OUTPUT inserted.a + 1 AS next_a VALUES (1)",
+        Label = "INSERT with OUTPUT scalar expression")]
     public void Insert_OutputTextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
@@ -43,5 +50,13 @@ public class MsOutputParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void Insert_Output_PlainWildcard_Throws()
+    {
+        var text = "INSERT INTO t (a, b) OUTPUT * VALUES (1, 2)";
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true));
+        Assert.Contains("identifier or qualified wildcard", ex.Message);
     }
 }

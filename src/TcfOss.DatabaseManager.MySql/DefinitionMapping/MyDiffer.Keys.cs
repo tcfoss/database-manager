@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -268,7 +268,7 @@ public partial class MyDiffer
                         MyKey.Standard key => new AlterTableOperation.AddStandardKey(key.ToStatementConstraint(_manager)),
                         MyKey.FullText key => new AlterTableOperation.AddFullTextKey(key.ToStatementConstraint(_manager)),
                         MyKey.Spatial key => new AlterTableOperation.AddSpatialKey(key.ToStatementConstraint(_manager)),
-                        _ => throw new UnreachableException($"Unknown key type: {end.GetType()}")
+                        _ => throw new DefensiveGuardException(true, "MyDiffer.Keys.ComputeKeyDifferences", end.GetType())
                     };
 
                     // Key added or modified

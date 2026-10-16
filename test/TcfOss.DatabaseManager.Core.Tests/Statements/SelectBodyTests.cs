@@ -51,10 +51,10 @@ public class SelectBodyTests
     }
 
     [Fact]
-    public void SelectQueryWrapper_DelegatesFormattingReferencesAndPseudoTables()
+    public void Nested_DelegatesFormattingReferencesAndPseudoTables()
     {
         Select query = ParseSelect("SELECT col1");
-        var wrapper = new SelectBody.SelectQuery(query);
+        var wrapper = new SelectBody.Nested(query);
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
 
         var pseudoTables = new PseudoTableSet(null, []);
@@ -71,11 +71,65 @@ public class SelectBodyTests
         Assert.Equal("col1", actualItem);
 
         using var formatter = CreateFormatter();
-        var expected = """
-        SELECT
-            "col1";
-        """;
-        Assert.Equal(expected, formatter.GetFormatted(new Select(wrapper)), ignoreLineEndingDifferences: true);
+        string formatted = formatter.GetFormatted(new Select(wrapper));
+        Assert.StartsWith("(", formatted);
+        Assert.Contains("SELECT", formatted);
+        Assert.EndsWith(");", formatted);
+    }
+
+    [Fact]
+    public void Nested_RelaxedPseudoTable_DelegatesToInnerSelect()
+    {
+        Select query = ParseSelect("SELECT col1, t.col2, 1 AS alias1, 2, *");
+        var nested = new SelectBody.Nested(query);
+
+        PseudoTable actual = nested.ToPseudoTableRelaxed("derived", null, null, PseudoTableType.DerivedTable);
+
+        Assert.Collection(actual.SelectableItems,
+            item => Assert.Equal("col1", item),
+            item => Assert.Equal("col2", item),
+            item => Assert.Equal("alias1", item));
+    }
+
+    [Fact]
+    public void Nested_AddTablesToContext_AddsInnerSelectSources()
+    {
+        Select query = ParseSelect("SELECT * FROM book");
+        var nested = new SelectBody.Nested(query);
+        var schema = new SchemaIdentifier("library_catalog", new CatalogIdentifier("def"));
+        var source = new PseudoTable("book", new ObjectIdentifier("book", schema), ["book_id"], PseudoTableType.Table);
+        var context = new PseudoTableSet(schema, [source], [[]]);
+
+        nested.AddTablesToContext(context);
+
+        var selectable = Assert.Single(context.GetSelectableElements("book_id"));
+        Assert.Equal("book", selectable.Source);
+    }
+
+    [Fact]
+    public void Nested_GetReferencedItems_DelegatesToInnerSelect()
+    {
+        Select query = ParseSelect("SELECT col1 FROM t");
+        var nested = new SelectBody.Nested(query);
+
+        List<ItemRef> items = [.. nested.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })];
+
+        Assert.Collection(items,
+            item => Assert.Equal("t", item.Identifiers.Last().Name),
+            item => Assert.Equal("col1", item.Identifiers.Last().Name));
+    }
+
+    [Fact]
+    public void Nested_FormatSql_WritesParenthesesAroundInnerSelect()
+    {
+        using var formatter = CreateFormatter();
+        var nested = new SelectBody.Nested(ParseSelect("SELECT col1"));
+
+        string actual = formatter.GetFormatted(new Select(nested));
+
+        Assert.StartsWith("(", actual);
+        Assert.Contains("SELECT", actual);
+        Assert.EndsWith(");", actual);
     }
 
     [Fact]

@@ -118,14 +118,15 @@ public class DmlParser
 
     private SimpleSelectItem ParseOutputItem(ParserState state)
     {
+        Token firstToken = state.Peek();
         Expression wildcardOrExpr = _expr.ParseWildcardOrExpr(state);
+        if (wildcardOrExpr is Wildcard)
+        {
+            throw ParserState.ExpectedCategoryException("identifier or qualified wildcard", firstToken);
+        }
         if (wildcardOrExpr is QualifiedWildcard q)
         {
             return new SimpleSelectItem.QualifiedWildcard(q.Qualifier);
-        }
-        if (wildcardOrExpr is Wildcard)
-        {
-            return new SimpleSelectItem.Wildcard();
         }
 
         Identifier? alias = _p.SelectParser.ParseOptionalAlias(state, IsReservedForOutputAlias);

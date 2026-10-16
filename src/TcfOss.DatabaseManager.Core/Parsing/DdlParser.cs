@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -158,7 +157,7 @@ public class DdlParser
             {
                 return new ExecuteAsClause.User(sqs);
             }
-            throw new UnreachableException();
+            throw new DefensiveGuardException("DdlParser.ParseExecuteAsTarget", value.GetType());
         }
         throw state.ExpectedException("CALLER", "SELF", "OWNER", "'username'");
     }
@@ -784,15 +783,9 @@ public class DdlParser
 
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
 
-        SqlValueList<ObjectName> names;
-        if (typeToDropKw is Keyword.TABLE or Keyword.VIEW)
-        {
-            names = state.ParseCommaSeparated(_parseObjectName);
-        }
-        else
-        {
-            names = [_parseObjectName(state)];
-        }
+        SqlValueList<ObjectName> names = typeToDropKw is Keyword.TABLE or Keyword.VIEW
+            ? state.ParseCommaSeparated(_parseObjectName)
+            : [_parseObjectName(state)];
 
         ObjectName? onObject = null;
         if (typeToDrop == DroppableObject.Index)

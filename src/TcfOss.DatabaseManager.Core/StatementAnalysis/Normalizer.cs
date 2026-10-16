@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -45,7 +44,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             FunctionArgumentExpression.Wildcard => expr,
             FunctionArgumentExpression.QualifiedWildcard qw => new FunctionArgumentExpression.QualifiedWildcard(ComponentNormalizer.NormalizeObjectName(qw.Name)),
             FunctionArgumentExpression.FunctionExpression fe => new FunctionArgumentExpression.FunctionExpression(NormalizeExpression(fe.Expression, inSelect: inSelect, flatten: flatten)),
-            _ => throw new UnreachableException()
+            _ => throw new DefensiveGuardException(true, "Normalizer.NormalizeFunctionArgumentExpression", expr.GetType())
         };
     }
 
@@ -55,7 +54,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         {
             FunctionArgument.Unnamed un => new FunctionArgument.Unnamed(NormalizeFunctionArgumentExpression(un.Argument, inSelect: inSelect, flatten: flatten)),
             FunctionArgument.Named named => new FunctionArgument.Named(ComponentNormalizer.NormalizeSingleIdentifier(named.Name), NormalizeFunctionArgumentExpression(named.Argument, inSelect: inSelect, flatten: flatten), named.Operator),
-            _ => throw new UnreachableException()
+            _ => throw new DefensiveGuardException(true, "Normalizer.NormalizeFunctionArgument", arg.GetType())
         };
     }
 
@@ -240,7 +239,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             SimpleSelectItem.QualifiedWildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
             SimpleSelectItem.Wildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
             _ => throw new NotImplementedException()
-        } ?? throw new UnreachableException();
+        } ?? throw new DefensiveGuardException(true, "Normalizer.NormalizeSelectItem", item.GetType());
 
         return result;
     }
@@ -302,7 +301,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             TableFactor.Table t => NormalizeTableFactor(t),
             TableFactor.Derived d => NormalizeTableFactor(d),
             TableFactor.NestedJoin n => NormalizeTableFactor(n),
-            _ => throw new UnreachableException()
+            _ => throw new DefensiveGuardException(true, "Normalizer.NormalizeTableFactor", table.GetType())
         };
     }
 
@@ -412,28 +411,37 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
     private SelectBody NormalizeSelectBody(SelectBody body, bool pseudoTablesAlreadyIsolated = false, bool returnsValues = false, bool flatten = false)
     {
-        if (body is SelectBody.SimpleSelectQuery ssq)
+        switch (body)
         {
-            SimpleSelect newSelect = pseudoTablesAlreadyIsolated
-                ? NormalizeSimpleSelect(ssq.Query, returnsValues, flatten: flatten)
-                : NormalizeSimpleSelectWithPseudoTableIsolation(ssq.Query, returnsValues, flatten: flatten);
-            return new SelectBody.SimpleSelectQuery(newSelect);
+            case SelectBody.SimpleSelectQuery ssq:
+            {
+                SimpleSelect newSelect = pseudoTablesAlreadyIsolated
+                    ? NormalizeSimpleSelect(ssq.Query, returnsValues, flatten: flatten)
+                    : NormalizeSimpleSelectWithPseudoTableIsolation(ssq.Query, returnsValues, flatten: flatten);
+                return new SelectBody.SimpleSelectQuery(newSelect);
+            }
+            case SelectBody.Nested nested:
+            {
+                Select normalizedQuery = NormalizeSelect(nested.Query, topLevel: false, returnsValues, flatten: flatten);
+                bool hasQueryClauses = normalizedQuery.CommonTableExpression != null
+                    || normalizedQuery.OrderBy != null
+                    || normalizedQuery.Limit != null
+                    || normalizedQuery.SelectInto != null;
+                return flatten && !hasQueryClauses
+                    ? normalizedQuery.Body
+                    : new SelectBody.Nested(normalizedQuery);
+            }
+            case SelectBody.SetOperation so:
+            {
+                SelectBody left = NormalizeSelectBody(so.Left, false, returnsValues, flatten: flatten);
+                SelectBody right = NormalizeSelectBody(so.Right, false, returnsValues, flatten: flatten);
+                return new SelectBody.SetOperation(left, so.Operator, right, so.Quantifier);
+            }
+            case SelectBody.ValuesQuery:
+                throw new NotImplementedException("VALUES in views is not (yet) supported.");
+            default:
+                throw new DefensiveGuardException(true, "Normalizer.NormalizeSelectBody", body.GetType());
         }
-        if (body is SelectBody.SelectQuery sq)
-        {
-            return new SelectBody.SelectQuery(NormalizeSelect(sq.Query, topLevel: false, returnsValues, flatten: flatten));
-        }
-        if (body is SelectBody.SetOperation so)
-        {
-            SelectBody left = NormalizeSelectBody(so.Left, false, returnsValues, flatten: flatten);
-            SelectBody right = NormalizeSelectBody(so.Right, false, returnsValues, flatten: flatten);
-            return new SelectBody.SetOperation(left, so.Operator, right, so.Quantifier);
-        }
-        if (body is SelectBody.ValuesQuery)
-        {
-            throw new NotImplementedException("VALUES in views is not (yet) supported.");
-        }
-        throw new UnreachableException();
     }
 
     private SqlValueList<OrderBy>? NormalizeSelectOrderBy(SqlValueList<OrderBy>? orderBy, bool inSelect, bool flatten = false)
