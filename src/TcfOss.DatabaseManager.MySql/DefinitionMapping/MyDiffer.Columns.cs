@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -274,7 +275,7 @@ public partial class MyDiffer
             {
                 ColumnOption.ColumnDefault.DefaultValue dv => new StatementColumnOption.Default.DefaultValue(dv.Value),
                 ColumnOption.ColumnDefault.DefaultExpression de => new StatementColumnOption.Default.DefaultExpression(de.Expression),
-                _ => throw new UnreachableException()
+                _ => throw new DefensiveGuardException("MyDiffer.Columns.ApplySetDefault", end.Default?.GetType() ?? typeof(object), "ColumnChangeType.SetDefault should not be active if end default is null. Switch is otherwise exhaustive.")
             };
 
             _currentModifications.Add(new AlterTableOperation.SetDefault(end.Name.ToSimpleIdentifier(), newDefault));

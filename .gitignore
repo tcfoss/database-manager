@@ -28,3 +28,5 @@ BuildInfo.cs
 *.sln.DotSettings.user
 
 traces/
+
+unreachable-coverage-filter.*.log

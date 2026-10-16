@@ -2,9 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/microsoft/testfx/main/docs/testconfig.schema.json",
   "platformOptions": {
     "Coverlet": {
-      "format": "cobertura",
+      "format": "opencover,cobertura",
       "excludeByFile": "**/*.g.cs,**/Program.cs",
-      "exclude": "[System.Text.*]*,[Testcontainers*]*,[MySqlConnector*]*,[Docker.DotNet*]*,[*.Tests]*,[*.IntegrationTests]*,[TcfOss.DatabaseManager.Core*]*Errors.*",
+      "exclude": "[System.Text.*]*,[Testcontainers*]*,[MySqlConnector*]*,[Docker.DotNet*]*,[*.Tests]*,[*.IntegrationTests]*,[TcfOss.DatabaseManager.Core*]*Errors.*,[TcfOss.UnreachableCoverageFilter*]*",
       "excludeByAttribute": "ExcludeFromCodeCoverage,GeneratedCode",
       "skipAutoProps": true
     }

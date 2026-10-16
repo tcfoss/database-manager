@@ -3,11 +3,13 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
+using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.Lexing;
@@ -496,11 +498,8 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         Assert.Single(table2.Keys.Values, k => k.Name?.Name == "idx_name");
     }
 
-    // [Fact]
-    // public void
-
     [Fact]
-    public void PrimaryKey_Named_Throws()
+    public void ColumnPrimaryKey_Named_Throws()
     {
         var statementText = """
         CREATE TABLE `schema1`.`table1` (
@@ -512,6 +511,59 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var statements = TextParser.ParseText(statementText);
 
         Assert.Throws<SqlSyntaxException.ConstraintNameNotAllowedException>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Fact]
+    public void TablePrimaryKey_Named_Throws()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            CONSTRAINT `pk_id` PRIMARY KEY (`id`)
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        Assert.Throws<SqlSyntaxException.ConstraintNameNotAllowedException>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Fact]
+    public void ColumnDefault_NotNullable_NullSpecified_BlankedOut()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100) NOT NULL DEFAULT NULL
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var def = DefinitionBuilder.ToDefinition();
+        var table = Assert.IsType<MyTable>(Assert.Single(def.Tables.Values));
+        var column = Assert.IsType<MyColumn>(Assert.Single(table.Columns, c => c.Name.Name == "name"));
+
+        Assert.Null(column.Default);
+    }
+
+    [Fact]
+    public void ColumnDefault_Nullable_NullSpecified_RemainsNull()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100) DEFAULT NULL
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var def = DefinitionBuilder.ToDefinition();
+        var table = Assert.IsType<MyTable>(Assert.Single(def.Tables.Values));
+        var column = Assert.IsType<MyColumn>(Assert.Single(table.Columns, c => c.Name.Name == "name"));
+
+        Assert.NotNull(column.Default);
+        var defaultValue = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(column.Default);
+        Assert.IsType<Value.Null>(defaultValue.Value);
     }
 
     [Theory]

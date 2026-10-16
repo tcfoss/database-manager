@@ -46,7 +46,11 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("SELECT t.name, COUNT(*) FROM table1 AS t GROUP BY t.name HAVING COUNT(*) > 5")]
     /* Select - Sets */
     [InlineData("SELECT a, b FROM table1 UNION SELECT c, d FROM table2")]
+    [InlineData("SELECT a, b FROM table1 UNION ALL SELECT c, d FROM table2")]
     [InlineData("SELECT a, b FROM table1 INTERSECT DISTINCT SELECT c, d FROM table2")]
+    [InlineData("SELECT a, b FROM table1 INTERSECT ALL SELECT c, d FROM table2")]
+    [InlineData("SELECT a, b FROM table1 EXCEPT SELECT c, d FROM table2")]
+    [InlineData("SELECT a, b FROM table1 EXCEPT ALL SELECT c, d FROM table2")]
     /* Select - CTE */
     [InlineData("WITH book_authors AS (SELECT person_id, name FROM authors) SELECT * FROM book_authors")]
     [InlineData("WITH RECURSIVE expanded_genres AS (SELECT * FROM genres AS g WHERE g.parent_id IS NULL UNION ALL SELECT * FROM genres AS gsub INNER JOIN expanded_genres AS eg ON gsub.parent_id = eg.id) SELECT * FROM expanded_genres", Label = "WITH RECURSIVE expanded_genres")]
@@ -232,5 +236,77 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expected, asStatement);
 
         Assert.Equal("/* block comment */ -- line comment\n\t\t/* another block */", asStatement.ToSqlDelimited(""));
+    }
+
+    [Fact]
+    public void ParseStatement_Empty_Throws()
+    {
+        var lexer = new GenericLexer();
+        var parser = new Parser();
+        var tokens = lexer.Tokenize("");
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+
+        Assert.Contains("SQL statement", exception.Message);
+    }
+
+    [Fact]
+    public void ParseStatement_KeywordCannotBeginStatement_Throws()
+    {
+        var lexer = new GenericLexer();
+        var parser = new Parser();
+        var tokens = lexer.Tokenize("ASC");
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+
+        Assert.Contains("SQL statement", exception.Message);
+    }
+
+    [Fact]
+    public void Select_WithAs_IdentifierAsString_ConvertsToUnquoted()
+    {
+        var lexer = new GenericLexer();
+        var parser = new Parser();
+        var tokens = lexer.Tokenize("SELECT 1 AS 'alias'");
+        var statements = parser.Parse([.. tokens]);
+        var statement = Assert.Single(statements);
+
+        var select = Assert.IsType<Select>(statement);
+        var actualSql = select.ToSql();
+        Assert.Equal("SELECT 1 AS alias", actualSql);
+    }
+
+    [Fact]
+    public void Select_WithAs_NoIdentifier_Throws()
+    {
+        var lexer = new GenericLexer();
+        var parser = new Parser();
+        var tokens = lexer.Tokenize("SELECT 1 AS");
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse([.. tokens]));
+
+        Assert.Contains("identifier", exception.Message);
+    }
+
+    [Fact]
+    public void CommonTableExpression_FollowingStatementInvalid_Throws()
+    {
+        var lexer = new GenericLexer();
+        var parser = new Parser();
+        var tokens = lexer.Tokenize("WITH cte AS (SELECT 1) ASC");
+        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+
+        Assert.Contains("{ SELECT | INSERT | UPDATE | DELETE }", exception.Message);
+    }
+
+    [Fact]
+    public void CommonTableExpression_FollowingStatementEnclosed()
+    {
+        var lexer = new GenericLexer();
+        var parser = new Parser();
+        var tokens = lexer.Tokenize("WITH cte AS (SELECT 1) (SELECT 2)");
+        var statements = parser.Parse([.. tokens]);
+        var statement = Assert.Single(statements);
+
+        var select = Assert.IsType<Select>(statement);
+        var actualSql = select.ToSql();
+        Assert.Equal("WITH cte AS (SELECT 1) (SELECT 2)", actualSql);
     }
 }

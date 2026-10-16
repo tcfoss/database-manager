@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -160,7 +159,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 AddKey(sp, sourceRef);
                 break;
             default:
-                throw new UnreachableException();
+                throw new DefensiveGuardException("MyTableBuilder.AddIndexOrConstraint", constraint.GetType().ToString());
         }
     }
 
@@ -186,7 +185,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 _tableComment = new Comment(com.Value);
                 break;
             default:
-                throw new NotImplementedException($"Not-implemented table option type {tableOption}. {SourceRef}");
+                throw new DefensiveGuardException("MyTableBuilder.AddOption", tableOption.GetType().ToString());
         }
     }
 
@@ -301,7 +300,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 key = new MyKey.Spatial(spatialColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             default:
-                throw new UnreachableException($"Unknown key type {keyStatement.GetType()} in {nameof(TableBuilder<>)}.{nameof(AddKey)}.");
+                throw new DefensiveGuardException("MyTableBuilder.AddKey", keyStatement.GetType().ToString());
         }
         _keys[Handle.Create(keyStatement.IndexName ?? new Identifier(Guid.NewGuid().ToString(), _quoteStyle), NameHandling)] = key;
     }
@@ -404,7 +403,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                     break;
                 }
                 default:
-                    throw new UnreachableException();
+                    throw new DefensiveGuardException(true, "MyTableBuilder.NormalizeKeyParts", part.GetType());
             }
         }
         return normalized;
@@ -425,7 +424,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                     NormalizedExpression = flattened
                 };
             default:
-                throw new NotSupportedException($"Not-implemented default option type {givenDefault}.");
+                throw new DefensiveGuardException(true, "MyTableBuilder.NormalizeDefault", givenDefault.GetType());
         }
     }
 

@@ -9,6 +9,7 @@ using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.Configuration;
 
 namespace TcfOss.DatabaseManager.Core.Tests.DefinitionBuilding;
@@ -57,6 +58,26 @@ public class NormalizerTests
         IdentifierQuotationHandling? cteDeclarationNameQuotationHandling = null,
         bool usePseudoTables = true)
     {
+        return GetNormalizedSelect(sqlText, identifierQuotationHandling, cteDeclarationNameQuotationHandling, usePseudoTables).ToSql();
+    }
+
+    private Select GetNormalizedSelect(
+        string sqlText,
+        IdentifierQuotationHandling? identifierQuotationHandling = null,
+        IdentifierQuotationHandling? cteDeclarationNameQuotationHandling = null,
+        bool usePseudoTables = true)
+    {
+        var textParser = new TextParser(new GenericLexer(), new Parser());
+        Select statement = (Select)textParser.ParseText(sqlText).First();
+        return GetNormalizedSelect(statement, identifierQuotationHandling, cteDeclarationNameQuotationHandling, usePseudoTables);
+    }
+
+    private Select GetNormalizedSelect(
+        Select statement,
+        IdentifierQuotationHandling? identifierQuotationHandling = null,
+        IdentifierQuotationHandling? cteDeclarationNameQuotationHandling = null,
+        bool usePseudoTables = true)
+    {
         var normalizationSettings = new Core.Configuration.Parsing.NormalizationSettings
         {
             IdentifierQuotationHandling = identifierQuotationHandling ?? IdentifierQuotationHandling.Always,
@@ -64,16 +85,13 @@ public class NormalizerTests
         };
 
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
-        var textParser = new TextParser(new GenericLexer(), new Parser());
-        var statement = (Select)textParser.ParseText(sqlText).First();
-
         var name = new ObjectIdentifier("MyView", new SchemaIdentifier("my_schema", new CatalogIdentifier("my_catalog")));
         var componentNormalizer = new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider());
         var normalizer = new Normalizer(config, componentNormalizer);
 
         var normalizedSelect = normalizer.NormalizeSelect(statement, config.Schemas.Keys.First(), usePseudoTables ? _selectableSources : null, name);
 
-        return normalizedSelect.ToSql();
+        return normalizedSelect;
     }
 
     private static Identifier GetNormalizedIdentifier(
@@ -693,6 +711,35 @@ public class NormalizerTests
         Assert.Contains("SELECT `library_catalog`.`book`.`book_id`", actual);
         Assert.Contains("ORDER BY", actual);
         Assert.Contains("LIMIT 5", actual);
+    }
+
+    [Fact]
+    public void ParenthesizedSetOperation_IsDenestedByFlatteningNormalization()
+    {
+        Select normalized = GetNormalizedSelect("(SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book");
+        SelectBody.SetOperation outer = Assert.IsType<SelectBody.SetOperation>(normalized.Body);
+        Assert.IsType<SelectBody.SetOperation>(outer.Left);
+    }
+
+    [Fact]
+    public void ParenthesizedSetOperation_RemainsNestedInsideDerivedTable()
+    {
+        Select normalized = GetNormalizedSelect("SELECT d.book_id FROM ((SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book) AS d");
+        SelectBody.SimpleSelectQuery selectBody = Assert.IsType<SelectBody.SimpleSelectQuery>(normalized.Body);
+        TableWithJoins from = Assert.Single(selectBody.Query.From!);
+        TableFactor.Derived derived = Assert.IsType<TableFactor.Derived>(from.Relation);
+        SelectBody.SetOperation outer = Assert.IsType<SelectBody.SetOperation>(derived.SubQuery.Body);
+        SelectBody.Nested nested = Assert.IsType<SelectBody.Nested>(outer.Left);
+        Assert.IsType<SelectBody.SetOperation>(nested.Query.Body);
+    }
+
+    [Fact]
+    public void ParenthesizedSelectWithInnerClauses_RemainsNestedWhenFlattening()
+    {
+        Select normalized = GetNormalizedSelect("(SELECT book_id FROM book ORDER BY book_id LIMIT 5)");
+        SelectBody.Nested nested = Assert.IsType<SelectBody.Nested>(normalized.Body);
+        Assert.NotNull(nested.Query.OrderBy);
+        Assert.NotNull(nested.Query.Limit);
     }
 
     [Fact]

@@ -72,16 +72,18 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
     }
 
 
-    public record SelectQuery(Select Query) : SelectBody
+    public record Nested(Select Query) : SelectBody
     {
         public override void ToSql(SqlTextWriter writer)
         {
-            Query.ToSql(writer);
+            writer.WriteSql($"({Query})");
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
+            writer.Write("(");
             Query.FormatSql(writer, manager);
+            writer.Write(")");
         }
 
         public override PseudoTable ToPseudoTable(string name, ObjectIdentifier? identifier, SourceRef? sourceRef, PseudoTableType type)

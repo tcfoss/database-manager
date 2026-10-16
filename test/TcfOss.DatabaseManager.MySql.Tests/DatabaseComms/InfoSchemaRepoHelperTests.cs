@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -61,7 +61,7 @@ public class InfoSchemaRepoHelperTests
     public void AccountsParse_UnknownQuoteStyle_Throws()
     {
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, (QuoteStyle)999);
-        Assert.Throws<UnreachableException>(() => repoHelper.ParseAccount("'myname'@'myhost'"));
+        Assert.Throws<DefensiveGuardException>(() => repoHelper.ParseAccount("'myname'@'myhost'"));
     }
 
     [Theory]

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +8,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseComms;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -844,7 +844,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             "ENABLED" => EventEnabledStatus.Enable,
             "DISABLED" => EventEnabledStatus.Disable,
             "SLAVESIDE_DISABLED" => EventEnabledStatus.DisableOnSlave,
-            _ => throw new UnreachableException($"Event status {isEvent.Status}")
+            _ => throw new DefensiveGuardException("InfoSchemaRepo.GetEvent", $"Event status {isEvent.Status}")
         };
 
 

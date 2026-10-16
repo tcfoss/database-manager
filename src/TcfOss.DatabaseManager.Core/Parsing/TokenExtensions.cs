@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
@@ -110,7 +110,7 @@ public static class TokenExtensions
                     break;
 
                 default:
-                    throw new UnreachableException();
+                    throw new DefensiveGuardException(true, "TokenExtensions.ToStatementNonSql", curr.NonSqlType.GetType());
             }
         }
 
