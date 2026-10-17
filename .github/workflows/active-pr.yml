@@ -125,7 +125,6 @@ jobs:
       release-date: ${{ needs.today.outputs.date }}
     secrets:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
-      unreachable-coverage-filter-token: ${{ secrets.GITHUB_TOKEN }}
 
   coverage:
     needs: [unit-tests, all-tests]
@@ -144,3 +143,4 @@ jobs:
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
       reportgenerator-license: ${{ secrets.REPORTGENERATOR_LICENSE }}
+      unreachable-coverage-filter-token: ${{ secrets.GITHUB_TOKEN }}
