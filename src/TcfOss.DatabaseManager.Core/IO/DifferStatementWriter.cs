@@ -98,11 +98,7 @@ public class DifferStatementWriter
     {
         _writer.WriteLine();
 
-        if (_writeOptions.UseCatalogOnChange && definitionAlterStatement.Schema.Catalog != _lastSchema?.Catalog)
-        {
-            _writer.WriteLine($"USE {definitionAlterStatement.Schema.Catalog.ToSimpleIdentifier()};");
-        }
-        else if (_writeOptions.UseSchemaOnChange && definitionAlterStatement.Schema != _lastSchema)
+        if (_writeOptions.UseSchemaOnChange && definitionAlterStatement.Schema != _lastSchema)
         {
             _writer.WriteLine($"USE {definitionAlterStatement.Schema.ToSimpleIdentifier()};");
         }
