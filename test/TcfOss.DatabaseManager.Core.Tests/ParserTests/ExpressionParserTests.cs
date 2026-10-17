@@ -33,6 +33,15 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("x > ALL((1, 2, 3))")]
     [InlineData("GROUP_CONCAT(DISTINCT author_name ORDER BY author_name DESC SEPARATOR ', ')", Label = "GROUP_CONCAT ORDER BY")]
     [InlineData("GROUP_CONCAT(DISTINCT author_name LIMIT 10 SEPARATOR ', ')", Label = "GROUP_CONCAT LIMIT")]
+    [InlineData("GROUP_CONCAT(author_name SEPARATOR ', ')")]
+    [InlineData("GROUP_CONCAT(author_name ORDER BY author_name LIMIT 10 SEPARATOR ', ')")]
+    [InlineData("COUNT(*) OVER ()")]
+    [InlineData("COUNT(*) OVER (PARTITION BY category)")]
+    [InlineData("COUNT(*) OVER (ORDER BY category)")]
+    [InlineData("x NOT BETWEEN 1 AND 3")]
+    [InlineData("x NOT IN (1, 2)")]
+    [InlineData("x NOT LIKE 'pattern'")]
+    [InlineData("x IS NOT DISTINCT FROM y")]
     [InlineData("EXISTS (SELECT 1 FROM my_table)")]
     [InlineData("NOT EXISTS (SELECT 1 FROM my_table)")]
     [InlineData("'2025-06-28T12:00:00' AT TIME ZONE 'Eastern Standard Time'", Label = "AT TIME ZONE long TZ")]
@@ -97,6 +106,31 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseWildcardOrExpr, "*", "*");
 
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("a.")]
+    [InlineData("a.+")]
+    [InlineData("INTERVAL 1 invalid_unit")]
+    [InlineData("()")]
+    public void MalformedExpression_ThrowsExpectedTokenException(string sql)
+    {
+        var parser = new Parser();
+        ParserState state = GetState(sql);
+
+        Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseExpr(state));
+    }
+
+    [Theory]
+    [InlineData("x IS DISTINCT y")]
+    [InlineData("x IS")]
+    [InlineData("x IS NOT invalid_predicate")]
+    public void MalformedIsPredicate_ThrowsExpectedAlternativesException(string sql)
+    {
+        var parser = new Parser();
+        ParserState state = GetState(sql);
+
+        Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ExpressionParser.ParseExpr(state));
     }
 
     [Fact]

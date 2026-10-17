@@ -50,6 +50,88 @@ public class SqlTextWriterTests
         Assert.Equal("SELECT * FROM table1;", writer.ToString());
     }
 
+    [Theory]
+    [InlineData(" ")]
+    [InlineData("\r\n\t ")]
+    public void RemoveChar_AllWhitespace_IsUnchanged(string text)
+    {
+        var writer = new SqlTextWriter(new StringBuilder(text));
+
+        writer.RemoveChar(';');
+
+        Assert.Equal(text, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("", false, 0)]
+    [InlineData("SELECT", false, 6)]
+    [InlineData("SELECT\n", true, 0)]
+    [InlineData("SELECT\r\nabc", false, 3)]
+    public void LineState_ReflectsCurrentBuffer(string text, bool endsWithNewline, int lineLength)
+    {
+        var writer = new SqlTextWriter(new StringBuilder(text));
+
+        Assert.Equal(endsWithNewline, writer.EndWithNewLine());
+        Assert.Equal(lineLength, writer.GetCurrentLineLength());
+    }
+
+    [Fact]
+    public void Indenter_IsCreatedOnceAndReused()
+    {
+        var writer = new SqlTextWriter(new StringBuilder());
+
+        Indenter indenter = writer.Indenter;
+
+        Assert.Same(indenter, writer.Indenter);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FormatDelimited_Array_WritesItems(bool separateLines)
+    {
+        ObjectName[] items = [new(new Identifier("table1")), new(new Identifier("table2"))];
+        var writer = new SqlTextWriter(new StringBuilder());
+
+        if (separateLines)
+        {
+            writer.FormatDelimitedLines(items, GetFormatManager());
+        }
+        else
+        {
+            writer.FormatDelimited(items, GetFormatManager());
+        }
+
+        string separator = separateLines ? "," + Environment.NewLine : ", ";
+        Assert.Equal($"\"table1\"{separator}\"table2\"", writer.ToString());
+    }
+
+    [Theory]
+    [InlineData(false, 1, true, "    ")]
+    [InlineData(false, 5, true, "        ")]
+    [InlineData(false, 1, false, "")]
+    [InlineData(false, 7, false, "    ")]
+    [InlineData(true, 1, true, "\t")]
+    [InlineData(true, 5, true, "\t\t")]
+    [InlineData(true, 1, false, "")]
+    [InlineData(true, 7, false, "\t")]
+    public void Indenter_PartialIndent_RoundsToTabStop(bool preferTabs, int initialSpaces, bool increase, string expected)
+    {
+        var indenter = new Indenter(4, preferTabs);
+        indenter.ResetIndent(initialSpaces);
+
+        if (increase)
+        {
+            indenter.IncreaseIndent();
+        }
+        else
+        {
+            indenter.DecreaseIndent();
+        }
+
+        Assert.Equal(expected, indenter.IndentString);
+    }
+
     [Fact]
     public void TrimEnd_RemovesTrailingWhitespace()
     {

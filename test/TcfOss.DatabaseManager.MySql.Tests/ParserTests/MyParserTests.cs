@@ -1,5 +1,7 @@
 ﻿using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
@@ -8,6 +10,56 @@ namespace TcfOss.DatabaseManager.MySql.Tests.ParserTests;
 
 public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 {
+    [Theory]
+    [InlineData("SELECT a INTO result FROM source")]
+    [InlineData("SELECT a, b INTO result FROM source")]
+    [InlineData("SELECT a FROM source INTO result")]
+    [InlineData("SELECT a, b FROM source INTO result")]
+    [InlineData("SELECT a UNION SELECT b LIMIT 1 INTO result")]
+    [InlineData("(SELECT a) LIMIT 1 INTO result")]
+    [InlineData("(SELECT a) UNION SELECT b LIMIT 1 INTO result")]
+    [InlineData("SELECT a UNION SELECT b UNION SELECT c LIMIT 1 INTO result")]
+    public void SelectInto_SingleName_IsVariableRegardlessOfQueryShape(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoVariables>(target);
+        Assert.Equal("result", Assert.Single(into.Variables).Name);
+    }
+
+    [Theory]
+    [InlineData("SELECT a, b INTO first_result, second_result FROM source")]
+    [InlineData("SELECT a, b FROM source INTO first_result, second_result")]
+    public void SelectInto_MultipleNames_AreVariables(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoVariables>(target);
+        Assert.Equal(["first_result", "second_result"], into.Variables.Select(variable => variable.Name));
+    }
+
+    [Theory]
+    [InlineData("SELECT a INTO OUTFILE 'result.txt' FROM source")]
+    [InlineData("SELECT a FROM source INTO OUTFILE 'result.txt'")]
+    public void SelectInto_Outfile_IsFile(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoFile>(target);
+        Assert.Equal("result.txt", into.FilePath);
+    }
+
+    [Theory]
+    [InlineData("SELECT a INTO target_schema.result FROM source")]
+    [InlineData("SELECT a FROM source INTO target_schema.result")]
+    public void SelectInto_QualifiedTableTarget_Throws(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(sql));
+    }
+
     [Theory]
     /* IF block */
     [InlineData("IF a > b THEN SELECT 1; END IF")]

@@ -82,6 +82,10 @@ public class JsonConverterTests
     [InlineData(true, "{}", false)]
     [InlineData(false, "{\"Items\":null}", false)]
     [InlineData(true, "{\"Items\":null}", false)]
+    [InlineData(false, "{\"Items\":[]}", false)]
+    [InlineData(true, "{\"Items\":[]}", false)]
+    [InlineData(false, "{\"NameHandling\":\"Lowercase\",\"Items\":null}", true)]
+    [InlineData(true, "{\"NameHandling\":\"Lowercase\",\"Items\":null}", true)]
     [InlineData(false, "{\"NameHandling\":\"Lowercase\"}", true)]
     [InlineData(true, "{\"NameHandling\":\"Lowercase\"}", true)]
     public void DictionaryConverter_MissingItems_DefaultsToEmptyAndPreservesNameHandling(bool objectKeys, string json, bool lowercase)

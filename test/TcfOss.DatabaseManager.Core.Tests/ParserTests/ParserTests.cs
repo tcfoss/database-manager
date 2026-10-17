@@ -91,6 +91,76 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData("SELECT a UNION SELECT b LIMIT 1 INTO result")]
+    [InlineData("(SELECT a) LIMIT 1 INTO result")]
+    [InlineData("(SELECT a) UNION SELECT b LIMIT 1 INTO result")]
+    [InlineData("SELECT a UNION SELECT b UNION SELECT c LIMIT 1 INTO result")]
+    [InlineData("SELECT a INTO result FROM source")]
+    [InlineData("SELECT a, b INTO result FROM source")]
+    [InlineData("SELECT a FROM source INTO result")]
+    [InlineData("SELECT a, b FROM source INTO result")]
+    public void SelectInto_SingleName_DefaultsToTableTarget(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoTable>(target);
+        Assert.Equal(new ObjectName([new Identifier("result")]), into.Name);
+    }
+
+    [Fact]
+    public void Cte_OptionalFrom_IsPreserved()
+    {
+        var select = Assert.IsType<Select>(ParseStatement("WITH recent AS (SELECT book_id FROM book) FROM previous SELECT book_id FROM recent"));
+
+        CommonTableExpressionBody body = Assert.Single(select.CommonTableExpression!.Tables);
+        Assert.Equal("previous", body.From!.Name);
+    }
+
+    [Fact]
+    public void MultiplyNestedJoin_IsParsed()
+    {
+        var select = Assert.IsType<Select>(ParseStatement("SELECT a.id FROM ((table1 AS a INNER JOIN table2 AS b ON a.id = b.id))"));
+
+        var body = Assert.IsType<SelectBody.SimpleSelectQuery>(select.Body);
+        TableWithJoins from = Assert.Single(body.Query.From!);
+        var nested = Assert.IsType<TableFactor.NestedJoin>(from.Relation);
+        Assert.Null(nested.TableWithJoins.Joins);
+        var inner = Assert.IsType<TableFactor.NestedJoin>(nested.TableWithJoins.Relation);
+        Assert.Single(inner.TableWithJoins.Joins!);
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM table1 CROSS invalid_join table2")]
+    [InlineData("SELECT * FROM table1 OUTER JOIN table2")]
+    [InlineData("SELECT * FROM table1 NATURAL OUTER JOIN table2")]
+    [InlineData("SELECT * FROM table1 NATURAL invalid_join table2")]
+    public void InvalidJoinType_ThrowsParseException(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement(sql));
+    }
+
+    [Fact]
+    public void DerivedTable_WithCte_PreservesCteAndAlias()
+    {
+        var select = Assert.IsType<Select>(ParseStatement("SELECT derived.id FROM (WITH recent AS (SELECT id FROM source) SELECT id FROM recent) AS derived"));
+
+        var body = Assert.IsType<SelectBody.SimpleSelectQuery>(select.Body);
+        var derived = Assert.IsType<TableFactor.Derived>(Assert.Single(body.Query.From!).Relation);
+        Assert.Equal("derived", derived.Alias!.Name);
+        CommonTableExpressionBody cte = Assert.Single(derived.SubQuery.CommonTableExpression!.Tables);
+        Assert.Equal("recent", cte.Name.Name);
+    }
+
+    [Fact]
+    public void ParenthesizedTableWithoutJoin_Throws()
+    {
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("SELECT id FROM (source)"));
+
+        Assert.Contains("JOIN", exception.Message);
+    }
+
     private static Select GetStatementWithNonSqlTestStatement()
     {
         //       = "0    5   10    15   20   25   30   35    40   45   50   55    60   65";

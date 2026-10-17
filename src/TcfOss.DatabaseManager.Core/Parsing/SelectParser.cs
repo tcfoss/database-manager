@@ -80,16 +80,7 @@ public class SelectParser
         SelectInto? intoLate = null;
         if (state.PeekKeyword(Keyword.INTO))
         {
-            int numSelections = 0;
-            if (body is SelectBody.SimpleSelectQuery simpleSelect)
-            {
-                numSelections = simpleSelect.Query.Selections.Count;
-            }
-            else if (body is SelectBody.SetOperation { Left: SelectBody.SimpleSelectQuery leftSimple })
-            {
-                numSelections = leftSimple.Query.Selections.Count;
-            }
-            intoLate = ParseSelectInto(state, numSelections);
+            intoLate = ParseSelectInto(state);
         }
 
         return new Select(body)
@@ -101,7 +92,7 @@ public class SelectParser
         };
     }
 
-    private SelectInto ParseSelectInto(ParserState state, int selectionCount)
+    protected virtual SelectInto ParseSelectInto(ParserState state)
     {
         state.ExpectKeyword(Keyword.INTO);
 
@@ -112,23 +103,21 @@ public class SelectParser
         }
 
         ObjectName name = _parseObjectName(state);
-        if (name.Values.Count > 1)
+        if (name.Values.Count == 1 && state.ConsumeTokenIs<Comma>())
         {
-            return new SelectInto.SelectIntoTable(name);
-        }
-
-        if (state.PeekIs<Comma>())
-        {
-            state.ConsumeTokenIs<Comma>();
             SqlValueList<Identifier> variables = state.ParseCommaSeparated(_parseIdentifier);
             return new SelectInto.SelectIntoVariables([name.Values[0], .. variables]);
         }
 
-        if (selectionCount == 1)
-        {
-            return new SelectInto.SelectIntoVariables(name.Values);
-        }
+        return ResolveSingleIntoTarget(state, name);
+    }
 
+    /// <summary>
+    /// Defaults a single target name to a table. Dialects with variable targets
+    /// override this hook because an unqualified name is syntactically ambiguous.
+    /// </summary>
+    protected virtual SelectInto ResolveSingleIntoTarget(ParserState state, ObjectName name)
+    {
         return new SelectInto.SelectIntoTable(name);
     }
 
@@ -144,7 +133,7 @@ public class SelectParser
         SelectInto? intoEarly = null;
         if (state.PeekKeyword(Keyword.INTO))
         {
-            intoEarly = ParseSelectInto(state, selections.Count);
+            intoEarly = ParseSelectInto(state);
         }
 
         SqlValueList<TableWithJoins>? from = state.ParseInit(state.ParseKeyword(Keyword.FROM), x => x.ParseCommaSeparated(ParseTableWithJoins));

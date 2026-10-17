@@ -140,6 +140,9 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5) DEFAULT 'x' DEFAULT 'y')")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5) COMMENT 'Hi' COMMENT 'Hello')")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), INDEX my_index USING BTREE (my_val) USING BTREE)")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index USING BTREE USING HASH (my_id))")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index UNIQUE UNIQUE (my_id))")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX first_name second_name (my_id))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), PRIMARY KEY USING BTREE (my_id) USING BTREE)")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE KEY my_index USING BTREE (my_id) USING BTREE)")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE KEY my_index USING BTREE (my_id) (my_val))")]
@@ -149,6 +152,22 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         Assert.Throws<ParseException.Duplicate>(() => parser.Parse(GetTokens(sql)));
+    }
+
+    [Theory]
+    [InlineData("PAD_INDEX = ON", "PAD_INDEX = OFF")]
+    [InlineData("FILLFACTOR = 80", "FILLFACTOR = 90")]
+    [InlineData("IGNORE_DUP_KEY = ON", "IGNORE_DUP_KEY = OFF")]
+    [InlineData("STATISTICS_NORECOMPUTE = ON", "STATISTICS_NORECOMPUTE = OFF")]
+    [InlineData("STATISTICS_INCREMENTAL = ON", "STATISTICS_INCREMENTAL = OFF")]
+    [InlineData("ALLOW_ROW_LOCKS = ON", "ALLOW_ROW_LOCKS = OFF")]
+    [InlineData("ALLOW_PAGE_LOCKS = ON", "ALLOW_PAGE_LOCKS = OFF")]
+    [InlineData("OPTIMIZE_FOR_SEQUENTIAL_KEY = ON", "optimize_for_sequential_key = OFF")]
+    public static void CreateTable_DuplicateIndexOption_Throws(string firstOption, string secondOption)
+    {
+        string sql = $"CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH ({firstOption}, {secondOption}))";
+
+        Assert.Throws<ParseException.Duplicate>(() => ParseStatement(sql));
     }
 
     [Theory]
@@ -184,6 +203,9 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, INDEX my_index USING WHAT (my_id))")]
     /* Column or constraint expected */
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL +)")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (unknown_option = ON))")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (PAD_INDEX = invalid_value))")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH ())")]
     public static void CreateTable_ValidationFailure_ExpectedOneOfButFound(string sql)
     {
         var parser = new Parser();

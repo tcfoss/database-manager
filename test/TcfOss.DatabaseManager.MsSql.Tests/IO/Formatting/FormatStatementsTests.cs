@@ -18,6 +18,21 @@ public class FormatStatementsTests
         Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
     }
 
+    [Fact]
+    public void Select_IntoTable()
+    {
+        var input = "SELECT col1 INTO mytable FROM othertable";
+        var expected = """
+        SELECT
+            [col1]
+        INTO [mytable]
+        FROM [othertable];
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null);
+        Assert.Equal(expected, formatter.GetFormatted(input), ignoreLineEndingDifferences: true);
+    }
+
     [Theory]
     [InlineData("IF @condition > 0 PRINT 'yes'", "IF @condition > 0\n    PRINT 'yes';")]
     [InlineData("IF @condition > 0 PRINT 'yes' ELSE PRINT 'no'", "IF @condition > 0\n    PRINT 'yes'\nELSE\n    PRINT 'no';")]

@@ -1,3 +1,6 @@
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -6,6 +9,46 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.ParserTests;
 
 public class MsSelectParserTests : ParserTestsBase<MsLexer, MsParser>
 {
+    [Theory]
+    [InlineData("SELECT a INTO result FROM source")]
+    [InlineData("SELECT a, b INTO result FROM source")]
+    [InlineData("SELECT a FROM source INTO result")]
+    [InlineData("SELECT a, b FROM source INTO result")]
+    [InlineData("SELECT a UNION SELECT b ORDER BY a INTO result")]
+    [InlineData("(SELECT a) ORDER BY a INTO result")]
+    [InlineData("(SELECT a) UNION SELECT b ORDER BY a INTO result")]
+    [InlineData("SELECT a UNION SELECT b UNION SELECT c ORDER BY a INTO result")]
+    public void SelectInto_SingleName_IsTableRegardlessOfQueryShape(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoTable>(target);
+        Assert.Equal("result", Assert.Single(into.Name.Values).Name);
+    }
+
+    [Theory]
+    [InlineData("SELECT a INTO target_schema.result FROM source")]
+    [InlineData("SELECT a FROM source INTO target_schema.result")]
+    public void SelectInto_QualifiedName_IsTable(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoTable>(target);
+        Assert.Equal(["target_schema", "result"], into.Name.Values.Select(identifier => identifier.Name));
+    }
+
+    [Theory]
+    [InlineData("SELECT a INTO OUTFILE 'result.txt' FROM source")]
+    [InlineData("SELECT a FROM source INTO OUTFILE 'result.txt'")]
+    [InlineData("SELECT a, b INTO first_result, second_result FROM source")]
+    [InlineData("SELECT a, b FROM source INTO first_result, second_result")]
+    public void SelectInto_NonTableTarget_Throws(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(sql));
+    }
+
     [Theory]
     // Round-trip canonical form always uses parens around the TOP argument.
     [InlineData("SELECT TOP 10 * FROM t", "SELECT TOP (10) * FROM t", Label = "TOP without parens")]
