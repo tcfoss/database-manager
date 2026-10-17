@@ -45,7 +45,7 @@ public partial class MyCommandRunner(
         MyDefinition definition = _fsLoader.LoadDefinition(relaxed: relaxed);
         var parsedDefinition = new ParsedDefinition<MyDefinition>
         {
-            Version = typeof(MyDefinition).Assembly.GetName().Version ?? new Version(0, 0, 0, 0),
+            Version = typeof(MyDefinition).Assembly.GetName().Version!,
             ParsedDate = DateTime.UtcNow,
             Definition = definition,
             Sources = _sourceManager,

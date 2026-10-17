@@ -12,6 +12,9 @@
     <data name="Err_Cmd_ConfigurationRequired" xml:space="preserve">
         <value>The command '{0}' requires a valid configuration file.</value>
     </data>
+    <data name="Err_Cmd_ConfigurationDoesNotExist" xml:space="preserve">
+        <value>The command '{0}' requires a valid configuration file. The specified configuration '{1}' does not exist.</value>
+    </data>
     <data name="Err_Cmd_ConnectionFailed" xml:space="preserve">
         <value>The command '{0}' required a database connection. A connection could not be established.</value>
     </data>

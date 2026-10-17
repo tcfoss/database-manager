@@ -57,7 +57,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ComputeChanges_AmbiguousConfig_Fails()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         string[] fileNames = [
             "database-manager.yaml",
             "databasemanager.yaml",
@@ -89,7 +89,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ComputeChanges_NoConfig_NoDialect_Fails()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
@@ -112,7 +112,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ComputeChanges_NoConfig_WithDialect_Fails()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
@@ -137,7 +137,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public virtual async Task DownloadSchema()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -170,7 +170,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseDefinition()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -189,7 +189,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseDefinition_ByConfigPath()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -210,7 +210,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseDefinition_WithMeta()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -230,7 +230,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseDefinition_WithRawText()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -250,7 +250,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseDefinition_NoDialect_Fails()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
@@ -273,7 +273,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseDefinition_NoConfig_Fails()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
@@ -298,7 +298,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseDefinition_NoOutputPath_Fails()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -391,7 +391,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseDefinition_FksNoBackingIndex()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("DefinitionErrorSchemas", "FksNoBackingIndex").FullName);
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -428,7 +428,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseDefinition_ProcNoDefiner()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("DefinitionErrorSchemas", "ProcNoDefiner").FullName);
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -465,7 +465,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_NoOptions()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
@@ -486,7 +486,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_WithMeta()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
@@ -506,7 +506,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateSkip()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -530,7 +530,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateError()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -556,7 +556,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateOverwrite()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -582,7 +582,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateRename()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -608,7 +608,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseFiles_NonExistentFile()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
@@ -631,7 +631,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ParseFiles_GlobPattern()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         // Create two additional SQL files so the glob can expand to 2+ files
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_a.sql"), "SELECT 1;", TestContext.Current.CancellationToken);
@@ -698,7 +698,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseErrorFakeJoin()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_fake_join.sql"));
 
         var cli = new CommandLineInterface();
@@ -724,7 +724,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ParseErrorNotDroppable()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_not_droppable.sql"));
 
         var cli = new CommandLineInterface();
@@ -750,7 +750,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void LexErrorUnclosedQuote()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "lex_error_unclosed_quote.sql"));
 
         var cli = new CommandLineInterface();
@@ -776,7 +776,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void DefinitionErrorIndexOnFakeCol()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "def_error_index_on_fake_col.sql"));
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "database-manager.yaml"));
 
@@ -800,7 +800,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_InPlace()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         // Write intentionally unformatted SQL to a file
         const string originalSql = "SELECT col1,col2 FROM table1 WHERE col3 = 'value';";
         await File.WriteAllTextAsync(fileFixture.CombinePath("input.sql"), originalSql, TestContext.Current.CancellationToken);
@@ -831,7 +831,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_NoBackup()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         const string originalSql = "SELECT col1,col2 FROM table1 WHERE col3 = 'value';";
         await File.WriteAllTextAsync(fileFixture.CombinePath("input.sql"), originalSql, TestContext.Current.CancellationToken);
 
@@ -858,7 +858,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_WithOutputPattern()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         const string originalSql = "SELECT col1,col2 FROM table1 WHERE col3 = 'value';";
         await File.WriteAllTextAsync(fileFixture.CombinePath("input.sql"), originalSql, TestContext.Current.CancellationToken);
 
@@ -887,7 +887,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_WithDefinition()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         // Write a query targeting a table defined in the Initial schema
@@ -912,7 +912,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_WithAlias_WithDefinition()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         // Write a query targeting a table defined in the Initial schema
@@ -937,7 +937,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_WithDefinition_FromDefinitionFile()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -976,7 +976,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_WithAlias_WithDefinition_FromDefinitionFile()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -1015,7 +1015,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void FormatSql_NonExistentFile()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
 
         var cli = new CommandLineInterface();
         var result = cli.Run([
@@ -1035,7 +1035,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_MultipleFiles()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         const string firstSql = "SELECT col1,col2 FROM table1;";
         const string secondSql = "UPDATE table1 SET col1 = 'val' WHERE col2 = 1;";
         await File.WriteAllTextAsync(fileFixture.CombinePath("first.sql"), firstSql, TestContext.Current.CancellationToken);
@@ -1068,7 +1068,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task FormatSql_GlobPattern()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         const string thirdSql = "SELECT col3 FROM table3;";
         const string querySqlA = "SELECT colA FROM tableA;";
         const string querySqlB = "UPDATE tableB SET colB = 1;";
@@ -1095,7 +1095,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ValidateConfig_Success()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -1119,7 +1119,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ValidateConfig_Success_PrintConfig()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -1150,7 +1150,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ValidateConfig_Success_PrintConfig_WithDeployScript()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test1").FullName);
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -1176,7 +1176,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ValidateConfig_Success_Print_Strict_NoUniqueOnColumn()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
@@ -1209,7 +1209,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ValidateConfig_Error_InvalidEnum()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         await File.WriteAllTextAsync(
             fileFixture.CombinePath("database-manager.yaml"),
             string.Format(TestText.BadConfig_Template,
@@ -1246,7 +1246,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ValidateConfig_Error_InvalidBoolean()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         await File.WriteAllTextAsync(
             fileFixture.CombinePath("database-manager.yaml"),
             string.Format(TestText.BadConfig_Template,
@@ -1284,7 +1284,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ValidateConfig_Error_InvalidInt()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         await File.WriteAllTextAsync(
             fileFixture.CombinePath("database-manager.yaml"),
             string.Format(TestText.BadConfig_Template,
@@ -1321,7 +1321,7 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public async Task ValidateConfig_Error_UnknownField()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         await File.WriteAllTextAsync(
             fileFixture.CombinePath("database-manager.yaml"),
             string.Format(TestText.BadConfig_Template,

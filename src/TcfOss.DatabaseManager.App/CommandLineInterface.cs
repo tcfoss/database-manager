@@ -29,7 +29,7 @@ public partial class CommandLineInterface
     private readonly RootCommand _rootCommand;
 
     private ILogger _logger;
-    private SourceManager? _sourceManager;
+    private SourceManager _sourceManager = null!;
 
     private readonly List<CommandSpec> _commands;
 
@@ -110,7 +110,7 @@ public partial class CommandLineInterface
             Error.WriteLine(ex.Message);
             if (ex.ObjectSourceRef.HasValue)
             {
-                string? filename = _sourceManager?.GetFilename(ex.ObjectSourceRef.Value);
+                string? filename = _sourceManager.GetFilename(ex.ObjectSourceRef.Value);
                 if (filename != null)
                 {
                     Error.WriteLine($"  Source: {filename}");

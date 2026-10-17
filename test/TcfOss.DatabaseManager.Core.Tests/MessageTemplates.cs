@@ -6,6 +6,7 @@ namespace TcfOss.DatabaseManager.Core.Tests;
 public static class MessageTemplates
 {
     public static readonly string ConfigRequiredTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Cmd, ErrorMessages.Err_Cmd_ConfigurationRequired);
+    public static readonly string ConfigDoesNotExistTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Cmd, ErrorMessages.Err_Cmd_ConfigurationDoesNotExist);
     public static readonly string ConnectionRequiredTemplate = string.Format(CultureInfo.CurrentUICulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Cmd, ErrorMessages.Err_Cmd_ConnectionFailed);
     public static readonly string DialectRequiredTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Cmd, ErrorMessages.Err_Cmd_DialectRequired);
     public static readonly string ProcNoDefinerTemplate = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Def, ErrorMessages.Err_Def_ObjectNoDefiner);

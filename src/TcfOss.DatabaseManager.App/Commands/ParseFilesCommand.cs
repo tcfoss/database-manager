@@ -8,7 +8,6 @@ namespace TcfOss.DatabaseManager.App.Commands;
 
 public class ParseFilesCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
 {
-
     protected override string CommandName => "parse-files";
     protected override string Description => "Parse SQL files and emit the results to JSON files.";
 

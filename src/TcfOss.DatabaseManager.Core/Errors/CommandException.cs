@@ -17,6 +17,12 @@ public class CommandException(string message, Exception? innerException = null) 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Cmd_ConfigurationRequired);
     }
 
+    public class ConfigurationDoesNotExist(string command, string configPath)
+        : CommandException(s_compositeFormat.Apply(command, configPath))
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Cmd_ConfigurationDoesNotExist);
+    }
+
     public class RequiredArgumentMissing(string argumentName)
         : CommandException(s_compositeFormat.Apply(argumentName))
     {
