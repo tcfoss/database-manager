@@ -50,6 +50,22 @@ public class SerializationTests
     }
 
     [Fact]
+    public void ContractResolver_DefaultSettings_OmitsMetadataAndSourceOnly()
+    {
+        var settings = new Newtonsoft.Json.JsonSerializerSettings
+        {
+            ContractResolver = new CustomJsonContractResolver(),
+        };
+
+        string json = Newtonsoft.Json.JsonConvert.SerializeObject(GetView(), settings);
+
+        Assert.DoesNotContain("\"Meta\":", json);
+        Assert.DoesNotContain("\"Source\":", json);
+        Assert.Contains("\"PreNonSql\":", json);
+        Assert.Contains("\"RawBodyText\":", json);
+    }
+
+    [Fact]
     public void OmitMetaData()
     {
         var settings = new SerializationSettings()

@@ -16,7 +16,7 @@ public static class MyGetOtherData
 
     private static readonly Dictionary<string, CharacterSetSpec> s_characterSets = DefaultSettings.GetCharacterSets(SqlDialect.MySql, new Version(8, 4, 6));
 
-    private static Dictionary<string, object> GetData(DatabaseCredentials? credentials, bool databaseAvailable, IEnumerable<string> schemaNames)
+    private static Dictionary<string, object> GetData(DatabaseCredentials? credentials, bool databaseAvailable, IEnumerable<string> schemaNames, Version version)
     {
         var result = new Dictionary<string, object>();
 
@@ -28,6 +28,7 @@ public static class MyGetOtherData
         var otherElements = new Dictionary<string, object>
         {
             { "DatabaseAvailable", databaseAvailable },
+            { "Version", version },
             { "ServerDefaults", s_serverDefaults },
             { "CharacterSets", s_characterSets },
             { "SchemaDefaults", schemaNames.ToDictionary(name => name, _ => s_serverDefaults) },
@@ -41,7 +42,7 @@ public static class MyGetOtherData
         return result;
     }
 
-    public static Dictionary<string, object> GetData(ConfigParsing.Config config)
+    public static Dictionary<string, object> GetData(ConfigParsing.Config config, Version? version = null, bool databaseAvailable = true)
     {
         DatabaseCredentials? creds = null;
         if (config.Credentials != null)
@@ -57,6 +58,6 @@ public static class MyGetOtherData
         }
 
         var schemas = config.Schemas.Select(s => s.SchemaName);
-        return GetData(creds!, true, schemas);
+        return GetData(creds!, databaseAvailable, schemas, version ?? new Version(8, 4, 6));
     }
 }

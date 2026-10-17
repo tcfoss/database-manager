@@ -55,14 +55,14 @@ public static partial class BootstrapHelpers
 
         string? configPath = parseResult.GetValue(s_configFileCliOption);
 
-        FileInfo? configInfo = StartupBase.GetConfigPath(workingDirectory, configPath);
+        FileInfo? configInfo = ConfigurationFile.GetConfigPath(workingDirectory, configPath);
 
         return (workingDirectory, configInfo);
     }
 
     private static DialectLoadResult LoadDialectsAndConfig(ParseResult parseResult, FileInfo? configPath)
     {
-        ConfigParsing.Config? rawConfig = StartupBase.LoadRawConfig(configPath);
+        ConfigParsing.Config? rawConfig = ConfigurationFile.LoadRawConfig(configPath);
         SqlDialect? configDialect = rawConfig?.Dialect;
         SqlDialect? commandDialect = parseResult.GetValue(s_sqlDialectCliOption);
 

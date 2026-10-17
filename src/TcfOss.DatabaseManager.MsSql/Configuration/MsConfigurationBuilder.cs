@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Common;
@@ -81,10 +82,10 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
                 : null,
             Username = config.Credentials.Username != null
                 ? environmentVariableReader.SubstituteVariables(config.Credentials.Username)
-                : null,
+                : "",
             Password = config.Credentials.Password != null
                 ? environmentVariableReader.SubstituteVariables(config.Credentials.Password)
-                : null,
+                : "",
             Encrypt = encrypt,
             TrustServerCertificate = trustServerCertificate,
             ConnectionTimeout = config.Credentials.ConnectionTimeout ?? DefaultTimeoutSeconds,
@@ -100,13 +101,30 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
 
         MsDatabaseCredentials credentials = ExtractDatabaseCredentials(rawConfig, environmentVariableReader);
 
-        // TODO: attempt connection to resolve version and set canConnect = true.
-        // For now we always fall back to the configured/default version.
+        Version version;
+        try
+        {
+            using var connection = new SqlConnection(credentials.ConnectionString);
+            connection.Open();
+
+            string serverVersion = connection.ServerVersion!;
+            version = new Version(serverVersion);
+            canConnect = true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or SqlException)
+        {
+            s_logCantConnect(logger, credentials.GetRedactedConnectionString(), ex);
+            if (rawConfig.Version == null || !Version.TryParse(rawConfig.Version, out version!))
+            {
+                version = loader.DefaultVersion;
+            }
+        }
 
         var otherInformation = new Dictionary<string, object>
         {
             { "DatabaseCredentials", credentials },
             { "DatabaseAvailable", canConnect },
+            { "Version", version },
         };
 
         MsConfig config = loader.LoadConfig(rootDirectory, rawConfig, otherInformation, relaxed);

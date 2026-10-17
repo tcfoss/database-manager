@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -535,6 +536,61 @@ public class NormalizerTests
 
         var actual = GetActualSelectText(text);
         Assert.Contains("`library_catalog`.`book`.`publication_year` IN (1900, 2000, 2020)", actual);
+    }
+
+    [Theory]
+    [InlineData("CASE book_id WHEN 1 THEN full_title END", "CASE `book_id` WHEN 1 THEN `full_title` END")]
+    [InlineData("CASE book_id WHEN 1 THEN full_title ELSE description END", "CASE `book_id` WHEN 1 THEN `full_title` ELSE `description` END")]
+    [InlineData("CASE WHEN book_id = 1 THEN full_title END", "CASE WHEN `book_id` = 1 THEN `full_title` END")]
+    public void CaseExpression_OptionalArms_AreNormalized(string expression, string expected)
+    {
+        string actual = GetActualSelectText($"SELECT {expression} AS result", usePseudoTables: false);
+
+        Assert.Equal($"SELECT {expected} AS `result`", actual);
+    }
+
+    [Theory]
+    [InlineData("SELECT d.book_id FROM (SELECT book_id FROM book) AS d", "SELECT `d`.`book_id` AS `book_id` FROM (SELECT `book_id` AS `book_id` FROM `book`) AS `d`")]
+    [InlineData("WITH recent AS (SELECT book_id FROM book) SELECT book_id FROM recent", "WITH `recent` AS (SELECT `book_id` AS `book_id` FROM `book`) SELECT `book_id` AS `book_id` FROM `recent`")]
+    [InlineData("WITH recent(id) AS (SELECT book_id FROM book) SELECT id FROM recent", "WITH `recent` (`id`) AS (SELECT `book_id` AS `book_id` FROM `book`) SELECT `id` AS `id` FROM `recent`")]
+    [InlineData("SELECT book_id FROM book UNION SELECT book_id FROM book_author", "SELECT `book_id` AS `book_id` FROM `book` UNION SELECT `book_id` AS `book_id` FROM `book_author`")]
+    [InlineData("SELECT EXISTS(SELECT 1 FROM book) AS present", "SELECT EXISTS (SELECT 1 FROM `book`) AS `present`")]
+    public void NoPseudoTables_NestedQueries_AreNormalized(string sql, string expected)
+    {
+        Assert.Equal(expected, GetActualSelectText(sql, usePseudoTables: false));
+    }
+
+    [Fact]
+    public void FunctionCall_NullArguments_ArePreserved()
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var expression = new FunctionCall(new ObjectName([new Identifier("schema"), new Identifier("NOW")]))
+        {
+            Arguments = new FunctionArguments.List(),
+        };
+
+        var actual = Assert.IsType<FunctionCall>(normalizer.NormalizeExpression(expression));
+
+        Assert.Equal(expression.Name, actual.Name);
+        var arguments = Assert.IsType<FunctionArguments.List>(actual.Arguments);
+        Assert.Null(arguments.Arguments);
+        Assert.Null(arguments.Clauses);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LimitWithoutOffset_IsNormalized(bool commaSeparated)
+    {
+        Select select = GetNormalizedSelect("SELECT book_id FROM book LIMIT 5");
+        var expression = new Nested(new SingleIdentifier(new Identifier("row_count")));
+        Limit limit = commaSeparated ? new Limit.MyCommaSeparated(expression, null) : new Limit.MyLimitOffset(expression, null);
+
+        Select actual = GetNormalizedSelect(select with { Limit = limit }, usePseudoTables: false);
+
+        Assert.Equal(limit.GetType(), actual.Limit!.GetType());
+        Assert.Equal("LIMIT `row_count`", actual.Limit.ToSql());
     }
 
     [Fact]

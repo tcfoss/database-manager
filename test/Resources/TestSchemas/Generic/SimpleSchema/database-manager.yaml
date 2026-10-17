@@ -1,0 +1,7 @@
+Catalog: dev
+QuoteStyle: Ansi
+Dialect: Generic
+
+Schemas:
+  - SchemaName: simple_schema
+    RootPath: Schema

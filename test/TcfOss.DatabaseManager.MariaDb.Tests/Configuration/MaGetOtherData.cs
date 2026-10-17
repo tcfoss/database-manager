@@ -26,26 +26,27 @@ public static class MaGetOtherData
     private static readonly Dictionary<string, CharacterSetSpec> s_characterSets1 = DefaultSettings.GetCharacterSets(SqlDialect.MariaDb, new Version(10, 11, 13));
     private static readonly Dictionary<string, CharacterSetSpec> s_characterSets2 = DefaultSettings.GetCharacterSets(SqlDialect.MariaDb, new Version(11, 8, 2));
 
-    private static Dictionary<string, object> GetData(DatabaseCredentials credentials, bool databaseAvailable, IEnumerable<string> schemaNames, int majorVersion)
+    private static Dictionary<string, object> GetData(DatabaseCredentials credentials, bool databaseAvailable, IEnumerable<string> schemaNames, Version version)
     {
-        var characterSets = majorVersion switch
+        var characterSets = version.Major switch
         {
             10 => s_characterSets1,
             11 => s_characterSets2,
-            _ => throw new ArgumentException("Unsupported major version", nameof(majorVersion)),
+            _ => throw new ArgumentException("Unsupported major version", nameof(version)),
         };
 
         return new Dictionary<string, object>
         {
             { "DatabaseCredentials", credentials },
             { "DatabaseAvailable", databaseAvailable },
+            { "Version", version },
             { "ServerDefaults", s_serverDefaults },
             { "CharacterSets", characterSets },
             { "SchemaDefaults", schemaNames.ToDictionary(name => name, _ => s_serverDefaults) },
         };
     }
 
-    public static Dictionary<string, object> GetData(ConfigParsing.Config config)
+    public static Dictionary<string, object> GetData(ConfigParsing.Config config, Version? version = null, bool databaseAvailable = true)
     {
         DatabaseCredentials? creds;
         if (config.Credentials != null)
@@ -65,6 +66,6 @@ public static class MaGetOtherData
         }
 
         var schemas = config.Schemas.Select(s => s.SchemaName);
-        return GetData(creds, true, schemas, 11);
+        return GetData(creds, databaseAvailable, schemas, version ?? new Version(11, 8, 2));
     }
 }

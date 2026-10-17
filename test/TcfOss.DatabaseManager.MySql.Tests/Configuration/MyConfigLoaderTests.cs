@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
@@ -32,6 +34,43 @@ public class MyConfigLoaderTests
     {
         otherInfo ??= MyGetOtherData.GetData(rawConfig);
         return new MyConfigLoader(new LoggerFactory().CreateLogger<MyConfigLoader>()).LoadConfig(Path.GetFullPath("/home/username/database"), rawConfig, otherInfo);
+    }
+
+    private static MyConfig BuildConfig(ConfigParsing.Config rawConfig)
+    {
+        var testLogger = NullLogger.Instance;
+        var rootPath = rawConfig.ProjectDirectory ?? "/default/path/";
+        var builder = new MyConfigurationBuilder();
+        return builder.BuildConfiguration(rootPath, rawConfig, new EnvironmentVariableReader(), false, testLogger);
+    }
+
+    [Theory]
+    [InlineData(null, "8.4.6")]
+    [InlineData("", "8.4.6")]
+    [InlineData(" ", "8.4.6")]
+    [InlineData("invalid", "8.4.6")]
+    [InlineData("8.0.37", "8.0.37")]
+    [InlineData("8.4.1", "8.4.1")]
+    public void ConfigurationBuilder_ConnectionFailure_ResolvesFallbackVersion(string? configuredVersion, string expectedVersion)
+    {
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new MyConfigurationBuilder();
+        var rawConfig = builder.GetDefaultConfig(rootDirectory);
+        rawConfig.Version = configuredVersion;
+        rawConfig.Credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "127.0.0.1",
+            Port = "1",
+            Username = "testuser",
+            Password = "testpassword",
+            ConnectionTimeout = 1,
+        };
+
+        var config = builder.BuildConfiguration(rootDirectory, rawConfig, new EnvironmentVariableReader(), false, NullLogger.Instance);
+
+        Assert.Equal(new Version(expectedVersion), config.Version);
+        Assert.False(config.DatabaseAvailable);
+        Assert.Equal(SqlDialect.MySql, config.Dialect);
     }
 
     [Fact]
@@ -379,6 +418,36 @@ public class MyConfigLoaderTests
         var config = LoadConfig(rawConfig);
 
         Assert.Equal(expectedNumericLength, config.AttributeDefaults.FloatPrecision);
+    }
+
+    [Fact]
+    public void Missing_Credentials_Throws()
+    {
+        var rawConfig = TestDataRawConfig.MyTestRawConfig;
+        rawConfig.Credentials = null;
+
+        var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(rawConfig));
+        Assert.Contains("Credentials", ex.Message);
+    }
+
+    [Fact]
+    public void Missing_Credentials_Port_Supplies_Default()
+    {
+        var rawConfig = TestDataRawConfig.MyTestRawConfig;
+        rawConfig.Credentials!.Port = null;
+
+        var config = BuildConfig(rawConfig);
+        Assert.Equal(3306u, config.DatabaseCredentials.Port);
+    }
+
+    [Fact]
+    public void Missing_Username_Throws()
+    {
+        var rawConfig = TestDataRawConfig.MyTestRawConfig;
+        rawConfig.Credentials!.Username = null;
+
+        var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(rawConfig));
+        Assert.Contains("Credentials.Username", ex.Message);
     }
 
     [Theory]
@@ -818,26 +887,38 @@ public class MyConfigLoaderTests
         Assert.Equal(removeSlashes, config.ParseSettings.RemoveSlashesBeforeQuotesGenerationExpression);
     }
 
-    [Fact]
-    public void Version_ValidValue_Used()
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("", false)]
+    [InlineData("", true)]
+    [InlineData("1.0.0", false)]
+    [InlineData("1.0.0", true)]
+    [InlineData("invalid", false)]
+    [InlineData("invalid", true)]
+    public void Version_UsesResolvedOtherInformation(string? configuredVersion, bool databaseAvailable)
     {
         var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
-        rawConfig.Version = "1.0.0";
+        rawConfig.Version = configuredVersion;
+        var version = new Version(8, 0, 37);
+        var otherInfo = MyGetOtherData.GetData(rawConfig, version, databaseAvailable);
 
-        var config = LoadConfig(rawConfig);
+        var config = LoadConfig(rawConfig, otherInfo);
 
-        Assert.Equal("1.0.0", config.Version.ToString());
+        Assert.Same(version, config.Version);
+        Assert.Equal(databaseAvailable, config.DatabaseAvailable);
     }
 
-    [Fact]
-    public void Version_InvalidValue_Throws()
+    [Theory]
+    [InlineData("Version")]
+    [InlineData("DatabaseAvailable")]
+    public void MissingResolvedInformation_Throws(string key)
     {
         var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
-        rawConfig.Version = "invalid";
+        var otherInfo = MyGetOtherData.GetData(rawConfig);
+        otherInfo.Remove(key);
 
-        var ex = Assert.Throws<ConfigurationException.InvalidFieldTypeException>(() => LoadConfig(rawConfig));
-        Assert.Contains("Version", ex.Message);
-        Assert.Contains("invalid", ex.Message);
+        Assert.Throws<KeyNotFoundException>(() => LoadConfig(rawConfig, otherInfo));
     }
 
     class NumericLengthTestData : IEnumerable<TheoryDataRow<int?, int?, NumericLength?, ExceptionType?, string?>>

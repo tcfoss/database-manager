@@ -31,7 +31,8 @@ public class MyConfigLoader(ILogger logger)
 
         DatabaseCredentials credentials = (DatabaseCredentials)otherInformation["DatabaseCredentials"];
 
-        bool databaseAvailable = otherInformation.TryGetValue("DatabaseAvailable", out object? dbAvailValue) && dbAvailValue is true;
+        bool databaseAvailable = (bool)otherInformation["DatabaseAvailable"];
+        Version version = (Version)otherInformation["Version"];
 
         Dictionary<SchemaIdentifier, MySchemaMapping> schemaMappings = GetSchemaMappings(rawConfig.Schemas, catalogIdentifier, quoteStyle, projectDirectory, otherInformation);
 
@@ -64,19 +65,6 @@ public class MyConfigLoader(ILogger logger)
         if (rawConfig.DifferFormatting != null)
         {
             differFormattingSettings = MergeDifferFormattingSettings(differFormattingSettings, rawConfig.DifferFormatting);
-        }
-
-        Version? version;
-        if (!string.IsNullOrWhiteSpace(rawConfig.Version))
-        {
-            if (!Version.TryParse(rawConfig.Version, out version))
-            {
-                throw new ConfigurationException.InvalidFieldTypeException("Version", "Major.Minor.Patch");
-            }
-        }
-        else
-        {
-            version = DefaultVersion;
         }
 
         return new MyConfig

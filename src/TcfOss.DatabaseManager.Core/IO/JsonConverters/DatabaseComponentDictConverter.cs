@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -39,11 +40,23 @@ public class DatabaseComponentDictConverter : JsonConverter
         JToken? itemsToken = jsonObject["Items"];
 
         object list = itemsToken?.ToObject(listType, serializer)
-                ?? Activator.CreateInstance(listType)
-                ?? throw new JsonException($"Unable to create list for deserializing Items for {nameof(DatabaseComponentDict<>)}");
+                ?? CreateInstance(listType, $"Unable to create list for deserializing Items for {nameof(DatabaseComponentDict<>)}");
 
-        return Activator.CreateInstance(objectType, list, nameHandling)
-                ?? throw new JsonException($"Unable to create instance of {objectType} for deserializing {nameof(DatabaseComponentDict<>)}");
+        return CreateInstance(objectType, $"Unable to create instance of {objectType} for deserializing {nameof(DatabaseComponentDict<>)}", list, nameHandling);
+    }
+
+    [ExcludeFromCodeCoverage(Justification = "Concrete dictionary and List constructors cannot return null.")]
+    private static object CreateInstance(Type type, string errorMessage, params object[] arguments)
+    {
+        return Activator.CreateInstance(type, arguments) ?? throw new JsonException(errorMessage);
+    }
+
+    [ExcludeFromCodeCoverage(Justification = "Supported dictionaries always have a non-null _nameHandling field.")]
+    private static string? GetNameHandling(object value)
+    {
+        FieldInfo? field = value.GetType().GetField("_nameHandling", BindingFlags.NonPublic | BindingFlags.Instance);
+        object? nameHandling = field != null ? field.GetValue(value) : NameHandling.None;
+        return nameHandling?.ToString();
     }
 
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
@@ -54,13 +67,9 @@ public class DatabaseComponentDictConverter : JsonConverter
             return;
         }
 
-        // obtain the private _nameHandling field via reflection
-        FieldInfo? nhField = value.GetType().GetField("_nameHandling", BindingFlags.NonPublic | BindingFlags.Instance);
-        object? nhObj = nhField != null ? nhField.GetValue(value) : NameHandling.None;
-
         writer.WriteStartObject();
         writer.WritePropertyName("NameHandling");
-        writer.WriteValue(nhObj?.ToString());
+        writer.WriteValue(GetNameHandling(value));
 
         writer.WritePropertyName("Items");
         writer.WriteStartArray();

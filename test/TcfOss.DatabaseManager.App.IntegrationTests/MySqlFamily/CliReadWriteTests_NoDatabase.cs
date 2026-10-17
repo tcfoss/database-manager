@@ -11,7 +11,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
     [Fact]
     public override Task Verify_DoubleDiff_NoChanges_1()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test1").FullName);
 
         var workingDir = fileFixture.RootDirectory.FullName;
@@ -36,7 +36,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
     [Fact]
     public override Task Verify_DoubleDiff_NoChanges_2()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test2").FullName);
 
         var workingDir = fileFixture.RootDirectory.FullName;
@@ -62,7 +62,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
     [Fact]
     public override Task Verify_DoubleDiff_NoChanges_SimpleSchema()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Test1").FullName);
 
         var workingDir = fileFixture.RootDirectory.FullName;
@@ -88,7 +88,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
     [Fact]
     public override Task Verify_SameSchema_NoChanges_SimpleSchema()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Initial").FullName);
 
         var workingDir = fileFixture.RootDirectory.FullName;

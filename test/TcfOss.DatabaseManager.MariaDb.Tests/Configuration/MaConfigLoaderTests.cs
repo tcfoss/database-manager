@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
@@ -28,6 +30,68 @@ public class MaConfigLoaderTests
     {
         otherInfo ??= MaGetOtherData.GetData(rawConfig);
         return new MaConfigLoader(new LoggerFactory().CreateLogger<MaConfigLoader>()).LoadConfig(Path.GetFullPath("/home/username/database"), rawConfig, otherInfo);
+    }
+
+    [Theory]
+    [InlineData(null, "11.8.2")]
+    [InlineData("", "11.8.2")]
+    [InlineData(" ", "11.8.2")]
+    [InlineData("invalid", "11.8.2")]
+    [InlineData("10.11.13", "10.11.13")]
+    [InlineData("11.8.1", "11.8.1")]
+    public void ConfigurationBuilder_ConnectionFailure_ResolvesFallbackVersion(string? configuredVersion, string expectedVersion)
+    {
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new MaConfigurationBuilder();
+        var rawConfig = builder.GetDefaultConfig(rootDirectory);
+        rawConfig.Version = configuredVersion;
+        rawConfig.Credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "127.0.0.1",
+            Port = "1",
+            Username = "testuser",
+            Password = "testpassword",
+            ConnectionTimeout = 1,
+        };
+
+        var config = builder.BuildConfiguration(rootDirectory, rawConfig, new EnvironmentVariableReader(), false, NullLogger.Instance);
+
+        Assert.Equal(new Version(expectedVersion), config.Version);
+        Assert.False(config.DatabaseAvailable);
+        Assert.Equal(SqlDialect.MariaDb, config.Dialect);
+    }
+
+    [Theory]
+    [InlineData(null, "10.11.13", false)]
+    [InlineData(null, "11.8.2", true)]
+    [InlineData("11.0.0", "10.11.13", true)]
+    [InlineData("10.0.0", "11.8.2", false)]
+    [InlineData("invalid", "10.11.13", false)]
+    [InlineData("invalid", "11.8.2", true)]
+    public void Version_UsesResolvedOtherInformation(string? configuredVersion, string resolvedVersion, bool databaseAvailable)
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        rawConfig.Dialect = SqlDialect.MariaDb;
+        rawConfig.Version = configuredVersion;
+        var version = new Version(resolvedVersion);
+        var otherInfo = MaGetOtherData.GetData(rawConfig, version, databaseAvailable);
+
+        var config = LoadConfig(rawConfig, otherInfo);
+
+        Assert.Same(version, config.Version);
+        Assert.Equal(databaseAvailable, config.DatabaseAvailable);
+    }
+
+    [Theory]
+    [InlineData("Version")]
+    [InlineData("DatabaseAvailable")]
+    public void MissingResolvedInformation_Throws(string key)
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        var otherInfo = MaGetOtherData.GetData(rawConfig);
+        otherInfo.Remove(key);
+
+        Assert.Throws<KeyNotFoundException>(() => LoadConfig(rawConfig, otherInfo));
     }
 
     [Fact]

@@ -25,9 +25,9 @@ public abstract partial class StartAppBase<TStartResult>
     )
     {
         workingDirectory ??= Directory.GetCurrentDirectory();
-        FileInfo? configFileInfo = StartupBase.GetConfigPath(workingDirectory, configPath);
+        FileInfo? configFileInfo = ConfigurationFile.GetConfigPath(workingDirectory, configPath);
 
-        rawConfig ??= StartupBase.LoadRawConfig(configFileInfo);
+        rawConfig ??= ConfigurationFile.LoadRawConfig(configFileInfo);
 
         SqlDialect dialect = rawConfig?.Dialect ?? Dialect;
 

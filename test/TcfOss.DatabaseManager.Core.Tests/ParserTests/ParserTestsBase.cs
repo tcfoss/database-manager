@@ -2,6 +2,7 @@
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
@@ -19,6 +20,12 @@ public class ParserTestsBase<TLexer, TParser>
     {
         var tokens = new TLexer().Tokenize(sql);
         return new ParserState([.. tokens]);
+    }
+
+    protected static SqlValueList<Statement> ParseStatements(string sql)
+    {
+        var state = new ParserState(GetTokens(sql));
+        return new TParser().Parse(state, null);
     }
 
     protected static IWriteSql ParseStatement(string sql)

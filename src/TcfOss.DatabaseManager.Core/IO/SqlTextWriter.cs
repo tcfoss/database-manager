@@ -49,7 +49,7 @@ public class SqlTextWriter(StringBuilder stringBuilder) : StringWriter(stringBui
         {
             startChar--;
         }
-        if (sb[startChar] == c)
+        if (startChar >= 0 && sb[startChar] == c)
         {
             sb.Length = startChar;
         }

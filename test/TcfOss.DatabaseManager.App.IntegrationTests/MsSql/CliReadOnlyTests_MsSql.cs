@@ -16,7 +16,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_NoOptions()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
@@ -37,7 +37,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_WithMeta()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
@@ -59,7 +59,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateSkip()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -85,7 +85,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateError()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -113,7 +113,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateOverwrite()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -141,7 +141,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_DuplicateRename()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
@@ -169,7 +169,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public void ParseFiles_NonExistentFile()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
@@ -194,7 +194,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public async Task ParseFiles_GlobPattern()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_a.sql"), "SELECT 1;", TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_b.sql"), "SELECT 2;", TestContext.Current.CancellationToken);
@@ -220,7 +220,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public void ParseErrorFakeJoin()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_fake_join.sql"));
 
         var cli = new CommandLineInterface();
@@ -248,7 +248,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public void ParseErrorNotDroppable()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_not_droppable.sql"));
 
         var cli = new CommandLineInterface();
@@ -276,7 +276,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     [Fact]
     public void LexErrorUnclosedQuote()
     {
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "lex_error_unclosed_quote.sql"));
 
         var cli = new CommandLineInterface();

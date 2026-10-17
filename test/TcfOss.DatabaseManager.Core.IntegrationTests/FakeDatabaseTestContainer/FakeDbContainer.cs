@@ -153,7 +153,7 @@ public sealed class FakeDbContainer(FakeDbConfiguration configuration) : IDataba
         return string.Join(";", properties.Select(property => string.Join("=", property.Key, property.Value)));
     }
 
-    public string GetConnectionString(ConnectionMode connectionMode = ConnectionMode.Host)
+    public string GetConnectionString(ConnectionMode connectionMode)
     {
         return GetConnectionString();
     }

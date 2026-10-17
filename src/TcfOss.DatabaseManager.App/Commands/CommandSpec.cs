@@ -68,9 +68,16 @@ public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceM
         {
             throw new CommandException.SpecificDialectRequired(CommandName);
         }
-        if ((config.ConfigPath == null || !config.ConfigPath.Exists) && ConfigurationRequired)
+        if (ConfigurationRequired)
         {
-            throw new CommandException.ConfigurationRequired(CommandName);
+            if (config.ConfigPath == null)
+            {
+                throw new CommandException.ConfigurationRequired(CommandName);
+            }
+            if (!config.ConfigPath.Exists)
+            {
+                throw new CommandException.ConfigurationDoesNotExist(CommandName, config.ConfigPath.FullName);
+            }
         }
     }
 

@@ -9,16 +9,6 @@ namespace TcfOss.DatabaseManager.Core.Hosting;
 
 public abstract class StartupBase
 {
-    public static FileInfo? GetConfigPath(string workingDirectory, string? configPath)
-    {
-        return ConfigurationFile.GetConfigPath(workingDirectory, configPath);
-    }
-
-    public static ConfigParsing.Config? LoadRawConfig(FileInfo? configPath)
-    {
-        return ConfigurationFile.LoadRawConfig(configPath);
-    }
-
     public abstract ConfigParsing.Config GetDefaultConfig(string rootDirectory);
 
     public abstract void Configure(

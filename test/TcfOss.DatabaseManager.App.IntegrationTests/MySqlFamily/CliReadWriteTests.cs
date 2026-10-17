@@ -23,7 +23,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
     {
         await Container.InitializeLibrarySchema();
 
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test1").FullName);
 
         var initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
@@ -44,7 +44,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
     {
         await Container.InitializeLibrarySchema();
 
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test2").FullName);
 
         var initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
@@ -59,7 +59,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
         string initializationScript = CommonHelpers.GetSimpleSchemaInitializationScript();
         await Container.ExecScriptAsync(initializationScript, TestContext.Current.CancellationToken);
 
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Test1").FullName);
 
         string initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
@@ -76,7 +76,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
         string initializationScript = CommonHelpers.GetSimpleSchemaInitializationScript();
         await Container.ExecScriptAsync(initializationScript, TestContext.Current.CancellationToken);
 
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("SimpleSchema", "Initial").FullName);
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName, Container.Hostname, Container.GetMappedPublicPort(Container.GetPort()));

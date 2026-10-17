@@ -161,6 +161,49 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Theory]
+    [InlineData(0, 0, false)]
+    [InlineData(0, 255, false)]
+    [InlineData(0, 256, false)]
+    [InlineData(0, 8192, false)]
+    [InlineData(225, 8192, false)]
+    [InlineData(300, 8192, false)]
+    [InlineData(0, 8192, true)]
+    [InlineData(300, 8192, true)]
+    public void EscapedString_BufferBoundaries_PreserveContents(int prefixLength, int suffixLength, bool doubledQuote)
+    {
+        string contents = new string('a', prefixLength) + (doubledQuote ? "''" : "\\'") + new string('b', suffixLength);
+        string sql = "SELECT '" + contents + "', 42";
+
+        var actual = new GenericLexer().Tokenize(sql);
+
+        Compare([
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral(contents) { Location = new Location() },
+            new Comma() { Location = new Location() },
+            new NumericLiteral("42") { Location = new Location() },
+        ], actual);
+        Assert.Equal(new Location(1, sql.Length - 1, sql.Length - 2), actual[^1].Location);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(0, 8192)]
+    [InlineData(300, 0)]
+    [InlineData(300, 8192)]
+    public void EscapedString_Unterminated_ThrowsAndAllowsSubsequentTokenization(int prefixLength, int suffixLength)
+    {
+        var lexer = new GenericLexer();
+        string sql = "SELECT '" + new string('a', prefixLength) + "''" + new string('b', suffixLength);
+
+        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
+
+        Compare([
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("valid") { Location = new Location() },
+        ], lexer.Tokenize("SELECT 'valid'"));
+    }
+
+    [Theory]
     [InlineData("=", typeof(Equal))]
     [InlineData("<>", typeof(NotEqual))]
     [InlineData("!=", typeof(NotEqual))]

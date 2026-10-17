@@ -42,12 +42,8 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         return schemaMappings;
     }
 
-    protected DeployScript[] GetDeployScripts(ConfigParsing.DeployScript[]? rawDeployScripts, SchemaIdentifier schemaId, DirectoryInfo schemaRootPath)
+    protected DeployScript[] GetDeployScripts(ConfigParsing.DeployScript[] rawDeployScripts, SchemaIdentifier schemaId, DirectoryInfo schemaRootPath)
     {
-        if (rawDeployScripts == null)
-        {
-            return [];
-        }
         return [.. ExpandDeployScripts(rawDeployScripts, schemaId, schemaRootPath, null)];
     }
 
@@ -57,7 +53,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
         foreach (ConfigParsing.DeployScript deployScript in deployScripts)
         {
-            FileInfo fullPath = ExtractDeployScriptPath(deployScript.FilePath, schemaRootPath, parentRootPath ?? schemaRootPath, maybeDirectory: true);
+            FileInfo fullPath = ExtractDeployScriptPath(deployScript.FilePath, schemaRootPath, parentRootPath);
             string? uniqueId = null;
             DeployScriptType? scriptType = ExtractDeployScriptType(deployScript, parentType, optional: true);
 
@@ -77,7 +73,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
             else if (fullPath.Extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
                      fullPath.Extension.Equals(".yml", StringComparison.OrdinalIgnoreCase))
             {
-                expandedDeployScripts.AddRange(ExpandDeployScriptsFromYaml(fullPath, schemaId, schemaRootPath, fullPath.Directory ?? parentRootPath, uniqueId, scriptType));
+                expandedDeployScripts.AddRange(ExpandDeployScriptsFromYaml(fullPath, schemaId, schemaRootPath, fullPath.Directory!, uniqueId, scriptType));
             }
             else if (fullPath.Extension.Equals(".sql", StringComparison.OrdinalIgnoreCase))
             {
@@ -136,9 +132,9 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
     {
         if (deployScript.Type.HasValue)
         {
-            if (Enum.TryParse(deployScript.Type.Value.ToString(), out DeployScriptType parsedType) && Enum.IsDefined(parsedType))
+            if (Enum.IsDefined(deployScript.Type.Value))
             {
-                return parsedType;
+                return deployScript.Type.Value;
             }
             throw new ConfigurationException.DeployScriptInvalidType(deployScript);
         }
@@ -153,7 +149,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         throw new ConfigurationException.DeployScriptMissingType(deployScript);
     }
 
-    private static FileInfo ExtractDeployScriptPath(string filePath, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath = null, bool maybeDirectory = false)
+    private static FileInfo ExtractDeployScriptPath(string filePath, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath = null)
     {
         FileInfo fileInfo;
         if (Path.IsPathRooted(filePath))
@@ -173,6 +169,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                 return fileInfo;
             }
         }
+
         fileInfo = new FileInfo(Path.Combine(schemaRootPath.FullName, filePath));
         if (Exists(fileInfo))
         {
@@ -181,7 +178,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
         throw new FileNotFoundException($"Deploy script file '{filePath}' not found in schema root or parent root.", filePath);
 
-        bool Exists(FileInfo fileToCheck) => fileToCheck.Exists || (maybeDirectory && fileToCheck.Attributes.HasFlag(FileAttributes.Directory) && Directory.Exists(fileToCheck.FullName));
+        static bool Exists(FileInfo fileToCheck) => fileToCheck.Exists || (fileToCheck.Attributes.HasFlag(FileAttributes.Directory) && Directory.Exists(fileToCheck.FullName));
     }
 
     protected Refactor[] GetRefactors(SchemaIdentifier schemaId, string schemaRootPath, IReadOnlyCollection<string>? refactorFiles, QuoteStyle quoteStyle)

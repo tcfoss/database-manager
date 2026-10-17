@@ -6,5 +6,4 @@ public class WriteOptions
     public bool TerminateStatements { get; init; } = true;
     public bool UseDelimiterAroundPrograms { get; init; } = true;
     public bool UseSchemaOnChange { get; init; } = true;
-    public bool UseCatalogOnChange { get; init; }
 }
