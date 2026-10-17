@@ -32,7 +32,8 @@ public static class TestDataRawConfig
             Hostname = "sqlserver",
             Port = "1433",
             Username = "testuser",
-            Password = "testpassword"
+            Password = "testpassword",
+            ConnectionTimeout = 1
         },
     };
 
@@ -51,6 +52,7 @@ public static class TestDataRawConfig
         Credentials = new ConfigParsing.Credentials
         {
             Hostname = "sqlserver",
+            ConnectionTimeout = 1
         },
     };
 }

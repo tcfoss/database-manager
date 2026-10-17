@@ -17,4 +17,5 @@ public enum DataTypeClass
     Set,
     Enum,
     Geometry,
+    Guid,
 }

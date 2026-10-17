@@ -10,7 +10,7 @@ namespace TcfOss.DatabaseManager.MsSql.Configuration;
 public class MsConfigLoader(ILogger logger)
     : ConfigLoaderBase<MsConfig, MsSchemaMapping>(logger)
 {
-    private Version DefaultVersion { get; } = new(16, 0, 0);
+    public Version DefaultVersion { get; } = new(16, 0, 0);
 
     public override MsConfig LoadConfig(
         string configDirectory,
@@ -30,22 +30,10 @@ public class MsConfigLoader(ILogger logger)
 
         MsDatabaseCredentials credentials = (MsDatabaseCredentials)otherInformation["DatabaseCredentials"];
 
-        bool databaseAvailable = otherInformation.TryGetValue("DatabaseAvailable", out object? dbAvailValue) && dbAvailValue is true;
+        bool databaseAvailable = (bool)otherInformation["DatabaseAvailable"];
+        Version version = (Version)otherInformation["Version"];
 
         Dictionary<SchemaIdentifier, MsSchemaMapping> schemaMappings = GetSchemaMappings(rawConfig.Schemas, catalogIdentifier, quoteStyle, projectDirectory, otherInformation);
-
-        Version? version;
-        if (!string.IsNullOrWhiteSpace(rawConfig.Version))
-        {
-            if (!Version.TryParse(rawConfig.Version, out version))
-            {
-                throw new ConfigurationException.InvalidFieldTypeException("Version", "Major.Minor.Patch");
-            }
-        }
-        else
-        {
-            version = DefaultVersion;
-        }
 
         DifferFormattingSettings differFormattingSettings = GetDifferFormattingDefaults();
         if (rawConfig.DifferFormatting != null)
@@ -82,15 +70,6 @@ public class MsConfigLoader(ILogger logger)
         string projectDirectory,
         Dictionary<string, object> otherInformation)
     {
-        if (string.IsNullOrWhiteSpace(rawSchema.RootPath))
-        {
-            throw new ConfigurationException.MissingFieldException("Schema.RootPath");
-        }
-        if (string.IsNullOrWhiteSpace(rawSchema.SchemaName))
-        {
-            throw new ConfigurationException.MissingFieldException("Schema.SchemaName");
-        }
-
         var schemaId = new SchemaIdentifier(rawSchema.SchemaName, catalogId, quoteStyle);
         string schemaRootPath = rawSchema.RootPath.GetAbsolutePath(projectDirectory);
         DeployScript[] deployScripts = GetDeployScripts(rawSchema.DeployScripts, schemaId, new DirectoryInfo(schemaRootPath));

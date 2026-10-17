@@ -17,16 +17,17 @@ public static class MsGetOtherData
         ConnectionTimeout = 30,
     };
 
-    public static Dictionary<string, object> GetData(MsDatabaseCredentials credentials, bool databaseAvailable = true)
+    public static Dictionary<string, object> GetData(MsDatabaseCredentials credentials, bool databaseAvailable = true, Version? version = null)
     {
         return new Dictionary<string, object>
         {
             { "DatabaseCredentials", credentials },
             { "DatabaseAvailable", databaseAvailable },
+            { "Version", version ?? new Version(16, 0, 0) }
         };
     }
 
-    public static Dictionary<string, object> GetData(ConfigParsing.Config config, bool databaseAvailable = true)
+    public static Dictionary<string, object> GetData(ConfigParsing.Config config, bool databaseAvailable = true, Version? version = null)
     {
         MsDatabaseCredentials creds;
         if (config.Credentials != null)
@@ -35,8 +36,8 @@ public static class MsGetOtherData
             {
                 Host = config.Credentials.Hostname,
                 Port = config.Credentials.Port != null ? int.Parse(config.Credentials.Port) : 1433,
-                Username = config.Credentials.Username,
-                Password = config.Credentials.Password,
+                Username = config.Credentials.Username ?? "",
+                Password = config.Credentials.Password ?? "",
                 Encrypt = config.Credentials.Encrypt ?? true,
                 TrustServerCertificate = config.Credentials.TrustServerCertificate ?? false,
                 ConnectionTimeout = config.Credentials.ConnectionTimeout ?? 30,
@@ -47,6 +48,6 @@ public static class MsGetOtherData
             creds = DefaultCredentials;
         }
 
-        return GetData(creds, databaseAvailable);
+        return GetData(creds, databaseAvailable, version);
     }
 }

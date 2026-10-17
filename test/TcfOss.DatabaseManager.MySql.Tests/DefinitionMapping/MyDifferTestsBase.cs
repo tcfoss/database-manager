@@ -142,6 +142,7 @@ public abstract class MyDifferTestsBase
         {
             { "DatabaseCredentials", credentials },
             { "DatabaseAvailable", true },
+            { "Version", rawConfig.Dialect == SqlDialect.MariaDb ? new Version(11, 8, 2) : new Version(8, 4, 6) },
             { "ServerDefaults", rawConfig.Schemas.First().SchemaDefaults! },
             { "CharacterSets", characterSets },
             { "SchemaDefaults", rawConfig.Schemas.ToDictionary(s => s.SchemaName, s => s.SchemaDefaults!) },

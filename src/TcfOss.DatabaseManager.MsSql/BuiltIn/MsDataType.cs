@@ -3,9 +3,6 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.MsSql.BuiltIn;
 
-#pragma warning disable CA1711 // Identifiers should not have incorrect suffix
-#pragma warning disable CA1716 // Identifiers should not match keywords
-#pragma warning disable CA1720 // Identifiers should not contain type names
 
 /// <summary>
 /// Pseudo-namespace for Microsoft SQL Server-specific data types. Types that
@@ -90,7 +87,7 @@ public abstract record MsDataType() : DataType
 
     public record MsUniqueIdentifier() : DataType
     {
-        public override DataTypeClass Class => DataTypeClass.String;
+        public override DataTypeClass Class => DataTypeClass.Guid;
         public override void ToSql(SqlTextWriter writer) => writer.Write("UNIQUEIDENTIFIER");
     }
 

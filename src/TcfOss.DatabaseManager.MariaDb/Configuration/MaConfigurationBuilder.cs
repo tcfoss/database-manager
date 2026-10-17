@@ -18,11 +18,10 @@ public partial class MaConfigurationBuilder : MyConfigurationBuilder
     public override MyConfig BuildConfiguration(string rootDirectory, Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
     {
         var loader = new MaConfigLoader(logger);
-        bool canConnect = true;
 
         DatabaseCredentials credentials = ExtractDatabaseCredentials(rawConfig, environmentVariableReader);
 
-        ServerVersion serverVersion;
+        ServerVersion? serverVersion = null;
         Version version;
         try
         {
@@ -31,7 +30,6 @@ public partial class MaConfigurationBuilder : MyConfigurationBuilder
         }
         catch (MySqlConnector.MySqlException ex)
         {
-            canConnect = false;
             string credentialsString = rawConfig.Logging.EnableSensitiveDataLogging
                 ? credentials.ConnectionString
                 : credentials.GetRedactedConnectionString();
@@ -40,10 +38,9 @@ public partial class MaConfigurationBuilder : MyConfigurationBuilder
             {
                 version = loader.DefaultVersion;
             }
-            serverVersion = ServerVersion.Create(version, Pomelo.EntityFrameworkCore.MySql.Infrastructure.ServerType.MySql);
         }
 
-        Dictionary<string, object> otherInformation = GetOtherInformation(canConnect, credentials, SqlDialect.MySql, version, serverVersion, rawConfig.Catalog ?? "def", rawConfig.Schemas, logger);
+        Dictionary<string, object> otherInformation = GetOtherInformation(credentials, SqlDialect.MariaDb, version, serverVersion, rawConfig.Catalog ?? "def", rawConfig.Schemas, logger);
 
         MyConfig config = loader.LoadConfig(
             rootDirectory,
@@ -55,16 +52,17 @@ public partial class MaConfigurationBuilder : MyConfigurationBuilder
         return config;
     }
 
-    protected override Dictionary<string, object> GetOtherInformation(bool canConnect, DatabaseCredentials credentials, SqlDialect dialect, Version version, ServerVersion serverVersion, string catalog, SchemaMapping[] schemaMappings, ILogger logger)
+    protected override Dictionary<string, object> GetOtherInformation(DatabaseCredentials credentials, SqlDialect dialect, Version version, ServerVersion? serverVersion, string catalog, SchemaMapping[] schemaMappings, ILogger logger)
     {
         var otherInfo = new Dictionary<string, object>
         {
             { "DatabaseCredentials", credentials },
-            { "DatabaseAvailable", canConnect }
+            { "DatabaseAvailable", serverVersion != null },
+            { "Version", version }
         };
 
         SchemaDefaults serverDefaults;
-        if (canConnect)
+        if (serverVersion != null)
         {
             DbContextOptions<InfoSchemaContext> options = new DbContextOptionsBuilder<InfoSchemaContext>()
                 .UseMySql(credentials.ConnectionString, serverVersion)
