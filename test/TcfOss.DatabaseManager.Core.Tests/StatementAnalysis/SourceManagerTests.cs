@@ -218,4 +218,26 @@ public class SourceManagerTests
 
         Assert.Null(manager.GetText(sourceRef, meta));
     }
+
+    [Theory]
+    [InlineData(0, "my_path.sql")]
+    [InlineData(1, "unknown")]
+    [InlineData(2, "unknown")]
+    public void LogDelegateFileWrapper_Calls_LogDelegate(byte sourceRefMode, string expected)
+    {
+        var manager = new SourceManager();
+        var id = manager.RegisterFileSource("my_path.sql");
+
+        SourceRef? sourceRef = sourceRefMode switch
+        {
+            0 => new SourceRef(id, 0, 1),
+            1 => new SourceRef(id + 1, 0, 1),
+            _ => null
+        };
+
+        var wrapper = new LogDelegateGetFileWrapper(manager, sourceRef);
+        var actual = $"{wrapper}";
+
+        Assert.Equal(expected, actual);
+    }
 }

@@ -133,7 +133,7 @@ public class Lexer<TRunState> : ILexer
 
     private static Label? MaybeTokenizeLabel(ref LexerState state, string word, Location initialLocation, QuoteStyle? quoteStyle = null)
     {
-        if (state.Peek() == CharSymbols.Colon && state.PeekNth(1) is not (CharSymbols.Colon or CharSymbols.Equal))
+        if (state.Peek() == CharSymbols.Colon && state.PeekNth(1) is not (CharSymbols.Colon or CharSymbols.Equal or CharSymbols.EndOfFile))
         {
             state.Next();
             return new Label(new Identifier(word, quoteStyle ?? QuoteStyle.None)) { Location = initialLocation };
@@ -164,7 +164,7 @@ public class Lexer<TRunState> : ILexer
                 quoteStyle = QuoteStyle.Backticks;
                 break;
             default:
-                throw new InvalidOperationException($"Could not determine character to close quotation starting with {quoteStart}.");
+                throw new DefensiveGuardException("Lexer.TokenizeQuotedIdentifier", quoteStart.ToString());
         }
 
         char? lastChar = null;

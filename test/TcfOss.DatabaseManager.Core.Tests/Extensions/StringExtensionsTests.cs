@@ -73,4 +73,33 @@ public class StringExtensionsTests
 
         Assert.Equal("it''s a test", result);
     }
+
+    // === ToIdentifier ===
+
+    [Fact]
+    public void ToIdentifier_Joins_Parts()
+    {
+#pragma warning disable CA1861 // Avoid constant arrays as arguments
+        string result = new[] { "schema", "table", "column" }.ToIdentifier();
+#pragma warning restore CA1861 // Avoid constant arrays as arguments
+
+        Assert.Equal("schema.table.column", result);
+    }
+
+    [Fact]
+    public void ToIdentifier_Skips_Null_Or_Empty_Parts()
+    {
+        string result = new[] { "schema", null, "", "table", "column" }.ToIdentifier();
+
+        Assert.Equal("schema.table.column", result);
+    }
+
+    [Fact]
+    public void ToIdentifier_Empty_Returns_Empty()
+    {
+        string result = Array.Empty<string?>().ToIdentifier();
+
+        Assert.NotNull(result);
+        Assert.Empty(result);
+    }
 }

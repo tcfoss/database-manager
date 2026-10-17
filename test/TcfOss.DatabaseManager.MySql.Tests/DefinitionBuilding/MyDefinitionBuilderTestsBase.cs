@@ -668,6 +668,52 @@ public abstract class MyDefinitionBuilderTestsBase
     }
 
     [Fact]
+    public void ForeignKey_MissingReferencedBackingIndex_ExpressionIndex_Throws()
+    {
+        var statementText = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT UNSIGNED NOT NULL,
+            `val` VARCHAR(100) NULL,
+            INDEX `idx_table1_val` ((UPPER(`val`))),
+            PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4{DefaultCollationSetter};
+
+        CREATE TABLE `schema1`.`table2` (
+            `id` INT UNSIGNED NOT NULL,
+            `val` VARCHAR(100) NULL,
+            PRIMARY KEY (`id`),
+            INDEX `idx_table2_val` (`val`),
+            CONSTRAINT `fk_table2_table1` FOREIGN KEY (`val`) REFERENCES `table1`(`val`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4{DefaultCollationSetter};
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        if (Relaxed)
+        {
+            var def = DefinitionBuilder.ToDefinition();
+            var fk = def.Tables.Values.First(t => t.Name.Name == "table2").ForeignKeys.Values.FirstOrDefault();
+            Assert.NotNull(fk);
+            Assert.NotNull(fk.Name);
+            Assert.Equal("fk_table2_table1", fk.Name.Name);
+            var col = Assert.Single(fk.Columns);
+            Assert.Equal("val", col.Name);
+        }
+        else
+        {
+            var errors = Assert.Throws<ValidationExceptionSet>(() =>
+            {
+                DefinitionBuilder.ToDefinition();
+            });
+
+            var ex = Assert.Single(errors.Exceptions);
+            Assert.IsType<DefinitionException.ForeignKeyNoReferencedBackingIndex>(ex);
+        }
+    }
+
+    [Fact]
     public void ForeignKey_MissingBackingIndex_Multicol_Throws()
     {
         var statementText = $"""

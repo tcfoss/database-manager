@@ -29,9 +29,4 @@ public static class EnumerableExtensions
             action(enumerable[i], i);
         }
     }
-
-    public static string ToIdentifier(this IEnumerable<string?>? parts)
-    {
-        return string.Join(".", parts?.Where(p => !string.IsNullOrEmpty(p)) ?? []);
-    }
 }

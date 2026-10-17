@@ -143,3 +143,4 @@ jobs:
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
       reportgenerator-license: ${{ secrets.REPORTGENERATOR_LICENSE }}
+      unreachable-coverage-filter-token: ${{ secrets.GITHUB_TOKEN }}

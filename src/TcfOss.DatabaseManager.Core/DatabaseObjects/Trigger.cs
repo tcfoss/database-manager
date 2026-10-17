@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public record Trigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Statement Body)
+public abstract record Trigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Statement Body)
     : IDatabaseObject<CreateTrigger>
 {
     public ObjectType ObjectType => ObjectType.Trigger;
@@ -29,7 +29,7 @@ public record Trigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Statement
         return HashCode.Combine(Name, OnTable, Body);
     }
 
-    public virtual CreateTrigger ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null) => throw new NotSupportedException();
+    public abstract CreateTrigger ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null);
 
     public virtual IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {

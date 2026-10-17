@@ -382,13 +382,15 @@ public class LexerSimpleTests : LexerTestBase
     public void LexLabel()
     {
         var lexer = new GenericLexer();
-        var tokens = lexer.Tokenize("f:");
+        var tokens = lexer.Tokenize("f: ");
+
+        var first = tokens[0];
 
         var expected = new List<Token>
         {
             new Label(new Identifier("f")) { Location = new Location() },
         };
-        Compare(expected, tokens);
+        Compare(expected, [first]);
 
         Assert.True(expected[0].Equals(tokens[0]));
 
@@ -404,17 +406,30 @@ public class LexerSimpleTests : LexerTestBase
         Assert.False(tokens[0].Equals((object?)other));
     }
 
+    [Theory]
+    [InlineData("f:")]
+    [InlineData("f:=2")]
+    [InlineData("f::2")]
+    [InlineData("f\n")]
+    public void LexNotLabel(string sql)
+    {
+        var lexer = new GenericLexer();
+        var tokens = lexer.Tokenize(sql);
+
+        Assert.All(tokens, Assert.IsNotType<Label>);
+    }
+
     [Fact]
     public void LexQuotedLabel()
     {
         var lexer = new GenericLexer();
-        var tokens = lexer.Tokenize("`my label`:");
+        var tokens = lexer.Tokenize("`my label`: ");
 
         var expected = new List<Token>
         {
             new Label(new Identifier("my label", QuoteStyle.Backticks)) { Location = new Location() },
         };
-        Compare(expected, tokens);
+        Compare(expected, [tokens[0]]);
 
         var other = new Label(new Identifier("my label", QuoteStyle.Backticks)) { Location = new Location() };
         Assert.True(tokens[0].Equals(other));
@@ -516,5 +531,65 @@ public class LexerSimpleTests : LexerTestBase
         };
 
         Assert.Equal(expectedLength, token.Length);
+    }
+
+    // === Round out LexerState coverage ===
+
+    [Fact]
+    public void LexerState_AtEnd_ReturnsEof()
+    {
+        var state = new LexerState("hello");
+
+        Assert.Equal(CharSymbols.EndOfFile, state.PeekNth(10));
+
+        while (state.Next() != CharSymbols.EndOfFile)
+        {
+            // Advance.
+        }
+
+        Assert.Equal(CharSymbols.EndOfFile, state.PeekNth(1));
+    }
+
+    [Fact]
+    public void LexerState_TakeIfSequence_FalseIfBeyondSpan()
+    {
+        var state = new LexerState("hello");
+        Assert.False(state.TakeIfSequence("hello world"));
+    }
+
+    [Fact]
+    public void LexerState_TakeIfSequence_HandlesNewLines()
+    {
+        var givenText = """
+        Hello
+        World
+        """;
+
+        var state = new LexerState(givenText);
+        Assert.True(state.TakeIfSequence("Hello\nW"));
+        var location = state.Location;
+        Assert.Equal(2, location.Line);
+        Assert.Equal(2, location.Column);
+        Assert.Equal(7, location.Position);
+    }
+
+    [Fact]
+    public void LexerState_TakeWhile_HandlesNewline()
+    {
+        var givenText = """
+        Hello
+        World
+        """;
+
+        var state = new LexerState(givenText);
+        string result = new(state.TakeWhile(c => c != 'r'));
+
+        var expected = "Hello\nWo";
+        Assert.Equal(expected, result);
+
+        var location = state.Location;
+        Assert.Equal(2, location.Line);
+        Assert.Equal(3, location.Column);
+        Assert.Equal(8, location.Position);
     }
 }

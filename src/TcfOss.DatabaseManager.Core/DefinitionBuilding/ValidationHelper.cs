@@ -21,7 +21,7 @@ public partial class ValidationHelper(ILogger logger)
             }
             else
             {
-                s_logUnusableKeyPart(_logger, keyPart.GetType().Name, source.Name?.Name, null);
+                s_logUnusableKeyPart(_logger, keyPart.GetType().Name, source, null);
                 break;
             }
         }
@@ -62,6 +62,6 @@ public partial class ValidationHelper(ILogger logger)
     [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Extracting key parts from index '{IndexName}' for '{ExtractionReason}'")]
     private static partial void s_logExtractingKeyParts(ILogger logger, string? indexName, string? extractionReason, Exception? ex);
 
-    [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Found unusable key part of type '{KeyPartType}' in index '{IndexName}'. Returning only previous key parts.")]
-    private static partial void s_logUnusableKeyPart(ILogger logger, string? keyPartType, string? indexName, Exception? ex);
+    [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Found unusable key part of type '{KeyPartType}' in source '{Source}'. Returning only previous key parts.")]
+    private static partial void s_logUnusableKeyPart(ILogger logger, string? keyPartType, NamedKeyPartList source, Exception? ex);
 }

@@ -37,6 +37,30 @@ public class FunctionNameProvider : IFunctionNameProvider
         "SYSTEM_USER",
     ];
 
+    private static readonly ImmutableHashSet<string> s_reservedKeywords = [
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "JOIN",
+        "ON",
+        "GROUP",
+        "BY",
+        "ORDER",
+        "HAVING",
+        "AS",
+        "IN",
+        "AND",
+        "OR",
+        "NOT",
+        "NULL",
+        "IS",
+        "DISTINCT",
+        "LIMIT"
+    ];
+
     public bool IsBuiltInFunction(string name)
     {
         return s_functionNames.Contains(name.ToUpperInvariant());
@@ -44,7 +68,7 @@ public class FunctionNameProvider : IFunctionNameProvider
 
     public bool IsReservedKeyword(string name)
     {
-        return false;
+        return s_reservedKeywords.Contains(name.ToUpperInvariant());
     }
 
     public static bool AllowsFunctionCallWithoutParentheses(string name)
