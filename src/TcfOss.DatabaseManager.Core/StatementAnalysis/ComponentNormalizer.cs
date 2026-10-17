@@ -8,7 +8,7 @@ namespace TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNameProvider functionNameProvider) : INormalizeComponents
 {
-    private const string StandardIdentifierPattern = "^[A-Za-z_][A-Za-z0-9_]*$";
+    private const string StandardIdentifierPattern = "\\A[A-Za-z_][A-Za-z0-9_]*\\z";
     private static readonly Regex s_standardIdentifierRegex = GetStandardIdentifierRegex();
     private readonly QuoteStyle _quoteStyle = quoteStyle;
     private readonly IFunctionNameProvider _functionNameProvider = functionNameProvider;

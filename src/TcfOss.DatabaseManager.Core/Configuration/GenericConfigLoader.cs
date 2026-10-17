@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
@@ -29,12 +28,6 @@ public class GenericConfigLoader(ILogger logger)
             viewNormalizationSettings = MergeNormalizationSettings(viewNormalizationSettings, rawConfig.ViewNormalizationSettings);
         }
 
-        AttributeDefaults attributeDefaults = new();
-        if (rawConfig.AttributeDefaults != null)
-        {
-            attributeDefaults = MergeAttributeDefaults(attributeDefaults, rawConfig.AttributeDefaults);
-        }
-
         DifferFormattingSettings differFormattingSettings = GetDifferFormattingDefaults();
         if (rawConfig.DifferFormatting != null)
         {
@@ -50,7 +43,7 @@ public class GenericConfigLoader(ILogger logger)
             Schemas = schemaMappings,
             Formatting = rawConfig.Formatting ?? new(),
             DifferFormatting = differFormattingSettings,
-            AttributeDefaults = attributeDefaults,
+            AttributeDefaults = new(), // Attribute defaults do not apply to Generic dialect
             Logging = rawConfig.Logging,
             ValidationSettings = GetValidationSettings(),
             NormalizationSettings = viewNormalizationSettings,
@@ -77,17 +70,7 @@ public class GenericConfigLoader(ILogger logger)
 
         var schemaId = new SchemaIdentifier(rawSchema.SchemaName, catalogId, quoteStyle);
         string schemaRootPath = rawSchema.RootPath.GetAbsolutePath(projectDirectory);
-        DeployScript[] deployScripts = [];
-
-        if (rawSchema.DeployScripts.SafeAny())
-        {
-            deployScripts = [.. ExpandDeployScripts(
-                rawSchema.DeployScripts,
-                schemaId,
-                new DirectoryInfo(schemaRootPath),
-                null
-            )];
-        }
+        DeployScript[] deployScripts = GetDeployScripts(rawSchema.DeployScripts, schemaId, new DirectoryInfo(schemaRootPath));
 
         var schemaMapping = new SchemaMappingBase
         {

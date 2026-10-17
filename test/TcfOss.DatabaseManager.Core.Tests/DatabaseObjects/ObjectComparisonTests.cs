@@ -12,9 +12,27 @@ namespace TcfOss.DatabaseManager.Core.Tests.DatabaseObjects;
 public class ObjectComparisonTests
 {
     [Fact]
+    public void Trigger_HasType_Trigger()
+    {
+        var trigger = new TestTrigger(
+            new ObjectIdentifier("mytrigger", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+            new ObjectIdentifier("mytable", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+            new SimpleSelect([new SimpleSelectItem.Wildcard()])
+            {
+                From = [new TableWithJoins(new TableFactor.Table(new ObjectName([new Identifier("mytable")])))]
+            }
+        )
+        {
+            RawBodyText = "RAW BODY TEXT 1"
+        };
+
+        Assert.Equal(ObjectType.Trigger, trigger.ObjectType);
+
+    }
+    [Fact]
     public void Trigger_Comparison()
     {
-        var trigger = new Trigger(
+        var trigger = new TestTrigger(
             new ObjectIdentifier("mytrigger", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
             new ObjectIdentifier("mytable", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
             new SimpleSelect([new SimpleSelectItem.Wildcard()])
@@ -42,6 +60,25 @@ public class ObjectComparisonTests
         Assert.NotEqual(trigger, otherTrigger);
         Assert.False(trigger.Equals(otherTrigger));
         Assert.NotEqual(trigger.GetHashCode(), otherTrigger?.GetHashCode());
+    }
+
+    [Fact]
+    public void Function_HasType_Function()
+    {
+        var function = new TestStoredFunction(new ObjectIdentifier("myfunction", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+            [
+                new RoutineParameter.Directed(new Identifier("param1"), new DataType.Int(), RoutineParameterDirection.In),
+            ],
+            new DataType.Int(),
+            new SimpleSelect([new SimpleSelectItem.Wildcard()])
+            {
+                From = [new TableWithJoins(new TableFactor.Table(new ObjectName([new Identifier("mytable")])))]
+            }
+        )
+        {
+            RawBodyText = "RAW BODY TEXT 1"
+        };
+        Assert.Equal(ObjectType.Function, function.ObjectType);
     }
 
     [Fact]
@@ -83,6 +120,25 @@ public class ObjectComparisonTests
         Assert.NotEqual(function, otherFunction);
         Assert.False(function.Equals(otherFunction));
         Assert.NotEqual(function.GetHashCode(), otherFunction?.GetHashCode());
+    }
+
+    [Fact]
+    public void Procedure_HasType_Procedure()
+    {
+        var procedure = new TestStoredProcedure(new ObjectIdentifier("myprocedure", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
+            [
+                new RoutineParameter.Directed(new Identifier("param1"), new DataType.Int(), RoutineParameterDirection.In),
+            ],
+            new SimpleSelect([new SimpleSelectItem.Wildcard()])
+            {
+                From = [new TableWithJoins(new TableFactor.Table(new ObjectName([new Identifier("mytable")])))]
+            }
+        )
+        {
+            RawBodyText = "RAW BODY TEXT 1"
+        };
+
+        Assert.Equal(ObjectType.Procedure, procedure.ObjectType);
     }
 
     [Fact]

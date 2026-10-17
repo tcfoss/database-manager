@@ -2683,4 +2683,48 @@ public abstract class MyDifferTestsBase
         Assert.Contains("COMMENT 'This is a table comment'", sql);
         Assert.Contains("CREATE TABLE `mytable`", sql);
     }
+
+    [Theory]
+    [InlineData(" ASC", " ASC", false)]
+    [InlineData(" DESC", " DESC", false)]
+    [InlineData(null, " ASC", false)]
+    [InlineData(" ASC", null, true)]
+    [InlineData(" DESC", " DESC", true)]
+    [InlineData(null, null, true)]
+    public void KeyPart_ObeysOmitModifiers(string? direction, string? expectedDirection, bool omitModifiersIfDefault)
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            id INT,
+            name VARCHAR(100)
+        );
+        """;
+
+        var endText = $"""
+        CREATE TABLE mytable (
+            id INT,
+            name VARCHAR(100),
+            INDEX `idx_name_1` (`name`{direction}),
+            INDEX `idx_name_2` ((UPPER(`name`)){direction})
+        );
+        """;
+
+        string expectedMethod = omitModifiersIfDefault ? "" : " USING BTREE";
+
+        var rawConfig = GetRawConfiguration(omitModifiersIfDefault: omitModifiersIfDefault);
+        var (_, changes) = ComputeChangesWithConfig(startText, endText, rawConfig: rawConfig);
+        Assert.Equal(2, changes.Count);
+
+        var firstChange = Assert.IsType<DefinitionAlterStatement>(changes[0]);
+        var firstAlterTable = Assert.IsType<AlterTable>(firstChange.Statement);
+        var firstOperation = Assert.IsType<AlterTableOperation.AddStandardKey>(Assert.Single(firstAlterTable.Operations));
+        var firstExpected = $"ADD KEY `idx_name_1`{expectedMethod} (`name`{expectedDirection})";
+        Assert.Equal(firstExpected, firstOperation.ToSql());
+
+        var secondChange = Assert.IsType<DefinitionAlterStatement>(changes[1]);
+        var secondAlterTable = Assert.IsType<AlterTable>(secondChange.Statement);
+        var secondOperation = Assert.IsType<AlterTableOperation.AddStandardKey>(Assert.Single(secondAlterTable.Operations));
+        var secondExpected = $"ADD KEY `idx_name_2`{expectedMethod} ((UPPER(`name`)){expectedDirection})";
+        Assert.Equal(secondExpected, secondOperation.ToSql());
+    }
 }

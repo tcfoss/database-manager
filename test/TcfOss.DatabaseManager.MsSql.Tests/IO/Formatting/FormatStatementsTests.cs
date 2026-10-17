@@ -6,6 +6,7 @@ public class FormatStatementsTests
     [InlineData("INSERT INTO mytable (col1) OUTPUT inserted.col1 VALUES (@value)", "INSERT INTO [mytable]\n(\n    [col1]\n)\nOUTPUT\n    [inserted].[col1]\nVALUES\n(@value);")]
     [InlineData("DELETE FROM mytable OUTPUT deleted.col1 WHERE col1 = @value", "DELETE\nFROM [mytable]\nOUTPUT\n    [deleted].[col1]\nWHERE [col1] = @value;")]
     [InlineData("SELECT col1 FROM mytable WITH (NOLOCK)", "SELECT\n    [col1]\nFROM [mytable] WITH (NOLOCK);")]
+    [InlineData("SELECT ROW_NUMBER() OVER (ORDER BY y) AS rn", "SELECT\n    ROW_NUMBER() OVER (ORDER BY y) AS rn;")]
     [InlineData("CREATE VIEW myview (col1) WITH SCHEMABINDING AS SELECT 1", "CREATE\nVIEW [myview] ([col1])\nWITH SCHEMABINDING\nAS\nSELECT\n    1;")]
     [InlineData("CREATE TRIGGER mytrigger ON mytable AFTER INSERT AS PRINT 'changed'", "CREATE\nTRIGGER [mytrigger]\nON [mytable]\nAFTER INSERT\nAS \n    PRINT 'changed';")]
     [InlineData("DROP INDEX ix ON mytable", "DROP INDEX [ix] ON mytable;")]
@@ -13,7 +14,8 @@ public class FormatStatementsTests
     public void SqlServerSpecificClauses(string input, string expected)
     {
         using var formatter = Helpers.CreateFormatter(null);
-        Assert.Equal(expected, formatter.GetFormatted(input), ignoreLineEndingDifferences: true);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
     }
 
     [Theory]

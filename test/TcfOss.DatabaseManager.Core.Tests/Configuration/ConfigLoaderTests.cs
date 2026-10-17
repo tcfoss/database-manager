@@ -140,4 +140,29 @@ public class ConfigLoaderTests
 
         Assert.False(config.DifferFormatting.UseDelimiterAroundViews);
     }
+
+    [Fact]
+    public void DifferFormatting_UsesOverrides()
+    {
+        var rawConfig = TestDataRawConfig.MyTestRawConfig;
+        rawConfig.DifferFormatting = new ConfigParsing.DifferFormattingSettings()
+        {
+            UseDelimiterAroundViews = true
+        };
+
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
+        Assert.True(config.DifferFormatting.UseDelimiterAroundViews);
+    }
+
+    [Fact]
+    public void Formatting_ReplacesDefaults()
+    {
+        var rawConfig = TestDataRawConfig.MyTestRawConfig;
+        rawConfig.Formatting = new FormattingSettings() { JoinConditionIndent = 80 };
+
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
+        Assert.Equal(80, config.Formatting.JoinConditionIndent);
+        // Confirm a default remains
+        Assert.True(config.Formatting.SelectItemPrefixWithObject);
+    }
 }

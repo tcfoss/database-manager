@@ -24,6 +24,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("a IS DISTINCT FROM b")]
     [InlineData("x IS NOT NULL")]
     [InlineData("x BETWEEN 5 AND 10")]
+    [InlineData("CASE WHEN x > 5 THEN TRUE END")]
     [InlineData("CASE WHEN x > 5 THEN TRUE WHEN x < 5 THEN FALSE ELSE NULL END")]
     [InlineData("CASE x WHEN 1 THEN TRUE WHEN 2 THEN FALSE ELSE NULL END")]
     [InlineData("x >= ALL(SELECT colname FROM tablename)")]

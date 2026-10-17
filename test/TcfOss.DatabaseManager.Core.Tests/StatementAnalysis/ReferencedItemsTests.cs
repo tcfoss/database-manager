@@ -280,6 +280,7 @@ public class ReferencedItemsTests
     [InlineData("a REGEXP b")]
     [InlineData("a RLIKE b")]
     [InlineData("a IN (b, 'c', 'd')")]
+    [InlineData("EXISTS (SELECT b FROM a)")]
     public void VariousSimpleTwoComponentExpressions(string sql)
     {
         var expr = ParseExpression(sql);

@@ -228,7 +228,12 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
     """Filter unreachable-exception guards from Coverlet OpenCover reports."""
     output_dir = _p.Path(coverage_files[0]).parent / "filtered-coverage"
     configuration = "Release" if config.release_mode else "Debug"
-    source_root = config.solution.parent / "src"
+
+    source_root = config.solution.parent
+    if source_root.stem == "solutions":
+        source_root = source_root.parent
+    source_root = source_root / "src"
+
     project_directories = {project.stem: project.parent for project in source_root.glob("*/*.csproj")}
     module_names: set[str] = set()
     for coverage_file in coverage_files:

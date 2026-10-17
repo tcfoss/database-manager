@@ -88,7 +88,7 @@ public class DatabaseObjectReferencedItemsTests
     [Fact]
     public void Trigger_GetReferencedItems_EmitsOnTable()
     {
-        var trigger = new Trigger(
+        var trigger = new TestTrigger(
             new ObjectIdentifier("mytrigger", s_schema),
             new ObjectIdentifier("mytable", s_schema),
             new Commit());
@@ -103,7 +103,7 @@ public class DatabaseObjectReferencedItemsTests
     [Fact]
     public void Trigger_GetReferencedItems_EmitsOnTableBeforeBodyItems()
     {
-        var trigger = new Trigger(
+        var trigger = new TestTrigger(
             new ObjectIdentifier("mytrigger", s_schema),
             new ObjectIdentifier("mytable", s_schema),
             MakeSelect("anothertable"));

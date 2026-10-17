@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Errors;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
@@ -94,12 +93,7 @@ public class MsConfigLoader(ILogger logger)
 
         var schemaId = new SchemaIdentifier(rawSchema.SchemaName, catalogId, quoteStyle);
         string schemaRootPath = rawSchema.RootPath.GetAbsolutePath(projectDirectory);
-        DeployScript[] deployScripts = [];
-
-        if (rawSchema.DeployScripts.SafeAny())
-        {
-            deployScripts = [.. ExpandDeployScripts(rawSchema.DeployScripts, schemaId, new DirectoryInfo(schemaRootPath), null)];
-        }
+        DeployScript[] deployScripts = GetDeployScripts(rawSchema.DeployScripts, schemaId, new DirectoryInfo(schemaRootPath));
 
         var schemaMapping = new MsSchemaMapping
         {

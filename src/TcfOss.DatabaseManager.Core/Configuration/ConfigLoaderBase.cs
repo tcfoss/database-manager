@@ -42,7 +42,16 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         return schemaMappings;
     }
 
-    protected List<DeployScript> ExpandDeployScripts(IEnumerable<ConfigParsing.DeployScript> deployScripts, SchemaIdentifier schemaId, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath, string? parentUniqueId = null, DeployScriptType? parentType = null)
+    protected DeployScript[] GetDeployScripts(ConfigParsing.DeployScript[]? rawDeployScripts, SchemaIdentifier schemaId, DirectoryInfo schemaRootPath)
+    {
+        if (rawDeployScripts == null)
+        {
+            return [];
+        }
+        return [.. ExpandDeployScripts(rawDeployScripts, schemaId, schemaRootPath, null)];
+    }
+
+    private List<DeployScript> ExpandDeployScripts(IEnumerable<ConfigParsing.DeployScript> deployScripts, SchemaIdentifier schemaId, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath, string? parentUniqueId = null, DeployScriptType? parentType = null)
     {
         var expandedDeployScripts = new List<DeployScript>();
 

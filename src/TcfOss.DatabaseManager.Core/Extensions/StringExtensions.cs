@@ -54,4 +54,9 @@ public static class StringExtensions
     {
         return EscapeQuotedString(value, CharSymbols.SingleQuote);
     }
+
+    public static string ToIdentifier(this IEnumerable<string?>? parts)
+    {
+        return string.Join(".", parts?.Where(p => !string.IsNullOrEmpty(p)) ?? []);
+    }
 }
