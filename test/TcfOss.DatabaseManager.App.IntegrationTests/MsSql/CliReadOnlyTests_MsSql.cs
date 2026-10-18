@@ -17,7 +17,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     protected ITestOutputHelper TestOutputHelper { get; init; } = null!;
 
     protected virtual bool ConnectionAvailable => true;
-
+    protected virtual int MajorVersion => 16;
 
     [Fact]
     public async Task ParseFiles_NoOptions()
@@ -95,23 +95,18 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
+            out _,
+            out string actual,
             "select.sql",
             "update.sql",
             "create_function.sql",
-            "--file-exists-action",
-            "error"
-        ]);
+            "--file-exists-action", "error");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.FileExistsTemplate, Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"));
         Assert.Equal(expected, actual);
     }
@@ -123,19 +118,13 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
             "select.sql",
             "update.sql",
             "create_function.sql",
-            "--file-exists-action",
-            "overwrite"
-        ]);
+            "--file-exists-action", "overwrite");
 
         await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
 
@@ -151,19 +140,13 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
             "select.sql",
             "update.sql",
             "create_function.sql",
-            "--file-exists-action",
-            "rename"
-        ]);
+            "--file-exists-action", "rename");
 
         await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
 
@@ -179,21 +162,17 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         Container.WriteBasicConfig(fileFixture.RootDirectory);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
+            out _,
+            out var actual,
             "non_existent.sql",
             "update.sql",
-            "create_function.sql"
-        ]);
+            "create_function.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = $"File not found: {Path.Combine(fileFixture.RootDirectory.FullName, "non_existent.sql")}";
         Assert.Equal(expected, actual);
     }
@@ -206,20 +185,15 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_a.sql"), "SELECT 1;", TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_b.sql"), "SELECT 2;", TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
             "select.sql",
             "update.sql",
             "create_function.sql",
-            "extra_*.sql"
-        ]);
+            "extra_*.sql");
 
-        await CliReadOnlyTests_MsSql<TFixture>.TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
+        await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
         Assert.True(File.Exists(fileFixture.CombinePath("extra_a.parsed.json")), "Parsed extra_a file was not created.");
         Assert.True(File.Exists(fileFixture.CombinePath("extra_b.parsed.json")), "Parsed extra_b file was not created.");
     }
@@ -230,19 +204,15 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_fake_join.sql"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
-            "parse_error_fake_join.sql",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
+            out _,
+            out var actual,
+            "parse_error_fake_join.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "parse_error_fake_join.sql");
         var expected = $"""
             Parse Error: Expected end of statement. Found FAKEJOIN. (In file '{filePath}' at line 3, column 1)
@@ -258,19 +228,15 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_not_droppable.sql"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
-            "parse_error_not_droppable.sql",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
+            out _,
+            out var actual,
+            "parse_error_not_droppable.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "parse_error_not_droppable.sql");
         var expected = $$"""
             Parse Error: Expected one of { TABLE | PROCEDURE | FUNCTION | TRIGGER | VIEW | EVENT | SCHEMA | DATABASE | INDEX }. Found CARROT. (In file '{{filePath}}' at line 1, column 6)
@@ -286,19 +252,15 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "lex_error_unclosed_quote.sql"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            nameof(SqlDialect.MsSql),
-            "parse-files",
-            "lex_error_unclosed_quote.sql",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            SqlDialect.MsSql,
+            out _,
+            out var actual,
+            "lex_error_unclosed_quote.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "lex_error_unclosed_quote.sql");
         var expected = $"""
             Lexing Error: Unterminated string literal. (In file '{filePath}' at line 1, column 9)
@@ -358,21 +320,37 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
             Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
         await UpdateConfigurationAsync(fileFixture, TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Out = writer;
-
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config"
-        ]);
+        var result = CliRunner.RunCli("validate-config",
+            fileFixture,
+            out string actual,
+            out _);
 
         Assert.Equal(0, result);
 
-        var actual = writer.ToString().Trim();
         var expected = $"Database connection available: {ConnectionAvailable}";
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task ValidateConfig_Print()
+    {
+        using var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFile(
+            Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
+        await UpdateConfigurationAsync(fileFixture, TestContext.Current.CancellationToken);
+
+        var result = CliRunner.RunCli("validate-config",
+            fileFixture,
+            out string actual,
+            out _,
+            "--print-config");
+
+        Assert.Equal(0, result);
+
+        Assert.DoesNotContain("Database connection available", actual);
+        Assert.Matches(@$"Version:\s*Major: {MajorVersion}", actual);
+        Assert.Matches(@"Schemas:\s*'\[library_db\].\[library_catalog\]'", actual);
+        Assert.Contains($"DatabaseAvailable: {ConnectionAvailable.ToString().ToLower()}", actual);
     }
 
     protected async Task UpdateConfigurationAsync(FsProjectFixture fileFixture, CancellationToken ct = default)
@@ -387,16 +365,4 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         );
     }
 
-    private static string GetOutputLines(ITestOutputHelper outputHelper)
-    {
-        var lines = outputHelper.Output.Split(Environment.NewLine);
-        for (var i = lines.Length - 1; i >= 0; i--)
-        {
-            if (lines[i].StartsWith("[testcontainers"))
-            {
-                return string.Join(Environment.NewLine, lines.Skip(i + 1)).Trim();
-            }
-        }
-        return string.Join(Environment.NewLine, lines).Trim();
-    }
 }

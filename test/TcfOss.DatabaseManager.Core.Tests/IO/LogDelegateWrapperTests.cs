@@ -28,8 +28,8 @@ public class LogDelegateWrapperTests
     {
         var wrapper = new LogDelegateExecutionWrapper<string?>(null, source =>
         {
-        Assert.Null(source);
-        return source ?? "Selected null";
+            Assert.Null(source);
+            return source ?? "Selected null";
         });
 
         Assert.Equal("Selected null", wrapper.ToString());

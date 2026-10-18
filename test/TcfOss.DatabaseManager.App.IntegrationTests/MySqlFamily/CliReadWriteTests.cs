@@ -15,7 +15,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
     where TBuilderEntity : IContainerBuilder<TBuilderEntity, TContainerEntity, IContainerConfiguration>, new()
     where TContainerEntity : IDatabaseContainer
 {
-    protected ITestOutputHelper TestOutputHelper { get; } = testOutputHelper;
+    // protected ITestOutputHelper TestOutputHelper { get; } = testOutputHelper;
     protected abstract SqlDialect Dialect { get; }
 
     [Fact]
@@ -138,19 +138,5 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
     protected void UpdateConfiguration(string dirPath, string? host, ushort? port)
     {
         CommonHelpers.UpdateConfiguration(Dialect, dirPath, host, port);
-    }
-
-
-    protected static string GetOutputLines(ITestOutputHelper testOutputHelper)
-    {
-        var lines = testOutputHelper.Output.Split(Environment.NewLine);
-        for (var i = lines.Length - 1; i >= 0; i--)
-        {
-            if (lines[i].StartsWith("[testcontainers"))
-            {
-                return string.Join(Environment.NewLine, lines.Skip(i + 1)).Trim();
-            }
-        }
-        return string.Join(Environment.NewLine, lines).Trim();
     }
 }

@@ -4,6 +4,8 @@ namespace TcfOss.DatabaseManager.App.IntegrationTests.MsSql;
 public class CliReadOnlyTests_MsSql_2022
     : CliReadOnlyTests_MsSql<CliReadOnlyFixture_MsSql_2022>
 {
+    protected override int MajorVersion => 16;
+
     public CliReadOnlyTests_MsSql_2022(CliReadOnlyFixture_MsSql_2022 fixture, ITestOutputHelper testOutputHelper)
     {
         Fixture = fixture;

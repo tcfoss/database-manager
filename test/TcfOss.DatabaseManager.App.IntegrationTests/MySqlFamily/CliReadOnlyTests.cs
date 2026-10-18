@@ -40,17 +40,20 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     [Fact]
     public void ComputeChanges_WorkingDirectoryNotFound_Fails()
     {
-        var cli = new CommandLineInterface();
-        var computeResult = cli.Run([
+        var computeResult = CliRunner.RunCli(
+            command: "compute-changes",
+            fileFixture: null,
+            output: out _,
+            error: out var actual,
+            dialect: null,
+            config: null,
+            args: [
             "--working-dir",
             Path.Combine(Path.GetTempPath(), "non-existent-directory"),
-            "compute-changes",
-            "changes.sql"
-        ]);
+            "changes.sql"]);
 
         Assert.NotEqual(0, computeResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         Assert.StartsWith("Directory not found", actual);
     }
 
@@ -71,17 +74,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
             await fileFixture.WriteTextAsync(fileName, "ambiguous: true", TestContext.Current.CancellationToken);
         }
 
-        var cli = new CommandLineInterface();
-        var computeResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "compute-changes",
-            "changes.sql"
-        ]);
+        var computeResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "changes.sql");
 
         Assert.NotEqual(0, computeResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.AmbiguousConfigurationTemplate, fileFixture.RootDirectory.FullName, string.Join(", ", fileNames.OrderBy(name => name).Select(name => $"'{name}'")));
         Assert.Equal(expected, actual);
     }
@@ -94,17 +90,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
 
-        var cli = new CommandLineInterface();
-        var computeResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "compute-changes",
-            "changes.sql"
-        ]);
+        var computeResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "changes.sql");
 
         Assert.NotEqual(0, computeResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.DialectRequiredTemplate, "compute-changes");
         Assert.Equal(expected, actual);
     }
@@ -117,19 +106,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
 
-        var cli = new CommandLineInterface();
-        var computeResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            Dialect.ToString(),
-            "compute-changes",
-            "changes.sql"
-        ]);
+        var computeResult = CliRunner.RunCli("compute-changes", fileFixture, Dialect, out _, out var actual, "changes.sql");
 
         Assert.NotEqual(0, computeResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.ConfigRequiredTemplate, "compute-changes");
         Assert.Equal(expected, actual);
     }
@@ -255,17 +235,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-definition",
-            "definition.json"
-        ]);
+        var parseResult = CliRunner.RunCli("parse-definition", fileFixture, out _, out var actual, "definition.json");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.DialectRequiredTemplate, "parse-definition");
         Assert.Equal(expected, actual);
     }
@@ -278,19 +251,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         File.Delete(fileFixture.CombinePath("database-manager.yaml"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            Dialect.ToString(),
-            "parse-definition",
-            "definition.json"
-        ]);
+        var parseResult = CliRunner.RunCli("parse-definition", fileFixture, Dialect, out _, out var actual, "definition.json");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.ConfigRequiredTemplate, "parse-definition");
         Assert.Equal(expected, actual);
     }
@@ -302,19 +266,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            Dialect.ToString(),
-            "parse-definition",
-            ""
-        ]);
+        var parseResult = CliRunner.RunCli("parse-definition", fileFixture, Dialect, out _, out var actual, "");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, ErrorMessages.ErrWithType, ErrorMessages.Err_Cmd, ErrorMessages.Err_Cmd_RequiredArgumentMissing.Replace("{0}", "output_path"));
         Assert.Equal(expected, actual);
     }
@@ -396,22 +351,14 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            Dialect.ToString(),
-            "parse-definition",
-            "definition.json"
-        ]);
+        var parseResult = CliRunner.RunCli("parse-definition", fileFixture, Dialect, out _, out var actual, "definition.json");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(MessageTemplates.FkBackingIndexTemplate, "`fk_table1`", "`def`.`information_schema`.`table2`");
         Assert.Equal(expected, actual);
 
+        var cli = new CommandLineInterface();
         parseResult = cli.Run([
             "--working-dir",
             fileFixture.RootDirectory.FullName,
@@ -433,22 +380,14 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "--dialect",
-            Dialect.ToString(),
-            "parse-definition",
-            "definition.json"
-        ]);
+        var parseResult = CliRunner.RunCli("parse-definition", fileFixture, Dialect, out _, out var actual, "definition.json");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(MessageTemplates.ProcNoDefinerTemplate, "Procedure", "`def`.`information_schema`.`myproc`");
         Assert.StartsWith(expected, actual);
 
+        var cli = new CommandLineInterface();
         parseResult = cli.Run([
             "--working-dir",
             fileFixture.RootDirectory.FullName,
@@ -534,21 +473,18 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            out _,
+            out var actual,
             "select.sql",
             "update.sql",
             "create_function.sql",
             "--file-exists-action",
-            "error"
-        ]);
+            "error");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.FileExistsTemplate, Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"));
         Assert.Equal(expected, actual);
     }
@@ -611,19 +547,16 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-files",
+        var parseResult = CliRunner.RunCli("parse-files",
+            fileFixture,
+            out _,
+            out string actual,
             "non_existent.sql",
             "update.sql",
-            "create_function.sql"
-        ]);
+            "create_function.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = $"File not found: {Path.Combine(fileFixture.RootDirectory.FullName, "non_existent.sql")}";
         Assert.Equal(expected, actual);
     }
@@ -701,17 +634,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_fake_join.sql"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-files",
-            "parse_error_fake_join.sql",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-files", fileFixture, out _, out var actual, "parse_error_fake_join.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "parse_error_fake_join.sql");
         var expected = $"""
             Parse Error: Expected end of statement. Found FAKEJOIN. (In file '{filePath}' at line 3, column 1)
@@ -727,17 +653,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_not_droppable.sql"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-files",
-            "parse_error_not_droppable.sql",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-files", fileFixture, out _, out var actual, "parse_error_not_droppable.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "parse_error_not_droppable.sql");
         var expected = $$"""
             Parse Error: Expected one of { TABLE | PROCEDURE | FUNCTION | TRIGGER | VIEW | EVENT | SCHEMA | DATABASE | INDEX }. Found CARROT. (In file '{{filePath}}' at line 1, column 6)
@@ -753,17 +672,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "lex_error_unclosed_quote.sql"));
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-files",
-            "lex_error_unclosed_quote.sql",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-files", fileFixture, out _, out var actual, "lex_error_unclosed_quote.sql");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "lex_error_unclosed_quote.sql");
         var expected = $"""
             Lexing Error: Unterminated string literal. (In file '{filePath}' at line 1, column 9)
@@ -782,17 +694,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var parseResult = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "parse-definition",
-            "definition.json",
-        ]);
+        var parseResult = CliRunner.RunCli("parse-definition", fileFixture, out _, out var actual, "definition.json");
 
         Assert.NotEqual(0, parseResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expected = string.Format(MessageTemplates.IndexColumnNotFoundTemplate, "`idx_name`", "`def`.`information_schema`.`mytable`", "`fake_column`");
         Assert.Equal(expected, actual);
     }
@@ -1017,17 +922,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     {
         using var fileFixture = new FsProjectFixture();
 
-        var cli = new CommandLineInterface();
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "format-sql",
-            "nonexistent.sql"
-        ]);
+        var result = CliRunner.RunCli("format-sql", fileFixture, out _, out var actual, "nonexistent.sql");
 
         Assert.NotEqual(0, result);
 
-        var actual = GetOutputLines(TestOutputHelper);
         var expectedMessage = $"File not found: {Path.Combine(fileFixture.RootDirectory.FullName, "nonexistent.sql")}";
         Assert.Equal(expectedMessage, actual);
     }
@@ -1100,18 +998,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Out = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config"
-        ]);
+        var result = CliRunner.RunCli("validate-config", fileFixture, out var actual, out _);
 
         Assert.Equal(0, result);
 
-        var actual = writer.ToString().Trim();
         var expected = $"Database connection available: {ConnectionAvailable}";
         Assert.Equal(expected, actual);
     }
@@ -1124,19 +1014,11 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Out = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-            "--print-config"
-        ]);
+        var result = CliRunner.RunCli("validate-config", fileFixture, out var actual, out _, "--print-config");
 
         Assert.Equal(0, result);
 
-        var actual = writer.ToString().Trim();
+        actual = actual.Trim();
         Assert.Contains($"Dialect: {Dialect}", actual);
         Assert.Contains("FunctionDataRelation: CONTAINS SQL", actual);
         Assert.Contains($"SignedIntWidth: {DefaultIntWidth}", actual);
@@ -1155,19 +1037,11 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Out = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-            "--print-config"
-        ]);
+        var result = CliRunner.RunCli("validate-config", fileFixture, out var actual, out _, "--print-config");
 
         Assert.Equal(0, result);
 
-        var actual = writer.ToString().Trim();
+        actual = actual.Trim();
         Assert.Contains(fileFixture.CombinePath("Scripts", "01_preserve_book_info.sql"), actual);
         Assert.Contains(fileFixture.CombinePath("Scripts", "02_preserve_active_rental.sql"), actual);
         Assert.Contains(fileFixture.CombinePath("LibraryActivity", "Tables", "misplaced_script.sql"), actual);
@@ -1181,20 +1055,11 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Out = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-            "--print-config",
-            "--strict"
-        ]);
+        var result = CliRunner.RunCli("validate-config", fileFixture, out var actual, out _, "--print-config", "--strict");
 
         Assert.Equal(0, result);
 
-        var actual = writer.ToString().Trim();
+        actual = actual.Trim();
         Assert.Contains($"Dialect: {Dialect}", actual);
         Assert.Contains("FunctionDataRelation: CONTAINS SQL", actual);
         Assert.Contains($"SignedIntWidth: {DefaultIntWidth}", actual);
@@ -1218,18 +1083,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
                 "3",
                 ""), TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Error = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-        ]);
+        var result = CliRunner.RunCli("validate-config", fileFixture, out _, out var actual);
 
         Assert.NotEqual(0, result);
 
-        var actual = writer.ToString().Trim();
         var expectedMessage = string.Format(ErrorMessages.Err_Conf_RequestedValueNotFound, "NotADialect", "Dialect");
         var expected = string.Format(
             TestText.BadConfig_Error_Template,
@@ -1256,18 +1113,10 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
                 ""),
             TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Error = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-        ]);
+        var result = CliRunner.RunCli("validate-config", fileFixture, out _, out var actual);
 
         Assert.NotEqual(0, result);
 
-        var actual = writer.ToString().Trim();
         var expectedMessage = string.Format(ErrorMessages.Err_Conf_InvalidValue, "NotABoolean", "ObjectNamePrefixWithSchema");
         var expected = string.Format(
             TestText.BadConfig_Error_Template,
@@ -1293,18 +1142,13 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
                 "NotAnInt",
                 ""), TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Error = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-        ]);
+        var result = CliRunner.RunCli("validate-config",
+            fileFixture,
+            out _,
+            out string actual);
 
         Assert.NotEqual(0, result);
 
-        var actual = writer.ToString().Trim();
         var expectedMessage = string.Format(ErrorMessages.Err_Conf_InvalidValue, "NotAnInt", "SignedIntWidth");
         var expected = string.Format(
             TestText.BadConfig_Error_Template,
@@ -1330,18 +1174,13 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
                 "4",
                 "UnknownField: xyz"), TestContext.Current.CancellationToken);
 
-        var cli = new CommandLineInterface();
-        var writer = new StringWriter();
-        cli.Error = writer;
-        var result = cli.Run([
-            "--working-dir",
-            fileFixture.RootDirectory.FullName,
-            "validate-config",
-        ]);
+        var result = CliRunner.RunCli("validate-config",
+            fileFixture,
+            out _,
+            out string actual);
 
         Assert.NotEqual(0, result);
 
-        var actual = writer.ToString().Trim();
         var expectedMessage = string.Format(ErrorMessages.Err_Conf_UnknownField, "UnknownField");
         var expected = string.Format(
             TestText.BadConfig_Error_Template,
@@ -1358,18 +1197,5 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
     protected void UpdateConfiguration(string dirPath)
     {
         CommonHelpers.UpdateConfiguration(Dialect, dirPath, Container.Hostname, Container.GetMappedPublicPort(Container.GetPort()));
-    }
-
-    protected static string GetOutputLines(ITestOutputHelper testOutputHelper)
-    {
-        var lines = testOutputHelper.Output.Split(Environment.NewLine);
-        for (var i = lines.Length - 1; i >= 0; i--)
-        {
-            if (lines[i].StartsWith("[testcontainers"))
-            {
-                return string.Join(Environment.NewLine, lines.Skip(i + 1)).Trim();
-            }
-        }
-        return string.Join(Environment.NewLine, lines).Trim();
     }
 }

@@ -18,22 +18,9 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
-        StringWriter output = new();
-        StringWriter error = new();
-
-        var cli = new CommandLineInterface();
-        cli.Error = error;
-        cli.Out = output;
-        var diffResult = cli.Run([
-            "--working-dir",
-            workingDir,
-            "compute-changes",
-            "InitialChanges.sql"
-        ]);
-
+        var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "InitialChanges.sql");
         Assert.Equal(1, diffResult);
 
-        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
         return Task.CompletedTask;
     }
@@ -48,22 +35,10 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
-        StringWriter output = new();
-        StringWriter error = new();
-
-        var cli = new CommandLineInterface();
-        cli.Error = error;
-        cli.Out = output;
-        var diffResult = cli.Run([
-            "--working-dir",
-            workingDir,
-            "compute-changes",
-            "InitialChanges.sql"
-        ]);
+        var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "InitialChanges.sql");
 
         Assert.Equal(1, diffResult);
 
-        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;
@@ -79,22 +54,10 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
-        StringWriter output = new();
-        StringWriter error = new();
-
-        var cli = new CommandLineInterface();
-        cli.Error = error;
-        cli.Out = output;
-        var diffResult = cli.Run([
-            "--working-dir",
-            workingDir,
-            "compute-changes",
-            "InitialChanges.sql"
-        ]);
+        var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "InitialChanges.sql");
 
         Assert.Equal(1, diffResult);
 
-        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;
@@ -110,22 +73,8 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
-        StringWriter output = new();
-        StringWriter error = new();
-
-        var cli = new CommandLineInterface();
-        cli.Error = error;
-        cli.Out = output;
-
-        var diffResult = cli.Run([
-            "--working-dir",
-            workingDir,
-            "compute-changes"
-        ]);
-
+        var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual);
         Assert.Equal(1, diffResult);
-
-        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;
