@@ -7,6 +7,8 @@ namespace TcfOss.DatabaseManager.MsSql.IntegrationTests;
 
 public static class CommonHelpers
 {
+    public const string DefaultPassword = "yourStrongPassword123";
+
     private static readonly DirectoryInfo s_schemasDirectory = new(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MsSql"));
 
     public static DirectoryInfo GetSchemaDirectory(string testSchemaName)
@@ -18,22 +20,17 @@ public static class CommonHelpers
     {
         return builder
             .WithName($"container_mssql_{Guid.NewGuid():N}")
-            .WithPassword("yourStrongPassword123");
+            .WithPassword(DefaultPassword);
     }
 
-    public static ushort GetPort(this IDatabaseContainer container)
+    public static ushort GetMappedPort(this IDatabaseContainer container)
     {
-        return container switch
+        var internalPort = container switch
         {
             MsSqlContainer => MsSqlBuilder.MsSqlPort,
             FakeDbContainer => FakeDbBuilder.FakeDbPort,
             _ => throw new ArgumentException($"Container type {container.GetType().Name} is not supported.")
         };
-    }
-
-    public static ushort GetMappedPort(this IDatabaseContainer container)
-    {
-        var internalPort = container.GetPort();
         return container.GetMappedPublicPort(internalPort);
     }
 
@@ -50,7 +47,7 @@ public static class CommonHelpers
         Credentials:
           HostName: localhost
           Username: sa
-          Password: yourStrongPassword123
+          Password: {DefaultPassword}
           Port: {mappedPort}
           TrustServerCertificate: true
           ConnectionTimeout: 1

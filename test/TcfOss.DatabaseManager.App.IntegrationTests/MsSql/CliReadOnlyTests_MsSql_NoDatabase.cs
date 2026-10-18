@@ -9,4 +9,6 @@ public class CliReadOnlyTests_MsSql_NoDatabase
         Fixture = fixture;
         TestOutputHelper = testOutputHelper;
     }
+
+    protected override bool ConnectionAvailable => false;
 }

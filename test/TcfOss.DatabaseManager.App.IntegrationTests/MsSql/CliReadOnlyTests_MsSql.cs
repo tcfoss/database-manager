@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MsSql.IntegrationTests;
-using MsSqlCommonHelpers = TcfOss.DatabaseManager.MsSql.IntegrationTests.CommonHelpers;
+using CommonHelpers = TcfOss.DatabaseManager.MsSql.IntegrationTests.CommonHelpers;
 
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MsSql;
 
@@ -16,12 +16,14 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     protected IDatabaseContainer Container => Fixture.Container;
     protected ITestOutputHelper TestOutputHelper { get; init; } = null!;
 
+    protected virtual bool ConnectionAvailable => true;
+
 
     [Fact]
     public async Task ParseFiles_NoOptions()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
         var parseResult = cli.Run([
@@ -42,7 +44,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public async Task ParseFiles_WithMeta()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
 
         var cli = new CommandLineInterface();
         var parseResult = cli.Run([
@@ -64,7 +66,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public async Task ParseFiles_DuplicateSkip()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
         var cli = new CommandLineInterface();
@@ -90,7 +92,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public async Task ParseFiles_DuplicateError()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
         var cli = new CommandLineInterface();
@@ -118,7 +120,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public async Task ParseFiles_DuplicateOverwrite()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
         var cli = new CommandLineInterface();
@@ -146,7 +148,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public async Task ParseFiles_DuplicateRename()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), "Existing content", TestContext.Current.CancellationToken);
 
         var cli = new CommandLineInterface();
@@ -174,7 +176,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public void ParseFiles_NonExistentFile()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         Container.WriteBasicConfig(fileFixture.RootDirectory);
 
         var cli = new CommandLineInterface();
@@ -200,7 +202,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public async Task ParseFiles_GlobPattern()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        fileFixture.CopyFiles(Path.Combine(CommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_a.sql"), "SELECT 1;", TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(fileFixture.CombinePath("extra_b.sql"), "SELECT 2;", TestContext.Current.CancellationToken);
 
@@ -226,7 +228,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public void ParseErrorFakeJoin()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFile(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_fake_join.sql"));
+        fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_fake_join.sql"));
 
         var cli = new CommandLineInterface();
         var parseResult = cli.Run([
@@ -254,7 +256,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public void ParseErrorNotDroppable()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFile(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_not_droppable.sql"));
+        fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "parse_error_not_droppable.sql"));
 
         var cli = new CommandLineInterface();
         var parseResult = cli.Run([
@@ -282,7 +284,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     public void LexErrorUnclosedQuote()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFile(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "lex_error_unclosed_quote.sql"));
+        fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("FilesWithErrors").FullName, "lex_error_unclosed_quote.sql"));
 
         var cli = new CommandLineInterface();
         var parseResult = cli.Run([
@@ -346,6 +348,43 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         {
             Assert.DoesNotContain("\"Meta\":", functionText);
         }
+    }
+
+    [Fact]
+    public async Task ValidateConfig_Success()
+    {
+        using var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFile(
+            Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
+        await UpdateConfigurationAsync(fileFixture, TestContext.Current.CancellationToken);
+
+        var cli = new CommandLineInterface();
+        var writer = new StringWriter();
+        cli.Out = writer;
+
+        var result = cli.Run([
+            "--working-dir",
+            fileFixture.RootDirectory.FullName,
+            "validate-config"
+        ]);
+
+        Assert.Equal(0, result);
+
+        var actual = writer.ToString().Trim();
+        var expected = $"Database connection available: {ConnectionAvailable}";
+        Assert.Equal(expected, actual);
+    }
+
+    protected async Task UpdateConfigurationAsync(FsProjectFixture fileFixture, CancellationToken ct = default)
+    {
+        await fileFixture.UpdateConfigurationAsync(
+            dialect: SqlDialect.MsSql,
+            hostName: Container.Hostname,
+            userName: "sa",
+            password: CommonHelpers.DefaultPassword,
+            port: Container.GetMappedPort(),
+            ct: ct
+        );
     }
 
     private static string GetOutputLines(ITestOutputHelper outputHelper)

@@ -18,7 +18,12 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
+        StringWriter output = new();
+        StringWriter error = new();
+
         var cli = new CommandLineInterface();
+        cli.Error = error;
+        cli.Out = output;
         var diffResult = cli.Run([
             "--working-dir",
             workingDir,
@@ -28,7 +33,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         Assert.Equal(1, diffResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
+        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
         return Task.CompletedTask;
     }
@@ -43,7 +48,12 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
+        StringWriter output = new();
+        StringWriter error = new();
+
         var cli = new CommandLineInterface();
+        cli.Error = error;
+        cli.Out = output;
         var diffResult = cli.Run([
             "--working-dir",
             workingDir,
@@ -53,7 +63,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         Assert.Equal(1, diffResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
+        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;
@@ -69,7 +79,12 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
+        StringWriter output = new();
+        StringWriter error = new();
+
         var cli = new CommandLineInterface();
+        cli.Error = error;
+        cli.Out = output;
         var diffResult = cli.Run([
             "--working-dir",
             workingDir,
@@ -79,7 +94,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         Assert.Equal(1, diffResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
+        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;
@@ -95,7 +110,13 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         UpdateConfiguration(workingDir, null, null);
 
+        StringWriter output = new();
+        StringWriter error = new();
+
         var cli = new CommandLineInterface();
+        cli.Error = error;
+        cli.Out = output;
+
         var diffResult = cli.Run([
             "--working-dir",
             workingDir,
@@ -104,7 +125,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         Assert.Equal(1, diffResult);
 
-        var actual = GetOutputLines(TestOutputHelper);
+        var actual = error.ToString().Trim();
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;
