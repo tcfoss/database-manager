@@ -314,6 +314,9 @@ Credentials:
 ```
 
 This substitution applies only inside `Credentials`.
+Only placeholders in the original configuration value are substituted.
+Environment-variable values are inserted literally; placeholders inside them are
+not expanded again.
 
 ## Formatting and DifferFormatting
 

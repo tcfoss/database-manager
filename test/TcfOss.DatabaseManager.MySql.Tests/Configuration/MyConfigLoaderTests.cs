@@ -7,6 +7,7 @@ using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Resources;
+using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using Xunit.Sdk;
 
@@ -28,20 +29,6 @@ public class MyConfigLoaderTests
         Assert.Equal("def", rawConfig.Catalog);
         Assert.Equal("3306", rawConfig.Credentials!.Port);
         Assert.Equal("INFORMATION_SCHEMA", Assert.Single(rawConfig.Schemas).SchemaName);
-    }
-
-    private static MyConfig LoadConfig(ConfigParsing.Config rawConfig, Dictionary<string, object>? otherInfo = null)
-    {
-        otherInfo ??= MyGetOtherData.GetData(rawConfig);
-        return new MyConfigLoader(new LoggerFactory().CreateLogger<MyConfigLoader>()).LoadConfig(Path.GetFullPath("/home/username/database"), rawConfig, otherInfo);
-    }
-
-    private static MyConfig BuildConfig(ConfigParsing.Config rawConfig)
-    {
-        var testLogger = NullLogger.Instance;
-        var rootPath = rawConfig.ProjectDirectory ?? "/default/path/";
-        var builder = new MyConfigurationBuilder();
-        return builder.BuildConfiguration(rootPath, rawConfig, new EnvironmentVariableReader(), false, testLogger);
     }
 
     [Theory]
@@ -920,6 +907,90 @@ public class MyConfigLoaderTests
 
         Assert.Throws<KeyNotFoundException>(() => LoadConfig(rawConfig, otherInfo));
     }
+
+    [Fact]
+    public void LoadCredentials_FromEnvironmentVariables()
+    {
+        var credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "${ENV:DB_HOST}",
+            Port = "${ENV:DB_PORT}",
+            Username = "${ENV:DB_USER}",
+            Password = "${ENV:DB_PASSWORD}",
+            SocketPath = "${ENV:DB_SOCKET}",
+            DefaultCharset = "${ENV:DB_CHARSET}",
+            ConnectionTimeout = 1,
+        };
+        var variables = new Dictionary<string, string>
+        {
+            { "DB_HOST", "127.0.0.1" },
+            { "DB_PORT", "1" },
+            { "DB_USER", "envuser" },
+            { "DB_PASSWORD", "password${ENV:NOT_ANOTHER_VARIABLE}" },
+            { "DB_SOCKET", Path.Combine(Path.GetTempPath(), "missing-mysql-env-test.sock") },
+            { "DB_CHARSET", "utf8mb4" },
+        };
+
+        MyConfig config = BuildConfig(credentials, variables);
+
+        Assert.Equal(variables["DB_HOST"], config.DatabaseCredentials.Host);
+        Assert.Equal(1u, config.DatabaseCredentials.Port);
+        Assert.Equal(variables["DB_USER"], config.DatabaseCredentials.Username);
+        Assert.Equal(variables["DB_PASSWORD"], config.DatabaseCredentials.Password);
+        Assert.Equal(variables["DB_SOCKET"], config.DatabaseCredentials.SocketPath);
+        Assert.Equal(variables["DB_CHARSET"], config.DatabaseCredentials.DefaultCharset);
+    }
+
+    [Theory]
+    [InlineData("notanint")]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("65536")]
+    public void LoadCredentials_InvalidPortFromEnvironment_Throws(string port)
+    {
+        var credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "127.0.0.1",
+            Port = "${ENV:DB_PORT}",
+            Username = "testuser",
+            Password = "testpassword",
+            ConnectionTimeout = 1,
+        };
+
+        var exception = Assert.Throws<ConfigurationException.InvalidPortException>(() =>
+            BuildConfig(credentials, new Dictionary<string, string> { { "DB_PORT", port } }));
+
+        Assert.Equal($"Configuration Error: The port value '{port}' is invalid. It must be an unsigned integer between 1 and 65535.", exception.Message);
+    }
+
+
+    // === Configuration Helpers ===
+
+    private static MyConfig LoadConfig(ConfigParsing.Config rawConfig, Dictionary<string, object>? otherInfo = null)
+    {
+        otherInfo ??= MyGetOtherData.GetData(rawConfig);
+        return new MyConfigLoader(new LoggerFactory().CreateLogger<MyConfigLoader>()).LoadConfig(Path.GetFullPath("/home/username/database"), rawConfig, otherInfo);
+    }
+
+    private static MyConfig BuildConfig(ConfigParsing.Config rawConfig)
+    {
+        var testLogger = NullLogger.Instance;
+        var rootPath = rawConfig.ProjectDirectory ?? "/default/path/";
+        var builder = new MyConfigurationBuilder();
+        return builder.BuildConfiguration(rootPath, rawConfig, new EnvironmentVariableReader(), false, testLogger);
+    }
+
+    private static MyConfig BuildConfig(ConfigParsing.Credentials credentials, Dictionary<string, string> variables)
+    {
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new MyConfigurationBuilder();
+        ConfigParsing.Config rawConfig = builder.GetDefaultConfig(rootDirectory);
+        rawConfig.Credentials = credentials;
+        return builder.BuildConfiguration(rootDirectory, rawConfig, new TestEnvironmentReader(variables), false, NullLogger.Instance);
+    }
+
+
+    // === Test Data Fixtures ===
 
     class NumericLengthTestData : IEnumerable<TheoryDataRow<int?, int?, NumericLength?, ExceptionType?, string?>>
     {

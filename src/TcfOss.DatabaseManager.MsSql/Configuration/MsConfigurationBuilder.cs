@@ -6,6 +6,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.MsSql.Configuration;
 
@@ -13,6 +14,7 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
 {
     private const SqlDialect DefaultDialect = SqlDialect.MsSql;
     private const QuoteStyle DefaultQuoteStyle = QuoteStyle.Brackets;
+    private const int StartupConnectionTimeoutSeconds = 2;
 
     public override Config GetDefaultConfig(string rootDirectory)
     {
@@ -26,6 +28,7 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
             {
                 Hostname = "localhost",
                 Port = "1433",
+                ConnectionTimeout = DefaultTimeoutSeconds,
             },
             Schemas = [
                 new SchemaMapping
@@ -37,7 +40,7 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
         };
     }
 
-    private static MsDatabaseCredentials ExtractDatabaseCredentials(Config config, IReadEnvironmentVariables environmentVariableReader)
+    private static MsDatabaseCredentials ExtractDatabaseCredentials(Config config, EnvironmentVariableReaderBase environmentVariableReader)
     {
         if (config.Credentials == null)
         {
@@ -94,7 +97,7 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
         return credentials;
     }
 
-    public override MsConfig BuildConfiguration(string rootDirectory, Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
+    public override MsConfig BuildConfiguration(string rootDirectory, Config rawConfig, EnvironmentVariableReaderBase environmentVariableReader, bool relaxed, ILogger logger)
     {
         var loader = new MsConfigLoader(logger);
         bool canConnect = false;
@@ -104,15 +107,32 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
         Version version;
         try
         {
-            using var connection = new SqlConnection(credentials.ConnectionString);
-            connection.Open();
+            if (credentials.Instance == null)
+            {
+                s_logDefaultInstance(logger, credentials.Host);
+            }
+
+            var connectionStringBuilder = new SqlConnectionStringBuilder(credentials.ConnectionString)
+            {
+                ConnectTimeout = credentials.ConnectionTimeout > 0
+                    ? Math.Min(credentials.ConnectionTimeout, StartupConnectionTimeoutSeconds)
+                    : StartupConnectionTimeoutSeconds,
+            };
+
+            s_logConnecting(logger, new LogDelegateExecutionWrapper<MsDatabaseCredentials>(credentials, c => c.GetRedactedConnectionString()), connectionStringBuilder.ConnectTimeout);
+
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(connectionStringBuilder.ConnectTimeout));
+            using var connection = new SqlConnection(connectionStringBuilder.ConnectionString);
+            connection.OpenAsync(cancellation.Token).GetAwaiter().GetResult();
 
             string serverVersion = connection.ServerVersion!;
             version = new Version(serverVersion);
             canConnect = true;
+            s_logConnected(logger, credentials.DataSource, serverVersion);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or SqlException)
+        catch (Exception ex) when (ex is InvalidOperationException or SqlException or OperationCanceledException)
         {
+            s_logConnectionAttemptFailed(logger, credentials.DataSource, ex);
             s_logCantConnect(logger, credentials.GetRedactedConnectionString(), ex);
             if (rawConfig.Version == null || !Version.TryParse(rawConfig.Version, out version!))
             {
@@ -131,6 +151,17 @@ public partial class MsConfigurationBuilder : ConfigurationBuilder<MsConfig>
         return config;
     }
 
+    [LoggerMessage(EventId = 2, Level = LogLevel.Trace, Message = "No instance name supplied for {Host}; using the default instance.")]
+    private static partial void s_logDefaultInstance(ILogger logger, string host);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Debug, Message = "Attempting startup connection using {Credentials} with a timeout of {TimeoutSeconds} seconds.")]
+    private static partial void s_logConnecting(ILogger logger, LogDelegateExecutionWrapper<MsDatabaseCredentials> credentials, int timeoutSeconds);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Connected to {DataSource}, SQL Server version {ServerVersion}.")]
+    private static partial void s_logConnected(ILogger logger, string dataSource, string serverVersion);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "Startup connection attempt to {DataSource} failed.")]
+    private static partial void s_logConnectionAttemptFailed(ILogger logger, string dataSource, Exception ex);
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Could not connect to server. Falling back to default values. Attempted to connect using {Credentials}")]
     private static partial void s_logCantConnect(ILogger logger, string credentials, Exception ex);

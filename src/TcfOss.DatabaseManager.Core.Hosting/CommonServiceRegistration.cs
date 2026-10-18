@@ -15,7 +15,7 @@ public static class CommonServiceRegistration
         builder.Services.AddScoped<ConfigBase>(_ => config);
         builder.Services.AddScoped<IParseText, TextParser>();
         builder.Services.AddSingleton<IWriteFiles, FileWriter>();
-        builder.Services.AddSingleton<IReadEnvironmentVariables, EnvironmentVariableReader>();
+        builder.Services.AddSingleton<EnvironmentVariableReaderBase, EnvironmentVariableReader>();
         builder.Services.AddSingleton<SourceManager>();
     }
 }

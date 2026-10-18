@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.IntegrationTests;
 using Testcontainers.MsSql;
 using Xunit.Sdk;
 
@@ -8,7 +9,7 @@ public sealed class MsSqlFixture_2022(IMessageSink messageSink)
 {
     protected override MsSqlBuilder Configure()
     {
-        return new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
+        return new MsSqlBuilder(FixtureImages.MsSql_2022)
             .WithStandardOptions();
     }
 }

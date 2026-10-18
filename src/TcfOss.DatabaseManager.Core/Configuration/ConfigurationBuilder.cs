@@ -14,7 +14,7 @@ public abstract class ConfigurationBuilder<TConfig>
     public abstract TConfig BuildConfiguration(
         string rootDirectory,
         ConfigParsing.Config rawConfig,
-        IReadEnvironmentVariables environmentVariableReader,
+        EnvironmentVariableReaderBase environmentVariableReader,
         bool relaxed,
         ILogger logger);
 }

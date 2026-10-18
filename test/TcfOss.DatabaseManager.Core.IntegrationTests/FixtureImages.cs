@@ -7,4 +7,7 @@ public static class FixtureImages
     public const string MariaDb_10_11 = "mariadb:10.11.19";
     public const string MariaDb_11_08 = "mariadb:11.8.9";
     public const string MariaDb_12_03 = "mariadb:12.3.3";
+
+    public const string MsSql_2025 = "mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-22.04";
+    public const string MsSql_2022 = "mcr.microsoft.com/mssql/server:2022-latest";
 }

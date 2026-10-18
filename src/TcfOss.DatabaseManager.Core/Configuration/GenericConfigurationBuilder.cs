@@ -30,7 +30,7 @@ public class GenericConfigurationBuilder : ConfigurationBuilder<GenericConfig>
         };
     }
 
-    public override GenericConfig BuildConfiguration(string rootDirectory, ConfigParsing.Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
+    public override GenericConfig BuildConfiguration(string rootDirectory, ConfigParsing.Config rawConfig, EnvironmentVariableReaderBase environmentVariableReader, bool relaxed, ILogger logger)
     {
         var loader = new GenericConfigLoader(logger);
         return loader.LoadConfig(rootDirectory, rawConfig, [], relaxed);

@@ -1,7 +1,9 @@
 using System.Globalization;
+using DotNet.Testcontainers.Containers;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.Tests;
+using TcfOss.DatabaseManager.MsSql.IntegrationTests;
 using MsSqlCommonHelpers = TcfOss.DatabaseManager.MsSql.IntegrationTests.CommonHelpers;
 
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MsSql;
@@ -10,6 +12,8 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     : IClassFixture<TFixture>
     where TFixture : CliReadOnlyFixture_MsSql
 {
+    protected TFixture Fixture { get; init; } = null!;
+    protected IDatabaseContainer Container => Fixture.Container;
     protected ITestOutputHelper TestOutputHelper { get; init; } = null!;
 
 
@@ -31,7 +35,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
             "create_function.sql"
         ]);
 
-        await CliReadOnlyTests_MsSql<TFixture>.TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
+        await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -53,7 +57,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
             "--include-meta"
         ]);
 
-        await CliReadOnlyTests_MsSql<TFixture>.TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, true, false, TestContext.Current.CancellationToken);
+        await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, true, false, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -75,7 +79,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
             "create_function.sql",
         ]);
 
-        await CliReadOnlyTests_MsSql<TFixture>.TestParseFilesCommon(parseResult1, fileFixture.RootDirectory.FullName, false, true, TestContext.Current.CancellationToken);
+        await TestParseFilesCommon(parseResult1, fileFixture.RootDirectory.FullName, false, true, TestContext.Current.CancellationToken);
 
         Assert.True(File.Exists(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json")));
         var selectText = await File.ReadAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), TestContext.Current.CancellationToken);
@@ -131,7 +135,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
             "overwrite"
         ]);
 
-        await CliReadOnlyTests_MsSql<TFixture>.TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
+        await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
 
         Assert.True(File.Exists(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json")));
         var selectText = await File.ReadAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json"), TestContext.Current.CancellationToken);
@@ -159,7 +163,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
             "rename"
         ]);
 
-        await CliReadOnlyTests_MsSql<TFixture>.TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
+        await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
 
         Assert.True(File.Exists(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json.bak.1")));
         var selectText = await File.ReadAllTextAsync(Path.Combine(fileFixture.RootDirectory.FullName, "select.parsed.json.bak.1"), TestContext.Current.CancellationToken);
@@ -171,6 +175,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     {
         using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(Path.Combine(MsSqlCommonHelpers.GetSchemaDirectory("SimpleFilesForParsing").FullName));
+        Container.WriteBasicConfig(fileFixture.RootDirectory);
 
         var cli = new CommandLineInterface();
         var parseResult = cli.Run([
