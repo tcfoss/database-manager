@@ -210,7 +210,7 @@ public partial class MyDbDefinitionLoader(
 
         NormalizeDefinition(definition);
 
-        s_logLoadedDefinition(_logger, new LogDelegateWrapper<MyDefinition>(definition, _logger.IsEnabled(LogLevel.Trace), DefinitionHelpers.SortDefinition));
+        s_logLoadedDefinition(_logger, new LogDelegateSerializationWrapper<MyDefinition>(definition, _logger.IsEnabled(LogLevel.Trace), DefinitionHelpers.SortDefinition));
 
         return definition;
     }
@@ -312,5 +312,5 @@ public partial class MyDbDefinitionLoader(
     private static partial void s_loadingSchemaFromDatabase(ILogger logger, string schema);
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Debug, Message = "Loaded definition from database: {LoadedDefinition}")]
-    private static partial void s_logLoadedDefinition(ILogger logger, LogDelegateWrapper<MyDefinition> loadedDefinition);
+    private static partial void s_logLoadedDefinition(ILogger logger, LogDelegateSerializationWrapper<MyDefinition> loadedDefinition);
 }

@@ -15,7 +15,7 @@ public partial class MaConfigurationBuilder : MyConfigurationBuilder
 {
     protected override SqlDialect DefaultDialect => SqlDialect.MariaDb;
 
-    public override MyConfig BuildConfiguration(string rootDirectory, Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
+    public override MyConfig BuildConfiguration(string rootDirectory, Config rawConfig, EnvironmentVariableReaderBase environmentVariableReader, bool relaxed, ILogger logger)
     {
         var loader = new MaConfigLoader(logger);
 

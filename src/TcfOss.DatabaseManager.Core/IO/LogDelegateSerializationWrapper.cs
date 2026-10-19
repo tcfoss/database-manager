@@ -2,7 +2,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 
 namespace TcfOss.DatabaseManager.Core.IO;
 
-public readonly struct LogDelegateWrapper<T>(T objectToSerialize, bool logEverything, Func<T, T>? preSerializationTransform = null)
+public readonly struct LogDelegateSerializationWrapper<T>(T objectToSerialize, bool logEverything, Func<T, T>? preSerializationTransform = null)
 {
     private readonly bool _logEverything = logEverything;
     private readonly T _objectToSerialize = objectToSerialize;

@@ -15,7 +15,7 @@ public abstract class StartupBase
         string rootDirectory,
         ConfigParsing.Config rawConfig,
         IHostApplicationBuilder builder,
-        IReadEnvironmentVariables environmentVariableReader,
+        EnvironmentVariableReaderBase environmentVariableReader,
         Func<IHostApplicationBuilder, LogSettings, (ILogger, string?)> loggingSetupFunc,
         Action<ILogger, string?>? logSetupAction = null,
         Action<ConfigBase>? configSetupAction = null,
@@ -39,7 +39,7 @@ public abstract class StartupBase<TConfig> : StartupBase
 
     public virtual TConfig BuildConfiguration(string rootDirectory,
         ConfigParsing.Config rawConfig,
-        IReadEnvironmentVariables environmentVariableReader,
+        EnvironmentVariableReaderBase environmentVariableReader,
         bool relaxed,
         ILogger logger)
     {
@@ -51,7 +51,7 @@ public abstract class StartupBase<TConfig> : StartupBase
         string rootDirectory,
         ConfigParsing.Config rawConfig,
         IHostApplicationBuilder builder,
-        IReadEnvironmentVariables environmentVariableReader,
+        EnvironmentVariableReaderBase environmentVariableReader,
         Func<IHostApplicationBuilder, LogSettings, (ILogger, string?)> loggingSetupFunc,
         Action<ILogger, string?>? logSetupAction = null,
         Action<ConfigBase>? configSetupAction = null,

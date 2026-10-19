@@ -104,7 +104,7 @@ public partial class MyFsDefinitionLoader(
         s_finishedParsingFiles(_logger);
 
         MyDefinition definition = builder.ToDefinition();
-        s_logParsedDefinition(_logger, new LogDelegateWrapper<MyDefinition>(definition, _logger.IsEnabled(LogLevel.Trace), DefinitionHelpers.SortDefinition));
+        s_logParsedDefinition(_logger, new LogDelegateSerializationWrapper<MyDefinition>(definition, _logger.IsEnabled(LogLevel.Trace), DefinitionHelpers.SortDefinition));
 
         return definition;
     }
@@ -116,5 +116,5 @@ public partial class MyFsDefinitionLoader(
     private static partial void s_finishedParsingFiles(ILogger logger);
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Debug, Message = "Parsed definition from files: {ParsedDefinition}")]
-    private static partial void s_logParsedDefinition(ILogger logger, LogDelegateWrapper<MyDefinition> parsedDefinition);
+    private static partial void s_logParsedDefinition(ILogger logger, LogDelegateSerializationWrapper<MyDefinition> parsedDefinition);
 }

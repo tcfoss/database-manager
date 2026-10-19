@@ -7,10 +7,96 @@ namespace TcfOss.DatabaseManager.Core.Tests.IO;
 public class LogDelegateWrapperTests
 {
     [Fact]
-    public void LogWrapper_Minimal()
+    public void ExecutionLogWrapper_Selector_IsDeferredAndRunsOnEveryToString()
+    {
+        int invocationCount = 0;
+        var wrapper = new LogDelegateExecutionWrapper<int>(42, source =>
+        {
+            invocationCount++;
+            return $"Selected {source}";
+        });
+
+        Assert.Equal(0, invocationCount);
+        Assert.Equal("Selected 42", wrapper.ToString());
+        Assert.Equal(1, invocationCount);
+        Assert.Equal("Selected 42", wrapper.ToString());
+        Assert.Equal(2, invocationCount);
+    }
+
+    [Fact]
+    public void ExecutionLogWrapper_NullSource_WithSelector_InvokesSelector()
+    {
+        var wrapper = new LogDelegateExecutionWrapper<string?>(null, source =>
+        {
+            Assert.Null(source);
+            return source ?? "Selected null";
+        });
+
+        Assert.Equal("Selected null", wrapper.ToString());
+    }
+
+    [Fact]
+    public void ExecutionLogWrapper_SelectorReturnsNull_DoesNotFallBackToSource()
+    {
+        var wrapper = new LogDelegateExecutionWrapper<string>("Sensitive source", _ => null!);
+
+        Assert.Null(wrapper.ToString());
+    }
+
+    [Fact]
+    public void ExecutionLogWrapper_SelectorThrows_PropagatesException()
+    {
+        var exception = new InvalidOperationException("Selector failed");
+        var wrapper = new LogDelegateExecutionWrapper<int>(42, _ => throw exception);
+
+        Assert.Same(exception, Assert.Throws<InvalidOperationException>(wrapper.ToString));
+    }
+
+    [Theory]
+    [InlineData("Source", "Source")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void ExecutionLogWrapper_NoSelector_UsesSourceOrEmptyString(string? source, string expected)
+    {
+        var wrapper = new LogDelegateExecutionWrapper<string?>(source, null);
+
+        Assert.Equal(expected, wrapper.ToString());
+    }
+
+    [Fact]
+    public void ExecutionLogWrapper_NoSelector_ValueType_UsesToString()
+    {
+        var wrapper = new LogDelegateExecutionWrapper<int>(42, null);
+
+        Assert.Equal("42", wrapper.ToString());
+    }
+
+    [Fact]
+    public void ExecutionLogWrapper_SourceToStringReturnsNull_UsesEmptyString()
+    {
+        var wrapper = new LogDelegateExecutionWrapper<NullStringSource>(new NullStringSource(), null);
+
+        Assert.Equal(string.Empty, wrapper.ToString());
+    }
+
+    [Fact]
+    public void ExecutionLogWrapper_DefaultValue_UsesEmptyString()
+    {
+        var wrapper = default(LogDelegateExecutionWrapper<string>);
+
+        Assert.Equal(string.Empty, wrapper.ToString());
+    }
+
+    private sealed class NullStringSource
+    {
+        public override string? ToString() => null;
+    }
+
+    [Fact]
+    public void SerializationLogWrapper_Minimal()
     {
         var myData = new MyTestObject();
-        var wrapper = new LogDelegateWrapper<MyTestObject>(myData, false);
+        var wrapper = new LogDelegateSerializationWrapper<MyTestObject>(myData, false);
         var actual = wrapper.ToString();
         var expected = """
         {
@@ -21,10 +107,10 @@ public class LogDelegateWrapperTests
     }
 
     [Fact]
-    public void LogWrapper_Minimal_TransformValue()
+    public void SerializationLogWrapper_Minimal_TransformValue()
     {
         var myData = new MyTestObject();
-        var wrapper = new LogDelegateWrapper<MyTestObject>(myData, false, obj => obj with { Value = obj.Value * 2 });
+        var wrapper = new LogDelegateSerializationWrapper<MyTestObject>(myData, false, obj => obj with { Value = obj.Value * 2 });
         var actual = wrapper.ToString();
         var expected = """
         {
@@ -35,10 +121,10 @@ public class LogDelegateWrapperTests
     }
 
     [Fact]
-    public void LogWrapper_LogEverything()
+    public void SerializationLogWrapper_LogEverything()
     {
         var myData = new MyTestObject();
-        var wrapper = new LogDelegateWrapper<MyTestObject>(myData, true);
+        var wrapper = new LogDelegateSerializationWrapper<MyTestObject>(myData, true);
         var actual = wrapper.ToString();
         var expected = """
         {

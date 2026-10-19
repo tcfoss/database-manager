@@ -1,9 +1,13 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MsSql.Configuration;
 
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
@@ -12,6 +16,45 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.Configuration;
 
 public class MsConfigLoaderTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(30)]
+    public async Task MsConfigurationBuilder_StalledHandshake_FallsBackQuickly(int connectionTimeout)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new MsConfigurationBuilder();
+        var rawConfig = builder.GetDefaultConfig(rootDirectory);
+        rawConfig.Version = "15.0.1000";
+        rawConfig.Credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "127.0.0.1",
+            Port = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Username = "testuser",
+            Password = "testpassword",
+            ConnectionTimeout = connectionTimeout,
+        };
+        var logger = new TestLogger();
+        var stopwatch = Stopwatch.StartNew();
+
+        Task<MsConfig> buildTask = Task.Run(() => builder.BuildConfiguration(rootDirectory, rawConfig, new EnvironmentVariableReader(), false, logger), TestContext.Current.CancellationToken);
+        using TcpClient client = await listener.AcceptTcpClientAsync(TestContext.Current.CancellationToken).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        MsConfig config = await buildTask.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.False(config.DatabaseAvailable);
+        Assert.Equal(new Version("15.0.1000"), config.Version);
+        Assert.Equal(connectionTimeout, config.DatabaseCredentials.ConnectionTimeout);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(6), $"Startup took {stopwatch.Elapsed}.");
+        Assert.Equal([LogLevel.Trace, LogLevel.Debug, LogLevel.Information, LogLevel.Warning], logger.Entries.Select(entry => entry.Level));
+        int expectedTimeout = connectionTimeout == 1 ? 1 : 2;
+        Assert.Contains($"with a timeout of {expectedTimeout} seconds", logger.Entries.Single(entry => entry.Level == LogLevel.Debug).Message);
+        Assert.All(logger.Entries, entry => Assert.DoesNotContain("testpassword", entry.Message));
+    }
+
     [Theory]
     [InlineData(null, "16.0.0")]
     [InlineData("", "16.0.0")]
@@ -310,6 +353,61 @@ public class MsConfigLoaderTests
         Assert.True(config.DatabaseCredentials.TrustServerCertificate);
     }
 
+    [Fact]
+    public void LoadCredentials_FromEnvironmentVariables()
+    {
+        var credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "${ENV:DB_HOST}",
+            Port = "${ENV:DB_PORT}",
+            Instance = "${ENV:DB_INSTANCE}",
+            Username = "${ENV:DB_USER}",
+            Password = "${ENV:DB_PASSWORD}",
+            ConnectionTimeout = 1,
+        };
+        var variables = new Dictionary<string, string>
+        {
+            { "DB_HOST", "127.0.0.1" },
+            { "DB_PORT", "1" },
+            { "DB_INSTANCE", "SQLEXPRESS" },
+            { "DB_USER", "envuser" },
+            { "DB_PASSWORD", "password${ENV:NOT_ANOTHER_VARIABLE}" },
+        };
+
+        MsConfig config = BuildConfig(credentials, variables);
+
+        Assert.Equal(variables["DB_HOST"], config.DatabaseCredentials.Host);
+        Assert.Equal(1, config.DatabaseCredentials.Port);
+        Assert.Equal(variables["DB_INSTANCE"], config.DatabaseCredentials.Instance);
+        Assert.Equal(variables["DB_USER"], config.DatabaseCredentials.Username);
+        Assert.Equal(variables["DB_PASSWORD"], config.DatabaseCredentials.Password);
+    }
+
+    [Theory]
+    [InlineData("notanint")]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("65536")]
+    public void LoadCredentials_InvalidPortFromEnvironment_Throws(string port)
+    {
+        var credentials = new ConfigParsing.Credentials
+        {
+            Hostname = "127.0.0.1",
+            Port = "${ENV:DB_PORT}",
+            Username = "testuser",
+            Password = "testpassword",
+            ConnectionTimeout = 1,
+        };
+
+        var exception = Assert.Throws<ConfigurationException.InvalidPortException>(() =>
+            BuildConfig(credentials, new Dictionary<string, string> { { "DB_PORT", port } }));
+
+        Assert.Equal($"Configuration Error: The port value '{port}' is invalid. It must be an unsigned integer between 1 and 65535.", exception.Message);
+    }
+
+
+    // === Configuration Helpers ===
+
     private static MsConfig LoadConfig(ConfigParsing.Config rawConfig, Dictionary<string, object>? otherInfo = null)
     {
         otherInfo ??= MsGetOtherData.GetData(rawConfig);
@@ -324,5 +422,14 @@ public class MsConfigLoaderTests
         var builder = new MsConfigurationBuilder();
 
         return builder.BuildConfiguration(rootPath, rawConfig, new EnvironmentVariableReader(), false, testLogger);
+    }
+
+    private static MsConfig BuildConfig(ConfigParsing.Credentials credentials, Dictionary<string, string> variables)
+    {
+        string rootDirectory = Path.GetFullPath(Path.GetTempPath());
+        var builder = new MsConfigurationBuilder();
+        ConfigParsing.Config rawConfig = builder.GetDefaultConfig(rootDirectory);
+        rawConfig.Credentials = credentials;
+        return builder.BuildConfiguration(rootDirectory, rawConfig, new TestEnvironmentReader(variables), false, NullLogger.Instance);
     }
 }

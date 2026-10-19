@@ -136,7 +136,7 @@ public class StartAppBaseTests
             string rootDirectory,
             Config rawConfig,
             IHostApplicationBuilder builder,
-            IReadEnvironmentVariables environmentVariableReader,
+            EnvironmentVariableReaderBase environmentVariableReader,
             Func<IHostApplicationBuilder, LogSettings, (ILogger, string?)> loggingSetupFunc,
             Action<ILogger, string?>? logSetupAction = null,
             Action<ConfigBase>? configSetupAction = null,

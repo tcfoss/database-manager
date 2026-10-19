@@ -40,23 +40,27 @@ public partial class MyChangeComputer(
             () => _fsDefinitionLoader.LoadDefinition(relaxed: false),
             cancellationToken);
 
+        Task allTasks = Task.WhenAll(dbTask, fileTask);
         try
         {
-            await Task.WhenAll(dbTask, fileTask);
+            await allTasks;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            if (dbTask.IsFaulted)
+            if (allTasks.Exception != null)
             {
-                // throw dbTask.Exception!.InnerException!;
-                throw;
+                foreach (Exception innerException in allTasks.Exception.InnerExceptions)
+                {
+                    s_unexpectedError(_logger, innerException);
+                }
+
             }
-            if (fileTask.IsFaulted)
+
+            if (fileTask is { IsFaulted: true, Exception.InnerException: not null })
             {
-                // throw fileTask.Exception!.InnerException!;
-                throw;
+                throw fileTask.Exception.InnerException;
             }
-            s_unexpectedError(_logger, ex);
+
             throw;
         }
 

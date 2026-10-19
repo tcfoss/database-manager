@@ -8,10 +8,50 @@ using TcfOss.DatabaseManager.Core.Hosting;
 
 namespace TcfOss.DatabaseManager.Hosting.Tests;
 
+[Collection(typeof(ConsoleOutputCollection))]
 public class LoggingRegistrationTests
 {
+    [CollectionDefinition(DisableParallelization = true)]
+    public sealed class ConsoleOutputCollection;
+
     private static readonly List<string> s_expectedMessages =
         ["Application event", "Database event", "Connector event"];
+
+    [Fact]
+    public void AddLogging_Console_WritesMessagesToConsole()
+    {
+        TextWriter originalOutput = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
+            var config = new LogSettings
+            {
+                Target = LogTarget.Console,
+                LogLevel = LogLevel.Information,
+                DatabaseLogLevel = LogLevel.Error,
+            };
+
+            (ILogger logger, _) = builder.AddLogging(config);
+            using var host = builder.Build();
+            using var serilogLogger = Assert.IsType<IDisposable>(host.Services.GetRequiredService<Serilog.ILogger>(), exactMatch: false);
+            var hostLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Application");
+
+            logger.LogInformation("Returned logger event");
+            hostLogger.LogInformation("Host logger event");
+            logger.LogDebug("Filtered console event");
+
+            string actual = output.ToString();
+            Assert.Contains("Returned logger event", actual);
+            Assert.Contains("Host logger event", actual);
+            Assert.DoesNotContain("Filtered console event", actual);
+        }
+        finally
+        {
+            Console.SetOut(originalOutput);
+        }
+    }
 
     [Theory]
     [InlineData(LogLevel.Trace)]

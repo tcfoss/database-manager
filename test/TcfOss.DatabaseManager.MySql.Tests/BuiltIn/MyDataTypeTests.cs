@@ -1,13 +1,28 @@
 ﻿using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
+using Xunit.Sdk;
+
+[assembly: RegisterXunitSerializer(typeof(StringEnumTestHelpers.StringEnumSerializer<MySqlNumericAttribute>), typeof(MySqlNumericAttribute))]
 
 namespace TcfOss.DatabaseManager.MySql.Tests.BuiltIn;
 
 public class MyDataTypeTests
 {
+    [Theory]
+    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<MySqlNumericAttribute>))]
+    public void NumericAttributeSerializerRoundTrips(string text, MySqlNumericAttribute attribute)
+    {
+        var serializer = new StringEnumTestHelpers.StringEnumSerializer<MySqlNumericAttribute>();
+
+        Assert.True(serializer.IsSerializable(typeof(MySqlNumericAttribute), attribute, out var failureReason), failureReason);
+        Assert.Equal(text, serializer.Serialize(attribute));
+        Assert.Equal(attribute, serializer.Deserialize(typeof(MySqlNumericAttribute), text));
+    }
+
     [Theory]
     [InlineData("tinyint", typeof(MyDataType.MyTinyInt), null, null, "TINYINT")]
     [InlineData("tinyint(3)", typeof(MyDataType.MyTinyInt), null, 3u, "TINYINT(3)")]

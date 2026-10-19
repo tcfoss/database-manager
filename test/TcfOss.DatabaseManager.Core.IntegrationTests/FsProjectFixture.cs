@@ -1,19 +1,11 @@
-﻿namespace TcfOss.DatabaseManager.Core.IntegrationTests;
+﻿using System.Text.RegularExpressions;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 
-public class FsProjectFixture : IDisposable
+namespace TcfOss.DatabaseManager.Core.IntegrationTests;
+
+public partial class FsProjectFixture(string? prefix = null) : IDisposable
 {
-    public DirectoryInfo RootDirectory { get; }
-
-    public FsProjectFixture()
-    {
-        RootDirectory = new DirectoryInfo(Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-
-        if (RootDirectory.Exists)
-        {
-            throw new InvalidOperationException($"Root directory {RootDirectory.FullName} already exists.");
-        }
-        RootDirectory.Create();
-    }
+    public DirectoryInfo RootDirectory { get; } = Directory.CreateTempSubdirectory(prefix ?? "dbman-test_");
 
     public void CopyFiles(string sourceDirectory, string? targetDirectory = null)
     {
@@ -63,6 +55,39 @@ public class FsProjectFixture : IDisposable
         await File.WriteAllTextAsync(targetPath, content, cancellationToken);
     }
 
+    public async Task UpdateConfigurationAsync(
+        SqlDialect? dialect = null,
+        string? hostName = null,
+        string? userName = null,
+        ushort? port = null,
+        string? password = null,
+        CancellationToken ct = default)
+    {
+        var text = await File.ReadAllTextAsync(CombinePath("database-manager.yaml"), ct);
+
+        if (dialect.HasValue)
+        {
+            text = GetDialectRegex().Replace(text, $"Dialect: {dialect.Value}");
+        }
+        if (hostName is not null)
+        {
+            text = GetHostnameRegex().Replace(text, $"HostName: {hostName}");
+        }
+        if (userName is not null)
+        {
+            text = GetUsernameRegex().Replace(text, $"UserName: {userName}");
+        }
+        if (port.HasValue)
+        {
+            text = GetPortRegex().Replace(text, $"Port: {port.Value}");
+        }
+        if (password is not null)
+        {
+            text = GetPasswordRegex().Replace(text, $"Password: {password}");
+        }
+        await File.WriteAllTextAsync(CombinePath("database-manager.yaml"), text, ct);
+    }
+
     /// <summary>
     /// Adds the given path segments to the root directory of the fixture.
     /// </summary>
@@ -86,4 +111,16 @@ public class FsProjectFixture : IDisposable
         }
         GC.SuppressFinalize(this);
     }
+
+    [GeneratedRegex(@"HostName: \w+")]
+    private static partial Regex GetHostnameRegex();
+
+    [GeneratedRegex(@"Dialect: \w+")]
+    private static partial Regex GetDialectRegex();
+    [GeneratedRegex(@"UserName: \w+")]
+    private static partial Regex GetUsernameRegex();
+    [GeneratedRegex(@"Port: \d+")]
+    private static partial Regex GetPortRegex();
+    [GeneratedRegex(@"Password: \w+")]
+    private static partial Regex GetPasswordRegex();
 }

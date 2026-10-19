@@ -15,6 +15,7 @@ Credentials:
   UserName: sa
   Password: yourStrongPassword123
   Port: 1433
+  TrustServerCertificate: true
 
 Formatting:
   PreferTabs: false

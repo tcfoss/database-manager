@@ -41,7 +41,7 @@ public partial class MyConfigurationBuilder : ConfigurationBuilder<MyConfig>
         };
     }
 
-    protected static DatabaseCredentials ExtractDatabaseCredentials(Config config, IReadEnvironmentVariables environmentVariableReader)
+    protected static DatabaseCredentials ExtractDatabaseCredentials(Config config, EnvironmentVariableReaderBase environmentVariableReader)
     {
         if (config.Credentials == null)
         {
@@ -86,7 +86,7 @@ public partial class MyConfigurationBuilder : ConfigurationBuilder<MyConfig>
         return credentials;
     }
 
-    public override MyConfig BuildConfiguration(string rootDirectory, Config rawConfig, IReadEnvironmentVariables environmentVariableReader, bool relaxed, ILogger logger)
+    public override MyConfig BuildConfiguration(string rootDirectory, Config rawConfig, EnvironmentVariableReaderBase environmentVariableReader, bool relaxed, ILogger logger)
     {
         var loader = new MyConfigLoader(logger);
 
