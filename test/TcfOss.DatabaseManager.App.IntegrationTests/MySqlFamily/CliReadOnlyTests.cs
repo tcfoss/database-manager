@@ -2,6 +2,7 @@
 using DotNet.Testcontainers.Containers;
 using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Extensions;
@@ -112,6 +113,103 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 
         var expected = string.Format(CultureInfo.CurrentCulture, MessageTemplates.ConfigRequiredTemplate, "compute-changes");
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public virtual async Task ComputeChanges_SyntaxError_Fails()
+    {
+        await Container.InitializeLibrarySchema();
+
+        using var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Initial").FullName);
+
+        CommonHelpers.UpdateConfiguration(Dialect, fileFixture.RootDirectory.FullName, Container.Hostname,
+            Container.GetMappedPublicPort(Container.GetPort()));
+
+        // Mess up a file
+        var text = await File.ReadAllTextAsync(fileFixture.CombinePath("LibraryCatalog", "Tables", "book.sql"), TestContext.Current.CancellationToken);
+        text = text.Replace("book_id INT NOT NULL AUTO_INCREMENT,", "");
+        await File.WriteAllTextAsync(fileFixture.CombinePath("LibraryCatalog", "Tables", "book.sql"), text, TestContext.Current.CancellationToken);
+
+        var computeResult = CliRunner.RunCli("compute-changes",
+            fileFixture,
+            Dialect,
+            out _,
+            out var actual,
+            "changes.sql");
+
+        Assert.NotEqual(0, computeResult);
+        Assert.StartsWith("Syntax Error:", actual);
+    }
+
+    [Fact]
+    public virtual async Task ComputeChanges_ErrorMode_FileAlreadyExists_Fails()
+    {
+        await Container.InitializeLibrarySchema();
+
+        using var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Initial").FullName);
+
+        CommonHelpers.UpdateConfiguration(Dialect, fileFixture.RootDirectory.FullName, Container.Hostname,
+            Container.GetMappedPublicPort(Container.GetPort()));
+
+        // Create an empty changes.sql file to simulate the file already existing
+        await File.WriteAllTextAsync(fileFixture.CombinePath("changes.sql"), string.Empty, TestContext.Current.CancellationToken);
+
+        var computeResult = CliRunner.RunCli("compute-changes",
+            fileFixture,
+            Dialect,
+            out _,
+            out var actual,
+            "changes.sql",
+            "--file-exists-action", "Error");
+
+        Assert.NotEqual(0, computeResult);
+        Assert.StartsWith("Command Error:", actual);
+        Assert.EndsWith("already exists.", actual);
+    }
+
+    [Fact]
+    public virtual async Task ComputeChanges_SkipMode_FileAlreadyExists_DoesNothing()
+    {
+        await Container.InitializeLibrarySchema();
+
+        using var fileFixture = new FsProjectFixture();
+        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Initial").FullName);
+
+        CommonHelpers.UpdateConfiguration(Dialect,
+            fileFixture.RootDirectory.FullName,
+            Container.Hostname,
+            Container.GetMappedPublicPort(Container.GetPort()),
+            logSettings: new LogSettings
+            {
+                Target = LogTarget.File,
+                LogLevel = Microsoft.Extensions.Logging.LogLevel.Debug,
+                LogDirectory = fileFixture.RootDirectory.FullName
+            });
+
+        string changesText = "I should still be here.";
+        // Create an empty changes.sql file to simulate the file already existing
+        await File.WriteAllTextAsync(fileFixture.CombinePath("changes.sql"),
+            changesText,
+            TestContext.Current.CancellationToken);
+
+        var computeResult = CliRunner.RunCli("compute-changes",
+            fileFixture,
+            Dialect,
+            "changes.sql",
+            "--file-exists-action",
+            "Skip");
+
+        Assert.Equal(0, computeResult);
+
+        var actualChangesText = await File.ReadAllTextAsync(fileFixture.CombinePath("changes.sql"), TestContext.Current.CancellationToken);
+        Assert.Equal(changesText, actualChangesText);
+
+        var logFile = Directory.GetFiles(fileFixture.RootDirectory.FullName, "*.json").First();
+        var lines = (await File.ReadAllLinesAsync(logFile, TestContext.Current.CancellationToken))
+            .Where(l => l.Contains("Skipping write."));
+        Assert.NotEmpty(lines);
     }
 
     [Fact]

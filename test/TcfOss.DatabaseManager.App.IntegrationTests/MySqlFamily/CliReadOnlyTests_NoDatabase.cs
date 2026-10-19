@@ -30,4 +30,19 @@ public abstract class CliReadOnlyTests_NoDatabase : CliReadOnlyTests<CliReadOnly
 
         return Task.CompletedTask;
     }
+
+    public override Task ComputeChanges_SyntaxError_Fails()
+    {
+        return Task.CompletedTask;
+    }
+
+    public override Task ComputeChanges_ErrorMode_FileAlreadyExists_Fails()
+    {
+        return Task.CompletedTask;
+    }
+
+    public override Task ComputeChanges_SkipMode_FileAlreadyExists_DoesNothing()
+    {
+        return Task.CompletedTask;
+    }
 }

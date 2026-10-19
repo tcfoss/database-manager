@@ -23,6 +23,7 @@ public abstract class SimpleSchemaDifferTests<TBuilderEntity, TContainerEntity, 
 
         List<string> expectedStatements =
         [
+            "ALTER TABLE `index_with_comment` DROP CONSTRAINT `uc_index_with_comment`",
             "ALTER TABLE `index_with_comment` DROP KEY `idx_index_with_comment`",
             "ALTER TABLE `index_with_comment` COMMENT = 'This is a different table comment'",
             "ALTER TABLE `samples` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci, COMMENT = 'comment to add'",
@@ -33,6 +34,7 @@ public abstract class SimpleSchemaDifferTests<TBuilderEntity, TContainerEntity, 
             "INSERT INTO `simple_schema`.`_database_manager` (`entry_key`, `entry_type`) VALUES ('00000000-0000-0000-0000-000000000001', 'D')",
             "ALTER TABLE `nulltest` MODIFY COLUMN `name` VARCHAR(50) NOT NULL",
             "CREATE TABLE `new_table_with_comment` (`id` INT NOT NULL) ENGINE InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'This is a new table with a comment'",
+            "ALTER TABLE `index_with_comment` ADD CONSTRAINT `uc_index_with_comment` UNIQUE KEY (`id`) COMMENT 'This is a different unique constraint comment'",
             "ALTER TABLE `index_with_comment` ADD KEY `idx_index_with_comment` (`id`) COMMENT 'This is a different index comment'",
         ];
 

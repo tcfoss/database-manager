@@ -51,6 +51,7 @@ public static class LoggingRegistration
                 new KeyValuePair<string, string>("minimum-level:override:Microsoft.EntityFrameworkCore", config.DatabaseLogLevel.ToSerilogLevel().ToString()),
                 new KeyValuePair<string, string>("minimum-level:override:Microsoft.EntityFrameworkCore.Database.Command", config.DatabaseLogLevel.ToSerilogLevel().ToString()),
                 new KeyValuePair<string, string>("minimum-level:override:MySqlConnector", config.DatabaseLogLevel.ToSerilogLevel().ToString()),
+                new KeyValuePair<string, string>("write-to:Console", ""),
             ];
         }
 

@@ -9,6 +9,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.IntegrationTests.FakeDatabaseTestContainer;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.MariaDb.Hosting;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.Hosting;
@@ -350,7 +351,7 @@ public static partial class CommonHelpers
         return sb.ToString();
     }
 
-    public static void UpdateConfiguration(SqlDialect dialect, string dirPath, string? host, ushort? port)
+    public static void UpdateConfiguration(SqlDialect dialect, string dirPath, string? host, ushort? port, LogSettings? logSettings = null)
     {
         var text = File.ReadAllText(Path.Combine(dirPath, "database-manager.yaml"));
 
@@ -377,6 +378,12 @@ public static partial class CommonHelpers
 
         var passwordRegex = s_passwordRegex;
         text = passwordRegex.Replace(text, $"Password: {password}");
+
+        if (logSettings != null)
+        {
+            string logText = string.Join("\n", Serialization.ToYaml(logSettings).Split('\n').Select(a => $"  {a}"));
+            text += $"\n\nLogging:\n{logText}\n";
+        }
 
         File.WriteAllText(Path.Combine(dirPath, "database-manager.yaml"), text);
     }
