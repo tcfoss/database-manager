@@ -299,86 +299,72 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                 ConfigParsing.Attributes.IndexMethod.NotSet => baseDefaults.IndexMethod,
                 _ => throw new ConfigurationException.InvalidFieldOneOfException("IndexMethod", overrideDefaults.IndexMethod, ["Btree", "Hash", "Rtree", "NotSet"])
             },
-            ForeignKeyOnUpdate = overrideDefaults.ForeignKeyOnUpdate switch
-            {
-                ConfigParsing.Attributes.ReferentialAction.NoAction => ReferentialAction.NoAction,
-                ConfigParsing.Attributes.ReferentialAction.Restrict => ReferentialAction.Restrict,
-                ConfigParsing.Attributes.ReferentialAction.Cascade => ReferentialAction.Cascade,
-                ConfigParsing.Attributes.ReferentialAction.SetNull => ReferentialAction.SetNull,
-                ConfigParsing.Attributes.ReferentialAction.SetDefault => ReferentialAction.SetDefault,
-                ConfigParsing.Attributes.ReferentialAction.NotSet => baseDefaults.ForeignKeyOnUpdate,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("ForeignKeyOnUpdate", overrideDefaults.ForeignKeyOnUpdate, typeof(ConfigParsing.Attributes.ReferentialAction))
-            },
-            ForeignKeyOnDelete = overrideDefaults.ForeignKeyOnDelete switch
-            {
-                ConfigParsing.Attributes.ReferentialAction.NoAction => ReferentialAction.NoAction,
-                ConfigParsing.Attributes.ReferentialAction.Restrict => ReferentialAction.Restrict,
-                ConfigParsing.Attributes.ReferentialAction.Cascade => ReferentialAction.Cascade,
-                ConfigParsing.Attributes.ReferentialAction.SetNull => ReferentialAction.SetNull,
-                ConfigParsing.Attributes.ReferentialAction.SetDefault => ReferentialAction.SetDefault,
-                ConfigParsing.Attributes.ReferentialAction.NotSet => baseDefaults.ForeignKeyOnDelete,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("ForeignKeyOnDelete", overrideDefaults.ForeignKeyOnDelete, typeof(ConfigParsing.Attributes.ReferentialAction))
-            },
-            FunctionDataRelation = overrideDefaults.FunctionDataRelation switch
-            {
-                ConfigParsing.Attributes.SqlDataRelation.ContainsSql => SqlDataRelation.ContainsSql,
-                ConfigParsing.Attributes.SqlDataRelation.NoSql => SqlDataRelation.NoSql,
-                ConfigParsing.Attributes.SqlDataRelation.ReadsSqlData => SqlDataRelation.ReadsSqlData,
-                ConfigParsing.Attributes.SqlDataRelation.ModifiesSqlData => SqlDataRelation.ModifiesSqlData,
-                ConfigParsing.Attributes.SqlDataRelation.NotSet => baseDefaults.FunctionDataRelation,
-                null => null,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("FunctionDataRelation", overrideDefaults.FunctionDataRelation, typeof(ConfigParsing.Attributes.SqlDataRelation))
-            },
-            ProcedureDataRelation = overrideDefaults.ProcedureDataRelation switch
-            {
-                ConfigParsing.Attributes.SqlDataRelation.ContainsSql => SqlDataRelation.ContainsSql,
-                ConfigParsing.Attributes.SqlDataRelation.NoSql => SqlDataRelation.NoSql,
-                ConfigParsing.Attributes.SqlDataRelation.ReadsSqlData => SqlDataRelation.ReadsSqlData,
-                ConfigParsing.Attributes.SqlDataRelation.ModifiesSqlData => SqlDataRelation.ModifiesSqlData,
-                ConfigParsing.Attributes.SqlDataRelation.NotSet => baseDefaults.ProcedureDataRelation,
-                null => null,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("ProcedureDataRelation", overrideDefaults.ProcedureDataRelation, typeof(ConfigParsing.Attributes.SqlDataRelation))
-            },
-            FunctionSecurityContext = overrideDefaults.FunctionSecurityContext switch
-            {
-                ConfigParsing.Attributes.SecurityContext.Definer => SecurityContext.Definer,
-                ConfigParsing.Attributes.SecurityContext.Invoker => SecurityContext.Invoker,
-                ConfigParsing.Attributes.SecurityContext.NotSet => baseDefaults.FunctionSecurityContext,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("FunctionSecurityContext", overrideDefaults.FunctionSecurityContext, typeof(ConfigParsing.Attributes.SecurityContext))
-            },
-            ProcedureSecurityContext = overrideDefaults.ProcedureSecurityContext switch
-            {
-                ConfigParsing.Attributes.SecurityContext.Definer => SecurityContext.Definer,
-                ConfigParsing.Attributes.SecurityContext.Invoker => SecurityContext.Invoker,
-                ConfigParsing.Attributes.SecurityContext.NotSet => baseDefaults.ProcedureSecurityContext,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("ProcedureSecurityContext", overrideDefaults.ProcedureSecurityContext, typeof(ConfigParsing.Attributes.SecurityContext))
-            },
-            ViewSecurityContext = overrideDefaults.ViewSecurityContext switch
-            {
-                ConfigParsing.Attributes.SecurityContext.Definer => SecurityContext.Definer,
-                ConfigParsing.Attributes.SecurityContext.Invoker => SecurityContext.Invoker,
-                ConfigParsing.Attributes.SecurityContext.NotSet => baseDefaults.ViewSecurityContext,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("ViewSecurityContext", overrideDefaults.ViewSecurityContext, typeof(ConfigParsing.Attributes.SecurityContext))
-            },
-            FunctionParameterDirection = overrideDefaults.FunctionParameterDirection switch
-            {
-                ConfigParsing.Attributes.RoutineParameterDirection.In => RoutineParameterDirection.In,
-                ConfigParsing.Attributes.RoutineParameterDirection.Out => RoutineParameterDirection.Out,
-                ConfigParsing.Attributes.RoutineParameterDirection.InOut => RoutineParameterDirection.InOut,
-                ConfigParsing.Attributes.RoutineParameterDirection.NotSet => baseDefaults.FunctionParameterDirection,
-                null => null,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("FunctionParameterDirection", overrideDefaults.FunctionParameterDirection, typeof(ConfigParsing.Attributes.RoutineParameterDirection))
-            },
-            ProcedureParameterDirection = overrideDefaults.ProcedureParameterDirection switch
-            {
-                ConfigParsing.Attributes.RoutineParameterDirection.In => RoutineParameterDirection.In,
-                ConfigParsing.Attributes.RoutineParameterDirection.Out => RoutineParameterDirection.Out,
-                ConfigParsing.Attributes.RoutineParameterDirection.InOut => RoutineParameterDirection.InOut,
-                ConfigParsing.Attributes.RoutineParameterDirection.NotSet => baseDefaults.ProcedureParameterDirection,
-                null => null,
-                _ => throw new ConfigurationException.InvalidFieldOneOfException("ProcedureParameterDirection", overrideDefaults.ProcedureParameterDirection, typeof(ConfigParsing.Attributes.RoutineParameterDirection))
-            },
+            ForeignKeyOnUpdate = ResolveReferentialAction(overrideDefaults.ForeignKeyOnUpdate, baseDefaults.ForeignKeyOnUpdate, "ForeignKeyOnUpdate"),
+            ForeignKeyOnDelete = ResolveReferentialAction(overrideDefaults.ForeignKeyOnDelete, baseDefaults.ForeignKeyOnDelete, "ForeignKeyOnDelete"),
+            FunctionDataRelation = ResolveSqlDataRelation(overrideDefaults.FunctionDataRelation, baseDefaults.FunctionDataRelation, "FunctionDataRelation"),
+            ProcedureDataRelation = ResolveSqlDataRelation(overrideDefaults.ProcedureDataRelation, baseDefaults.ProcedureDataRelation, "ProcedureDataRelation"),
+            FunctionSecurityContext = ResolveSecurityContext(overrideDefaults.FunctionSecurityContext, baseDefaults.FunctionSecurityContext, "FunctionSecurityContext"),
+            ProcedureSecurityContext = ResolveSecurityContext(overrideDefaults.ProcedureSecurityContext, baseDefaults.ProcedureSecurityContext, "ProcedureSecurityContext"),
+            ViewSecurityContext = ResolveSecurityContext(overrideDefaults.ViewSecurityContext, baseDefaults.ViewSecurityContext, "ViewSecurityContext"),
+            FunctionParameterDirection = ResolveRoutineParameterDirection(overrideDefaults.FunctionParameterDirection, baseDefaults.FunctionParameterDirection, "FunctionParameterDirection"),
+            ProcedureParameterDirection = ResolveRoutineParameterDirection(overrideDefaults.ProcedureParameterDirection, baseDefaults.ProcedureParameterDirection, "ProcedureParameterDirection"),
             EventEnabledStatus = overrideDefaults.EventEnabledStatus ?? baseDefaults.EventEnabledStatus
+        };
+    }
+
+    private static ReferentialAction? ResolveReferentialAction(
+        ConfigParsing.Attributes.ReferentialAction given, ReferentialAction? defaultValue, string label)
+    {
+        return given switch
+        {
+            ConfigParsing.Attributes.ReferentialAction.NoAction => ReferentialAction.NoAction,
+            ConfigParsing.Attributes.ReferentialAction.Restrict => ReferentialAction.Restrict,
+            ConfigParsing.Attributes.ReferentialAction.Cascade => ReferentialAction.Cascade,
+            ConfigParsing.Attributes.ReferentialAction.SetNull => ReferentialAction.SetNull,
+            ConfigParsing.Attributes.ReferentialAction.SetDefault => ReferentialAction.SetDefault,
+            ConfigParsing.Attributes.ReferentialAction.NotSet => defaultValue,
+            _ => throw new ConfigurationException.InvalidFieldOneOfException(label, given, typeof(ConfigParsing.Attributes.ReferentialAction))
+        };
+    }
+
+    private static SqlDataRelation? ResolveSqlDataRelation(
+        ConfigParsing.Attributes.SqlDataRelation? given, SqlDataRelation? defaultValue, string label)
+    {
+        return given switch
+        {
+            ConfigParsing.Attributes.SqlDataRelation.ContainsSql => SqlDataRelation.ContainsSql,
+            ConfigParsing.Attributes.SqlDataRelation.NoSql => SqlDataRelation.NoSql,
+            ConfigParsing.Attributes.SqlDataRelation.ReadsSqlData => SqlDataRelation.ReadsSqlData,
+            ConfigParsing.Attributes.SqlDataRelation.ModifiesSqlData => SqlDataRelation.ModifiesSqlData,
+            ConfigParsing.Attributes.SqlDataRelation.NotSet => defaultValue,
+            null => null,
+            _ => throw new ConfigurationException.InvalidFieldOneOfException(label, given, typeof(ConfigParsing.Attributes.SqlDataRelation))
+        };
+    }
+
+    private static SecurityContext ResolveSecurityContext(
+        ConfigParsing.Attributes.SecurityContext? given, SecurityContext defaultValue, string label)
+    {
+        return given switch
+        {
+            ConfigParsing.Attributes.SecurityContext.Definer => SecurityContext.Definer,
+            ConfigParsing.Attributes.SecurityContext.Invoker => SecurityContext.Invoker,
+            ConfigParsing.Attributes.SecurityContext.NotSet => defaultValue,
+            _ => throw new ConfigurationException.InvalidFieldOneOfException(label, given, typeof(ConfigParsing.Attributes.SecurityContext))
+        };
+    }
+
+    private static RoutineParameterDirection? ResolveRoutineParameterDirection(
+        ConfigParsing.Attributes.RoutineParameterDirection? given, RoutineParameterDirection? defaultValue, string label)
+    {
+        return given switch
+        {
+            ConfigParsing.Attributes.RoutineParameterDirection.In => RoutineParameterDirection.In,
+            ConfigParsing.Attributes.RoutineParameterDirection.Out => RoutineParameterDirection.Out,
+            ConfigParsing.Attributes.RoutineParameterDirection.InOut => RoutineParameterDirection.InOut,
+            ConfigParsing.Attributes.RoutineParameterDirection.NotSet => defaultValue,
+            null => null,
+            _ => throw new ConfigurationException.InvalidFieldOneOfException(label, given, typeof(ConfigParsing.Attributes.RoutineParameterDirection))
         };
     }
 
