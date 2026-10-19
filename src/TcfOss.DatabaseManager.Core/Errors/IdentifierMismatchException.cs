@@ -8,12 +8,6 @@ namespace TcfOss.DatabaseManager.Core.Errors;
 public class IdentifierMismatchException(string message)
     : InvalidOperationException(message)
 {
-    public class ColumnParentMismatch(ColumnIdentifier columnIdentifier, ObjectIdentifier expectedParent)
-        : IdentifierMismatchException(s_compositeFormat.Apply(columnIdentifier.Name, columnIdentifier.Table, expectedParent))
-    {
-        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Internal_ColumnIdentifierParentMismatch);
-    }
-
     public class IdentifierLengthException(string identifierType, int requiredLength, int givenLength, IEnumerable<string>? components)
     : IdentifierMismatchException(s_compositeFormat.Apply(components.ToIdentifier(), givenLength, requiredLength, identifierType))
     {

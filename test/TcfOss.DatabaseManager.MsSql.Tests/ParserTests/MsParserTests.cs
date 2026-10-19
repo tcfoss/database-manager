@@ -1,5 +1,7 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -59,8 +61,33 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         var statements = ParseStatements(createTableSql);
 
         var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
-        var column = Assert.Single(createTable.Columns!);
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(createTable.Columns!));
+
         Assert.Equal(expectedClass, column.DataType.Class);
+    }
+
+    [Theory]
+    [InlineData("X AS (Y + 1)")]
+    [InlineData("X AS Y + 1")]
+    [InlineData("X AS (Y + 1) PERSISTED")]
+    [InlineData("X AS Y + 1 PERSISTED")]
+    [InlineData("X AS (Y + 1) PERSISTED NOT NULL")]
+    [InlineData("X AS Y + 1 PERSISTED NOT NULL")]
+    [InlineData("X AS (Y) + 1")]
+    [InlineData("X AS (Y) + 1 PERSISTED")]
+    [InlineData("X AS (Y + 1) PERSISTED CONSTRAINT CK_T_X CHECK (X > 0)")]
+    [InlineData("X AS (Y + 1) PERSISTED CONSTRAINT UC_T_X UNIQUE")]
+    [InlineData("X AS (Y + 1) PERSISTED CONSTRAINT CK_T_X CHECK (X > 0) CONSTRAINT UC_T_X UNIQUE")]
+    public void ComputedColumn_TextMatch(string columnDefinition)
+    {
+        var createTableSql = $"CREATE TABLE T ({columnDefinition})";
+        var statements = ParseStatements(createTableSql);
+
+        var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
+        var column = Assert.IsType<StatementColumn.MsComputed>(Assert.Single(createTable.Columns!));
+
+        var actual = column.ToSql();
+        Assert.Equal(columnDefinition, actual);
     }
 
     [Theory]

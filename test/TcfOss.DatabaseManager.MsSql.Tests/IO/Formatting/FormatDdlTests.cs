@@ -1,3 +1,5 @@
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+
 namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 
 public class FormatDdlTests
@@ -60,6 +62,62 @@ public class FormatDdlTests
         AS
             SELECT
                 1;
+        """;
+        Assert.Equal(expected, formatted);
+    }
+
+    [Fact]
+    public void CreateTable_WithComputedColumns_Default()
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        var text = """CREATE TABLE T (A AS B - 2,X AS (Y + 1) PERSISTED NOT NULL)""";
+
+        var formatted = formatter.GetFormatted(text);
+
+        var expected = """
+        CREATE TABLE [T]
+        (
+            [A] AS [B] - 2,
+            [X] AS ([Y] + 1) PERSISTED NOT NULL
+        );
+        """;
+        Assert.Equal(expected, formatted);
+    }
+
+    [Fact]
+    public void CreateTable_WithComputedColumns_AlwaysNest()
+    {
+        using var formatter = Helpers.CreateFormatter(computedColumnParentheseHandling: MsComputedColumnParentheseHandling.Always);
+        var text = """CREATE TABLE T (A AS B - 2,X AS (Y + 1) PERSISTED NOT NULL, C as D + 1 CONSTRAINT uc_t_c UNIQUE, E as F * 2 constraint ck_t_e check (E > 0))""";
+
+        var formatted = formatter.GetFormatted(text);
+
+        var expected = """
+        CREATE TABLE [T]
+        (
+            [A] AS ([B] - 2),
+            [X] AS ([Y] + 1) PERSISTED NOT NULL,
+            [C] AS ([D] + 1) CONSTRAINT [uc_t_c] UNIQUE,
+            [E] AS ([F] * 2) CONSTRAINT [ck_t_e] CHECK ([E] > 0)
+        );
+        """;
+        Assert.Equal(expected, formatted);
+    }
+
+    [Fact]
+    public void CreateTable_WithComputedColumns_NeverNest()
+    {
+        using var formatter = Helpers.CreateFormatter(computedColumnParentheseHandling: MsComputedColumnParentheseHandling.Never);
+        var text = """CREATE TABLE T (A AS B - 2,X AS (Y + 1) persisted not null unique)""";
+
+        var formatted = formatter.GetFormatted(text);
+
+        var expected = """
+        CREATE TABLE [T]
+        (
+            [A] AS [B] - 2,
+            [X] AS [Y] + 1 PERSISTED NOT NULL UNIQUE
+        );
         """;
         Assert.Equal(expected, formatted);
     }

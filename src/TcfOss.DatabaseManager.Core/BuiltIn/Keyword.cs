@@ -579,6 +579,7 @@ public enum Keyword
     PERCENTILE_DISC,
     PERMISSIVE,
     PERIOD,
+    PERSISTED,
     PERSISTENT,
     PIVOT,
     PLACING,

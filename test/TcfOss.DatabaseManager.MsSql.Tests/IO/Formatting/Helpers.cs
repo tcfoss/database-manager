@@ -1,6 +1,5 @@
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
-// using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MsSql.BuiltIn;
@@ -26,7 +25,8 @@ public static class Helpers
         bool updateTargetPrefixWithObject = true,
         bool updateSourcePrefixWithObject = true,
         bool expandWildcards = false,
-        int? routineParameterMultiLineThreshold = 3)
+        int? routineParameterMultiLineThreshold = 3,
+        MsComputedColumnParentheseHandling computedColumnParentheseHandling = MsComputedColumnParentheseHandling.LeaveAsIs)
     {
         formatSettings ??= new FormattingSettings()
         {
@@ -45,6 +45,7 @@ public static class Helpers
             UpdateSourcePrefixWithObject = updateSourcePrefixWithObject,
             ExpandWildcards = expandWildcards,
             RoutineParameterMultiLineThreshold = routineParameterMultiLineThreshold,
+            ComputedColumnParentheseHandling = computedColumnParentheseHandling,
         };
 
         var config = TestConfig.GetMsTestConfig(formatSettings: formatSettings);

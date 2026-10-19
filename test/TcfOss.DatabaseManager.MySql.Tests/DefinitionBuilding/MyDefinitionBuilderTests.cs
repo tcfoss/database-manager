@@ -642,4 +642,46 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
 
         Assert.Throws<DefinitionException.TableUniqueConflictingNames>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
     }
+
+    [Fact]
+    public void UniqueConstraint_RepeatedName_Passes()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            CONSTRAINT `uc_index` UNIQUE `uc_index` (`name`)
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var def = DefinitionBuilder.ToDefinition();
+
+        var table = Assert.Single(def.Tables.Values);
+        var unique = Assert.Single(table.UniqueKeys.Values);
+        Assert.Equal("uc_index", unique.Name!.Name);
+    }
+
+    [Fact]
+    public void UniqueConstraint_ConstraintName_IndexName_BothWork()
+    {
+        var statementText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name1` VARCHAR(100),
+            `name2` VARCHAR(100),
+            CONSTRAINT `uc_constraint` UNIQUE (`name1`),
+            UNIQUE KEY `uidx_name` (`name2`)
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var def = DefinitionBuilder.ToDefinition();
+        var table = Assert.Single(def.Tables.Values);
+        var uniqueConstraints = table.UniqueKeys.Values.ToList();
+        Assert.Equal(2, uniqueConstraints.Count);
+        Assert.Contains(uniqueConstraints, u => u.Name!.Name == "uc_constraint");
+        Assert.Contains(uniqueConstraints, u => u.Name!.Name == "uidx_name");
+    }
 }

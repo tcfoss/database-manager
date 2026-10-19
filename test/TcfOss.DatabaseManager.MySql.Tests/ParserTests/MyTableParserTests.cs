@@ -51,5 +51,16 @@ public class MyTableParserTests : ParserTestsBase<MyLexer, MyParser>
         var tokens = lexer.Tokenize(sql);
         Assert.Throws<ParseException.Duplicate>(() => parser.Parse([.. tokens]));
     }
+
+    [Fact]
+    public void MsComputedColumn_Throws()
+    {
+        var sql = "CREATE TABLE mytable (x AS (y + 1) PERSISTED)";
+        var lexer = new MyLexer();
+        var parser = new MyParser();
+        var tokens = lexer.Tokenize(sql);
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse([.. tokens]));
+        Assert.Contains("data_type", ex.Message);
+    }
 }
 

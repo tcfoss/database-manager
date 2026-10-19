@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, edited]
 
+concurrency:
+  group: active-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
 
   docs:
