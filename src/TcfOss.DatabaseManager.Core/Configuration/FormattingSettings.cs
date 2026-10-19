@@ -26,4 +26,6 @@ public record FormattingSettings
 
     public int? RoutineParameterMultiLineThreshold { get; init; } = 3;
     public int? ValueListMultiLineThreshold { get; init; } = 3;
+
+    public MsComputedColumnParentheseHandling ComputedColumnParentheseHandling { get; init; } = MsComputedColumnParentheseHandling.LeaveAsIs;
 }

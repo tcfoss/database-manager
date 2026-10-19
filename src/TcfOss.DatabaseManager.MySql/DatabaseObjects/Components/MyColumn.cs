@@ -78,6 +78,6 @@ public record MyColumn(ColumnIdentifier Name, DataType DataType)
             options.Add(new StatementColumnOption.ColumnComment(new Comment(Comment.Text)));
         }
 
-        return new StatementColumn(new Identifier(Name.Name, Name.QuoteStyle), DataType.ToDataTypeForTable(manager), options);
+        return new StatementColumn.Typed(new Identifier(Name.Name, Name.QuoteStyle), DataType.ToDataTypeForTable(manager), options);
     }
 }

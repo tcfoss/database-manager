@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -11,6 +12,11 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 public class MyTableParser(MyParser parser) : TableParser(parser)
 {
     private readonly Func<ParserState, string> _parseString = ValueParser.ParseLiteralString;
+
+    protected override StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)
+    {
+        return null;
+    }
 
     protected override StatementTableOption? ParseNextTableOption(ParserState state)
     {

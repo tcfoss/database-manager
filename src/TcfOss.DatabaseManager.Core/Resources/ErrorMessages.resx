@@ -255,9 +255,6 @@
     <data name="Err_Internal_IdentifierLengthMismatch" xml:space="preserve">
         <value>The identifier '{0}' is of length {1}, which does not match the expected length of {2} for identifiers of type '{3}'.</value>
     </data>
-    <data name="Err_Internal_ColumnIdentifierParentMismatch" xml:space="preserve">
-        <value>The column identifier '{0}' has references table '{1}', but is being added to table '{2}'.</value>
-    </data>
     <data name="Err_Component_Context" xml:space="preserve">
         <value>{0}
 {1}</value>

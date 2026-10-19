@@ -27,6 +27,16 @@ public abstract record StatementColumnOption() : IWriteSql
                 writer.WriteSql($"CONSTRAINT {Name} ");
             }
         }
+
+        protected void FormatName(SqlTextWriter writer, FormatManager manager)
+        {
+            if (Name != null)
+            {
+                writer.Write("CONSTRAINT ");
+                Name.FormatSql(writer, manager);
+                writer.Write(" ");
+            }
+        }
     }
 
     public abstract record Nullability(Identifier? Name) : WithConstraint(Name)
@@ -94,6 +104,14 @@ public abstract record StatementColumnOption() : IWriteSql
             WriteName(writer);
             writer.WriteSql($"CHECK ({Expression})");
         }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatName(writer, manager);
+            writer.Write("CHECK (");
+            Expression.FormatSql(writer, manager);
+            writer.Write(")");
+        }
     }
 
     public record PrimaryKey(Identifier? Name = null) : WithConstraint(Name)
@@ -112,6 +130,13 @@ public abstract record StatementColumnOption() : IWriteSql
 
         public override void ToSql(SqlTextWriter writer)
         {
+            WriteName(writer);
+            writer.Write("UNIQUE");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatName(writer, manager);
             writer.Write("UNIQUE");
         }
     }

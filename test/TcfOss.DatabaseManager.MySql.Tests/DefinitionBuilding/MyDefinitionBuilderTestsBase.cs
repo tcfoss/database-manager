@@ -2377,6 +2377,34 @@ public abstract class MyDefinitionBuilderTestsBase
         }
     }
 
+    [Fact]
+    public void CreateTable_NotSupportedColumnOption_Throws()
+    {
+        var tableName = new ObjectName(new Identifier("mytable"));
+        var column =
+            new StatementColumn.Typed(new Identifier("val", QuoteStyle.None), new DataType.Int(), [new StatementColumnOption.Identity()]);
+        var table = new CreateTable(tableName, [column], []) { Meta = { Start = 0, End = 10 } };
+        var error = Assert.Throws<NotImplementedException>(() =>
+        {
+            DefinitionBuilder.ProcessStatements([table], Schema, 0);
+        });
+        Assert.Contains("Identity", error.Message);
+    }
+
+    [Fact]
+    public void CreateTable_NonTypedColumn_Throws()
+    {
+        var tableName = new ObjectName(new Identifier("mytable"));
+        var column =
+            new StatementColumn.MsComputed(new Identifier("val", QuoteStyle.None), new LiteralValue(new Value.Null()), []);
+        var createTable = new CreateTable(tableName, [column], []) { Meta = { Start = 0, End = 10 } };
+        var error = Assert.Throws<NotSupportedException>(() =>
+        {
+            DefinitionBuilder.ProcessStatements([createTable], Schema, 0);
+        });
+        Assert.Contains("Only typed columns are supported", error.Message);
+    }
+
     public class DataTypeSerializer : IXunitSerializer
     {
         public object Deserialize(Type type, string serializedValue)

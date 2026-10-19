@@ -100,8 +100,45 @@ public class TableParser
     private StatementColumn ParseColumn(ParserState state)
     {
         Identifier name = _ident(state);
+
+        StatementColumn.MsComputed? computedColumn = ParseOptionalComputedColumn(state, name);
+        if (computedColumn != null)
+        {
+            return computedColumn;
+        }
+
         DataType dataType = _p.DataTypeParser.ParseDataType(state);
 
+        SqlValueList<StatementColumnOption> options = ParseColumnOptions(state);
+        return new StatementColumn.Typed(name, dataType, options);
+    }
+
+    protected virtual StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)
+    {
+        if (!(state.PeekKeyword(Keyword.AS)))
+        {
+            return null;
+        }
+
+        state.Next(); // Consume the AS keyword
+        Expression expr = _p.ExpressionParser.ParseExpr(state);
+
+        MsComputedPersistenceMode? persistenceMode = null;
+        if (state.ParseKeyword(Keyword.PERSISTED))
+        {
+            persistenceMode = state.ParseKeywordsAll(Keyword.NOT, Keyword.NULL) ? MsComputedPersistenceMode.PersistedNotNull : MsComputedPersistenceMode.Persisted;
+        }
+
+        SqlValueList<StatementColumnOption> options = ParseColumnOptions(state);
+
+        return new StatementColumn.MsComputed(name, expr, options)
+        {
+            PersistenceMode = persistenceMode
+        };
+    }
+
+    protected SqlValueList<StatementColumnOption> ParseColumnOptions(ParserState state)
+    {
         SqlValueList<StatementColumnOption> options = [];
         HashSet<string> usedKeys = [];
 
@@ -122,7 +159,7 @@ public class TableParser
             options.Add(curr);
         }
 
-        return new StatementColumn(name, dataType, options);
+        return options;
     }
 
     public StatementColumnOption? ParseNextColumnOption(ParserState state)

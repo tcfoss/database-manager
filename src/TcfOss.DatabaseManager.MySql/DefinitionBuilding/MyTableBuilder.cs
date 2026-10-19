@@ -50,15 +50,16 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.DuplicateColumn(column.Name, sourceRef);
         }
-        if (column.Name.Table != Name)
-        {
-            throw new IdentifierMismatchException.ColumnParentMismatch(column.Name, Name);
-        }
         _columns.Add(column);
     }
 
     public override void AddColumn(StatementColumn column, SourceRef? sourceRef)
     {
+        if (column is not StatementColumn.Typed typedColumn)
+        {
+            throw new NotSupportedException($"Only typed columns are supported, got {column.GetType().Name}");
+        }
+
         sourceRef ??= SourceRef;
         var name = new ColumnIdentifier(column.Name.Name, Name, _quoteStyle);
         ColumnOption.Unique? unique = null;
@@ -70,7 +71,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         Comment? comment = null;
         bool? autoIncrement = null;
 
-        foreach (StatementColumnOption opt in column.Options)
+        foreach (StatementColumnOption opt in typedColumn.Options)
         {
             switch (opt)
             {
@@ -118,7 +119,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             defaultValue = null;
         }
 
-        var myColumn = new MyColumn(name, GetNormalizedDataType(column.DataType))
+        var myColumn = new MyColumn(name, GetNormalizedDataType(typedColumn.DataType))
         {
             Unique = unique,
             Nullability = nullability,
@@ -201,7 +202,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         }
 
         IndexMethod indexMethod = pkStatement.IndexMethod ?? _attributeDefaults.IndexMethod;
-        var primaryKey = new MyPrimaryKey(NormalizeKeyParts(pkStatement.Columns, _quoteStyle, indexMethod.ToString(), pkStatement.Name?.Name))
+        var primaryKey = new MyPrimaryKey(NormalizeKeyParts(pkStatement.Columns, _quoteStyle, indexMethod.ToString(), "PRIMARY"))
         {
             IndexMethod = indexMethod,
             Comment = pkStatement.Comment,

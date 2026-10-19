@@ -182,7 +182,7 @@ public class MyTableBuilderValidationTests
     /// <param name="state"></param>
     /// <param name="parser"></param>
     /// <returns></returns>
-    private static StatementColumn ParseSingleColumn(ParserState state, MyParser parser)
+    private static StatementColumn.Typed ParseSingleColumn(ParserState state, MyParser parser)
     {
         var name = parser.ComponentParser.ParseIdentifier(state);
         var dataType = parser.DataTypeParser.ParseDataType(state);
@@ -199,7 +199,7 @@ public class MyTableBuilderValidationTests
             options.Add(columnOption);
         }
 
-        return new StatementColumn(name, dataType, options);
+        return new StatementColumn.Typed(name, dataType, options);
     }
 
     private static List<StatementTableConstraint> GetConstraints(string[] constraintSql)
@@ -218,7 +218,7 @@ public class MyTableBuilderValidationTests
         return statementConstraints;
     }
 
-    private static List<StatementColumn> GetColumns(string[] columnSql)
+    private static List<StatementColumn.Typed> GetColumns(string[] columnSql)
     {
         var lexer = new MyLexer();
         var parser = new MyParser();
