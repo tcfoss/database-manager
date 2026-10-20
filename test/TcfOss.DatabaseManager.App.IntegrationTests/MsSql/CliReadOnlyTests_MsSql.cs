@@ -14,7 +14,6 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
 {
     protected TFixture Fixture { get; init; } = null!;
     protected IDatabaseContainer Container => Fixture.Container;
-    protected ITestOutputHelper TestOutputHelper { get; init; } = null!;
 
     protected virtual bool ConnectionAvailable => true;
     protected virtual int MajorVersion => 16;

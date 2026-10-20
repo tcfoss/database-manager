@@ -16,10 +16,9 @@ public class CliReadOnlyTests_MariaDb_11_08 : CliReadOnlyTests<CliReadOnlyTests_
     protected override string DefaultParameterDirection => "IN ";
     protected override string DefaultCollation => "utf8mb4_uca1400_ai_ci";
 
-    public CliReadOnlyTests_MariaDb_11_08(ThisFixture fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MariaDb_11_08(ThisFixture fixture)
     {
         Fixture = fixture;
-        TestOutputHelper = testOutputHelper;
     }
 
     public class ThisFixture : CliReadOnlyFixture<MariaDbBuilder, MariaDbContainer>

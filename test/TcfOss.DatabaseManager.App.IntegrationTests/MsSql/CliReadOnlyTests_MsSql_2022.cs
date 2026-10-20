@@ -6,9 +6,8 @@ public class CliReadOnlyTests_MsSql_2022
 {
     protected override int MajorVersion => 16;
 
-    public CliReadOnlyTests_MsSql_2022(CliReadOnlyFixture_MsSql_2022 fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MsSql_2022(CliReadOnlyFixture_MsSql_2022 fixture)
     {
         Fixture = fixture;
-        TestOutputHelper = testOutputHelper;
     }
 }

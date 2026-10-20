@@ -13,10 +13,9 @@ public class CliReadOnlyTests_MySql_09_07 : CliReadOnlyTests<CliReadOnlyTests_My
     protected override string IfConditionBegin => "(";
     protected override string IfConditionEnd => ")";
 
-    public CliReadOnlyTests_MySql_09_07(ThisFixture fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MySql_09_07(ThisFixture fixture)
     {
         Fixture = fixture;
-        TestOutputHelper = testOutputHelper;
     }
 
     public class ThisFixture : CliReadOnlyFixture<MySqlBuilder, MySqlContainer>

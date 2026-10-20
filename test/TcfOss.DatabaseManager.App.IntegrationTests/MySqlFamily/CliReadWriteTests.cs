@@ -6,8 +6,6 @@ using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using Testcontainers.Xunit;
 
-[assembly: CaptureConsole(CaptureOut = false)]
-
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
 
 public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestOutputHelper testOutputHelper)
@@ -15,7 +13,6 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
     where TBuilderEntity : IContainerBuilder<TBuilderEntity, TContainerEntity, IContainerConfiguration>, new()
     where TContainerEntity : IDatabaseContainer
 {
-    // protected ITestOutputHelper TestOutputHelper { get; } = testOutputHelper;
     protected abstract SqlDialect Dialect { get; }
 
     [Fact]

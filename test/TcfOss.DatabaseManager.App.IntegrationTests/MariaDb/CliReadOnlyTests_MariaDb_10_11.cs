@@ -18,10 +18,9 @@ public class CliReadOnlyTests_MariaDb_10_11
     protected override string DefaultCharset => "latin1";
     protected override string DefaultCollation => "latin1_swedish_ci";
 
-    public CliReadOnlyTests_MariaDb_10_11(ThisFixture fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MariaDb_10_11(ThisFixture fixture)
     {
         Fixture = fixture;
-        TestOutputHelper = testOutputHelper;
     }
 
     public class ThisFixture : CliReadOnlyFixture<MariaDbBuilder, MariaDbContainer>
