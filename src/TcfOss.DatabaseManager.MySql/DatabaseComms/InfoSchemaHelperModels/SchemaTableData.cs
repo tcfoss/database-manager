@@ -8,9 +8,7 @@ public sealed record SchemaTableData(
 {
     public IReadOnlyList<ColumnDto> GetColumnRows(string tableName)
     {
-        return ColumnRowsByTable.TryGetValue(tableName, out IReadOnlyList<ColumnDto>? rows)
-            ? rows
-            : [];
+        return ColumnRowsByTable[tableName];
     }
 
     public IReadOnlyList<TableCheckDto> GetCheckRows(string tableName)
