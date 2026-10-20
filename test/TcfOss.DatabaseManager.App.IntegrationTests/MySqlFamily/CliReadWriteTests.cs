@@ -6,8 +6,6 @@ using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.MySql.IntegrationTests;
 using Testcontainers.Xunit;
 
-[assembly: CaptureConsole(CaptureOut = false)]
-
 namespace TcfOss.DatabaseManager.App.IntegrationTests.MySqlFamily;
 
 public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestOutputHelper testOutputHelper)
@@ -15,7 +13,6 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
     where TBuilderEntity : IContainerBuilder<TBuilderEntity, TContainerEntity, IContainerConfiguration>, new()
     where TContainerEntity : IDatabaseContainer
 {
-    // protected ITestOutputHelper TestOutputHelper { get; } = testOutputHelper;
     protected abstract SqlDialect Dialect { get; }
 
     [Fact]
@@ -64,8 +61,8 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
 
         string initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
 
-        Assert.Contains("ALTER TABLE `samples` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", initialChangesText);
-        Assert.Contains("ALTER TABLE `widgets` DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci", initialChangesText);
+        Assert.Contains("ALTER TABLE `samples` DEFAULT COLLATE utf8mb4_unicode_ci", initialChangesText);
+        Assert.Contains("ALTER TABLE `widgets` DEFAULT CHARACTER SET latin1, DEFAULT COLLATE latin1_swedish_ci", initialChangesText);
         Assert.Contains("MODIFY COLUMN `changed_collation`", initialChangesText);
         Assert.Contains("MODIFY COLUMN `changed_charset`", initialChangesText);
     }

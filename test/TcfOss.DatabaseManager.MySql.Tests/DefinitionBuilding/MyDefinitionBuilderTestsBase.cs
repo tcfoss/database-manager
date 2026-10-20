@@ -231,7 +231,7 @@ public abstract class MyDefinitionBuilderTestsBase
         var statementText = $"""
         CREATE TABLE `schema1`.`table1` (
             `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-            `val` VARCHAR(100) NULL,
+            `val` VARCHAR(100) NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4{DefaultCollationSetter};
         """;
         var statements = TextParser.ParseText(statementText);

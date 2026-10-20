@@ -302,6 +302,15 @@ public abstract record MyDataType() : DataType
         }
     }
 
+    public record MyNationalChar(uint Length) : BaseMyLengthedStringType(Length)
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"NATIONAL CHAR({Length})");
+            AddAttributes(writer);
+        }
+    }
+
     public record MyNationalVarchar(uint Length) : BaseMyLengthedStringType(Length)
     {
         public override void ToSql(SqlTextWriter writer)

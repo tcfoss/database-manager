@@ -20,6 +20,7 @@ public class TableParser
     private readonly Parser _p;
     private readonly Func<ParserState, Identifier> _ident;
     private readonly Func<ParserState, ObjectName> _objname;
+    private readonly Func<ParserState, string> _parseString = ValueParser.ParseLiteralString;
 
     public TableParser(Parser parser)
     {
@@ -70,28 +71,20 @@ public class TableParser
             {
                 constraints.Add(currentConstraint);
             }
-            else if (state.PeekIs<Word>())
+            else
             {
                 columns.Add(ParseColumn(state));
             }
-            else
-            {
-                throw state.ExpectedException("column_spec".Italic(), "key_spec".Italic(), "constraint_spec".Italic());
-            }
 
-            bool commaFound = state.ConsumeTokenIs<Comma>();
-            bool rightParenFound = state.PeekIs<ParenClose>();
-
-            if (!commaFound && !rightParenFound)
+            if (state.ConsumeTokenIs<ParenClose>())
             {
-                throw state.ExpectedException(",", ")");
-            }
-
-            if (rightParenFound)
-            {
-                state.ConsumeTokenIs<ParenClose>();
                 break;
             }
+            if (state.ConsumeTokenIs<Comma>())
+            {
+                continue;
+            }
+            throw state.ExpectedException(",", ")");
         }
 
         return (columns, constraints);
@@ -99,7 +92,7 @@ public class TableParser
 
     private StatementColumn ParseColumn(ParserState state)
     {
-        Identifier name = _ident(state);
+        Identifier name = _p.ComponentParser.ParseIdentifier(state, "column_name");
 
         StatementColumn.MsComputed? computedColumn = ParseOptionalComputedColumn(state, name);
         if (computedColumn != null)
@@ -115,7 +108,7 @@ public class TableParser
 
     protected virtual StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)
     {
-        if (!(state.PeekKeyword(Keyword.AS)))
+        if (!state.PeekKeyword(Keyword.AS))
         {
             return null;
         }
@@ -341,7 +334,7 @@ public class TableParser
             Word { Keyword: Keyword.UNIQUE } => ParseUnique(state, name),
             Word { Keyword: Keyword.FOREIGN } => ParseForeign(state, name),
             Word { Keyword: Keyword.CHECK } => ParseTableCheck(state, name),
-            Word { Keyword: Keyword.INDEX or Keyword.KEY } when name == null => ParseIndex(state),
+            Word { Keyword: Keyword.INDEX or Keyword.KEY } kwWord when name == null => ParseIndex(state, kwWord),
             Word { Keyword: Keyword.FULLTEXT } when name == null => ParseFullText(state),
             Word { Keyword: Keyword.SPATIAL } when name == null => ParseSpatial(state),
             _ when name != null => throw state.ExpectedCategoryException("table_constraint"),
@@ -425,7 +418,6 @@ public class TableParser
                 state.Next();
                 method = ParseIndexMethod(state);
             }
-
             else if (state.PeekKeyword(Keyword.COMMENT))
             {
                 if (comment != null)
@@ -442,7 +434,7 @@ public class TableParser
                 }
                 columns = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
             }
-            else if (state.Peek() is Word word && (word.Keyword == Keyword.undefined || word.QuoteStyle is not QuoteStyle.None))
+            else if (state.Peek() is Word word && word.Keyword == Keyword.undefined)
             {
                 indexName = _p.ComponentParser.ParseIdentifier(state);
             }
@@ -571,15 +563,10 @@ public class TableParser
         return null;
     }
 
-    private static KeyLabel ParseKeyLabel(ParserState state)
+    protected virtual StatementTableConstraint ParseIndex(ParserState state, Word keywordWord)
     {
-        KeyLabel keyLabel = ParseOptionalKeyLabel(state) ?? throw state.ExpectedException("KEY", "INDEX");
-        return keyLabel;
-    }
-
-    protected virtual StatementTableConstraint ParseIndex(ParserState state)
-    {
-        KeyLabel label = ParseKeyLabel(state);
+        KeyLabel label = keywordWord.Keyword == Keyword.KEY ? KeyLabel.Key : KeyLabel.Index;
+        state.Next();  // Consume the keyword word (KEY or INDEX)
 
         Identifier? name = null;
         IndexMethod? method = null;
@@ -718,16 +705,30 @@ public class TableParser
 
         SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
 
+        IndexMethod? method = null;
         Comment? comment = null;
-        if (state.PeekKeyword(Keyword.COMMENT))
+        while (true)
         {
-            comment = ComponentParser.ParseComment(state);
+            if (state.PeekKeyword(Keyword.COMMENT))
+            {
+                comment = ComponentParser.ParseComment(state);
+            }
+            else if (state.PeekKeyword(Keyword.USING))
+            {
+                state.ExpectKeyword(Keyword.USING);
+                method = ParseIndexMethod(state);
+            }
+            else
+            {
+                break;
+            }
         }
 
         return new StatementTableConstraint.Spatial(cols, name)
         {
             Comment = comment,
             KeyLabel = label,
+            IndexMethod = method
         };
     }
 
@@ -905,7 +906,7 @@ public class TableParser
                 break;
             }
 
-            if (curr.DuplicateCheckKey != null && !usedKeys.Add(curr.DuplicateCheckKey))
+            if (!usedKeys.Add(curr.DuplicateCheckKey))
             {
                 throw new ParseException.Duplicate(curr.DuplicateCheckKey, currentLocation);
             }
@@ -945,16 +946,14 @@ public class TableParser
         {
             operations.Add(ParseNextAlterOperation(state));
 
-            bool commaFound = state.ConsumeTokenIs<Comma>();
-            bool statementEnd = state.PeekIs<Semicolon>() || state.PeekIs<Eof>();
-
-            if (!commaFound && !statementEnd)
-            {
-                throw state.ExpectedException(",", ";");
-            }
-            if (statementEnd)
+            if (state.PeekIs<Semicolon>() || state.PeekIs<Eof>())
             {
                 break;
+            }
+
+            if (!state.ConsumeTokenIs<Comma>())
+            {
+                throw state.ExpectedException(",");
             }
         }
 
@@ -1021,6 +1020,7 @@ public class TableParser
             {
                 return new AlterTableOperation.DropDefault(columnName);
             }
+            throw state.ExpectedException("SET DEFAULT", "DROP DEFAULT");
         }
         if (nextKeyword == Keyword.DROP)
         {
@@ -1040,7 +1040,44 @@ public class TableParser
             return new AlterTableOperation.Rename(newName);
         }
 
+        bool includeDefault = nextKeyword == Keyword.DEFAULT;
+        if (includeDefault)
+        {
+            AlterTableOperation? defaultCharsetOrCollation = SubParseAlterCharSetOrCollation(state, includeDefault)
+                ?? throw state.ExpectedException("CHARACTER SET", "COLLATE");
+            return defaultCharsetOrCollation;
+        }
+        state.Rewind();
+        AlterTableOperation? charsetOrCollation = SubParseAlterCharSetOrCollation(state, false);
+        if (charsetOrCollation != null)
+        {
+            return charsetOrCollation;
+        }
+
         throw ParserState.ExpectedCategoryException("alter_table_operation", next);
+    }
+
+    private AlterTableOperation? SubParseAlterCharSetOrCollation(ParserState state, bool includeDefault)
+    {
+        if (state.ParseKeywordsAll(Keyword.CHARACTER, Keyword.SET))
+        {
+            bool includeEquals = state.ConsumeTokenIs<Equal>();
+            return new AlterTableOperation.SetDefaultCharacterSet(_parseString(state))
+            {
+                IncludeDefault = includeDefault,
+                IncludeEquals = includeEquals
+            };
+        }
+        if (state.ParseKeyword(Keyword.COLLATE))
+        {
+            bool includeEquals = state.ConsumeTokenIs<Equal>();
+            return new AlterTableOperation.SetDefaultCollation(_parseString(state))
+            {
+                IncludeDefault = includeDefault,
+                IncludeEquals = includeEquals
+            };
+        }
+        return null;
     }
 
     private AlterTableOperation? SubParseAlterAddConstraint(ParserState state)
@@ -1068,10 +1105,10 @@ public class TableParser
 
     private AlterTableOperation.AddColumn SubParseAlterAddColumn(ParserState state)
     {
-        state.ParseKeyword(Keyword.COLUMN);
+        bool printKeyword = state.ParseKeyword(Keyword.COLUMN);
 
         StatementColumn column = ParseColumn(state);
-        return new AlterTableOperation.AddColumn(column)
+        return new AlterTableOperation.AddColumn(column, printKeyword)
         {
             Position = ParseAlterTableColumnPosition(state)
         };

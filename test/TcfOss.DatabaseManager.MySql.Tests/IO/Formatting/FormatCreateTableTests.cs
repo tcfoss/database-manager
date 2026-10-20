@@ -58,7 +58,7 @@ public class FormatCreateTableTests
     [InlineData("CASCADE", "SET NULL", null, false)]
     [InlineData("CASCADE", null, "'Foreign key comment'", false)]
     [InlineData(null, "SET NULL", "'Foreign key comment'", true)]
-    public void CreateTable_ForeignKeyCombols(string? onDelete, string? onUpdate, string? comment, bool commentEquals)
+    public void CreateTable_ForeignKeyCombos(string? onDelete, string? onUpdate, string? comment, bool commentEquals)
     {
         var onDeleteSql = onDelete != null ? $" ON DELETE {onDelete}" : "";
         var onUpdateSql = onUpdate != null ? $" ON UPDATE {onUpdate}" : "";
@@ -97,6 +97,7 @@ public class FormatCreateTableTests
           CREATE TABLE my_table (
         id INT PRIMARY KEY,parent_id INT NOT NULL,
            name VARCHAR(100) NOT NULL,
+          location POINT NOT NULL,
          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 description TEXT,
            PRIMARY KEY USING BTREE (id),
@@ -104,6 +105,7 @@ public class FormatCreateTableTests
                 CONSTRAINT unique_name UNIQUE KEY USING BTREE (name),
                 KEY idx_last_name ((SUBSTRING(name, POSITION(' ' IN name) + 1))),
                 FULLTEXT INDEX idx_description (description) COMMENT = 'Fulltext index',
+                  spatial key idx_location (location) using rtree,
             CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent_table(id)
             ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """;
@@ -113,6 +115,7 @@ public class FormatCreateTableTests
             `id` INT PRIMARY KEY,
             `parent_id` INT NOT NULL,
             `name` VARCHAR(100) NOT NULL,
+            `location` POINT NOT NULL,
             `created_at` DATETIME DEFAULT (CURRENT_TIMESTAMP()),
             `description` TEXT,
             PRIMARY KEY USING BTREE (`id`),
@@ -120,6 +123,7 @@ public class FormatCreateTableTests
             CONSTRAINT `unique_name` UNIQUE KEY USING BTREE (`name`),
             KEY `idx_last_name` ((SUBSTRING(`name`, POSITION(' ' IN `name`) + 1))),
             FULLTEXT INDEX `idx_description` (`description`) COMMENT = 'Fulltext index',
+            SPATIAL KEY `idx_location` (`location`) USING RTREE,
             CONSTRAINT `fk_parent` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`)
         ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
         """;

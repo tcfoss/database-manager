@@ -15,13 +15,18 @@ public abstract record AlterTableOperation() : IWriteSql
         ToSql(writer);
     }
 
-    public record AddColumn(StatementColumn Column) : AlterTableOperation
+    public record AddColumn(StatementColumn Column, bool PrintColumn) : AlterTableOperation
     {
         public AlterTableColumnPosition? Position { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"ADD COLUMN {Column}");
+            writer.Write("ADD");
+            if (PrintColumn)
+            {
+                writer.WriteSql($" COLUMN");
+            }
+            writer.WriteSql($" {Column}");
             if (Position != null)
             {
                 writer.WriteSql($" {Position}");
@@ -31,7 +36,11 @@ public abstract record AlterTableOperation() : IWriteSql
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("ADD COLUMN ");
+            writer.Write("ADD ");
+            if (PrintColumn)
+            {
+                writer.Write("COLUMN ");
+            }
             Column.FormatSqlBody(writer, manager);
             if (Position != null)
             {
@@ -175,27 +184,55 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
-    public record SetCharacterSetCollation(string? CharacterSet, string? Collation) : AlterTableOperation
+    public record SetDefaultCharacterSet(string CharacterSet) : AlterTableOperation
     {
+        public bool IncludeDefault { get; init; }
+        public bool IncludeEquals { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            string? charset = CharacterSet == null ? null : $" CHARACTER SET {CharacterSet}";
-            string? collation = Collation == null ? null : $" COLLATE {Collation}";
-            writer.WriteSql($"DEFAULT{charset}{collation}");
+            if (IncludeDefault)
+            {
+                writer.Write("DEFAULT ");
+            }
+            writer.Write("CHARACTER SET ");
+            if (IncludeEquals)
+            {
+                writer.Write("= ");
+            }
+            writer.Write(CharacterSet);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("DEFAULT");
-            if (CharacterSet != null)
+            ToSql(writer);
+        }
+    }
+
+    public record SetDefaultCollation(string Collation) : AlterTableOperation
+    {
+        public bool IncludeDefault { get; init; }
+        public bool IncludeEquals { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            if (IncludeDefault)
             {
-                writer.Write($" CHARACTER SET {CharacterSet}");
+                writer.Write("DEFAULT ");
             }
-            if (Collation != null)
+            writer.Write("COLLATE ");
+            if (IncludeEquals)
             {
-                writer.Write($" COLLATE {Collation}");
+                writer.Write("= ");
             }
+            writer.Write(Collation);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            ToSql(writer);
         }
     }
 

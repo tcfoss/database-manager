@@ -452,7 +452,11 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(primaryKey.Name, "PRIMARY KEY", "column", columnName, "MySQL", sourceRef);
         }
-        return new MyPrimaryKey([new KeyPart.Column(columnName.ToSimpleIdentifier(_quoteStyle))]);
+        SqlValueList<KeyPart> columnKeyPart = NormalizeKeyParts([new KeyPart.Column(columnName.ToSimpleIdentifier())], _quoteStyle, _attributeDefaults.IndexMethod.ToString(), "PRIMARY");
+        return new MyPrimaryKey(columnKeyPart)
+        {
+            IndexMethod = _attributeDefaults.IndexMethod
+        };
     }
 
     // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local

@@ -4,10 +4,9 @@ namespace TcfOss.DatabaseManager.App.IntegrationTests.MsSql;
 public class CliReadOnlyTests_MsSql_NoDatabase
     : CliReadOnlyTests_MsSql<CliReadOnlyFixture_MsSql_FakeDb>
 {
-    public CliReadOnlyTests_MsSql_NoDatabase(CliReadOnlyFixture_MsSql_FakeDb fixture, ITestOutputHelper testOutputHelper)
+    public CliReadOnlyTests_MsSql_NoDatabase(CliReadOnlyFixture_MsSql_FakeDb fixture)
     {
         Fixture = fixture;
-        TestOutputHelper = testOutputHelper;
     }
 
     protected override bool ConnectionAvailable => false;

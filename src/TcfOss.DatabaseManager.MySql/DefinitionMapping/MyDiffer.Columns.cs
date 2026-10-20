@@ -183,7 +183,7 @@ public partial class MyDiffer
             }
 
             StatementColumn statementColumn = end.ToStatementColumn(_manager);
-            _currentModifications.Add(new AlterTableOperation.AddColumn(statementColumn) { Position = addPos });
+            _currentModifications.Add(new AlterTableOperation.AddColumn(statementColumn, true) { Position = addPos });
         }
 
         private ColumnChangeType ApplyDropGeneration(MyColumn start, MyColumn end, AlterTableColumnPosition newColumnPosition, ColumnChangeType columnChanges)
@@ -194,7 +194,7 @@ public partial class MyDiffer
             var statements = new SqlValueList<Statement>
             {
                 new AlterTable(_tableName, [new AlterTableOperation.RenameColumn(start.Name.ToSimpleIdentifier(), tempColId)]),
-                new AlterTable(_tableName, [new AlterTableOperation.AddColumn(end.ToStatementColumn(_manager)) { Position = newColumnPosition }]),
+                new AlterTable(_tableName, [new AlterTableOperation.AddColumn(end.ToStatementColumn(_manager), true) { Position = newColumnPosition }]),
                 new Update(new TableWithJoins(new TableFactor.Table(_tableName)), [new Assignment(new AssignmentTarget.ObjectName(new ObjectName(end.Name.ToSimpleIdentifier(_parent.Config.QuoteStyle))), new SingleIdentifier(tempColId))]),
                 new AlterTable(_tableName, [new AlterTableOperation.DropColumn(tempColId)])
             };

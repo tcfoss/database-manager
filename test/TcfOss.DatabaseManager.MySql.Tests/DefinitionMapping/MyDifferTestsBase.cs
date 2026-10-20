@@ -253,6 +253,46 @@ public abstract class MyDifferTestsBase
     }
 
     [Fact]
+    public void Table_Default_CharacterSet_Generate_Alter()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        ) DEFAULT CHARACTER SET latin1;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET latin1", change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Table_Default_CharacterSet_Collation_Generate_Alter()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL
+        ) DEFAULT CHARACTER SET latin1 DEFAULT COLLATE latin1_swedish_ci;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        var change = Assert.Single(changes);
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET latin1, DEFAULT COLLATE latin1_swedish_ci", change.Statement.ToSql());
+    }
+
+    [Fact]
     public void Table_Default_String_Attributes_Generate_Table_Change_Without_Column_Modify()
     {
         var startText = """
@@ -269,7 +309,7 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         var change = Assert.Single(changes);
-        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
     }
 
     [Fact]
@@ -327,7 +367,7 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         var change = Assert.Single(changes);
-        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
     }
 
     [Fact]
@@ -347,7 +387,7 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         Assert.Equal(2, changes.Count);
-        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", changes[0].Statement.ToSql());
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT COLLATE utf8mb4_uca1400_ai_cs", changes[0].Statement.ToSql());
         Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(255) NOT NULL", changes[1].Statement.ToSql());
     }
 
@@ -437,7 +477,7 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         var change = Assert.Single(changes);
-        Assert.Equal("ALTER TABLE `mytable` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
+        Assert.Equal("ALTER TABLE `mytable` DEFAULT COLLATE utf8mb4_uca1400_ai_cs", change.Statement.ToSql());
     }
 
     [Fact]
@@ -2209,6 +2249,28 @@ public abstract class MyDifferTestsBase
         Assert.NotNull(stmt);
         Assert.Single(stmt.Operations);
         Assert.Equal("ALTER TABLE `user_permission` ADD CONSTRAINT `fk_user_permission_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)", stmt.ToSql());
+    }
+
+    [Fact]
+    public void PrimaryKey_ColumnVsTable_Same()
+    {
+        var startText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100),
+            PRIMARY KEY (`id`)
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT NOT NULL PRIMARY KEY,
+            `name` VARCHAR(100)
+        );
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+        Assert.Empty(changes);
     }
 
     [Fact]

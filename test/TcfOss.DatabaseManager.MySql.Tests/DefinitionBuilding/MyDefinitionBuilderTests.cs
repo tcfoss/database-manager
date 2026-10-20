@@ -578,7 +578,7 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
             `id` INT NOT NULL,
             `name` VARCHAR(100),
             PRIMARY KEY (`id`),
-            {indexType} INDEX `idx_name` (`name` {direction}),
+            {indexType} INDEX `idx_name` (`name` {direction})
         );
         """;
         var statements = TextParser.ParseText(statementText);
@@ -596,7 +596,7 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
             `id` INT NOT NULL,
             `name` VARCHAR(100),
             PRIMARY KEY (`id`),
-            INDEX `idx_name` (`name` {direction}) USING {indexMethod},
+            INDEX `idx_name` (`name` {direction}) USING {indexMethod}
         );
         """;
         var statements = TextParser.ParseText(statementText);
@@ -619,7 +619,6 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         DefinitionBuilder.ProcessStatements(statements, Schema, 0);
         var def = DefinitionBuilder.ToDefinition();
         var table = def.Tables.Values.First(t => t.Name.Name == "table1");
-        // var primaryKey = Assert.Single(table.Keys.Values, k => k.Name?.Name == "PRIMARY");
         var primaryKey = Assert.IsType<MyPrimaryKey>(table.PrimaryKey);
         Assert.NotNull(primaryKey.IndexMethod);
         Assert.Equal("HASH", primaryKey.IndexMethod.ToString());

@@ -23,7 +23,6 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
 {
     protected TFixture Fixture { get; init; } = null!;
     private IDatabaseContainer Container => Fixture.Container;
-    protected ITestOutputHelper TestOutputHelper { get; init; } = null!;
 
     protected abstract SqlDialect Dialect { get; }
 

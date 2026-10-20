@@ -8,10 +8,9 @@ public abstract class CliReadOnlyTests_NoDatabase : CliReadOnlyTests<CliReadOnly
 {
     protected override bool ConnectionAvailable => false;
 
-    protected CliReadOnlyTests_NoDatabase(CliReadOnlyFixture_NoDatabase fixture, ITestOutputHelper testOutputHelper)
+    protected CliReadOnlyTests_NoDatabase(CliReadOnlyFixture_NoDatabase fixture)
     {
         Fixture = fixture;
-        TestOutputHelper = testOutputHelper;
     }
 
     [Fact]
