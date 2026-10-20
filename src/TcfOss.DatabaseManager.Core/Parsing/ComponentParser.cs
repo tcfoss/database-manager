@@ -17,12 +17,18 @@ public class ComponentParser(Parser parser)
 
     public Identifier ParseIdentifier(ParserState state)
     {
+        return ParseIdentifier(state, "identifier");
+    }
+
+
+    public Identifier ParseIdentifier(ParserState state, string expectedLabel)
+    {
         Token token = state.Next();
         return token switch
         {
             Word word => word.ToIdentifier(state.SourceId),
             StringLiteral str => new Identifier(str.Value, _p.DefaultQuoteStyle) { Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length) },
-            _ => throw ParserState.ExpectedCategoryException("identifier", token)
+            _ => throw ParserState.ExpectedCategoryException(expectedLabel, token)
         };
     }
 

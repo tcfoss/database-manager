@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -7,6 +8,8 @@ namespace TcfOss.DatabaseManager.MySql.Tests.IO.Formatting;
 public class FormatAlterTableTests
 {
     [Theory]
+    [InlineData("ADD COLUMN `mycolumn` VARCHAR(20) NOT NULL", "ADD COLUMN `mycolumn` VARCHAR(20) NOT NULL")]
+    [InlineData("ADD `mycolumn` VARCHAR(20) NOT NULL", "ADD `mycolumn` VARCHAR(20) NOT NULL")]
     [InlineData("CHANGE COLUMN title book_title VARCHAR(100)", "CHANGE COLUMN `title` `book_title` VARCHAR(100)")]
     [InlineData("CHANGE COLUMN title book_title VARCHAR(100) FIRST", "CHANGE COLUMN `title` `book_title` VARCHAR(100) FIRST")]
     [InlineData("CHANGE COLUMN title book_title VARCHAR(100) AFTER id", "CHANGE COLUMN `title` `book_title` VARCHAR(100) AFTER `id`")]
@@ -34,19 +37,41 @@ public class FormatAlterTableTests
     }
 
     [Theory]
-    [InlineData("utf8mb4", null, "DEFAULT CHARACTER SET utf8mb4")]
-    [InlineData(null, "utf8mb4_general_ci", "DEFAULT COLLATE utf8mb4_general_ci")]
-    [InlineData("utf8mb4", "utf8mb4_general_ci", "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci")]
-    public void AlterTable_FormatsCharacterSetAst(string? charset, string? collation, string expectedOperation)
+    [InlineData("utf8mb4", null, false, false, "CHARACTER SET utf8mb4", null)]
+    [InlineData(null, "utf8mb4_general_ci", false, false, "COLLATE utf8mb4_general_ci", null)]
+    [InlineData("utf8mb4", "utf8mb4_general_ci", false, false, "CHARACTER SET utf8mb4", "COLLATE utf8mb4_general_ci")]
+    [InlineData("utf8mb4", null, true, false, "DEFAULT CHARACTER SET utf8mb4", null)]
+    [InlineData(null, "utf8mb4_general_ci", true, false, "DEFAULT COLLATE utf8mb4_general_ci", null)]
+    [InlineData("utf8mb4", "utf8mb4_general_ci", true, false, "DEFAULT CHARACTER SET utf8mb4", "DEFAULT COLLATE utf8mb4_general_ci")]
+    [InlineData("utf8mb4", null, true, true, "DEFAULT CHARACTER SET = utf8mb4", null)]
+    [InlineData(null, "utf8mb4_general_ci", true, true, "DEFAULT COLLATE = utf8mb4_general_ci", null)]
+    [InlineData("utf8mb4", "utf8mb4_general_ci", true, true, "DEFAULT CHARACTER SET = utf8mb4", "DEFAULT COLLATE = utf8mb4_general_ci")]
+    public void AlterTable_FormatsCharacterSetAst(string? charset, string? collation, bool includeDefault, bool includeEquals, string expectedOperation1, string? expectedOperation2)
     {
+        var operations = new SqlValueList<AlterTableOperation>();
+        if (charset != null)
+        {
+            operations.Add(new AlterTableOperation.SetDefaultCharacterSet(charset) { IncludeDefault = includeDefault, IncludeEquals = includeEquals });
+        }
+        if (collation != null)
+        {
+            operations.Add(new AlterTableOperation.SetDefaultCollation(collation) { IncludeDefault = includeDefault, IncludeEquals = includeEquals });
+        }
         var statement = new AlterTable(new ObjectName([new Identifier("books")]),
-            [new AlterTableOperation.SetCharacterSetCollation(charset, collation)]);
+            operations);
+
         using var formatter = Helpers.CreateFormatter(null);
 
-        var expected = $"""
-        ALTER TABLE `books`
-            {expectedOperation};
-        """;
+        var expected = expectedOperation2 != null
+            ? $"""
+                ALTER TABLE `books`
+                    {expectedOperation1},
+                    {expectedOperation2};
+                """
+            : $"""
+                ALTER TABLE `books`
+                    {expectedOperation1};
+                """;
 
         Assert.Equal(expected, formatter.GetFormatted(statement), ignoreLineEndingDifferences: true);
     }

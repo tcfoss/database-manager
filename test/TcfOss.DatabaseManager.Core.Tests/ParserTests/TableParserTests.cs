@@ -110,6 +110,16 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expected, actual);
     }
 
+    [Fact]
+    public static void CreateTable_Column_SymbolDataType_Throws()
+    {
+        var sql = "CREATE TABLE mytable (my_id INT NOT NULL, my_val +)";
+        var parser = new Parser();
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(GetTokens(sql)));
+        Assert.Contains("+", ex.Message);
+        Assert.Contains("data_type", ex.Message);
+    }
+
     [Theory]
     [InlineData("PRIMARY KEY USING BTREE (my_id)", null, "PRIMARY KEY", "BTREE")]
     [InlineData("PRIMARY KEY (my_id) USING BTREE", null, "PRIMARY KEY", "BTREE")]
@@ -248,13 +258,33 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal("CONSTRAINT", column.Name.Name);
     }
 
+    [Fact]
+    public static void CreateTable_Identity_InvalidValues_Throws()
+    {
+        var parser = new Parser();
+        var sql = "CREATE TABLE mytable (my_id INT IDENTITY(CAT))";
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse(GetTokens(sql)));
+        Assert.Contains(" ',' | ')' ", ex.Message);
+    }
+
+    [Fact]
+    public static void CreateTable_NonsenseBody_Throws()
+    {
+        var parser = new Parser();
+        var sql = "CREATE TABLE mytable (+)";
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(GetTokens(sql)));
+        Assert.Contains("column_name", ex.Message);
+    }
+
     [Theory]
     /* Add Column */
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT", null)]
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT NOT NULL", null)]
-    [InlineData("ALTER TABLE mytable ADD new_col INT", "ALTER TABLE mytable ADD COLUMN new_col INT")]
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT NOT NULL AFTER other_col", null)]
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT NOT NULL FIRST", null)]
+    [InlineData("ALTER TABLE mytable ADD new_col INT", null)]
+    [InlineData("ALTER TABLE mytable ADD new_col INT NOT NULL", null)]
+    [InlineData("ALTER TABLE mytable ADD new_col INT NOT NULL AFTER other_col", null)]
     /* Column Defaults */
     [InlineData("ALTER TABLE mytable ALTER COLUMN my_val SET DEFAULT 10", null)]
     [InlineData("ALTER TABLE mytable ALTER COLUMN my_val SET DEFAULT 'abc'", null)]
@@ -309,10 +339,17 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("ALTER TABLE mytable RENAME COLUMN old_col TO new_col", null)]
     /* Table Options */
     [InlineData("ALTER TABLE mytable AUTO_INCREMENT = 100", null)]
+    /* Default Character Set and Collation */
+    [InlineData("ALTER TABLE mytable DEFAULT CHARACTER SET utf8", null)]
+    [InlineData("ALTER TABLE mytable DEFAULT COLLATE utf8_general_ci", null)]
+    [InlineData("ALTER TABLE mytable DEFAULT CHARACTER SET utf8, DEFAULT COLLATE utf8_general_ci", null)]
+    [InlineData("ALTER TABLE mytable CHARACTER SET utf8, COLLATE utf8_general_ci", null)]
+    [InlineData("ALTER TABLE mytable CHARACTER SET = utf8, COLLATE = utf8_general_ci", null)]
+    [InlineData("ALTER TABLE mytable CHARACTER SET utf8, DEFAULT COLLATE = utf8_general_ci", null)]
     /* Multiple Operations */
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id)", null)]
     [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id), DROP CONSTRAINT ck_mytable_nonneg", null, Label = "Multiple operations with drop")]
-    public static void Alter_Table_TextMatch(string sql, string? realExpected)
+    public static void AlterTable_TextMatch(string sql, string? realExpected)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
@@ -326,7 +363,7 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("ALTER TABLE mytable DOUNKNOWNTHING blah")]
-    public static void Alter_Table_Other_Throws(string sql)
+    public static void AlterTable_UnknownOperation_Throws(string sql)
     {
         var parser = new Parser();
 
@@ -334,6 +371,37 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         var expectedTemplate = "Expected {0}. Found {1}.";
         var expected = string.Format(expectedTemplate, "alter_table_operation".Italic(), "DOUNKNOWNTHING");
         Assert.Equal(expected, exception.Message);
+    }
+
+    [Fact]
+    public void AlterTable_MissingOperation_Throws()
+    {
+        var parser = new Parser();
+        var sql = "ALTER TABLE mytable";
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(GetTokens(sql)));
+        Assert.Contains("alter_table_operation", ex.Message);
+    }
+
+    [Fact]
+    public void AlterTable_AlterColumn_Unknown_Throws()
+    {
+        var parser = new Parser();
+        var sql = "ALTER TABLE mytable ALTER COLUMN my_col UNKNOWN";
+
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse(GetTokens(sql)));
+        Assert.Contains("SET DEFAULT", ex.Message);
+        Assert.Contains("DROP DEFAULT", ex.Message);
+    }
+
+    [Fact]
+    public void AlterTable_MissingComma_Throws()
+    {
+        var parser = new Parser();
+        var sql = "ALTER TABLE mytable ADD COLUMN new_col INT ADD PRIMARY KEY (my_id)";
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(GetTokens(sql)));
+        Assert.Contains(",", ex.Message);
     }
 
     [Fact]

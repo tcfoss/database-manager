@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
@@ -234,6 +235,17 @@ public class MyDataTypeParser : DataTypeParser
         };
     }
 
+    protected static MyDataType.MyNationalChar ParseNationalChar(ParserState state)
+    {
+        uint length = ParseSimplePrecision(state);
+        StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
+
+        return new MyDataType.MyNationalChar(length)
+        {
+            StringAttribute = stringOptions
+        };
+    }
+
     private static MyDataType.MyNationalVarcharOptionalLength ParseNationalVarcharOptionalLength(ParserState state)
     {
         uint? length = ParseOptionalSimplePrecision(state);
@@ -320,9 +332,9 @@ public class MyDataTypeParser : DataTypeParser
     public override DataType ParseDataType(ParserState state)
     {
         Token token = state.Next();
-        Keyword? keyword = (token as Word)?.Keyword;
+        Word word = token as Word ?? throw ParserState.ExpectedException("data_type".Italic(), token);
 
-        DataType? dataType = keyword switch
+        DataType? dataType = word.Keyword switch
         {
             Keyword.MEDIUMINT => ParseMediumInt(state),
             Keyword.SMALLINT => ParseSmallInt(state),
@@ -331,7 +343,10 @@ public class MyDataTypeParser : DataTypeParser
             Keyword.TIME => ParseTime(state),
             Keyword.DATE => new MyDataType.Date(),
             Keyword.YEAR => ParseYear(state),
-            Keyword.NATIONAL => state.ParseKeyword(Keyword.VARCHAR) ? ParseNationalVarchar(state) : null,
+            Keyword.NATIONAL when state.ParseKeyword(Keyword.CHAR) => ParseNationalChar(state),
+            Keyword.NATIONAL when state.ParseKeyword(Keyword.VARCHAR) => ParseNationalVarchar(state),
+            Keyword.NVARCHAR => ParseNationalVarchar(state),
+            Keyword.NCHAR => ParseNationalChar(state),
             Keyword.TINYTEXT => ParseTinyText(state),
             Keyword.MEDIUMTEXT => ParseMediumText(state),
             Keyword.LONGTEXT => ParseLongText(state),

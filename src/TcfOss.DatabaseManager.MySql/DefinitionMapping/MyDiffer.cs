@@ -500,9 +500,13 @@ public partial class MyDiffer
             {
                 SqlValueList<AlterTableOperation> tableLevelAlterations = [];
 
-                if (tableMap.Start!.CharacterSet != tableMap.End!.CharacterSet || tableMap.Start.Collation != tableMap.End.Collation)
+                if (tableMap.Start!.CharacterSet != tableMap.End!.CharacterSet)
                 {
-                    tableLevelAlterations.Add(new AlterTableOperation.SetCharacterSetCollation(tableMap.End.CharacterSet, tableMap.End.Collation));
+                    tableLevelAlterations.Add(new AlterTableOperation.SetDefaultCharacterSet(tableMap.End!.CharacterSet) { IncludeDefault = true, IncludeEquals = false });
+                }
+                if (tableMap.Start!.Collation != tableMap.End!.Collation)
+                {
+                    tableLevelAlterations.Add(new AlterTableOperation.SetDefaultCollation(tableMap.End!.Collation) { IncludeDefault = true, IncludeEquals = false });
                 }
 
                 if (tableMap.Start.TableComment != tableMap.End.TableComment)

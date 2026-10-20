@@ -420,6 +420,8 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
 
     public record Spatial(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
+        public IndexMethod? IndexMethod { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
             writer.Write("SPATIAL");
@@ -429,6 +431,10 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.WriteSql($" {IndexName}");
             }
             writer.WriteSql($" ({Columns})");
+            if (IndexMethod != null)
+            {
+                writer.WriteSql($" USING {IndexMethod}");
+            }
             WriteComment(writer);
         }
 
@@ -443,6 +449,10 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             }
             writer.Write(" ");
             FormatKeyParts(writer, Columns, manager);
+            if (IndexMethod != null)
+            {
+                writer.WriteSql($" USING {IndexMethod}");
+            }
             WriteComment(writer);
         }
 
