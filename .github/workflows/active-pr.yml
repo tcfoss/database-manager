@@ -88,7 +88,7 @@ jobs:
       solution: solutions/UnitTests.slnx
       project: solutions/UnitTests.slnx
       name: unit
-      upload-coverage-filter-inputs: true
+      upload-coverage-filter-inputs: false
 
   all-tests:
     name: Full Test Suite
@@ -130,12 +130,26 @@ jobs:
     secrets:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}
 
-  coverage:
-    needs: [unit-tests, all-tests]
+  partial-coverage:
+    needs: [unit-tests]
     if: >
-      always() &&
-      ((needs.unit-tests.result == 'success' && needs.all-tests.result == 'skipped') ||
-       (needs.all-tests.result == 'success' && needs.unit-tests.result == 'skipped'))
+      needs.unit-tests.result == 'success'
+    uses: tcfoss/github-actions/.github/workflows/coverage.yml@v1
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      filter-unreachable-coverage: false
+      upload-to-codecov: false
+    secrets:
+      codecov-token: ${{ secrets.CODECOV_TOKEN }}
+      reportgenerator-license: ${{ secrets.REPORTGENERATOR_LICENSE }}
+      unreachable-coverage-filter-token: ${{ secrets.GITHUB_TOKEN }}
+
+  coverage:
+    needs: [all-tests]
+    if: >
+      needs.all-tests.result == 'success'
     uses: tcfoss/github-actions/.github/workflows/coverage.yml@v1
     permissions:
       contents: read
@@ -143,7 +157,7 @@ jobs:
     with:
       filter-unreachable-coverage: true
       unreachable-coverage-regex: 'throw new (TcfOss\.)?(DatabaseManager\.)?(Core\.)?(Errors\.)?DefensiveGuardException\('
-      upload-to-codecov: ${{ startsWith(github.head_ref, 'release/') || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+      upload-to-codecov: true
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
       reportgenerator-license: ${{ secrets.REPORTGENERATOR_LICENSE }}
