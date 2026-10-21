@@ -43,6 +43,28 @@ public class FormatInsertTests
     }
 
     [Fact]
+    public void Insert_Values_WithColumns_NoInto_NoPseudoTables()
+    {
+        var text = "INSERT books (title, published_year) VALUES ('My Book', 2024)";
+        var formatted = """
+        INSERT `books`
+        (
+            `title`,
+            `published_year`
+        )
+        VALUES
+        (
+            'My Book',
+            2024
+        );
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: 2);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
     public void Insert_Values_MultipleRows_NoPseudoTables()
     {
         var text = "INSERT INTO books (title, published_year) VALUES ('Book One', 2023), ('Book Two', 2024)";

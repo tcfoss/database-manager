@@ -178,7 +178,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
         throw new FileNotFoundException($"Deploy script file '{filePath}' not found in schema root or parent root.", filePath);
 
-        static bool Exists(FileInfo fileToCheck) => fileToCheck.Exists || (fileToCheck.Attributes.HasFlag(FileAttributes.Directory) && Directory.Exists(fileToCheck.FullName));
+        static bool Exists(FileInfo fileToCheck) => fileToCheck.Exists || Directory.Exists(fileToCheck.FullName);
     }
 
     protected Refactor[] GetRefactors(SchemaIdentifier schemaId, string schemaRootPath, IReadOnlyCollection<string>? refactorFiles, QuoteStyle quoteStyle)
@@ -239,8 +239,8 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                 ConfigParsing.Attributes.RefactorType.ColumnRename => new Refactor.ColumnRename(
                     raw.UniqueId,
                     schema,
-                    new ColumnIdentifier(raw.OldName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.OldName)), tableName ?? throw new ConfigurationException.MissingFieldException(nameof(tableName)), quoteStyle),
-                    new ColumnIdentifier(raw.NewName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.NewName)), tableName ?? throw new ConfigurationException.MissingFieldException(nameof(tableName)), quoteStyle)
+                    new ColumnIdentifier(raw.OldName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.OldName)), tableName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.TableName)), quoteStyle),
+                    new ColumnIdentifier(raw.NewName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.NewName)), tableName, quoteStyle) // will have already thrown if tableName is null
                 ),
                 _ => throw new DefensiveGuardException("Refactor Conversion", raw.Type.ToString())
             };

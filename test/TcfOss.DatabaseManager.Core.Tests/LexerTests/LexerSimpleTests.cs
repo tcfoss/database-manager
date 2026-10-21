@@ -576,6 +576,35 @@ public class LexerSimpleTests : LexerTestBase
         Assert.Equal(expectedLength, token.Length);
     }
 
+    [Theory]
+    [InlineData("comment", "--", 9)]
+    [InlineData("comment", "#", 8)]
+    [InlineData(null, "--", 2)]
+    [InlineData(null, "#", 1)]
+    [InlineData("comment", null, 7)]
+    [InlineData(null, null, 0)]
+    public void NonSql_InlineComment_Length(string? comment, string? prefix, int expectedLength)
+    {
+        var commentToken = new NonSql(NonSqlType.InlineComment, comment)
+        {
+            Prefix = prefix,
+            Location = new Location()
+        };
+        Assert.Equal(expectedLength, commentToken.Length);
+    }
+
+    [Theory]
+    [InlineData("comment", 11)]
+    [InlineData(null, 4)]
+    public void NonSql_BlockComment_Length(string? comment, int expectedLength)
+    {
+        var commentToken = new NonSql(NonSqlType.BlockComment, comment)
+        {
+            Location = new Location()
+        };
+        Assert.Equal(expectedLength, commentToken.Length);
+    }
+
     // === Round out LexerState coverage ===
 
     [Fact]

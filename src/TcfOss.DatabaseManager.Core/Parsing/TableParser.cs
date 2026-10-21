@@ -41,7 +41,7 @@ public class TableParser
         (SqlValueList<StatementColumn> columns, SqlValueList<StatementTableConstraint> constraints) = ParseColumns(state);
 
         SqlValueList<StatementTableOption> options = ParseTableOptions(state);
-        (bool? printAs, Select? selectStatement) = ParseAsSelect(state);
+        (bool printAs, Select? selectStatement) = ParseAsSelect(state);
 
         return new CreateTable(name, columns, constraints)
         {
@@ -920,7 +920,7 @@ public class TableParser
         return null;
     }
 
-    private (bool?, Select?) ParseAsSelect(ParserState state)
+    private (bool, Select?) ParseAsSelect(ParserState state)
     {
         bool printAs = state.ParseKeyword(Keyword.AS);
 
@@ -931,7 +931,7 @@ public class TableParser
             return (printAs, select);
         }
 
-        return (null, null);
+        return (false, null);
     }
 
     public AlterTable ParseAlter(ParserState state)

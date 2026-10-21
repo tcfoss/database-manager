@@ -178,8 +178,10 @@ public class SerializationTests
         Assert.Equal("Default", config.DefaultedOptionalValue);
     }
 
-    [Fact]
-    public void FromYaml_UnknownFieldThrows()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FromYaml_UnknownFieldThrows(bool useReader)
     {
         var yaml = """
         RequiredValue: "Hello"
@@ -187,9 +189,12 @@ public class SerializationTests
         UnknownValue: 123
         """;
 
+        using var reader = new StringReader(yaml);
         var message = Assert.Throws<ConfigParseException.WithText>(() =>
         {
-            _ = Serialization.ParseConfig<TestConfig>(yaml, "test.yaml");
+            _ = useReader
+                ? Serialization.ParseConfig<TestConfig>(reader, "test.yaml")
+                : Serialization.ParseConfig<TestConfig>(yaml, "test.yaml");
         });
         var expectedMessage = string.Format(ErrorMessages.Err_Conf_UnknownField, "UnknownValue");
         var expected = string.Format(
@@ -203,17 +208,22 @@ public class SerializationTests
         Assert.Equal(expected, message.Message);
     }
 
-    [Fact]
-    public void FromYaml_ExplicitNullabilityThrows()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FromYaml_ExplicitNullabilityThrows(bool useReader)
     {
         var yaml = """
         RequiredValue: null
         OptionalValue: "World
         """;
 
+        using var reader = new StringReader(yaml);
         var message = Assert.Throws<ConfigParseException.WithText>(() =>
         {
-            _ = Serialization.ParseConfig<TestConfig>(yaml, "test.yaml");
+            _ = useReader
+                ? Serialization.ParseConfig<TestConfig>(reader, "test.yaml")
+                : Serialization.ParseConfig<TestConfig>(yaml, "test.yaml");
         });
 
         var expectedMessage = string.Format(ErrorMessages.Err_Conf_InvalidNull, "RequiredValue");
@@ -227,6 +237,45 @@ public class SerializationTests
             "               ^");
 
         Assert.Equal(expected, message.Message);
+    }
+
+    [Theory]
+    [InlineData("[")]
+    [InlineData("RequiredValue: [")]
+    [InlineData("RequiredValue: Hello\rOptionalValue: [")]
+    public void FromYaml_MalformedYamlPreservesOriginalError(string yaml)
+    {
+        var deserializer = new DeserializerBuilder().Build();
+        var expected = Assert.ThrowsAny<YamlDotNet.Core.YamlException>(() => deserializer.Deserialize<TestConfig>(yaml));
+
+        var exception = Assert.Throws<ConfigParseException.WithText>(() => Serialization.ParseConfig<TestConfig>(yaml, "test.yaml"));
+
+        var original = Assert.IsType<ConfigParseException>(exception.InnerException);
+        var yamlException = Assert.IsType<YamlDotNet.Core.YamlException>(original.InnerException);
+        Assert.Equal(expected.Message, original.Message);
+        Assert.Equal(expected.Message, yamlException.Message);
+        Assert.Equal(expected.Start, yamlException.Start);
+        Assert.Contains("test.yaml", exception.Message);
+    }
+
+    [Fact]
+    public void FromYaml_EmptyRequiredValueThrows()
+    {
+        const string yaml = "RequiredValue:";
+
+        var exception = Assert.Throws<ConfigParseException.WithText>(() => Serialization.ParseConfig<TestConfig>(yaml, "test.yaml"));
+
+        var original = Assert.IsType<ConfigParseException.InvalidNull>(exception.InnerException);
+        Assert.Equal(string.Format(ErrorMessages.Err_Conf_InvalidNull, "RequiredValue"), original.Message);
+        var expected = string.Format(
+            TestText.BadConfig_Error_Template,
+            original.Message,
+            "test.yaml",
+            1,
+            15,
+            yaml,
+            "              ^");
+        Assert.Equal(expected, exception.Message);
     }
 
     // ReSharper disable once ClassNeverInstantiated.Global

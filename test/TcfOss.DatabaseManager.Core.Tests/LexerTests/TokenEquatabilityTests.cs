@@ -114,6 +114,86 @@ public class TokenEquatability
 #pragma warning restore xUnit2000 // Constants and literals should be the expected argument
     }
 
+    [Fact]
+    public void NonSql_Equality_InlineComment()
+    {
+        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.Equal(token1, token2);
+        Assert.Equal(token1, (object)token2);
+        Assert.Equal(token1, (Token)token2);
+        Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
+    }
+
+    [Fact]
+    public void NonSql_Inequality_InlineComment_Comment()
+    {
+        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(NonSqlType.InlineComment, "different") { Prefix = "--", Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+        Assert.False(token1.Equals(null));
+    }
+
+    [Fact]
+    public void NonSql_Inequality_InlineComment_Prefix()
+    {
+        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "#", Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+        Assert.False(token1.Equals(null));
+    }
+
+    [Fact]
+    public void NonSql_Equality_BlockComment()
+    {
+        var token1 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.Equal(token1, token2);
+        Assert.Equal(token1, (object)token2);
+        Assert.Equal(token1, (Token)token2);
+        Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
+    }
+
+    [Fact]
+    public void NonSql_Inequality_BlockComment()
+    {
+        var token1 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(NonSqlType.BlockComment, "different") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+        Assert.False(token1.Equals(null));
+    }
+
+    [Fact]
+    public void NonSql_Inequality_InlineComment_BlockComment()
+    {
+        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+        Assert.False(token1.Equals(null));
+    }
+
     public class TokenTestData : IEnumerable<TheoryDataRow<Token, Token>>
     {
         public IEnumerator<TheoryDataRow<Token, Token>> GetEnumerator()

@@ -47,13 +47,13 @@ internal static class DmlFormatter
 
     private static List<(SimpleSelectItem? Original, string? Source, string? Column)> GetExpandedSelectItems(FormatManager manager, SqlValueList<SimpleSelectItem> selections)
     {
-        bool expandWildcards = manager.Formatting.ExpandWildcards && manager.PseudoTables != null;
+        PseudoTableSet? pseudoTableSet = manager.Formatting.ExpandWildcards ? manager.PseudoTables : null;
         List<(SimpleSelectItem? Original, string? Source, string? Column)> items = [];
         foreach (SimpleSelectItem item in selections)
         {
-            if (expandWildcards && item is SimpleSelectItem.Wildcard)
+            if (pseudoTableSet != null && item is SimpleSelectItem.Wildcard)
             {
-                IReadOnlyList<PseudoTableSet.SelectableItem> cols = manager.PseudoTables?.GetLocalWildcardColumns() ?? [];
+                IReadOnlyList<PseudoTableSet.SelectableItem> cols = pseudoTableSet.GetLocalWildcardColumns();
                 if (cols.Count > 0)
                 {
                     foreach (PseudoTableSet.SelectableItem col in cols)
@@ -63,9 +63,9 @@ internal static class DmlFormatter
                     continue;
                 }
             }
-            else if (expandWildcards && item is SimpleSelectItem.QualifiedWildcard qw)
+            else if (pseudoTableSet != null && item is SimpleSelectItem.QualifiedWildcard qw)
             {
-                IReadOnlyList<PseudoTableSet.SelectableItem> cols = manager.PseudoTables?.GetLocalWildcardColumns(qw.Name.Values.Last().Name) ?? [];
+                IReadOnlyList<PseudoTableSet.SelectableItem> cols = pseudoTableSet.GetLocalWildcardColumns(qw.Name.Values.Last().Name);
                 if (cols.Count > 0)
                 {
                     foreach (PseudoTableSet.SelectableItem col in cols)
