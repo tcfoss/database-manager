@@ -283,6 +283,22 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
         Assert.Equal(scriptPath, exception.FileName);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingDeployScriptDirectory_Throws(bool absolute)
+    {
+        string scriptPath = $"missing-dir-{Guid.NewGuid():N}/";
+        if (absolute)
+        {
+            scriptPath = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", scriptPath);
+        }
+
+        var exception = Assert.Throws<FileNotFoundException>(() => GetConfig(DeployScriptConfig(scriptPath)));
+
+        Assert.Equal(scriptPath, exception.FileName);
+    }
+
     [Fact]
     public void InvalidDeployScriptType_Throws()
     {

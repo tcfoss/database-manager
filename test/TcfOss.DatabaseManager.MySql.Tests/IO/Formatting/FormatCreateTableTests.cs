@@ -295,6 +295,28 @@ public class FormatCreateTableTests
     }
 
     [Fact]
+    public void CreateTableAsSelect_NoAs()
+    {
+        var text = """
+        CREATE TABLE mytable SELECT my_id, my_val FROM othertable WHERE my_id > 10 ORDER BY my_val
+        """;
+
+        var formatted = """
+        CREATE TABLE `mytable`
+        SELECT
+            `my_id`,
+            `my_val`
+        FROM `othertable`
+        WHERE `my_id` > 10
+        ORDER BY `my_val`;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
     public void CreateTableAsSelect_WithColumnsAndConstraints()
     {
         var text = """

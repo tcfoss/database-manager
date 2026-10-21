@@ -462,7 +462,6 @@ public class FormatSelectTests
     [Fact]
     public void Select_QualifiedCount()
     {
-
         var text = """
         SELECT b.title, COUNT(b.*) AS num_copies
         FROM books AS b GROUP BY b.title HAVING COUNT(b.*) > 1

@@ -22,6 +22,10 @@ public partial class SqlFormatter<T>(
     private IFunctionNameProvider FunctionNameProvider { get; } = functionNameProvider;
     private readonly ILogger<SqlFormatter<T>> _logger = logger;
 
+    /// <summary>
+    /// Format the specified files. Warning: the existance of paths should be verified prior to
+    /// calling this function.
+    /// </summary>
     public virtual void FormatSql(string[] files, string? outputPattern, bool noBackup = false, bool relaxed = true, FileExistsAction fileExistsAction = FileExistsAction.Overwrite, string? definitionFile = null)
     {
         PseudoTableSet? pseudoTableSet = GetPseudoTableSet(relaxed, definitionFile);
@@ -32,7 +36,7 @@ public partial class SqlFormatter<T>(
             formatter.PseudoTables = pseudoTableSet?.CloneExternalOnly();
 
             string fullPath = Path.GetFullPath(f);
-            string fileDir = Path.GetDirectoryName(fullPath) ?? "";
+            string fileDir = Path.GetDirectoryName(fullPath)!;
 
             string rawText = File.ReadAllText(fullPath);
             string formatted = formatter.GetFormatted(rawText);

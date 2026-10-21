@@ -1,4 +1,3 @@
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -15,7 +14,7 @@ internal static class CreateTableFormatter
     public static void FormatBody(
         SqlTextWriter writer,
         FormatManager manager,
-        SqlValueList<StatementColumn>? columns,
+        SqlValueList<StatementColumn> columns,
         SqlValueList<StatementTableConstraint> constraints)
     {
         if (manager.Formatting.OpeningParensOnNewLine)
@@ -30,13 +29,10 @@ internal static class CreateTableFormatter
 
         manager.IncreaseIndent();
 
-        if (columns.SafeAny())
+        writer.FormatDelimitedLines(columns, manager, delimiter: ",");
+        if (constraints.Any())
         {
-            writer.FormatDelimitedLines(columns, manager, delimiter: ",");
-            if (constraints.Any())
-            {
-                writer.WriteLine(",");
-            }
+            writer.WriteLine(",");
         }
 
         if (constraints.Any())
@@ -71,9 +67,9 @@ internal static class CreateTableFormatter
         SqlTextWriter writer,
         FormatManager manager,
         Select asSelect,
-        bool? printAs)
+        bool printAs)
     {
-        if (printAs ?? false)
+        if (printAs)
         {
             writer.WriteLine();
             writer.WriteSql($"{manager.Indent}AS");

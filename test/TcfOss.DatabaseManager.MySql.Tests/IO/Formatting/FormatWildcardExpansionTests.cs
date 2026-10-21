@@ -1,3 +1,9 @@
+using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.MySql.Lexing;
+using TcfOss.DatabaseManager.MySql.Parsing;
+
 namespace TcfOss.DatabaseManager.MySql.Tests.IO.Formatting;
 
 public class FormatWildcardExpansionTests
@@ -139,6 +145,21 @@ public class FormatWildcardExpansionTests
     }
 
     [Fact]
+    public void QualifiedWildcard_NoPseudoTables_StaysAsIs()
+    {
+        var text = "SELECT books.* FROM books";
+        var formatted = """
+        SELECT
+            `books`.*
+        FROM `books`;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
     public void QualifiedWildcard_UnknownTable_StaysAsIs()
     {
         var text = "SELECT unknown_table.* FROM books";
@@ -150,6 +171,40 @@ public class FormatWildcardExpansionTests
 
         using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
         var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void Wildcard_TableNotInPseudoTables_StaysAsIs()
+    {
+        var text = "SELECT * FROM unknown_table";
+        var formatted = """
+        SELECT
+            *
+        FROM `unknown_table`;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, expandWildcards: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void Wildcard_SimpleSelect_NoPseudoTables_StaysAsIs()
+    {
+        var text = "SELECT * FROM books";
+        var formatted = """
+        SELECT
+            *
+        FROM `books`;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null, expandWildcards: true);
+        var textParser = new TextParser(new MyLexer(), new MyParser());
+        var statements = textParser.ParseText(text);
+        var selectStatement = Assert.IsType<Select>(Assert.Single(statements));
+        var simpleSelect = Assert.IsType<SimpleSelect>(Assert.IsType<SelectBody.SimpleSelectQuery>(selectStatement.Body).Query);
+        var actual = formatter.GetFormatted(simpleSelect);
         Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 }

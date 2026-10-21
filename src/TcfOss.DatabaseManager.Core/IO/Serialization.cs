@@ -111,15 +111,7 @@ public static partial class Serialization
 
     public static T ParseConfig<T>(TextReader reader, string path)
     {
-        try
-        {
-            T result = s_yamlDeserializer.Deserialize<T>(reader);
-            return result;
-        }
-        catch (YamlDotNet.Core.YamlException ex)
-        {
-            throw GetParseException(ex, path, null);
-        }
+        return ParseConfig<T>(reader.ReadToEnd(), path);
     }
 
     public static T ParseConfig<T>(string path)
@@ -128,19 +120,9 @@ public static partial class Serialization
         return ParseConfig<T>(reader, path);
     }
 
-    private static ConfigParseException GetParseException(YamlDotNet.Core.YamlException ex, string? path, string? text)
+    private static ConfigParseException.WithText GetParseException(YamlDotNet.Core.YamlException ex, string path, string text)
     {
         Location loc = new((int)ex.Start.Line, (int)ex.Start.Column, (int)ex.Start.Index);
-        if (text == null && path != null)
-        {
-            text = File.ReadAllText(path);
-        }
-
-        if (text == null)
-        {
-            return new ConfigParseException(ex.Message, loc, ex);
-        }
-
         ConfigParseException? betterEx = SearchForUsefulException(ex, loc, text);
 
         ConfigParseException baseException = betterEx ?? new ConfigParseException(ex.Message, loc, ex);
@@ -187,7 +169,7 @@ public static partial class Serialization
                 string value = match.Groups[2].Value;
                 return new ConfigParseException.InvalidValue(fieldName, value, newLocation, current);
             }
-            if (current.Message == "Strict nullability enforcement error." && text != null)
+            if (current.Message == "Strict nullability enforcement error.")
             {
                 return new ConfigParseException.InvalidNull(fieldName, newLocation, current);
             }

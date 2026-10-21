@@ -97,6 +97,57 @@ public class FormatDeleteTests
         Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
+
+    [Fact]
+    public void Delete_WithReturning()
+    {
+        var input = "DELETE FROM my_table WHERE col1 = 1 RETURNING col2, col3";
+
+        var expected = """
+        DELETE
+        FROM `my_table`
+        WHERE `col1` = 1
+        RETURNING
+            `col2`,
+            `col3`;
+        """;
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(input);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void Delete_MultiTable_WithPseudoTables()
+    {
+        var text = "DELETE b, a FROM books b JOIN authors a ON b.author_id = a.id WHERE a.name = 'Test'";
+        var formatted = """
+        DELETE `b`, `a`
+        FROM `schema1`.`books` AS `b`
+        INNER JOIN `schema1`.`authors` AS `a` ON `b`.`author_id` = `a`.`id`
+        WHERE `a`.`name` = 'Test';
+        """;
+
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, objectNamePrefixWithSchema: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void Delete_MultiTable_NoPseudoTables()
+    {
+        var text = "DELETE b, a FROM books b JOIN authors a ON b.author_id = a.id WHERE a.name = 'Test'";
+        var formatted = """
+        DELETE `b`, `a`
+        FROM `books` AS `b`
+        INNER JOIN `authors` AS `a` ON `b`.`author_id` = `a`.`id`
+        WHERE `a`.`name` = 'Test';
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
     [Fact]
     public void Delete_CommentsBeforeAndAfter()
     {

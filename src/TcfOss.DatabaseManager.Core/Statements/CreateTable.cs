@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -7,13 +6,13 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateTable(ObjectName Name, SqlValueList<StatementColumn>? Columns, SqlValueList<StatementTableConstraint> Constraints) : Statement, ICreateStatement
+public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns, SqlValueList<StatementTableConstraint> Constraints) : Statement, ICreateStatement
 {
     public bool OrReplace { get; init; }
     public bool Temporary { get; init; }
     public bool IfNotExists { get; init; }
 
-    public bool? PrintAs { get; init; }
+    public bool PrintAs { get; init; }
     public Select? AsSelect { get; init; }
 
     public SqlValueList<StatementTableOption> TableOptions { get; init; } = [];
@@ -26,7 +25,7 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn>? Column
 
         writer.WriteSql($"CREATE {orReplace}{temporary}TABLE {ifNotExists}{Name}");
 
-        bool anyColumns = Columns.SafeAny();
+        bool anyColumns = Columns.Any();
         bool anyBody = anyColumns || Constraints.Any();
         if (anyBody)
         {
@@ -57,7 +56,7 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn>? Column
 
         if (AsSelect != null)
         {
-            if (PrintAs ?? false)
+            if (PrintAs)
             {
                 writer.Write(" AS");
             }
@@ -75,7 +74,7 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn>? Column
         writer.WriteSql($"{manager.Indent}CREATE {orReplace}{temporary}TABLE {ifNotExists}");
         Name.FormatSql(writer, manager);
 
-        if (Columns.SafeAny() || Constraints.Any())
+        if (Columns.Any() || Constraints.Any())
         {
             CreateTableFormatter.FormatBody(writer, manager, Columns, Constraints);
         }
