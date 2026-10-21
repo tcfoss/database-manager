@@ -145,10 +145,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         (string catalog, string schema, string name) = tableId.Strings;
 
         SchemaTableData tableData = await GetSchemaTableDataAsync(catalog, schema);
-        if (!tableData.TableInfoByName.TryGetValue(name, out TableDto isTable))
-        {
-            throw new InvalidOperationException($"Failed to load metadata for table '{tableId}'.");
-        }
+        TableDto isTable = tableData.TableInfoByName[name];
 
         SqlValueList<MyColumn> columns = GetColumns(tableData.GetColumnRows(name), tableId);
         Comment? tableComment = null;
@@ -182,15 +179,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadSchemaTableDataAsync(catalog, schema),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            return await lazyRows.Value;
-        }
-        catch
-        {
-            _ = _tableDataBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        return await lazyRows.Value;
     }
 
     private async Task<SchemaTableData> LoadSchemaTableDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
@@ -302,7 +291,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
             ColumnOption.OnUpdate? onUpdate = _helper.ParseOnUpdate(q.Extra);
 
-            bool autoIncrement = q.Extra?.Contains("AUTO_INCREMENT", StringComparison.InvariantCultureIgnoreCase) ?? false;
+            bool autoIncrement = q.Extra.Contains("AUTO_INCREMENT", StringComparison.InvariantCultureIgnoreCase);
 
             Comment? comment = null;
             if (!string.IsNullOrEmpty(q.ColumnComment))
@@ -346,15 +335,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadSchemaIndexDataAsync(catalog, schema),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            return await lazyRows.Value;
-        }
-        catch
-        {
-            _ = _indexDataBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        return await lazyRows.Value;
     }
 
     private async Task<SchemaIndexData> LoadSchemaIndexDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
@@ -415,42 +396,39 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             {
                 List<IndexInfo> indexInfo = [.. grouping];
 
-                if (constraintTypesByName?.TryGetValue(grouping.Key, out string? constraintType) == true)
+                string? constraintType = null;
+                constraintTypesByName?.TryGetValue(grouping.Key, out constraintType);
+
+                if (constraintType == "PRIMARY KEY")
                 {
-                    if (constraintType == "PRIMARY KEY")
+                    KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
+                    IndexInfo first = indexInfo.First();
+                    (IndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
+
+                    primaryKey = new MyPrimaryKey(keyColumns)
                     {
-                        KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
-                        IndexInfo first = indexInfo.First();
-                        (IndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
-
-                        primaryKey = new MyPrimaryKey(keyColumns)
-                        {
-                            IndexMethod = indexMethod,
-                            Comment = comment
-                        };
-
-                        continue;
-                    }
-
-                    if (constraintType == "UNIQUE")
-                    {
-                        var id = new Identifier(grouping.Key, _quoteStyle);
-                        IndexInfo first = indexInfo.First();
-                        (IndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
-                        KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
-
-                        uniqueKeys.Add(Handle.Create(id, _config.NameHandling), new MyUniqueKey(keyColumns, id)
-                        {
-                            IndexMethod = indexMethod,
-                            Comment = comment,
-                        });
-
-                        continue;
-                    }
+                        IndexMethod = indexMethod,
+                        Comment = comment
+                    };
                 }
+                else if (constraintType == "UNIQUE")
+                {
+                    var id = new Identifier(grouping.Key, _quoteStyle);
+                    IndexInfo first = indexInfo.First();
+                    (IndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
+                    KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
 
-                KeyValuePair<Handle, MyKey> kvp = _helper.IndexInfoToKey(indexInfo, _config.NameHandling);
-                keys.Add(kvp.Key, kvp.Value);
+                    uniqueKeys.Add(Handle.Create(id, _config.NameHandling), new MyUniqueKey(keyColumns, id)
+                    {
+                        IndexMethod = indexMethod,
+                        Comment = comment,
+                    });
+                }
+                else
+                {
+                    KeyValuePair<Handle, MyKey> kvp = _helper.IndexInfoToKey(indexInfo, _config.NameHandling);
+                    keys.Add(kvp.Key, kvp.Value);
+                }
             }
 
             tableIndexMetadataByName[tableGroup.Key] = new TableIndexMetadata(primaryKey, uniqueKeys, keys);
@@ -468,15 +446,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadSchemaForeignKeyDataAsync(catalog, schema),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            return await lazyRows.Value;
-        }
-        catch
-        {
-            _ = _foreignKeyDataBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        return await lazyRows.Value;
     }
 
     private async Task<SchemaForeignKeyData> LoadSchemaForeignKeyDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
@@ -534,15 +504,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadSchemaRoutineDataAsync(catalog, schema),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            return await lazyRows.Value;
-        }
-        catch
-        {
-            _ = _routineDataBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        return await lazyRows.Value;
     }
 
     private async Task<SchemaRoutineData> LoadSchemaRoutineDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
@@ -625,14 +587,11 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         (string catalog, string schema, string procName) = procedureId.Strings;
 
         SchemaRoutineData routineData = await GetSchemaRoutineDataAsync(catalog, schema);
-        if (!routineData.RoutinesByName.TryGetValue((procName, "PROCEDURE"), out RoutineDto proc))
-        {
-            throw new InvalidOperationException($"Failed to load metadata for procedure '{procedureId}'.");
-        }
+        RoutineDto proc = routineData.RoutinesByName[(procName, "PROCEDURE")];
 
         SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "PROCEDURE", procName);
 
-        RoutineInfo procInfo = RoutineToRoutineInfo(proc);
+        RoutineInfo procInfo = _helper.RoutineToRoutineInfo(proc);
 
         Statement body = createProc.Body;
 
@@ -651,13 +610,10 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
     {
         (string catalog, string schema, string funcName) = functionId.Strings;
         SchemaRoutineData routineData = await GetSchemaRoutineDataAsync(catalog, schema);
-        if (!routineData.RoutinesByName.TryGetValue((funcName, "FUNCTION"), out RoutineDto func))
-        {
-            throw new InvalidOperationException($"Failed to load metadata for function '{functionId}'.");
-        }
+        RoutineDto func = routineData.RoutinesByName[(funcName, "FUNCTION")];
 
         SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "FUNCTION", funcName);
-        RoutineInfo funcInfo = RoutineToRoutineInfo(func);
+        RoutineInfo funcInfo = _helper.RoutineToRoutineInfo(func);
         DataType returnType = _helper.ParseDataType(func.DataType!);
 
         Statement body = _helper.ParseStatement(func.RoutineDefinition!);
@@ -689,44 +645,9 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadSchemaTriggersAsync(catalog, schema, cancellationToken),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        List<TriggerDto> schemaRows;
-        try
-        {
-            schemaRows = await lazyRows.Value;
-        }
-        catch
-        {
-            _ = _triggersBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        List<TriggerDto> schemaRows = await lazyRows.Value;
 
-        List<TriggerDto> tableRows = [.. schemaRows.Where(t => t.EventObjectTable == name)];
-
-        var isTrigGroups = from t in tableRows
-                           group t by new { t.ActionTiming, t.EventManipulation } into g
-                           select g;
-
-        foreach (var group in isTrigGroups)
-        {
-            foreach (TriggerDto isTrig in group)
-            {
-                var objId = new ObjectIdentifier(isTrig.TriggerName, tableId.Schema, _quoteStyle);
-
-                var trigTime = TriggerTime.Parse(isTrig.ActionTiming);
-                var trigEvent = TriggerEvent.Parse(isTrig.EventManipulation);
-
-                Statement body = _helper.ParseStatement(isTrig.ActionStatement);
-
-                triggers[objId] = new MyTrigger(objId, tableId, trigTime, trigEvent, body)
-                {
-                    Definer = new Definer(_helper.ParseAccount(isTrig.Definer)),
-                    Order = (uint)isTrig.ActionOrder,
-                    RawBodyText = isTrig.ActionStatement
-                };
-            }
-        }
-
-        return triggers;
+        return _helper.TriggersOnTableToDictionary(schemaRows, tableId);
     }
 
     private async Task<List<TriggerDto>> LoadSchemaTriggersAsync(string catalog, string schema, CancellationToken cancellationToken = default)
@@ -759,15 +680,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadViewsBySchemaAsync(catalog, schema, cancellationToken),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            return await lazyViews.Value;
-        }
-        catch
-        {
-            _ = _viewsBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        return await lazyViews.Value;
     }
 
     private async Task<IReadOnlyDictionary<string, ViewEntity>> LoadViewsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken)
@@ -785,10 +698,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
     {
         (string catalog, string schema, string viewName) = viewId.Strings;
         IReadOnlyDictionary<string, ViewEntity> views = await GetViewsBySchemaAsync(catalog, schema, cancellationToken);
-        if (!views.TryGetValue(viewName, out ViewEntity? isView))
-        {
-            throw new InvalidOperationException($"Failed to load metadata for view '{viewId}'.");
-        }
+        ViewEntity isView = views[viewName];
 
         var body = (Select)_helper.ParseStatement(isView.ViewDefinition);
         SecurityContext securityContext = SecurityContext.Parse(isView.SecurityType);
@@ -811,7 +721,6 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 : ViewCheckOption.Parse(checkMatch.Groups[1].Value);
         }
 
-
         return new MyView(viewId, body)
         {
             Definer = new Definer(_helper.ParseAccount(isView.Definer)),
@@ -831,15 +740,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 () => LoadEventsBySchemaAsync(catalog, schema, cancellationToken),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            return await lazyEvents.Value;
-        }
-        catch
-        {
-            _ = _eventsBySchema.TryRemove(schemaKey, out _);
-            throw;
-        }
+        return await lazyEvents.Value;
     }
 
     private async Task<IReadOnlyDictionary<string, EventEntity>> LoadEventsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken)
@@ -857,10 +758,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
     {
         (string catalog, string schema, string eventName) = eventId.Strings;
         IReadOnlyDictionary<string, EventEntity> events = await GetEventsBySchemaAsync(catalog, schema, cancellationToken);
-        if (!events.TryGetValue(eventName, out EventEntity? isEvent))
-        {
-            throw new InvalidOperationException($"Failed to load metadata for event '{eventId}'.");
-        }
+        EventEntity isEvent = events[eventName];
 
         Statement body = _helper.ParseStatement(isEvent.EventDefinition);
 
@@ -1013,28 +911,6 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             IndexComment = e.IndexComment,
             IndexName = e.IndexName,
             SeqInIndex = e.SeqInIndex
-        };
-    }
-
-    private RoutineInfo RoutineToRoutineInfo(RoutineDto e)
-    {
-        bool isDeterministic = e.IsDeterministic.Equals("yes", StringComparison.OrdinalIgnoreCase);
-        Comment? comment = null;
-        if (!string.IsNullOrEmpty(e.RoutineComment))
-        {
-            comment = new Comment(e.RoutineComment);
-        }
-        SecurityContext securityContext = SecurityContext.Parse(e.SecurityType);
-        var definer = new Definer(_helper.ParseAccount(e.Definer));
-        var relation = SqlDataRelation.Parse(e.SqlDataAccess);
-
-        return new RoutineInfo()
-        {
-            Definer = definer,
-            SecurityContext = securityContext,
-            IsDeterministic = isDeterministic,
-            SqlDataRelation = relation,
-            Comment = comment,
         };
     }
 

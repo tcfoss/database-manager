@@ -12,6 +12,7 @@ using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.InfoSchemaHelperModels;
+using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 using GenerationMode = TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes.GenerationMode;
 
@@ -251,6 +252,61 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         }
 
         return new KeyValuePair<Handle, MyKey>(Handle.Create(id, nameHandling), key);
+    }
+
+    public RoutineInfo RoutineToRoutineInfo(RoutineDto e)
+    {
+        bool isDeterministic = e.IsDeterministic.Equals("yes", StringComparison.OrdinalIgnoreCase);
+        Comment? comment = null;
+        if (!string.IsNullOrEmpty(e.RoutineComment))
+        {
+            comment = new Comment(e.RoutineComment);
+        }
+        SecurityContext securityContext = SecurityContext.Parse(e.SecurityType);
+        var definer = new Definer(ParseAccount(e.Definer));
+        var relation = SqlDataRelation.Parse(e.SqlDataAccess);
+
+        return new RoutineInfo()
+        {
+            Definer = definer,
+            SecurityContext = securityContext,
+            IsDeterministic = isDeterministic,
+            SqlDataRelation = relation,
+            Comment = comment,
+        };
+    }
+
+    public Dictionary<ObjectIdentifier, MyTrigger> TriggersOnTableToDictionary(List<TriggerDto> schemaRows, ObjectIdentifier tableId)
+    {
+        Dictionary<ObjectIdentifier, MyTrigger> triggers = [];
+
+        List<TriggerDto> tableRows = [.. schemaRows.Where(t => t.EventObjectTable == tableId.Name)];
+
+        var isTrigGroups = from t in tableRows
+                           group t by new { t.ActionTiming, t.EventManipulation } into g
+                           select g;
+
+        foreach (var group in isTrigGroups)
+        {
+            foreach (TriggerDto isTrig in group)
+            {
+                var objId = new ObjectIdentifier(isTrig.TriggerName, tableId.Schema, _quoteStyle);
+
+                var trigTime = TriggerTime.Parse(isTrig.ActionTiming);
+                var trigEvent = TriggerEvent.Parse(isTrig.EventManipulation);
+
+                Statement body = ParseStatement(isTrig.ActionStatement);
+
+                triggers[objId] = new MyTrigger(objId, tableId, trigTime, trigEvent, body)
+                {
+                    Definer = new Definer(ParseAccount(isTrig.Definer)),
+                    Order = (uint)isTrig.ActionOrder,
+                    RawBodyText = isTrig.ActionStatement
+                };
+            }
+        }
+
+        return triggers;
     }
 
 

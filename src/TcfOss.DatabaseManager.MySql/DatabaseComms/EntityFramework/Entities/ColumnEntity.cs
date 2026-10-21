@@ -22,7 +22,7 @@ public class ColumnEntity
     public string? CollationName { get; set; }
     public required string ColumnType { get; set; }
     public required string ColumnKey { get; set; }
-    public string? Extra { get; set; }
+    public required string Extra { get; set; }
     public string? Privileges { get; set; }
     public required string ColumnComment { get; set; }
     public required string GenerationExpression { get; set; }

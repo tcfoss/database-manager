@@ -11,7 +11,7 @@ public readonly record struct ColumnDto()
     public required string IsNullable { get; init; }
     public string? ColumnDefault { get; init; }
     public string? GenerationExpression { get; init; }
-    public string? Extra { get; init; }
+    public required string Extra { get; init; }
     public required string ColumnComment { get; init; }
     public string? CheckClause { get; init; }
 }
