@@ -14,11 +14,10 @@ public class MariaDbStartApp : StartAppBase<MariaDbStartResult>
     {
         StartResult result = StartCommon(configFilePath, rawConfig, workingDirectory, relaxed, options);
 
-        return new MariaDbStartResult()
+        return new MariaDbStartResult(result.Host)
         {
             Config = (MyConfig)result.Config,
             ServiceProvider = new MyAppServiceProvider(),
-            Services = result.Services,
             UsingDefaultConfig = result.UsingDefaultConfig
         };
     }

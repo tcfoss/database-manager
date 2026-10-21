@@ -15,7 +15,7 @@ using TcfOss.DatabaseManager.Core.Parsing;
 
 var workingDirectory = Directory.GetCurrentDirectory();
 var rawConfig = new GenericStartup().GetDefaultConfig(workingDirectory);
-var result = new GenericStartApp().Start(
+using var result = new GenericStartApp().Start(
     rawConfig: rawConfig,
     workingDirectory: workingDirectory);
 
@@ -57,7 +57,7 @@ For a project using a configuration file:
 ```csharp
 using TcfOss.DatabaseManager.MySql.Hosting;
 
-var result = new MySqlStartApp().Start(
+using var result = new MySqlStartApp().Start(
     configFilePath: "/path/to/project/database-manager.yaml",
     workingDirectory: "/path/to/project");
 Console.WriteLine(result.Config.ProjectDirectory);
@@ -77,6 +77,6 @@ startup, MySQL/MariaDB startup can contact the server to discover defaults.
 | `ServiceProvider` | The provider's convenience-access object. Prefer scoped `Services` access in application code. |
 | `UsingDefaultConfig` | `true` when startup used fallback configuration rather than a file or supplied raw configuration. |
 
-Scopes dispose services resolved within them. The result itself is not
-`IDisposable` and does not expose the host for shutdown. Applications needing
-explicit host ownership should use [manual hosting](customization.md#manual-hosting).
+The result owns the host and implements `IDisposable` and `IAsyncDisposable`.
+Keep it alive until all operations and scopes have finished, then dispose it with
+`using` or `await using`.

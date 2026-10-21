@@ -12,11 +12,10 @@ public class GenericStartApp : StartAppBase<GenericStartResult>
     {
         StartResult result = StartCommon(configFilePath, rawConfig, workingDirectory, relaxed, options);
 
-        return new GenericStartResult()
+        return new GenericStartResult(result.Host)
         {
             Config = (GenericConfig)result.Config,
             ServiceProvider = new AppServiceProvider(),
-            Services = result.Services,
             UsingDefaultConfig = result.UsingDefaultConfig
         };
     }

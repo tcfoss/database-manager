@@ -1,11 +1,9 @@
 using System.CommandLine;
-using Microsoft.Extensions.Logging;
-using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class ComputeChangesCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class ComputeChangesCommand : CommandSpec
 {
     protected override string CommandName => "compute-changes";
     protected override string Description => "Compute changes based on the current database state and write them to an SQL script file.";
@@ -43,7 +41,7 @@ public class ComputeChangesCommand(Action<ILogger> loggerCallback, Action<Source
         }
     }
 
-    protected override async Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
+    public override async Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
     {
         string outputPath = (parseResult.GetValue(s_outputPathArgument) ?? "changes.sql")
             .GetAbsolutePath(context.WorkingDirectory);

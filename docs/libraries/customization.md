@@ -25,7 +25,7 @@ using TcfOss.DatabaseManager.Core.Hosting;
 
 var workingDirectory = Directory.GetCurrentDirectory();
 var rawConfig = new GenericStartup().GetDefaultConfig(workingDirectory);
-var result = new GenericStartApp().Start(
+using var result = new GenericStartApp().Start(
     rawConfig: rawConfig,
     workingDirectory: workingDirectory,
     options: new StartupOptions
@@ -49,9 +49,9 @@ startup. They are not per-result state and should not be carried across async
 thread transitions. Prefer `result.Services.CreateScope()` and ordinary dependency
 injection, especially in asynchronous applications.
 
-Wrapper startup builds a host but does not expose it through the returned result
-for explicit shutdown. Use the following approach when your application needs to
-own and dispose the host.
+The returned result owns the host: dispose it with `using` or `await using` after
+all operations and scopes have finished. Use manual hosting when your application needs to
+configure and manage the host directly.
 
 
 ## Manual Hosting

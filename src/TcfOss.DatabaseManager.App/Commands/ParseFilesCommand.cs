@@ -1,12 +1,10 @@
 using System.CommandLine;
 using Microsoft.Extensions.FileSystemGlobbing;
-using Microsoft.Extensions.Logging;
-using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class ParseFilesCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class ParseFilesCommand : CommandSpec
 {
     protected override string CommandName => "parse-files";
     protected override string Description => "Parse SQL files and emit the results to JSON files.";
@@ -59,9 +57,9 @@ public class ParseFilesCommand(Action<ILogger> loggerCallback, Action<SourceMana
         }
     }
 
-    protected override bool GetRelaxed(ParseResult parseResult) => true;
+    public override bool GetRelaxed(ParseResult parseResult) => true;
 
-    protected override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
+    public override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
     {
         string[] rawFiles = parseResult.GetValue(s_filesArgument)!;
         string outputPattern = parseResult.GetValue(s_outputPatternOption)!.GetAbsolutePath(context.WorkingDirectory);

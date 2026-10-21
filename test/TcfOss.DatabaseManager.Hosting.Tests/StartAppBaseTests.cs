@@ -11,12 +11,77 @@ namespace TcfOss.DatabaseManager.Hosting.Tests;
 
 public class StartAppBaseTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Start_ResultDisposesResolvedServices(bool asynchronously)
+    {
+        using var result = new FakeStartApp().Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        {
+            ConfigureServices = services => services.AddSingleton<StubService>()
+        });
+        var service = result.Services.GetRequiredService<StubService>();
+
+        if (asynchronously)
+        {
+            await result.DisposeAsync();
+        }
+        else
+        {
+            result.Dispose();
+        }
+
+        Assert.True(service.IsDisposed);
+        Assert.Throws<ObjectDisposedException>(() => result.Services.GetService<StubService>());
+    }
+
+    [Fact]
+    public async Task Start_ResultAsynchronouslyDisposesAsyncOnlyServices()
+    {
+        AsyncOnlyStubService service;
+        await using (var result = new FakeStartApp().Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        {
+            ConfigureServices = services => services.AddSingleton<AsyncOnlyStubService>()
+        }))
+        {
+            service = result.Services.GetRequiredService<AsyncOnlyStubService>();
+        }
+
+        Assert.True(service.IsDisposed);
+    }
+
+    [Fact]
+    public void Start_DisposesHostWhenPostBuildInitializationFails()
+    {
+        StubService? service = null;
+        IServiceProvider? provider = null;
+        var failure = new InvalidOperationException("Startup failed.");
+        var app = new FakeStartApp(services =>
+        {
+            provider = services;
+            service = services.GetRequiredService<StubService>();
+            throw failure;
+        });
+
+        Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => app.Start(
+            workingDirectory: Path.GetTempPath(),
+            options: new StartupOptions
+            {
+                ConfigureServices = services => services.AddSingleton<StubService>()
+            })));
+
+        Assert.NotNull(service);
+        Assert.True(service.IsDisposed);
+        Assert.NotNull(provider);
+        Assert.Throws<ObjectDisposedException>(() => provider.GetService<StubService>());
+    }
+
     [Fact]
     public void Start_ExposesServicesAndAppliesCustomizationHooks()
     {
         var app = new FakeStartApp();
 
-        var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
         {
             ConfigureBuilder = builder => builder.Services.AddSingleton<IStubService>(new StubService()),
             ConfigureServices = services => services.AddSingleton<IStubService>(new StubService())
@@ -39,7 +104,7 @@ public class StartAppBaseTests
             File.WriteAllText(configPath, "dialect: generic\nprojectDirectory: \"" + tempDir + "\"\n");
 
             var app = new FakeStartApp();
-            var result = app.Start(configFilePath: configPath, workingDirectory: tempDir);
+            using var result = app.Start(configFilePath: configPath, workingDirectory: tempDir);
 
             Assert.False(result.UsingDefaultConfig);
             Assert.Equal(tempDir, result.Config.ProjectDirectory);
@@ -58,7 +123,7 @@ public class StartAppBaseTests
         try
         {
             var app = new FakeStartApp();
-            var result = app.Start(workingDirectory: tempDir);
+            using var result = app.Start(workingDirectory: tempDir);
 
             Assert.True(result.UsingDefaultConfig);
             Assert.Equal(tempDir, result.Config.ProjectDirectory);
@@ -86,7 +151,7 @@ public class StartAppBaseTests
                 Schemas = []
             };
 
-            var result = app.Start(rawConfig: rawConfig, workingDirectory: tempDir);
+            using var result = app.Start(rawConfig: rawConfig, workingDirectory: tempDir);
 
             Assert.False(result.UsingDefaultConfig);
             Assert.Equal(tempDir, result.Config.ProjectDirectory);
@@ -97,29 +162,28 @@ public class StartAppBaseTests
         }
     }
 
-    private sealed class FakeStartApp : StartAppBase<FakeStartResult>
+    private sealed class FakeStartApp(Action<IServiceProvider>? configureApp = null) : StartAppBase<FakeStartResult>
     {
         protected override SqlDialect Dialect => SqlDialect.Generic;
 
         public override FakeStartResult Start(string? configFilePath = null, Config? rawConfig = null, string? workingDirectory = null, bool relaxed = false, StartupOptions? options = null)
         {
             var startResult = StartCommon(configFilePath, rawConfig, workingDirectory, relaxed, options);
-            return new FakeStartResult
+            return new FakeStartResult(startResult.Host)
             {
                 Config = (GenericConfig)startResult.Config,
                 ServiceProvider = new AppServiceProvider(),
-                Services = startResult.Services,
                 UsingDefaultConfig = startResult.UsingDefaultConfig
             };
         }
 
         protected override StartupBase GetStartup()
         {
-            return new FakeStartup();
+            return new FakeStartup(configureApp);
         }
     }
 
-    private sealed class FakeStartup : StartupBase
+    private sealed class FakeStartup(Action<IServiceProvider>? configureApp) : StartupBase
     {
         public override Config GetDefaultConfig(string rootDirectory)
         {
@@ -160,18 +224,37 @@ public class StartAppBaseTests
         public override void ConfigureAppServiceProvider(IServiceProvider serviceProvider)
         {
             AppServiceProvider.ServiceProvider = serviceProvider;
+            configureApp?.Invoke(serviceProvider);
         }
     }
 
-    private sealed record FakeStartResult : IStartResult<GenericConfig, AppServiceProvider>
+    private sealed record FakeStartResult(IHost host) : StartResultBase(host), IStartResult<GenericConfig, AppServiceProvider>
     {
         public required GenericConfig Config { get; init; }
         public required AppServiceProvider ServiceProvider { get; init; }
-        public required IServiceProvider Services { get; init; }
         public required bool UsingDefaultConfig { get; init; }
     }
 
     private interface IStubService;
 
-    private sealed class StubService : IStubService;
+    private sealed class AsyncOnlyStubService : IAsyncDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.Yield();
+            IsDisposed = true;
+        }
+    }
+
+    private sealed class StubService : IStubService, IDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public void Dispose()
+        {
+            IsDisposed = true;
+        }
+    }
 }

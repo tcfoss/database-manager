@@ -13,11 +13,10 @@ public class MySqlStartApp : StartAppBase<MySqlStartResult>
     {
         StartResult result = StartCommon(configFilePath, rawConfig, workingDirectory, relaxed, options);
 
-        return new MySqlStartResult()
+        return new MySqlStartResult(result.Host)
         {
             Config = (MyConfig)result.Config,
             ServiceProvider = new MyAppServiceProvider(),
-            Services = result.Services,
             UsingDefaultConfig = result.UsingDefaultConfig
         };
     }

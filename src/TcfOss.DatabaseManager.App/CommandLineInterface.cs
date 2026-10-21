@@ -11,43 +11,26 @@ namespace TcfOss.DatabaseManager.App;
 
 public partial class CommandLineInterface
 {
-    public TextWriter Out
-    {
-        get;
-        set
-        {
-            field = value;
-            foreach (CommandSpec command in _commands)
-            {
-                command.Out = value;
-            }
-        }
-    } = Console.Out;
+    public TextWriter Out { get; set; } = Console.Out;
 
     public TextWriter Error { get; set; } = Console.Error;
 
     private readonly RootCommand _rootCommand;
 
-    private ILogger _logger;
-    private SourceManager _sourceManager = null!;
-
-    private readonly List<CommandSpec> _commands;
+    private readonly ILogger _bootstrapLogger;
 
     public CommandLineInterface()
     {
-        _logger = LoggingRegistration.GetBootstrapLogger();
+        _bootstrapLogger = LoggingRegistration.GetBootstrapLogger();
 
-        void SetLogger(ILogger logger) => _logger = logger;
-        void SetSourceManager(SourceManager sourceManager) => _sourceManager = sourceManager;
-
-        _commands =
+        CommandSpec[] commands =
         [
-            new ParseFilesCommand(SetLogger, SetSourceManager),
-            new ParseDefinitionCommand(SetLogger, SetSourceManager),
-            new FormatSqlCommand(SetLogger, SetSourceManager),
-            new DownloadSchemaCommand(SetLogger, SetSourceManager),
-            new ComputeChangesCommand(SetLogger, SetSourceManager),
-            new ValidateConfigCommand(SetLogger, SetSourceManager),
+            new ParseFilesCommand(),
+            new ParseDefinitionCommand(),
+            new FormatSqlCommand(),
+            new DownloadSchemaCommand(),
+            new ComputeChangesCommand(),
+            new ValidateConfigCommand(),
         ];
 
         _rootCommand = new RootCommand()
@@ -57,9 +40,9 @@ public partial class CommandLineInterface
         };
         BootstrapHelpers.AddGlobalOptions(_rootCommand);
 
-        foreach (CommandSpec command in _commands)
+        foreach (CommandSpec command in commands)
         {
-            _rootCommand.Add(command.Build());
+            _rootCommand.Add(command.Build(parseResult => RunCommandAsync(command, parseResult)));
         }
     }
 
@@ -74,20 +57,41 @@ public partial class CommandLineInterface
             EnableDefaultExceptionHandler = false
         };
 
+        return result.Invoke(invocationConfiguration);
+    }
+
+    private async Task<int> RunCommandAsync(CommandSpec command, ParseResult parseResult)
+    {
+        ILogger logger = _bootstrapLogger;
+        SourceManager? sourceManager = null;
+        ExecutionContext? context = null;
         try
         {
-            return result.Invoke(invocationConfiguration);
+            ExecutionConfig execConfig = BootstrapHelpers.LoadExecutionConfig(parseResult);
+            command.ValidateExecutionConfig(execConfig);
+
+            context = BootstrapHelpers.LoadExecutionContext(
+                execConfig,
+                relaxed: command.GetRelaxed(parseResult),
+                outputWriter: Out);
+
+            logger = context.Logger;
+            sourceManager = context.SourceManager;
+
+            command.ValidateExecutionContext(context);
+
+            return await command.ParseAndExecuteAsync(parseResult, context);
         }
         catch (ParseException.WithText ex)
         {
             Error.WriteLine(ex.Message);
-            s_criticalAppError(_logger, "Parse exception.", ex);
+            s_criticalAppError(logger, "Parse exception.", ex);
             return 1;
         }
         catch (LexException.WithText ex)
         {
             Error.WriteLine(ex.Message);
-            s_criticalAppError(_logger, "Lexical exception.", ex);
+            s_criticalAppError(logger, "Lexical exception.", ex);
             return 1;
         }
         catch (CommandException ex)
@@ -110,30 +114,34 @@ public partial class CommandLineInterface
             Error.WriteLine(ex.Message);
             if (ex.ObjectSourceRef.HasValue)
             {
-                string? filename = _sourceManager.GetFilename(ex.ObjectSourceRef.Value);
+                string? filename = sourceManager!.GetFilename(ex.ObjectSourceRef.Value);
                 if (filename != null)
                 {
                     Error.WriteLine($"  Source: {filename}");
                 }
             }
-            s_criticalAppError(_logger, "Definition exception.", ex);
+            s_criticalAppError(logger, "Definition exception.", ex);
             return 1;
         }
         catch (FileNotFoundException ex)
         {
             Error.WriteLine($"File not found: {ex.Message}");
-            s_criticalAppError(_logger, "File not found exception.", ex);
+            s_criticalAppError(logger, "File not found exception.", ex);
             return 1;
         }
         catch (DirectoryNotFoundException ex)
         {
             Error.WriteLine($"Directory not found: {ex.Message}");
-            s_criticalAppError(_logger, "Directory not found exception.", ex);
+            s_criticalAppError(logger, "Directory not found exception.", ex);
             return 1;
         }
         catch (Exception ex)
         {
             return HandleUnexpectedError(ex);
+        }
+        finally
+        {
+            context?.Dispose();
         }
 
         [ExcludeFromCodeCoverage]
@@ -145,7 +153,7 @@ public partial class CommandLineInterface
             File.WriteAllText(Path.Combine(outputDir, $"error_{Guid.NewGuid()}.json"), Serialization.ToJson(ex));
 #endif
             Error.WriteLine("An unexpected error occurred. Check the logs for details.");
-            s_criticalAppError(_logger, "Unknown exception.", ex);
+            s_criticalAppError(logger, "Unknown exception.", ex);
             return 1;
         }
     }
