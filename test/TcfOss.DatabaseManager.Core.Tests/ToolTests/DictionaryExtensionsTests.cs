@@ -41,7 +41,7 @@ public class DictionaryExtensionsTests
             [ColumnIdentifier.FromStrings("def", "schema1", "table2", "col1", QuoteStyle.Brackets)] = "Column 3"
         };
 
-        _componentDict = new DatabaseComponentDict<string>();
+        _componentDict = [];
         foreach (var kvp in _idDict)
         {
             _componentDict[Handle.Create(kvp.Key, NameHandling.None)] = kvp.Value;

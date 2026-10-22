@@ -154,7 +154,7 @@ public class DifferStatementWriterTests
     public static ObjectName ON(string name = "mytable", string schema = "myschema", string? catalog = null)
     {
         var identifiers = new List<Identifier>();
-        if (catalog!= null)
+        if (catalog != null)
         {
             identifiers.Add(new Identifier(catalog, QuoteStyle.Ansi));
         }
