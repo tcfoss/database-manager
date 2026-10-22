@@ -12,11 +12,7 @@ public sealed class CachedDataLoader<T>(Func<InfoSchemaKey, CancellationToken, T
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        Lazy<Task<T>> lazyTask = _data.GetOrAdd(
-            key,
-            _ => new Lazy<Task<T>>(
-                () => loader(key, _disposeCts.Token),
-                LazyThreadSafetyMode.ExecutionAndPublication));
+        Lazy<Task<T>> lazyTask = _data.GetOrAdd(key, CreateLazy);
 
         try
         {
@@ -28,6 +24,11 @@ public sealed class CachedDataLoader<T>(Func<InfoSchemaKey, CancellationToken, T
             _ = _data.TryRemove(new KeyValuePair<InfoSchemaKey, Lazy<Task<T>>>(key, lazyTask));
             throw;
         }
+    }
+
+    private Lazy<Task<T>> CreateLazy(InfoSchemaKey key)
+    {
+        return new Lazy<Task<T>>(() => loader(key, _disposeCts.Token), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public void Clear(InfoSchemaKey key)
