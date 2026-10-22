@@ -279,11 +279,9 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         };
     }
 
-    public Dictionary<ObjectIdentifier, MyTrigger> TriggersOnTableToDictionary(List<TriggerDto> schemaRows, ObjectIdentifier tableId)
+    public Dictionary<ObjectIdentifier, MyTrigger> TriggersOnTableToDictionary(IEnumerable<TriggerDto> tableRows, ObjectIdentifier tableId)
     {
         Dictionary<ObjectIdentifier, MyTrigger> triggers = [];
-
-        List<TriggerDto> tableRows = [.. schemaRows.Where(t => t.EventObjectTable == tableId.Name)];
 
         var isTrigGroups = from t in tableRows
                            group t by new { t.ActionTiming, t.EventManipulation } into g

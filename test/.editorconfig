@@ -13,6 +13,9 @@ csharp_style_var_elsewhere = false:none
 # Don't care about primary constructor
 dotnet_diagnostic.IDE0290.severity = none
 
+# Allow constant arrays as arguments
+dotnet_diagnostic.CA1861.severity = none
+
 # TODO: Reevaluate whether these suppressions are appropriate
 dotnet_diagnostic.xUnit1012.severity = none # Null should not be used for value type parameters
 dotnet_diagnostic.xUnit2005.severity = none # Do not us identity check on value types
