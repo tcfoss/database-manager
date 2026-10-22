@@ -181,3 +181,22 @@ See `Common/Value.cs` for an example.
 - **Human review**: Ask before making large refactors of `TcfOss.DatabaseManager.Core`, changes to CLI behavior in `Program.cs`/`CommandLineInterface.cs`, or changes to release/deployment scripts under `tools/`.
 - **git**: A human will execute all `git add` and `git commit` commands. Agents may suggest commits and commit messages but must not execute them directly.
 - **Package-local guidance**: This file is the workspace-wide default. For package-local instructions, add an `AGENTS.md` next to the package (e.g., `src/TcfOss.DatabaseManager.Core/AGENTS.md`).
+
+
+## Challenge Questionable Approaches
+
+After gathering relevant context, challenge requested approaches that
+conflict with repository conventions, introduce avoidable risk, or have
+a clearly better alternative.
+
+Before implementing, briefly explain the concrete concern and recommend
+an alternative. Do not silently override explicit instructions.
+
+Push back at most twice per decision. A second pushback should add new
+evidence or clarify an unresolved material concern, not repeat the first.
+
+Once I acknowledge the tradeoff and reaffirm my choice, proceed without
+further debate.
+
+Use judgment: do not manufacture objections if the request is unobjectionable
+or provides enough leeway to proceed well.

@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -36,7 +37,7 @@ public class ControlFlowParser
 
     public virtual Statement ParseIf(ParserState state)
     {
-        throw new NotSupportedException("IF statements require a dialect-specific parser.");
+        throw new ParseException.DialectRequired("IF syntax", state.Peek().Location);
     }
 
     public DeclareConditionHandler ParseDeclareConditionHandler(ParserState state)
@@ -79,7 +80,7 @@ public class ControlFlowParser
 
     public virtual DeclareLocalVariable ParseDeclareLocalVariable(ParserState state)
     {
-        throw new NotSupportedException("Local variable declaration requires a dialect-specific parser.");
+        throw new ParseException.DialectRequired("Local variable declaration", state.Peek().Location);
     }
 
     public DeclareCursor ParseDeclareCursor(ParserState state)

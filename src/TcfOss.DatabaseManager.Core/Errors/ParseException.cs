@@ -7,6 +7,12 @@ namespace TcfOss.DatabaseManager.Core.Errors;
 
 public abstract class ParseException(string message, Location? location, Exception? innerException = null) : LocatedException(message, location, innerException)
 {
+    public class DialectRequired(string syntax, Location? location = null)
+        : ParseException(s_compositeFormat.Apply(syntax), location)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Parse_DialectRequired);
+    }
+
     public class ColumnComponentInvalidName(string componentType, string givenName, Location? location = null)
         : ParseException(s_compositeFormat.Apply(componentType, givenName), location)
     {

@@ -472,11 +472,6 @@ public class DdlParser
             }
         }
 
-        if (!withEncryption && !withRecompile && executeAs == null)
-        {
-            return null;
-        }
-
         return new MsRoutineWithOptions
         {
             Encryption = withEncryption,

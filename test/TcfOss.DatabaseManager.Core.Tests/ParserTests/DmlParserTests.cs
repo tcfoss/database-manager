@@ -1,5 +1,10 @@
-﻿using TcfOss.DatabaseManager.Core.Lexing;
+﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Lexing;
+using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
@@ -59,6 +64,47 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
         var dmlParser = parser.DmlParser;
 
         var (expected, actual) = GetExpectedActual(s => dmlParser.ParseDelete(s, null), sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(Keyword.FROM)]
+    [InlineData(Keyword.WHERE)]
+    [InlineData(Keyword.INTO)]
+    [InlineData(Keyword.ORDER)]
+    [InlineData(Keyword.OPTION)]
+    [InlineData(Keyword.GROUP)]
+    [InlineData(Keyword.HAVING)]
+    [InlineData(Keyword.UNION)]
+    [InlineData(Keyword.EXCEPT)]
+    [InlineData(Keyword.INTERSECT)]
+    public void Output_ClauseKeyword_IsNotConsumedAsAlias(Keyword keyword)
+    {
+        var state = new ParserState(GetTokens($"INSERT INTO mytable OUTPUT inserted.id {keyword}"));
+        var parser = new Parser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.DmlParser.ParseInsert(state, null));
+        Assert.Equal(keyword, Assert.IsType<Word>(state.Peek()).Keyword);
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO mytable OUTPUT inserted.id VALUES (1)")]
+    [InlineData("INSERT INTO mytable OUTPUT inserted.id SELECT 1")]
+    public void Output_SourceQuery_IsNotConsumedAsAlias(string sql)
+    {
+        var insert = Assert.IsType<Insert>(ParseStatement(sql));
+
+        Assert.IsType<SimpleSelectItem.UnnamedExpression>(Assert.Single(insert.Output!));
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO mytable OUTPUT inserted.id result VALUES (1)", "INSERT INTO mytable OUTPUT inserted.id AS result VALUES (1)")]
+    [InlineData("UPDATE mytable SET col1 = 1 OUTPUT inserted.id result WHERE col1 = 1", "UPDATE mytable SET col1 = 1 OUTPUT inserted.id AS result WHERE col1 = 1")]
+    [InlineData("DELETE FROM mytable AS mt OUTPUT deleted.id result WHERE col1 = 1", "DELETE FROM mytable AS mt OUTPUT deleted.id AS result WHERE col1 = 1")]
+    public void Output_WithImplicitAlias_TextMatch(string sql, string expectedSql)
+    {
+        var (expected, actual) = GetExpectedActual(new Parser().Parse, sql, expectedSql);
 
         Assert.Equal(expected, actual);
     }

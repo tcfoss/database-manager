@@ -380,4 +380,16 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var actualSql = select.ToSql();
         Assert.Equal("WITH cte AS (SELECT 1) (SELECT 2)", actualSql);
     }
+
+    [Theory]
+    [InlineData("BEGIN SELECT 1;")]
+    [InlineData("SELECT 1 SELECT 2")]
+    [InlineData("+")]
+    [InlineData("UNKNOWN")]
+    [InlineData("WITH mycte AS (SELECT 1) SET myvar = 1")]
+    [InlineData("ALTER VIEW myview")]
+    public void InvalidStatement_ThrowsParseException(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => new Parser().Parse(GetTokens(sql)));
+    }
 }

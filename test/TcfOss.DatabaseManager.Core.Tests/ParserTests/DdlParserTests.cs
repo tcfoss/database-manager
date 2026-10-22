@@ -10,7 +10,7 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 {
     [Theory]
-    /* CREATE TRIGGER */
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH STATEMENT SELECT 1")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE TRIGGER basic")]
     [InlineData("CREATE OR REPLACE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE OR REPLACE TRIGGER")]
     [InlineData("CREATE OR ALTER TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE OR ALTER TRIGGER")]
@@ -25,7 +25,15 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE DEFINER = CURRENT_USER TRIGGER mytrigger BEFORE DELETE ON mytable FOR EACH ROW SELECT 1", Label = "CREATE TRIGGER DEFINER CURRENT_USER")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW FOLLOWS othertrigger SELECT 1", Label = "CREATE TRIGGER FOLLOWS")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW PRECEDES othertrigger SELECT 1", Label = "CREATE TRIGGER PRECEDES")]
-    /* CREATE FUNCTION */
+    public static void CreateTrigger_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("CREATE FUNCTION myfunc () RETURNS INT RETURN 1", Label = "CREATE FUNCTION basic")]
     [InlineData("CREATE FUNCTION myfunc (arg INT) RETURNS INT RETURN 1", Label = "CREATE FUNCTION one param")]
     [InlineData("CREATE FUNCTION myfunc (arg1 INT, arg2 VARCHAR(5), arg3 INT) RETURNS INT RETURN 1", Label = "CREATE FUNCTION many params")]
@@ -41,7 +49,15 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE FUNCTION myfunc () RETURNS INT NOT DETERMINISTIC NO SQL RETURN 1", Label = "CREATE FUNCTION NOT DETERMINISTIC")]
     [InlineData("CREATE FUNCTION myfunc () RETURNS INT COMMENT 'this is my func' RETURN 1", Label = "CREATE FUNCTION COMMENT")]
     [InlineData("CREATE DEFINER = 'user'@'localhost' FUNCTION myfunc () RETURNS INT SQL SECURITY INVOKER RETURN 1", Label = "CREATE FUNCTION DEFINER user host")]
-    /* CREATE PROCEDURE */
+    public static void CreateFunction_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("CREATE PROCEDURE myproc () SELECT a, b", Label = "CREATE PROCEDURE basic")]
     [InlineData("CREATE PROCEDURE myproc (arg INT) SELECT a, b", Label = "CREATE PROCEDURE one param")]
     [InlineData("CREATE PROCEDURE myproc (arg1 INT, arg2 VARCHAR(5), arg3 INT) SELECT a, b", Label = "CREATE PROCEDURE many params")]
@@ -59,7 +75,15 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE PROCEDURE myproc () LANGUAGE SQL DETERMINISTIC SELECT a, b", Label = "CREATE PROCEDURE LANGUAGE SQL DETERMINISTIC")]
     [InlineData("CREATE PROCEDURE myproc () DETERMINISTIC SQL SECURITY DEFINER SELECT a, b", Label = "CREATE PROCEDURE DETERMINISTIC SQL SECURITY DEFINER")]
     [InlineData("CREATE DEFINER = 'user'@'localhost' PROCEDURE myproc () SQL SECURITY INVOKER SELECT a, b", Label = "CREATE PROCEDURE DEFINER user host")]
-    /* CREATE VIEW */
+    public static void CreateProcedure_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
     [InlineData("CREATE OR REPLACE VIEW myview AS SELECT a, b", Label = "CREATE OR REPLACE VIEW")]
     [InlineData("CREATE OR ALTER VIEW myview AS SELECT a, b", Label = "CREATE OR ALTER VIEW")]
@@ -69,7 +93,15 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE ALGORITHM = TEMPTABLE DEFINER = 'user'@'localhost' SQL SECURITY INVOKER VIEW myview AS SELECT a, b", Label = "CREATE ALGORITHM TEMPTABLE INVOKER VIEW")]
     [InlineData("CREATE ALGORITHM = TEMPTABLE DEFINER = 'user'@'localhost' SQL SECURITY INVOKER VIEW myview AS SELECT a, b WITH LOCAL CHECK OPTION", Label = "CREATE ALGORITHM TEMPTABLE WITH LOCAL CHECK OPTION")]
     [InlineData("CREATE VIEW myview (a, b) AS WITH cte AS (SELECT a, b FROM othertable) SELECT cte.b, mt.b, mt.d FROM mytable AS mt INNER JOIN cte ON mt.a = cte.a WITH CASCADED CHECK OPTION", Label = "CREATE VIEW complex WITH CASCADED CHECK OPTION")]
-    /* CREATE EVENT */
+    public static void CreateView_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("CREATE EVENT myevent ON SCHEDULE AT CURRENT_TIMESTAMP() DO INSERT INTO mytable VALUES (NOW())", Label = "CREATE EVENT AT CURRENT_TIMESTAMP")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE AT '2025-07-01 08:52:00' DO INSERT INTO mytable VALUES (NOW())", Label = "CREATE EVENT AT LITERAL TIMESTAMP")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE AT CURRENT_TIMESTAMP() + INTERVAL 1 DAY DO INSERT INTO mytable VALUES (NOW())", Label = "CREATE EVENT AT INTERVAL 1 DAY")]
@@ -88,7 +120,17 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE EVENT myevent ON SCHEDULE EVERY 1 MONTH DISABLE ON REPLICA DO INSERT INTO mytable VALUES (NOW())", Label = "CREATE EVENT EVERY 1 MONTH DISABLE ON REPLICA")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE EVERY 1 QUARTER DISABLE ON SLAVE DO INSERT INTO mytable VALUES (NOW())", Label = "CREATE EVENT EVERY 1 QUARTER DISABLE ON SLAVE")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE EVERY 1 YEAR COMMENT 'this is my proc' DO INSERT INTO mytable VALUES (NOW())", Label = "CREATE EVENT EVERY 1 YEAR COMMENT")]
-    /* DROP STUFF */
+    public static void CreateEvent_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("DROP SCHEMA myschema")]
+    [InlineData("DROP DATABASE mydatabase")]
     [InlineData("DROP TABLE mytable")]
     [InlineData("DROP TABLE IF EXISTS mytable")]
     [InlineData("DROP TEMPORARY TABLE mytable")]
@@ -103,11 +145,27 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DROP PROCEDURE IF EXISTS myproc")]
     [InlineData("DROP EVENT myevent")]
     [InlineData("DROP EVENT IF EXISTS myevent")]
-    /* TRUNCATE TABLE */
+    public static void DropObject_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("TRUNCATE TABLE mytable")]
     [InlineData("TRUNCATE TABLE mySchema.mytable")]
     [InlineData("TRUNCATE mytable")]
-    /* CREATE INDEX */
+    public static void TruncateTable_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("CREATE INDEX my_index ON mytable (my_id)", Label = "CREATE INDEX basic")]
     [InlineData("CREATE INDEX my_index ON mySchema.mytable (my_id)", Label = "CREATE INDEX qualified table")]
     [InlineData("CREATE INDEX my_index ON mytable (my_id, my_val)", Label = "CREATE INDEX multi-column")]
@@ -134,7 +192,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE UNIQUE INDEX my_index ON mytable (my_id) WHERE active = 1 WITH (PAD_INDEX = OFF, FILLFACTOR = 70) ON partition_scheme (partition_column)", Label = "CREATE UNIQUE INDEX with WHERE, WITH options, ON partition scheme")]
     [InlineData("CREATE CLUSTERED INDEX my_index ON mytable (my_id) WITH (ALLOW_ROW_LOCKS = OFF, ALLOW_PAGE_LOCKS = OFF) ON myfilegroup", Label = "CREATE CLUSTERED INDEX with WITH options, ON filegroup")]
     [InlineData("CREATE NONCLUSTERED INDEX my_index ON mytable (my_id) INCLUDE (my_val) WHERE my_id > 100 WITH (STATISTICS_INCREMENTAL = ON) ON partition_scheme (col)", Label = "CREATE NONCLUSTERED INDEX with INCLUDE, WHERE, WITH, ON")]
-    public static void Statement_TextMatch(string sql)
+    public static void CreateIndex_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
@@ -234,5 +292,43 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
         var exc = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(tokens));
         Assert.StartsWith($"Expected {missingParameter}. Found ", exc.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER mytrigger AFTER")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER +")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER UNKNOWN ON mytable SELECT 1")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH +")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH UNKNOWN SELECT 1")]
+    [InlineData("CREATE PROCEDURE myproc () WITH UNKNOWN SELECT 1")]
+    [InlineData("CREATE PROCEDURE myproc () WITH ENCRYPTION, UNKNOWN SELECT 1")]
+    [InlineData("CREATE EVENT myevent ON SCHEDULE EVERY 1 UNKNOWN DO SELECT 1")]
+    [InlineData("DROP UNKNOWN myobject")]
+    public void InvalidStatement_ThrowsParseException(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => new Parser().Parse(GetTokens(sql)));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW myview WITH SCHEMABINDING, SCHEMABINDING AS SELECT 1")]
+    [InlineData("CREATE PROCEDURE myproc () WITH ENCRYPTION, ENCRYPTION SELECT 1")]
+    [InlineData("CREATE PROCEDURE myproc () WITH RECOMPILE, RECOMPILE SELECT 1")]
+    [InlineData("CREATE PROCEDURE myproc () WITH EXECUTE AS CALLER, EXECUTE AS OWNER SELECT 1")]
+    public void DuplicateOptions_ThrowsDuplicate(string sql)
+    {
+        Assert.Throws<ParseException.Duplicate>(() => new Parser().Parse(GetTokens(sql)));
+    }
+
+    [Fact]
+    public void CreateProcedure_WrongKeyword_Throws()
+    {
+        var parser = new Parser();
+
+        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() =>
+            parser.DdlParser.ParseCreateProcedure(new ParserState(GetTokens("FUNCTION myfunc () RETURNS INT RETURN 1"))));
+
+        Assert.Contains("PROCEDURE", exception.Message);
+        Assert.Contains("PROC", exception.Message);
     }
 }
