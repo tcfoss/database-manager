@@ -79,9 +79,7 @@ public class StringExtensionsTests
     [Fact]
     public void ToIdentifier_Joins_Parts()
     {
-#pragma warning disable CA1861 // Avoid constant arrays as arguments
         string result = new[] { "schema", "table", "column" }.ToIdentifier();
-#pragma warning restore CA1861 // Avoid constant arrays as arguments
 
         Assert.Equal("schema.table.column", result);
     }

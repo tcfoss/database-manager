@@ -26,10 +26,6 @@ public readonly ref struct IndentedSqlInterpolatedStringHandler
                 sql.ToSql(_writer);
                 break;
 
-            case Enum e:
-                AppendLiteral(e.ToString());
-                break;
-
             case string str:
                 if (!string.IsNullOrEmpty(str))
                 {

@@ -74,9 +74,6 @@ public static class Helpers
         };
         var config = TestConfig.GetMyTestConfig(formatSettings: formatSettings);
 
-        return new Formatter(config, new TextParser(new MyLexer(), new MyParser()), new MyFunctionNameProvider())
-        {
-            PseudoTables = pseudoTables?.CloneExternalOnly(),
-        };
+        return new Formatter(config, new TextParser(new MyLexer(), new MyParser()), new MyFunctionNameProvider(), pseudoTables?.CloneExternalOnly());
     }
 }

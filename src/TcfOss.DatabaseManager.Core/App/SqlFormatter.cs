@@ -32,8 +32,7 @@ public partial class SqlFormatter<T>(
 
         foreach (string f in files)
         {
-            using var formatter = new Formatter(Config, TextParser, FunctionNameProvider);
-            formatter.PseudoTables = pseudoTableSet?.CloneExternalOnly();
+            using var formatter = new Formatter(Config, TextParser, FunctionNameProvider, pseudoTableSet?.CloneExternalOnly());
 
             string fullPath = Path.GetFullPath(f);
             string fileDir = Path.GetDirectoryName(fullPath)!;

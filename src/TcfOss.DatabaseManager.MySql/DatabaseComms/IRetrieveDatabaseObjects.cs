@@ -18,6 +18,6 @@ public interface IRetrieveDatabaseObjects
     Task<MyView> GetViewAsync(ObjectIdentifier viewId, CancellationToken cancellationToken = default);
     Task<MyEvent> GetEventAsync(ObjectIdentifier eventId, CancellationToken cancellationToken = default);
 
-    Task<List<string>> GetUnappliedRefactorsAsync(SchemaIdentifier schemaId, IReadOnlyCollection<string> allRefactorIds, CancellationToken cancellationToken = default);
+    Task<HashSet<string>> GetUnappliedRefactorsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds, IReadOnlyCollection<string> allRefactorIds, CancellationToken cancellationToken = default);
     Task<List<string>> GetUnappliedDeployScriptsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds, IReadOnlyCollection<string> allDeployScriptIds, CancellationToken cancellationToken = default);
 }

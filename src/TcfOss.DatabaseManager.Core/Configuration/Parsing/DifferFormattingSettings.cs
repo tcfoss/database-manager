@@ -18,7 +18,7 @@ public class DifferFormattingSettings
     public bool? ViewPreferRawTextInScript { get; set; }
     public bool? EventPreferRawTextInScript { get; set; }
 
-    public bool? TerminateStatements { get; set; } = true;
+    public bool? TerminateStatements { get; set; }
     public bool? UseDelimiterAroundPrograms { get; set; }
     public bool? UseDelimiterAroundViews { get; set; }
 

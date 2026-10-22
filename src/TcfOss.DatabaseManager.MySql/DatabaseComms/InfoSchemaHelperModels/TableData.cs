@@ -5,18 +5,18 @@ using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseComms.InfoSchemaHelperModels;
 
-
-public sealed record SchemaForeignKeyData(IReadOnlyDictionary<string, IReadOnlyList<ForeignKeyColumnDto>> RowsByTableName)
+public sealed record TableData(
+    TableDto Info,
+    IReadOnlyList<ColumnDto> Columns,
+    IReadOnlyList<TableCheckDto> Checks,
+    TableIndexMetadata Indexes,
+    IReadOnlyList<ForeignKeyColumnDto> ForeignKeyRows)
 {
-    public DatabaseComponentDict<MyForeignKey> GetForeignKeys(string tableName, SchemaIdentifier schemaId, QuoteStyle quoteStyle, NameHandling nameHandling)
+    public DatabaseComponentDict<MyForeignKey> GetForeignKeys(SchemaIdentifier schemaId, QuoteStyle quoteStyle, NameHandling nameHandling)
     {
         var foreignKeys = new DatabaseComponentDict<MyForeignKey>();
-        if (!RowsByTableName.TryGetValue(tableName, out IReadOnlyList<ForeignKeyColumnDto>? rows))
-        {
-            return foreignKeys;
-        }
 
-        foreach (IGrouping<string, ForeignKeyColumnDto> group in rows.GroupBy(r => r.ConstraintName))
+        foreach (IGrouping<string, ForeignKeyColumnDto> group in ForeignKeyRows.GroupBy(r => r.ConstraintName))
         {
             List<ForeignKeyColumnDto> colinfo = [.. group];
             ForeignKeyColumnDto first = colinfo.First();

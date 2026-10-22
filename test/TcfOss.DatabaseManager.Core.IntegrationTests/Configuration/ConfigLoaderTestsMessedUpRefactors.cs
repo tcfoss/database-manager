@@ -109,6 +109,57 @@ public class ConfigLoaderTestsMessedUpRefactors
         Assert.Contains("TableName", ex.Message);
     }
 
+    [Fact]
+    public async Task Refactors_DuplicateUniqueId_Throws()
+    {
+        using var fixture = new FsProjectFixture();
+
+        var refactorContents = """
+        - UniqueId: abc123
+          Type: TableRename
+          OldName: old_table_name
+          NewName: new_table_name
+        - UniqueId: abc123
+          Type: TableRename
+          OldName: other_old_name
+          NewName: other_new_name
+        """;
+
+        await PrepareFixture(fixture, refactorContents);
+
+        var ex = Assert.Throws<ConfigurationException.DuplicateRefactorId>(() => BuildConfig(fixture.RootDirectory.FullName));
+        Assert.Contains("abc123", ex.Message);
+    }
+
+    [Fact]
+    public async Task Refactors_DuplicateUniqueIdAcrossSchemas_Throws()
+    {
+        using var fixture = new FsProjectFixture();
+
+        var refactorContents = """
+        - UniqueId: abc123
+          Type: TableRename
+          OldName: old_table_name
+          NewName: new_table_name
+        """;
+
+        foreach (var directoryName in new[] { "SchemaA", "SchemaB" })
+        {
+            var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, directoryName);
+            Directory.CreateDirectory(schemaDirectory);
+            await fixture.WriteTextAsync(Path.Combine(schemaDirectory, "refactor.yaml"), refactorContents, TestContext.Current.CancellationToken);
+        }
+
+        var schemas = new[]
+        {
+            new ConfigParsing.SchemaMapping { SchemaName = "schema_a", RootPath = "SchemaA", RefactorFiles = ["refactor.yaml"] },
+            new ConfigParsing.SchemaMapping { SchemaName = "schema_b", RootPath = "SchemaB", RefactorFiles = ["refactor.yaml"] },
+        };
+
+        var ex = Assert.Throws<ConfigurationException.DuplicateRefactorId>(() => BuildConfig(fixture.RootDirectory.FullName, schemas));
+        Assert.Contains("abc123", ex.Message);
+    }
+
     private static async Task PrepareFixture(FsProjectFixture fixture, string refactorContents)
     {
         var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
@@ -119,20 +170,26 @@ public class ConfigLoaderTestsMessedUpRefactors
 
     private static GenericConfig BuildConfig(string rootDirectory)
     {
+        return BuildConfig(rootDirectory,
+        [
+            new ConfigParsing.SchemaMapping()
+            {
+                SchemaName = "my_schema",
+                RootPath = "MySchema",
+                RefactorFiles = ["refactor.yaml"]
+            }
+        ]);
+    }
+
+    private static GenericConfig BuildConfig(string rootDirectory, ConfigParsing.SchemaMapping[] schemas)
+    {
         var builder = new GenericConfigurationBuilder();
         var rawConfig = new ConfigParsing.Config()
         {
             ProjectDirectory = rootDirectory,
             Dialect = SqlDialect.Generic,
             QuoteStyle = QuoteStyle.Ansi,
-            Schemas = [
-                new ConfigParsing.SchemaMapping()
-                {
-                    SchemaName = "my_schema",
-                    RootPath = "MySchema",
-                    RefactorFiles = ["refactor.yaml"]
-                }
-            ]
+            Schemas = schemas
         };
         return builder.BuildConfiguration(rootDirectory, rawConfig, new EnvironmentVariableReader(), false, NullLogger.Instance);
     }

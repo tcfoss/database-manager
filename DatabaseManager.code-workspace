@@ -6,12 +6,11 @@
 	],
 	"settings": {
 		"files.exclude": {
-			"**/bin": true,
+			// "**/bin": true,
 			"**/obj": true,
 			// "**/test-results": true,
 			"**/coverage-history": true
 		},
-		"python.defaultInterpreterPath": "python3",
 		"workbench.settings.openDefaultSettings": true,
 		"json.schemaDownload.trustedDomains": {
 			"https://schemastore.org": true,

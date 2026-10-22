@@ -16,7 +16,7 @@ public class Formatter : IDisposable, IFormatSql
     private readonly SqlTextWriter _writer;
 
     /// <summary>Creates a formatter using the given configuration and parser.</summary>
-    public Formatter(ConfigBase config, IParseText parser, IFunctionNameProvider functionNameProvider)
+    public Formatter(ConfigBase config, IParseText parser, IFunctionNameProvider functionNameProvider, PseudoTableSet? pseudoTables = null)
     {
         var indenter = new Indenter(config.Formatting.TabSize, config.Formatting.PreferTabs);
         _context = new FormatManager
@@ -24,7 +24,8 @@ public class Formatter : IDisposable, IFormatSql
             Formatting = config.Formatting,
             FunctionNameProvider = functionNameProvider,
             ComponentNormalizer = new ComponentNormalizer(config.QuoteStyle, functionNameProvider),
-            Indenter = indenter
+            Indenter = indenter,
+            PseudoTables = pseudoTables
         };
         _parser = parser;
         _writer = new SqlTextWriter(new StringBuilder(), indenter);
@@ -72,13 +73,6 @@ public class Formatter : IDisposable, IFormatSql
         string result = _writer.ToString().TrimEnd();
         Clear();
         return result;
-    }
-
-    /// <summary>Optional pseudo-table set used to rewrite unqualified column references during formatting.</summary>
-    public PseudoTableSet? PseudoTables
-    {
-        get => _context.PseudoTables;
-        set => _context.PseudoTables = value;
     }
 
     /// <summary>Clears the internal buffer and resets all formatting state, ready for the next use.</summary>

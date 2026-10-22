@@ -1,7 +1,10 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseComms;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -276,11 +279,9 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         };
     }
 
-    public Dictionary<ObjectIdentifier, MyTrigger> TriggersOnTableToDictionary(List<TriggerDto> schemaRows, ObjectIdentifier tableId)
+    public Dictionary<ObjectIdentifier, MyTrigger> TriggersOnTableToDictionary(IEnumerable<TriggerDto> tableRows, ObjectIdentifier tableId)
     {
         Dictionary<ObjectIdentifier, MyTrigger> triggers = [];
-
-        List<TriggerDto> tableRows = [.. schemaRows.Where(t => t.EventObjectTable == tableId.Name)];
 
         var isTrigGroups = from t in tableRows
                            group t by new { t.ActionTiming, t.EventManipulation } into g
@@ -309,6 +310,60 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         return triggers;
     }
 
+    public static string GetMetadataTableName(SchemaIdentifier schemaId)
+    {
+        string escapedSchemaName = schemaId.Name.Replace("`", "``").Replace("{", "{{").Replace("}", "}}");
+        return $"`{escapedSchemaName}`.`{StoredMetadataConstants.TableName}`";
+    }
+
+    public static string GetMetadataTableCreateSql(string fullTableName)
+    {
+        return $"""
+            CREATE TABLE {fullTableName} (
+                `{StoredMetadataConstants.UidColumn}` CHAR(36) NOT NULL,
+                `{StoredMetadataConstants.TypeColumn}` CHAR(1) NOT NULL,
+                UNIQUE KEY `{StoredMetadataConstants.TableName}_entry_key` (`{StoredMetadataConstants.UidColumn}`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            """;
+    }
+
+    public static string GetValuesPlaceholders(int count, bool includeRowKeyword)
+    {
+        string? row = includeRowKeyword ? "ROW" : null;
+        return string.Join(',',
+            Enumerable.Range(0, count)
+                .Select(i => $"{row}({{{i}}})"));
+    }
+
+
+    public static string GetUnappliedEntriesSql(
+        IReadOnlyCollection<SchemaIdentifier> schemaIds,
+        int idCount,
+        string entryType,
+        bool includeRowKeyword)
+    {
+        var unionBuilder = new StringBuilder();
+        foreach (SchemaIdentifier schemaId in schemaIds)
+        {
+            if (unionBuilder.Length > 0)
+            {
+                unionBuilder.AppendLine("UNION ALL");
+            }
+            string fullTableName = GetMetadataTableName(schemaId);
+            unionBuilder.AppendLine(CultureInfo.InvariantCulture, $"""
+                SELECT `{StoredMetadataConstants.UidColumn}`
+                FROM {fullTableName}
+                WHERE `{StoredMetadataConstants.TypeColumn}` = '{entryType}'
+                """);
+        }
+
+        string valuesPlaceholders = GetValuesPlaceholders(idCount, includeRowKeyword);
+        return $"""
+            VALUES {valuesPlaceholders}
+            EXCEPT
+            ({unionBuilder})
+            """;
+    }
 
     [GeneratedRegex(@"LOOP\s+FETCH\s+GROUP\sNEXT\s+ROW\s+")]
     private static partial Regex BuildAggregateFunctionRegex();

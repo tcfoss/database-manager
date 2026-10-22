@@ -28,10 +28,16 @@ public class GenericConfigLoader(ILogger logger)
             viewNormalizationSettings = MergeNormalizationSettings(viewNormalizationSettings, rawConfig.ViewNormalizationSettings);
         }
 
-        DifferFormattingSettings differFormattingSettings = GetDifferFormattingDefaults();
+        DifferFormattingSettings differFormattingSettings = new();
         if (rawConfig.DifferFormatting != null)
         {
             differFormattingSettings = MergeDifferFormattingSettings(differFormattingSettings, rawConfig.DifferFormatting);
+        }
+
+        AttributeDefaults attributeDefaults = new();
+        if (rawConfig.AttributeDefaults != null)
+        {
+            attributeDefaults = MergeAttributeDefaults(attributeDefaults, rawConfig.AttributeDefaults);
         }
 
         return new GenericConfig
@@ -43,7 +49,7 @@ public class GenericConfigLoader(ILogger logger)
             Schemas = schemaMappings,
             Formatting = rawConfig.Formatting ?? new(),
             DifferFormatting = differFormattingSettings,
-            AttributeDefaults = new(), // Attribute defaults do not apply to Generic dialect
+            AttributeDefaults = attributeDefaults,
             Logging = rawConfig.Logging,
             ValidationSettings = GetValidationSettings(),
             NormalizationSettings = viewNormalizationSettings,
@@ -91,23 +97,6 @@ public class GenericConfigLoader(ILogger logger)
         {
             AllowUniqueOnColumn = true,
             AllowCheckOnColumn = true,
-        };
-    }
-
-    private static DifferFormattingSettings GetDifferFormattingDefaults()
-    {
-        return new DifferFormattingSettings
-        {
-            ObjectNamePrefixWithSchema = true,
-            OmitModifiersIfDefault = true,
-            ProcedurePreferRawText = true,
-            FunctionPreferRawText = true,
-            TriggerPreferRawText = true,
-            ViewPreferRawText = true,
-            TerminateStatements = true,
-            UseDelimiterAroundPrograms = false,
-            UseDelimiterAroundViews = false,
-            EmitCommentsWithWeights = false,
         };
     }
 }

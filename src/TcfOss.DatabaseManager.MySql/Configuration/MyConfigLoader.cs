@@ -168,17 +168,7 @@ public class MyConfigLoader(ILogger logger)
     {
         return new DifferFormattingSettings
         {
-            ObjectNamePrefixWithSchema = false,
-            OmitModifiersIfDefault = true,
-            ProcedurePreferRawText = true,
-            FunctionPreferRawText = true,
-            TriggerPreferRawText = true,
-            ViewPreferRawText = true,
-            EventPreferRawText = true,
-            TerminateStatements = true,
-            UseDelimiterAroundPrograms = true,
-            UseDelimiterAroundViews = false,
-            EmitCommentsWithWeights = false,
+            UseDelimiterAroundPrograms = true
         };
     }
 
