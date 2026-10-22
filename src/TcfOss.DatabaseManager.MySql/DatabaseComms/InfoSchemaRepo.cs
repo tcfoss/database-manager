@@ -1,6 +1,3 @@
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TcfOss.DatabaseManager.Core;
@@ -28,13 +25,11 @@ namespace TcfOss.DatabaseManager.MySql.DatabaseComms;
 public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 {
     private readonly SemaphoreSlim _queryGate = new(10);
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<List<TriggerDto>>>> _triggersBySchema = [];
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaTableData>>> _tableDataBySchema = [];
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaIndexData>>> _indexDataBySchema = [];
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaForeignKeyData>>> _foreignKeyDataBySchema = [];
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<SchemaRoutineData>>> _routineDataBySchema = [];
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<IReadOnlyDictionary<string, ViewEntity>>>> _viewsBySchema = [];
-    private readonly ConcurrentDictionary<(string Catalog, string Schema), Lazy<Task<IReadOnlyDictionary<string, EventEntity>>>> _eventsBySchema = [];
+    private readonly CachedDataLoader<List<TriggerDto>> _triggersBySchema;
+    private readonly CachedDataLoader<SchemaTableData> _tableDataBySchema;
+    private readonly CachedDataLoader<SchemaRoutineData> _routineDataBySchema;
+    private readonly CachedDataLoader<IReadOnlyDictionary<string, ViewEntity>> _viewsBySchema;
+    private readonly CachedDataLoader<IReadOnlyDictionary<string, EventEntity>> _eventsBySchema;
 
     private readonly QuoteStyle _quoteStyle;
     private readonly MyConfig _config;
@@ -57,6 +52,11 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         _lexer = new MyLexer();
         _parser = new MyParser();
         _helper = new InfoSchemaRepoHelper(_lexer, _parser, _quoteStyle);
+        _triggersBySchema = new CachedDataLoader<List<TriggerDto>>(LoadSchemaTriggersAsync);
+        _tableDataBySchema = new CachedDataLoader<SchemaTableData>(LoadSchemaTableDataAsync);
+        _routineDataBySchema = new CachedDataLoader<SchemaRoutineData>(LoadSchemaRoutineDataAsync);
+        _viewsBySchema = new CachedDataLoader<IReadOnlyDictionary<string, ViewEntity>>(LoadSchemaViewsAsync);
+        _eventsBySchema = new CachedDataLoader<IReadOnlyDictionary<string, EventEntity>>(LoadSchemaEventsAsync);
     }
 
     public async Task<List<ObjectIdentifier>> GetTableIdentifiersAsync(SchemaIdentifier schemaId, IEnumerable<string> excludedNames, bool refreshCache = true, CancellationToken cancellationToken = default)
@@ -64,13 +64,11 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         if (refreshCache)
         {
             // Refresh schema-local caches for each schema load.
-            _ = _triggersBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
-            _ = _tableDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
-            _ = _indexDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
-            _ = _foreignKeyDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
-            _ = _routineDataBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
-            _ = _viewsBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
-            _ = _eventsBySchema.TryRemove((schemaId.Catalog.Name, schemaId.Name), out _);
+            _triggersBySchema.Clear(schemaId.InfoSchemaKey);
+            _tableDataBySchema.Clear(schemaId.InfoSchemaKey);
+            _routineDataBySchema.Clear(schemaId.InfoSchemaKey);
+            _viewsBySchema.Clear(schemaId.InfoSchemaKey);
+            _eventsBySchema.Clear(schemaId.InfoSchemaKey);
         }
 
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
@@ -142,9 +140,9 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     public async Task<MyTable> GetTableAsync(ObjectIdentifier tableId, CancellationToken cancellationToken = default)
     {
-        (string catalog, string schema, string name) = tableId.Strings;
+        string name = tableId.Name;
 
-        SchemaTableData tableData = await GetSchemaTableDataAsync(catalog, schema);
+        SchemaTableData tableData = await _tableDataBySchema.GetAsync(tableId.InfoSchemaKey, cancellationToken);
         TableDto isTable = tableData.TableInfoByName[name];
 
         SqlValueList<MyColumn> columns = GetColumns(tableData.GetColumnRows(name), tableId);
@@ -154,13 +152,13 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             tableComment = new Comment(isTable.TableComment);
         }
 
-        TableIndexMetadata indexMetadata = await GetTableIndexMetadataAsync(catalog, schema, name);
+        TableIndexMetadata indexMetadata = tableData.GetTableIndexMetadata(name);
 
         return new MyTable(tableId, columns)
         {
             PrimaryKey = indexMetadata.PrimaryKey,
             UniqueKeys = indexMetadata.UniqueKeys,
-            ForeignKeys = await GetForeignKeysAsync(catalog, schema, name, tableId),
+            ForeignKeys = tableData.GetForeignKeys(name, tableId.Schema, _quoteStyle, _config.NameHandling),
             Keys = indexMetadata.Keys,
             Checks = GetChecks(tableData.GetCheckRows(name)),
             Engine = isTable.Engine,
@@ -170,19 +168,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         };
     }
 
-    private async Task<SchemaTableData> GetSchemaTableDataAsync(string catalog, string schema)
-    {
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<SchemaTableData>> lazyRows = _tableDataBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<SchemaTableData>>(
-                () => LoadSchemaTableDataAsync(catalog, schema),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        return await lazyRows.Value;
-    }
-
-    private async Task<SchemaTableData> LoadSchemaTableDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
+    private async Task<SchemaTableData> LoadSchemaTableDataAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken = default)
     {
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
@@ -190,8 +176,8 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         List<TableDto> tableInfoRows = await (from t in context.Tables
                                               join coll in context.CollationCharacterSetApplicabilities
                                               on t.TableCollation equals coll.CollationName
-                                              where t.TableCatalog == catalog
-                                              && t.TableSchema == schema
+                                              where t.TableCatalog == schemaKey.Catalog
+                                              && t.TableSchema == schemaKey.Schema
                                               && t.TableType == "BASE TABLE"
                                               select new TableDto
                                               {
@@ -208,8 +194,8 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                                 equals new { Cat = ccSub.ConstraintCatalog, Sch = ccSub.ConstraintSchema, Col = ccSub.ConstraintName }
                                                 into ccGroup
                                             from cc in ccGroup.DefaultIfEmpty()
-                                            where c.TableCatalog == catalog
-                                            && c.TableSchema == schema
+                                            where c.TableCatalog == schemaKey.Catalog
+                                            && c.TableSchema == schemaKey.Schema
                                             orderby c.TableName, c.OrdinalPosition
                                             select new ColumnDto
                                             {
@@ -227,14 +213,14 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                             }).ToListAsync(cancellationToken);
 
         List<CheckConstraintEntity> checkConstraints = await (from c in context.CheckConstraints
-                                                              where c.ConstraintCatalog == catalog
-                                                              && c.ConstraintSchema == schema
+                                                              where c.ConstraintCatalog == schemaKey.Catalog
+                                                              && c.ConstraintSchema == schemaKey.Schema
                                                               select c).ToListAsync(cancellationToken);
 
         List<TableConstraintEntity> checkTableConstraints = await (from tc in context.TableConstraints
-                                                                   where tc.ConstraintCatalog == catalog
-                                                                   && tc.ConstraintSchema == schema
-                                                                   && tc.TableSchema == schema
+                                                                   where tc.ConstraintCatalog == schemaKey.Catalog
+                                                                   && tc.ConstraintSchema == schemaKey.Schema
+                                                                   && tc.TableSchema == schemaKey.Schema
                                                                    && tc.ConstraintType == "CHECK"
                                                                    select tc).ToListAsync(cancellationToken);
 
@@ -251,10 +237,15 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 })
         ];
 
+        Dictionary<string, TableIndexMetadata> indexMetadata = await LoadIndexMetadataAsync(context, schemaKey, cancellationToken);
+        Dictionary<string, IReadOnlyList<ForeignKeyColumnDto>> foreignKeyRows = await LoadForeignKeyRowsAsync(context, schemaKey, cancellationToken);
+
         return new SchemaTableData(
             tableInfoRows.ToDictionary(t => t.TableName, t => t),
             columnRows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<ColumnDto>)[.. g]),
-            checkRows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<TableCheckDto>)[.. g]));
+            checkRows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<TableCheckDto>)[.. g]),
+            indexMetadata,
+            foreignKeyRows);
     }
 
     private SqlValueList<MyColumn> GetColumns(IReadOnlyList<ColumnDto> list, ObjectIdentifier tableId)
@@ -311,42 +302,15 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             });
         }
 
-        return [.. columns];
+        return columns;
     }
 
-    private async Task<TableIndexMetadata> GetTableIndexMetadataAsync(string catalog, string schema, string tableName)
+    private async Task<Dictionary<string, TableIndexMetadata>> LoadIndexMetadataAsync(InfoSchemaContext context, InfoSchemaKey schemaKey, CancellationToken cancellationToken)
     {
-        SchemaIndexData schemaIndexData = await GetSchemaIndexDataAsync(catalog, schema);
-        return schemaIndexData.GetTableIndexMetadata(tableName);
-    }
-
-    private async Task<DatabaseComponentDict<MyForeignKey>> GetForeignKeysAsync(string catalog, string schema, string tableName, ObjectIdentifier tableId)
-    {
-        SchemaForeignKeyData foreignKeyData = await GetSchemaForeignKeyDataAsync(catalog, schema);
-        return foreignKeyData.GetForeignKeys(tableName, tableId.Schema, _quoteStyle, _config.NameHandling);
-    }
-
-    private async Task<SchemaIndexData> GetSchemaIndexDataAsync(string catalog, string schema)
-    {
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<SchemaIndexData>> lazyRows = _indexDataBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<SchemaIndexData>>(
-                () => LoadSchemaIndexDataAsync(catalog, schema),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        return await lazyRows.Value;
-    }
-
-    private async Task<SchemaIndexData> LoadSchemaIndexDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
-    {
-        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
-        InfoSchemaContext context = lease.Context;
-
         List<SchemaConstraintDto> constraints = await (from tc in context.TableConstraints
-                                                       where tc.ConstraintCatalog == catalog
-                                                       && tc.ConstraintSchema == schema
-                                                       && tc.TableSchema == schema
+                                                       where tc.ConstraintCatalog == schemaKey.Catalog
+                                                       && tc.ConstraintSchema == schemaKey.Schema
+                                                       && tc.TableSchema == schemaKey.Schema
                                                        && (tc.ConstraintType == "PRIMARY KEY" || tc.ConstraintType == "UNIQUE")
                                                        select new SchemaConstraintDto
                                                        {
@@ -356,9 +320,9 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                                        }).ToListAsync(cancellationToken);
 
         List<StatisticsDto> statisticsRows = await (from s in context.Statistics
-                                                    where s.TableCatalog == catalog
-                                                    && s.TableSchema == schema
-                                                    && s.IndexSchema == schema
+                                                    where s.TableCatalog == schemaKey.Catalog
+                                                    && s.TableSchema == schemaKey.Schema
+                                                    && s.IndexSchema == schemaKey.Schema
                                                     orderby s.TableName, s.IndexName, s.SeqInIndex
                                                     select new StatisticsDto
                                                     {
@@ -434,26 +398,11 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             tableIndexMetadataByName[tableGroup.Key] = new TableIndexMetadata(primaryKey, uniqueKeys, keys);
         }
 
-        return new SchemaIndexData(tableIndexMetadataByName);
+        return tableIndexMetadataByName;
     }
 
-    private async Task<SchemaForeignKeyData> GetSchemaForeignKeyDataAsync(string catalog, string schema)
+    private static async Task<Dictionary<string, IReadOnlyList<ForeignKeyColumnDto>>> LoadForeignKeyRowsAsync(InfoSchemaContext context, InfoSchemaKey schemaKey, CancellationToken cancellationToken)
     {
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<SchemaForeignKeyData>> lazyRows = _foreignKeyDataBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<SchemaForeignKeyData>>(
-                () => LoadSchemaForeignKeyDataAsync(catalog, schema),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        return await lazyRows.Value;
-    }
-
-    private async Task<SchemaForeignKeyData> LoadSchemaForeignKeyDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
-    {
-        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
-        InfoSchemaContext context = lease.Context;
-
         List<ForeignKeyColumnDto> rows = await (from tc in context.TableConstraints
                                                 join rc in context.ReferentialConstraints
                                                 on new { tc.ConstraintCatalog, tc.ConstraintSchema, tc.ConstraintName }
@@ -461,9 +410,9 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                                 join kcu in context.KeyColumnUsages
                                                 on new { rc.ConstraintCatalog, rc.ConstraintSchema, rc.ConstraintName, rc.TableName }
                                                     equals new { kcu.ConstraintCatalog, kcu.ConstraintSchema, kcu.ConstraintName, kcu.TableName }
-                                                where tc.ConstraintCatalog == catalog
-                                                && tc.ConstraintSchema == schema
-                                                && tc.TableSchema == schema
+                                                where tc.ConstraintCatalog == schemaKey.Catalog
+                                                && tc.ConstraintSchema == schemaKey.Schema
+                                                && tc.TableSchema == schemaKey.Schema
                                                 && tc.ConstraintType == "FOREIGN KEY"
                                                 orderby tc.TableName, rc.ConstraintName, kcu.OrdinalPosition
                                                 select new ForeignKeyColumnDto
@@ -478,8 +427,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                                     ReferencedColumnName = kcu.ReferencedColumnName
                                                 }).ToListAsync(cancellationToken);
 
-        return new SchemaForeignKeyData(
-            rows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<ForeignKeyColumnDto>)[.. g]));
+        return rows.GroupBy(r => r.TableName).ToDictionary(g => g.Key, g => (IReadOnlyList<ForeignKeyColumnDto>)[.. g]);
     }
 
     private DatabaseComponentDict<MyCheck> GetChecks(IReadOnlyList<TableCheckDto> isChecks)
@@ -495,26 +443,14 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         return checks;
     }
 
-    private async Task<SchemaRoutineData> GetSchemaRoutineDataAsync(string catalog, string schema)
-    {
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<SchemaRoutineData>> lazyRows = _routineDataBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<SchemaRoutineData>>(
-                () => LoadSchemaRoutineDataAsync(catalog, schema),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        return await lazyRows.Value;
-    }
-
-    private async Task<SchemaRoutineData> LoadSchemaRoutineDataAsync(string catalog, string schema, CancellationToken cancellationToken = default)
+    private async Task<SchemaRoutineData> LoadSchemaRoutineDataAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken = default)
     {
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
 
         List<RoutineRow> routineRows = await (from r in context.Routines
-                                              where r.RoutineCatalog == catalog
-                                              && r.RoutineSchema == schema
+                                              where r.RoutineCatalog == schemaKey.Catalog
+                                              && r.RoutineSchema == schemaKey.Schema
                                               select new RoutineRow
                                               {
                                                   Name = r.RoutineName,
@@ -532,8 +468,8 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                               }).ToListAsync(cancellationToken);
 
         List<RoutineParameterRow> parameterRows = await (from rp in context.Parameters
-                                                         where rp.SpecificCatalog == catalog
-                                                         && rp.SpecificSchema == schema
+                                                         where rp.SpecificCatalog == schemaKey.Catalog
+                                                         && rp.SpecificSchema == schemaKey.Schema
                                                          && rp.OrdinalPosition > 0
                                                          select new RoutineParameterRow
                                                          {
@@ -584,9 +520,9 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         var createProc = (CreateProcedure)_parser.Parse([.. _lexer.Tokenize(createProcText)])[0];
         string createProcBody = createProcText[(int)createProc.Body.Meta.Start!..];
 
-        (string catalog, string schema, string procName) = procedureId.Strings;
+        string procName = procedureId.Name;
 
-        SchemaRoutineData routineData = await GetSchemaRoutineDataAsync(catalog, schema);
+        SchemaRoutineData routineData = await _routineDataBySchema.GetAsync(procedureId.InfoSchemaKey, cancellationToken);
         RoutineDto proc = routineData.RoutinesByName[(procName, "PROCEDURE")];
 
         SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "PROCEDURE", procName);
@@ -608,8 +544,8 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     public async Task<MyStoredFunction> GetFunctionAsync(ObjectIdentifier functionId, CancellationToken cancellationToken = default)
     {
-        (string catalog, string schema, string funcName) = functionId.Strings;
-        SchemaRoutineData routineData = await GetSchemaRoutineDataAsync(catalog, schema);
+        string funcName = functionId.Name;
+        SchemaRoutineData routineData = await _routineDataBySchema.GetAsync(functionId.InfoSchemaKey, cancellationToken);
         RoutineDto func = routineData.RoutinesByName[(funcName, "FUNCTION")];
 
         SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "FUNCTION", funcName);
@@ -634,30 +570,17 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     public async Task<Dictionary<ObjectIdentifier, MyTrigger>> GetTriggersOnTableAsync(ObjectIdentifier tableId, CancellationToken cancellationToken = default)
     {
-        (string catalog, string schema, string name) = tableId.Strings;
-
-        Dictionary<ObjectIdentifier, MyTrigger> triggers = [];
-
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<List<TriggerDto>>> lazyRows = _triggersBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<List<TriggerDto>>>(
-                () => LoadSchemaTriggersAsync(catalog, schema, cancellationToken),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        List<TriggerDto> schemaRows = await lazyRows.Value;
-
-        return _helper.TriggersOnTableToDictionary(schemaRows, tableId);
+        return _helper.TriggersOnTableToDictionary(await _triggersBySchema.GetAsync(tableId.InfoSchemaKey, cancellationToken), tableId);
     }
 
-    private async Task<List<TriggerDto>> LoadSchemaTriggersAsync(string catalog, string schema, CancellationToken cancellationToken = default)
+    private async Task<List<TriggerDto>> LoadSchemaTriggersAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken = default)
     {
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
 
         return await (from t in context.Triggers
-                      where t.EventObjectCatalog == catalog
-                      && t.EventObjectSchema == schema
+                      where t.EventObjectCatalog == schemaKey.Catalog
+                      && t.EventObjectSchema == schemaKey.Schema
                       orderby t.EventObjectTable, t.ActionOrder
                       select new TriggerDto
                       {
@@ -671,33 +594,21 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                       }).ToListAsync(cancellationToken);
     }
 
-    private async Task<IReadOnlyDictionary<string, ViewEntity>> GetViewsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken = default)
-    {
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<IReadOnlyDictionary<string, ViewEntity>>> lazyViews = _viewsBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<IReadOnlyDictionary<string, ViewEntity>>>(
-                () => LoadViewsBySchemaAsync(catalog, schema, cancellationToken),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        return await lazyViews.Value;
-    }
-
-    private async Task<IReadOnlyDictionary<string, ViewEntity>> LoadViewsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, ViewEntity>> LoadSchemaViewsAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken)
     {
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
 
         List<ViewEntity> views = await context.Views
-            .Where(v => v.TableCatalog == catalog && v.TableSchema == schema)
+            .Where(v => v.TableCatalog == schemaKey.Catalog && v.TableSchema == schemaKey.Schema)
             .ToListAsync(cancellationToken);
         return views.ToDictionary(v => v.TableName);
     }
 
     public async Task<MyView> GetViewAsync(ObjectIdentifier viewId, CancellationToken cancellationToken = default)
     {
-        (string catalog, string schema, string viewName) = viewId.Strings;
-        IReadOnlyDictionary<string, ViewEntity> views = await GetViewsBySchemaAsync(catalog, schema, cancellationToken);
+        string viewName = viewId.Name;
+        IReadOnlyDictionary<string, ViewEntity> views = await _viewsBySchema.GetAsync(viewId.InfoSchemaKey, cancellationToken);
         ViewEntity isView = views[viewName];
 
         var body = (Select)_helper.ParseStatement(isView.ViewDefinition);
@@ -731,34 +642,21 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         };
     }
 
-    private async Task<IReadOnlyDictionary<string, EventEntity>> GetEventsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken = default)
-    {
-        (string Catalog, string Schema) schemaKey = (catalog, schema);
-        Lazy<Task<IReadOnlyDictionary<string, EventEntity>>> lazyEvents = _eventsBySchema.GetOrAdd(
-            schemaKey,
-            _ => new Lazy<Task<IReadOnlyDictionary<string, EventEntity>>>(
-                () => LoadEventsBySchemaAsync(catalog, schema, cancellationToken),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-
-        return await lazyEvents.Value;
-    }
-
-    private async Task<IReadOnlyDictionary<string, EventEntity>> LoadEventsBySchemaAsync(string catalog, string schema, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, EventEntity>> LoadSchemaEventsAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken)
     {
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
 
         List<EventEntity> events = await context.Events
-            .Where(e => e.EventCatalog == catalog && e.EventSchema == schema)
+            .Where(e => e.EventCatalog == schemaKey.Catalog && e.EventSchema == schemaKey.Schema)
             .ToListAsync(cancellationToken);
         return events.ToDictionary(e => e.EventName);
     }
 
     public async Task<MyEvent> GetEventAsync(ObjectIdentifier eventId, CancellationToken cancellationToken = default)
     {
-        (string catalog, string schema, string eventName) = eventId.Strings;
-        IReadOnlyDictionary<string, EventEntity> events = await GetEventsBySchemaAsync(catalog, schema, cancellationToken);
-        EventEntity isEvent = events[eventName];
+        IReadOnlyDictionary<string, EventEntity> events = await _eventsBySchema.GetAsync(eventId.InfoSchemaKey, cancellationToken);
+        EventEntity isEvent = events[eventId.Name];
 
         Statement body = _helper.ParseStatement(isEvent.EventDefinition);
 
@@ -802,92 +700,68 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         };
     }
 
-    public async Task<List<string>> GetUnappliedRefactorsAsync(SchemaIdentifier schemaId, IReadOnlyCollection<string> allRefactorIds, CancellationToken cancellationToken = default)
+    public async Task<HashSet<string>> GetUnappliedRefactorsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds, IReadOnlyCollection<string> allRefactorIds, CancellationToken cancellationToken = default)
     {
-        if (allRefactorIds.Count == 0)
+        if (schemaIds.Count == 0 || allRefactorIds.Count == 0)
         {
             return [];
         }
 
-        string fullTableName = await CreateManagementTableAsync(schemaId, cancellationToken);
+        await CreateManagementTablesAsync(schemaIds, cancellationToken);
 
-        string formattedRefactorIds = string.Join(',', allRefactorIds.Select(id => $"ROW('{id}')"));
-        string existsQuery = $"""
-                           VALUES {formattedRefactorIds}
-                           EXCEPT
-                           SELECT `entry_key` FROM {fullTableName}
-                           WHERE `entry_type` = '{StoredMetadataConstants.Refactor}'
-                           """;
+        string query = InfoSchemaRepoHelper.GetUnappliedEntriesSql(schemaIds, allRefactorIds.Count, StoredMetadataConstants.Refactor, includeRowKeyword: true);
+
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
 
-        List<string> result = await context.Database.SqlQueryRaw<string>(existsQuery).ToListAsync(cancellationToken);
+        List<string> result = await context.Database.SqlQueryRaw<string>(query, [.. allRefactorIds]).ToListAsync(cancellationToken);
         return [.. result];
     }
 
     public async Task<List<string>> GetUnappliedDeployScriptsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds, IReadOnlyCollection<string> allDeployScriptIds, CancellationToken cancellationToken = default)
     {
-        if (allDeployScriptIds.Count == 0)
+        if (schemaIds.Count == 0 || allDeployScriptIds.Count == 0)
         {
             return [];
         }
 
-        var unionBuilder = new StringBuilder();
-        foreach (SchemaIdentifier schema in schemaIds)
-        {
-            string fullTableName = await CreateManagementTableAsync(schema, cancellationToken);
-            if (unionBuilder.Length > 0)
-            {
-                unionBuilder.AppendLine("UNION ALL");
-            }
-            unionBuilder.AppendLine(CultureInfo.InvariantCulture, $"""
-                SELECT `entry_key` FROM {fullTableName}
-                WHERE `entry_type` = '{StoredMetadataConstants.DeployScript}'
-                """);
-        }
+        await CreateManagementTablesAsync(schemaIds, cancellationToken);
 
-        string formattedDeployScriptIds = string.Join(',', allDeployScriptIds.Select(id => $"ROW('{id}')"));
-        string existsQuery = $"""
-                           VALUES {formattedDeployScriptIds}
-                           EXCEPT
-                           ({unionBuilder})
-                           """;
+        string query = InfoSchemaRepoHelper.GetUnappliedEntriesSql(schemaIds, allDeployScriptIds.Count, StoredMetadataConstants.DeployScript, includeRowKeyword: true);
+
         await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
         InfoSchemaContext context = lease.Context;
 
-        return await context.Database.SqlQueryRaw<string>(existsQuery).ToListAsync(cancellationToken);
+        return await context.Database.SqlQueryRaw<string>(query, [.. allDeployScriptIds]).ToListAsync(cancellationToken);
     }
 
-    private async Task<string> CreateManagementTableAsync(SchemaIdentifier schemaId, CancellationToken cancellationToken = default)
+    private async Task CreateManagementTablesAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds, CancellationToken cancellationToken)
     {
-        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
-        InfoSchemaContext context = lease.Context;
-
-        IQueryable<TableEntity> tableExistsQuery =
-            from t in context.Tables
-            where t.TableCatalog == schemaId.Catalog.Name
-            && t.TableSchema == schemaId.Name
-            && t.TableName == StoredMetadataConstants.TableName
-            select t;
-
-        string fullTableName = $"`{schemaId.Name}`.`{StoredMetadataConstants.TableName}`";
-
-        if (await tableExistsQuery.AnyAsync(cancellationToken))
+        await _queryGate.WaitAsync(cancellationToken);
+        try
         {
-            return fullTableName;
+            await using InfoSchemaContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            List<string> schemaNames = [.. schemaIds.Select(s => s.Name)];
+
+            var existingSchemas = (await (from t in context.Tables
+                                          where schemaNames.Contains(t.TableSchema)
+                                                && t.TableName == StoredMetadataConstants.TableName
+                                          select t.TableSchema).ToListAsync(cancellationToken)).ToHashSet();
+
+            foreach (SchemaIdentifier schemaId in schemaIds)
+            {
+                if (!existingSchemas.Contains(schemaId.Name))
+                {
+                    string fullTableName = InfoSchemaRepoHelper.GetMetadataTableName(schemaId);
+                    string createTableQuery = InfoSchemaRepoHelper.GetMetadataTableCreateSql(fullTableName);
+                    await context.Database.ExecuteSqlRawAsync(createTableQuery, cancellationToken);
+                }
+            }
         }
-
-        string createTableQuery = $"""
-            CREATE TABLE {fullTableName} (
-                `entry_key` CHAR(36) NOT NULL,
-                `entry_type` CHAR(1) NOT NULL,
-                UNIQUE KEY `{StoredMetadataConstants.TableName}_entry_key` (`entry_key`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-            """;
-        await context.Database.ExecuteSqlRawAsync(createTableQuery, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
-
-        return fullTableName;
+        finally
+        {
+            _queryGate.Release();
+        }
     }
 
     private static IndexInfo StatisticsToIndexInfo(StatisticsDto e, QuoteStyle quoteStyle)
@@ -931,6 +805,11 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     public void Dispose()
     {
+        _triggersBySchema.Dispose();
+        _tableDataBySchema.Dispose();
+        _routineDataBySchema.Dispose();
+        _viewsBySchema.Dispose();
+        _eventsBySchema.Dispose();
         _queryGate.Dispose();
         GC.SuppressFinalize(this);
     }

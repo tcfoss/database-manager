@@ -36,23 +36,13 @@ public partial class MyDbDefinitionLoader(
     private readonly ILogger<MyDbDefinitionLoader> _logger = logger;
     private readonly IParseText _tp = textParser;
 
-    public async Task<IEnumerable<string>> GetUnappliedRefactorIdsAsync(SchemaIdentifier schemaId, IReadOnlyCollection<string> allRefactorIds)
-    {
-        s_logRetrievingUnappliedRefactors(_logger, schemaId);
-        return await _repo.GetUnappliedRefactorsAsync(schemaId, allRefactorIds);
-    }
-
     public async Task<List<Refactor>> GetAllUnappliedRefactorsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds)
     {
-        List<Refactor> allUnappliedRefactors = [];
-        foreach (SchemaIdentifier schemaId in schemaIds)
-        {
-            MySchemaMapping schema = _config.Schemas[schemaId];
-            Refactor[] schemaRefactors = schema.Refactors;
-            IEnumerable<string> unappliedRefactors = await GetUnappliedRefactorIdsAsync(schemaId, schemaRefactors.Select(r => r.UniqueId).ToArray());
-            allUnappliedRefactors.AddRange(schemaRefactors.Where(r => unappliedRefactors.Contains(r.UniqueId)));
-        }
-        return allUnappliedRefactors;
+        Dictionary<string, Refactor> registeredRefactors = schemaIds
+            .SelectMany(s => _config.Schemas[s].Refactors)
+            .ToDictionary(r => r.UniqueId);
+        HashSet<string> unappliedRefactorIds = await _repo.GetUnappliedRefactorsAsync(schemaIds, [.. registeredRefactors.Keys]);
+        return [.. registeredRefactors.Where(kv => unappliedRefactorIds.Contains(kv.Key)).Select(kv => kv.Value)];
     }
 
     public async Task<List<DeployScript>> GetAllUnappliedDeployScriptsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds)
@@ -304,9 +294,6 @@ public partial class MyDbDefinitionLoader(
             Check = normalizedCheck
         };
     }
-
-    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Retrieving unapplied refactors for schema '{Schema}'")]
-    private static partial void s_logRetrievingUnappliedRefactors(ILogger logger, string schema);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Loading schema '{Schema}' from database.")]
     private static partial void s_loadingSchemaFromDatabase(ILogger logger, string schema);

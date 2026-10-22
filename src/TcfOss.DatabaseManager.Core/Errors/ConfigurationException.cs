@@ -30,12 +30,6 @@ public class ConfigurationException(string message, Exception? innerException = 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_DeployScriptInvalidType);
     }
 
-    public class InvalidFieldTypeException(string fieldName, string expectedType)
-        : ConfigurationException(s_compositeFormat.Apply(fieldName, expectedType))
-    {
-        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_InvalidFieldType);
-    }
-
     public class InvalidNumericScaleGreaterThanPrecision(string numericType, int? precision, int? scale)
         : ConfigurationException(s_compositeFormat.Apply(numericType, scale, precision))
     {
@@ -75,6 +69,12 @@ public class ConfigurationException(string message, Exception? innerException = 
         : ConfigurationException(s_compositeFormat.Apply(conflictingFileName))
     {
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_OverlappingSchemas);
+    }
+
+    public class DuplicateRefactorId(string uniqueId)
+        : ConfigurationException(s_compositeFormat.Apply(uniqueId))
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Conf_DuplicateRefactorId);
     }
 
     public class DefinerHostWithoutAccount()

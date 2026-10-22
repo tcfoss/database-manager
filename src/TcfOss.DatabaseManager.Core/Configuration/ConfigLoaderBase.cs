@@ -39,6 +39,15 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
             schemaMappings[schemaId] = schemaMapping;
         }
 
+        var refactorIds = new HashSet<string>();
+        foreach (Refactor refactor in schemaMappings.Values.SelectMany(m => m.Refactors))
+        {
+            if (!refactorIds.Add(refactor.UniqueId))
+            {
+                throw new ConfigurationException.DuplicateRefactorId(refactor.UniqueId);
+            }
+        }
+
         return schemaMappings;
     }
 

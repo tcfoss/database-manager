@@ -84,40 +84,40 @@ public partial class CommandLineInterface
         }
         catch (ParseException.WithText ex)
         {
-            Error.WriteLine(ex.Message);
+            await Error.WriteLineAsync(ex.Message);
             s_criticalAppError(logger, "Parse exception.", ex);
             return 1;
         }
         catch (LexException.WithText ex)
         {
-            Error.WriteLine(ex.Message);
+            await Error.WriteLineAsync(ex.Message);
             s_criticalAppError(logger, "Lexical exception.", ex);
             return 1;
         }
         catch (CommandException ex)
         {
-            Error.WriteLine(ex.Message);
+            await Error.WriteLineAsync(ex.Message);
             return 1;
         }
         catch (ConfigParseException ex)
         {
-            Error.WriteLine(ex.Message);
+            await Error.WriteLineAsync(ex.Message);
             return 1;
         }
         catch (ConfigurationException ex)
         {
-            Error.WriteLine(ex.Message);
+            await Error.WriteLineAsync(ex.Message);
             return 1;
         }
         catch (SourcedException ex)
         {
-            Error.WriteLine(ex.Message);
+            await Error.WriteLineAsync(ex.Message);
             if (ex.ObjectSourceRef.HasValue)
             {
                 string? filename = sourceManager!.GetFilename(ex.ObjectSourceRef.Value);
                 if (filename != null)
                 {
-                    Error.WriteLine($"  Source: {filename}");
+                    await Error.WriteLineAsync($"  Source: {filename}");
                 }
             }
             s_criticalAppError(logger, "Definition exception.", ex);
@@ -125,13 +125,13 @@ public partial class CommandLineInterface
         }
         catch (FileNotFoundException ex)
         {
-            Error.WriteLine($"File not found: {ex.Message}");
+            await Error.WriteLineAsync($"File not found: {ex.Message}");
             s_criticalAppError(logger, "File not found exception.", ex);
             return 1;
         }
         catch (DirectoryNotFoundException ex)
         {
-            Error.WriteLine($"Directory not found: {ex.Message}");
+            await Error.WriteLineAsync($"Directory not found: {ex.Message}");
             s_criticalAppError(logger, "Directory not found exception.", ex);
             return 1;
         }

@@ -51,9 +51,6 @@
     <data name="Err_Conf_DeployScriptInvalidType" xml:space="preserve">
         <value>The Type field on DeployScript entry {0} is invalid. It should be one of {{ PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }}.</value>
     </data>
-    <data name="Err_Conf_InvalidFieldType" xml:space="preserve">
-        <value>The field '{0}' in the configuration file has an invalid type. Expected type: '{1}'.</value>
-    </data>
     <data name="Err_Conf_InvalidFieldOneOfValues" xml:space="preserve">
         <value>The field '{0}' in the configuration file has an invalid value '{1}'. Expected one of {{{2}}}.</value>
     </data>
@@ -71,6 +68,9 @@
     </data>
     <data name="Err_Conf_OverlappingSchemas" xml:space="preserve">
         <value>The schema mappings overlap: Attempted to read '{0}' more than once.</value>
+    </data>
+    <data name="Err_Conf_DuplicateRefactorId" xml:space="preserve">
+        <value>The refactor UniqueId '{0}' is used more than once. Refactor UniqueIds must be unique across the project.</value>
     </data>
     <data name="Err_Conf_DefinerHostWithoutAccount" xml:space="preserve">
         <value>DefaultDefinerHost cannot be specified without DefaultDefinerAccount.</value>

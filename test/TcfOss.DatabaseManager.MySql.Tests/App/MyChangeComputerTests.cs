@@ -139,12 +139,6 @@ public class MyChangeComputerTests
     {
         public int ReadCount { get; private set; }
 
-        public Task<IEnumerable<string>> GetUnappliedRefactorIdsAsync(
-            SchemaIdentifier schemaId, IReadOnlyCollection<string> allRefactorIds)
-        {
-            return Task.FromResult<IEnumerable<string>>([]);
-        }
-
         public Task<List<Refactor>> GetAllUnappliedRefactorsAsync(IReadOnlyCollection<SchemaIdentifier> schemaIds)
         {
             ReadCount++;

@@ -22,4 +22,6 @@ public record SchemaIdentifier(string Name, CatalogIdentifier Catalog, QuoteStyl
     {
         return Catalog + "." + base.ToString();
     }
+
+    public InfoSchemaKey InfoSchemaKey => new(Catalog.Name, Name);
 }

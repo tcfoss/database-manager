@@ -83,4 +83,6 @@ public record ObjectIdentifier(string Name, SchemaIdentifier Schema, QuoteStyle 
     {
         return $"{Schema.Catalog.Name}.{Schema.Name}.{Name}";
     }
+
+    public InfoSchemaKey InfoSchemaKey => new(Schema.Catalog.Name, Schema.Name);
 }

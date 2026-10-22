@@ -109,6 +109,28 @@ public class ConfigLoaderTestsMessedUpRefactors
         Assert.Contains("TableName", ex.Message);
     }
 
+    [Fact]
+    public async Task Refactors_DuplicateUniqueId_Throws()
+    {
+        using var fixture = new FsProjectFixture();
+
+        var refactorContents = """
+        - UniqueId: abc123
+          Type: TableRename
+          OldName: old_table_name
+          NewName: new_table_name
+        - UniqueId: abc123
+          Type: TableRename
+          OldName: other_old_name
+          NewName: other_new_name
+        """;
+
+        await PrepareFixture(fixture, refactorContents);
+
+        var ex = Assert.Throws<ConfigurationException.DuplicateRefactorId>(() => BuildConfig(fixture.RootDirectory.FullName));
+        Assert.Contains("abc123", ex.Message);
+    }
+
     private static async Task PrepareFixture(FsProjectFixture fixture, string refactorContents)
     {
         var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");

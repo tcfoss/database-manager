@@ -192,6 +192,12 @@ public class FileWriterTests
     }
 
     [Fact]
+    public void RenameExistingFile_RootPath_Throws()
+    {
+        Assert.Throws<DirectoryNotFoundException>(() => FileWriter.RenameExistingFile("/"));
+    }
+
+    [Fact]
     public void RenameExistingFile_DirectoryNotExist_Throws()
     {
         var newRoot = Path.Combine(RootDirectory.FullName, "nonexistent_directory");
