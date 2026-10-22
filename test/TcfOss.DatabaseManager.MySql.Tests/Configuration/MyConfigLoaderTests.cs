@@ -851,6 +851,7 @@ public class MyConfigLoaderTests
         {
             IdentifierQuotationHandling = IdentifierQuotationHandling.IfSpecial,
             CteDeclarationNameQuotationHandling = IdentifierQuotationHandling.OnlyIfSpecial,
+            AccountQuoteStyle = ExtendedQuoteStyle.SingleQuote
         };
 
         rawConfig.ViewNormalizationSettings = updatedNormalizationSettings;
@@ -859,6 +860,7 @@ public class MyConfigLoaderTests
 
         Assert.Equal(IdentifierQuotationHandling.IfSpecial, config.NormalizationSettings.IdentifierQuotationHandling);
         Assert.Equal(IdentifierQuotationHandling.OnlyIfSpecial, config.NormalizationSettings.CteDeclarationNameQuotationHandling);
+        Assert.Equal(ExtendedQuoteStyle.SingleQuote, config.NormalizationSettings.AccountQuoteStyle);
     }
 
     [Theory]

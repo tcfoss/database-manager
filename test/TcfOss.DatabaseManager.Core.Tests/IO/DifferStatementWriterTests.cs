@@ -123,7 +123,7 @@ public class DifferStatementWriterTests
     [InlineData(false)]
     public void TerminateStatements_MySqlStyle_Programmatic(bool terminateStatements)
     {
-        var (writer, output) = ConstructWriter(terminateStatements: terminateStatements);
+        var (writer, output) = ConstructWriter(terminateStatements: terminateStatements, useDelimiterAroundPrograms: true);
 
         var stmt = new CreateProcedure(ON("myproc"), [], new Select(new SelectBody.SimpleSelectQuery(new SimpleSelect([new SimpleSelectItem.Wildcard()]))));
 
@@ -146,11 +146,13 @@ public class DifferStatementWriterTests
         }
     }
 
+    // ReSharper disable once InconsistentNaming
     private static SchemaIdentifier SI(string schema = "myschema", string catalog = "def")
     {
         return new SchemaIdentifier(schema, new CatalogIdentifier(catalog, QuoteStyle.Ansi), QuoteStyle.Ansi);
     }
 
+    // ReSharper disable once InconsistentNaming
     public static ObjectName ON(string name = "mytable", string schema = "myschema", string? catalog = null)
     {
         var identifiers = new List<Identifier>();
@@ -163,20 +165,25 @@ public class DifferStatementWriterTests
         return new ObjectName([.. identifiers]);
     }
 
-    private static (DifferStatementWriter Writer, StringWriter Output) ConstructWriter(bool terminateStatements = true, bool emitComments = false, bool useSchemaOnChange = true)
+    private static (DifferStatementWriter Writer, StringWriter Output) ConstructWriter(bool terminateStatements = true, bool emitComments = false, bool useSchemaOnChange = true, bool useDelimiterAroundPrograms = false)
     {
         var formatSettings = new DifferFormattingSettings
         {
             TerminateStatements = terminateStatements,
             EmitCommentsWithWeights = emitComments,
-            UseSchemaOnChange = useSchemaOnChange
+            UseSchemaOnChange = useSchemaOnChange,
+            UseDelimiterAroundPrograms = useDelimiterAroundPrograms
         };
         StringWriter writer = new();
         return (new DifferStatementWriter(formatSettings, writer), writer);
     }
 
-    private record FakeAlter(ObjectName Table, AlterTableOperation Operation) : AlterTable(Table, [Operation])
+    private record FakeAlter : AlterTable
     {
+        public FakeAlter(ObjectName table, AlterTableOperation operation) : base(table, [operation])
+        {
+        }
+
         public override void ToSql(SqlTextWriter writer)
         {
             base.ToSql(writer);

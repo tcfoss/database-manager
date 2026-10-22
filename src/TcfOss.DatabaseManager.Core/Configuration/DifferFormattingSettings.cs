@@ -17,7 +17,7 @@ public record DifferFormattingSettings
     public bool EventPreferRawTextInScript { get; init; } = true;
 
     public bool TerminateStatements { get; init; } = true;
-    public bool UseDelimiterAroundPrograms { get; init; } = true;
+    public bool UseDelimiterAroundPrograms { get; init; }
     public bool UseDelimiterAroundViews { get; init; }
 
     public bool EmitCommentsWithWeights { get; init; }

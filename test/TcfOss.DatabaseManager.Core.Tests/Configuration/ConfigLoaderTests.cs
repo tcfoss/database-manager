@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
@@ -133,28 +134,6 @@ public class ConfigLoaderTests
     }
 
     [Fact]
-    public void DifferFormatting_UseDelimiterAroundViews_DefaultsToFalse()
-    {
-        var rawConfig = TestDataRawConfig.MyTestRawConfigNoOptionalStuff;
-        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
-
-        Assert.False(config.DifferFormatting.UseDelimiterAroundViews);
-    }
-
-    [Fact]
-    public void DifferFormatting_UsesOverrides()
-    {
-        var rawConfig = TestDataRawConfig.MyTestRawConfig;
-        rawConfig.DifferFormatting = new ConfigParsing.DifferFormattingSettings()
-        {
-            UseDelimiterAroundViews = true
-        };
-
-        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
-        Assert.True(config.DifferFormatting.UseDelimiterAroundViews);
-    }
-
-    [Fact]
     public void Formatting_ReplacesDefaults()
     {
         var rawConfig = TestDataRawConfig.MyTestRawConfig;
@@ -164,5 +143,26 @@ public class ConfigLoaderTests
         Assert.Equal(80, config.Formatting.JoinConditionIndent);
         // Confirm a default remains
         Assert.True(config.Formatting.SelectItemPrefixWithObject);
+    }
+
+    [Theory]
+    [InlineData(null, "ENABLE")]
+    [InlineData("ENABLE", "ENABLE")]
+    [InlineData("DISABLE", "DISABLE")]
+    public void AtributeDefaults_EventEnabledStatus(string? given, string expected)
+    {
+        EventEnabledStatus? givenStatus = null;
+        if (given != null)
+        {
+            givenStatus = EventEnabledStatus.Parse(given);
+        }
+        EventEnabledStatus expectedStatus = EventEnabledStatus.Parse(expected);
+
+        var rawConfig = TestDataRawConfig.MyTestRawConfig;
+        rawConfig.AttributeDefaults = new ConfigParsing.AttributeDefaults() { EventEnabledStatus = givenStatus };
+
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("/home/username/database", rawConfig, []);
+
+        Assert.Equal(expectedStatus, config.AttributeDefaults.EventEnabledStatus);
     }
 }
