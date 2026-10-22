@@ -31,66 +31,77 @@ public class DifferStatementWriter
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _procedureOptions = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.ProcedurePreferRawText
+            PreferRawText = _settings.ProcedurePreferRawText,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _functionOptions = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.FunctionPreferRawText
+            PreferRawText = _settings.FunctionPreferRawText,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _triggerOptions = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.TriggerPreferRawText
+            PreferRawText = _settings.TriggerPreferRawText,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _viewOptions = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundViews,
-            PreferRawText = _settings.ViewPreferRawText
+            PreferRawText = _settings.ViewPreferRawText,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _eventOptions = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.EventPreferRawText
+            PreferRawText = _settings.EventPreferRawText,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _procedureOptionsScript = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.ProcedurePreferRawTextInScript
+            PreferRawText = _settings.ProcedurePreferRawTextInScript,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _functionOptionsScript = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.FunctionPreferRawTextInScript
+            PreferRawText = _settings.FunctionPreferRawTextInScript,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _triggerOptionsScript = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.TriggerPreferRawTextInScript
+            PreferRawText = _settings.TriggerPreferRawTextInScript,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _viewOptionsScript = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundViews,
-            PreferRawText = _settings.ViewPreferRawTextInScript
+            PreferRawText = _settings.ViewPreferRawTextInScript,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
         _eventOptionsScript = new WriteOptions
         {
             TerminateStatements = _settings.TerminateStatements,
             UseDelimiterAroundPrograms = _settings.UseDelimiterAroundPrograms,
-            PreferRawText = _settings.EventPreferRawTextInScript
+            PreferRawText = _settings.EventPreferRawTextInScript,
+            UseSchemaOnChange = _settings.UseSchemaOnChange
         };
     }
 
@@ -147,7 +158,7 @@ public class DifferStatementWriter
     private void WriteProgramStatement(Statement statement, WriteOptions options)
     {
         string delimiter = ";";
-        string sql = statement is IWriteSqlWithOptions withOptions ? withOptions.ToSql(options) : statement.ToSql();
+        string sql = ((IWriteSqlWithOptions)statement).ToSql(options);
 
         if (options.UseDelimiterAroundPrograms)
         {
@@ -177,7 +188,7 @@ public class DifferStatementWriter
     {
         string sql = statement.ToSql();
         _writer.Write(sql);
-        if (_writeOptions.TerminateStatements && !sql.TrimEnd().EndsWith(';'))
+        if (_writeOptions.TerminateStatements)
         {
             _writer.Write(";");
         }

@@ -35,7 +35,7 @@ using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.Hosting;
 
-var result = new MySqlStartApp().Start(
+using var result = new MySqlStartApp().Start(
     configFilePath: "/path/to/project/database-manager.yaml",
     workingDirectory: "/path/to/project");
 
@@ -65,11 +65,11 @@ using TcfOss.DatabaseManager.Core.DefinitionMapping;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.MySql.Hosting;
 
-var result = new MySqlStartApp().Start(
+await using var result = new MySqlStartApp().Start(
     configFilePath: "/path/to/project/database-manager.yaml",
     workingDirectory: "/path/to/project");
 
-using var scope = result.Services.CreateScope();
+await using var scope = result.Services.CreateAsyncScope();
 var changes = scope.ServiceProvider.GetRequiredService<IComputeChanges>();
 await changes.ExecuteAsync(
     outputFilePath: "/path/to/project/changes.sql",

@@ -21,4 +21,5 @@ public record DifferFormattingSettings
     public bool UseDelimiterAroundViews { get; init; }
 
     public bool EmitCommentsWithWeights { get; init; }
+    public bool UseSchemaOnChange { get; init; } = true;
 }

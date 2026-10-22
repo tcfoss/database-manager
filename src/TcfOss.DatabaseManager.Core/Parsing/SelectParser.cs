@@ -505,7 +505,10 @@ public class SelectParser
         Select subQuery = ParseSelect(state, cte);
         state.ExpectRightParen();
         Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
-        return new TableFactor.Derived(subQuery) { Alias = alias };
+        return new TableFactor.Derived(subQuery)
+        {
+            Alias = alias
+        };
     }
 
     private JoinConstraint ParseJoinConstraint(ParserState state, bool natural)
@@ -571,7 +574,6 @@ public class SelectParser
         return new MsTableHint.Simple(name);
     }
 
-
     public virtual Identifier? ParseOptionalAlias(ParserState state, Func<Keyword, bool> isReserved)
     {
         bool afterAs = state.ParseKeyword(Keyword.AS);
@@ -590,7 +592,7 @@ public class SelectParser
 
         if (afterAs)
         {
-            throw ParserState.ExpectedCategoryException("identifier", token);
+            throw ParserState.ExpectedCategoryException("alias", token);
         }
 
         return null;

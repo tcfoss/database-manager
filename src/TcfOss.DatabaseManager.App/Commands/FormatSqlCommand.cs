@@ -1,12 +1,10 @@
 using System.CommandLine;
 using Microsoft.Extensions.FileSystemGlobbing;
-using Microsoft.Extensions.Logging;
-using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class FormatSqlCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class FormatSqlCommand : CommandSpec
 {
 
     protected override string CommandName => "format-sql";
@@ -73,9 +71,9 @@ public class FormatSqlCommand(Action<ILogger> loggerCallback, Action<SourceManag
         }
     }
 
-    protected override bool GetRelaxed(ParseResult parseResult) => !parseResult.GetValue(s_strictOption);
+    public override bool GetRelaxed(ParseResult parseResult) => !parseResult.GetValue(s_strictOption);
 
-    protected override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
+    public override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
     {
         string[] rawFiles = parseResult.GetValue(s_filesArgument)!;
         string? outputPattern = parseResult.GetValue(s_outputPatternOption);

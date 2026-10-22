@@ -50,16 +50,13 @@ public class FormatManager
         }
     }
 
-    public void WriteBlockPart(SqlTextWriter writer, string text, bool indent = true)
+    public void WriteBlockPart(SqlTextWriter writer, string text)
     {
         if (ExpectingNewLineBeforeStatement)
         {
             writer.WriteLine();
         }
-        if (indent)
-        {
-            writer.Write(Indent);
-        }
+        writer.Write(Indent);
         writer.Write(text);
         ExpectingNewLineBeforeStatement = true;
     }

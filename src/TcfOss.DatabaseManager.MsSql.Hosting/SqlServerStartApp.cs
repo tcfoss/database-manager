@@ -13,11 +13,10 @@ public class SqlServerStartApp : StartAppBase<SqlServerStartResult>
     {
         StartResult result = StartCommon(configFilePath, rawConfig, workingDirectory, relaxed, options);
 
-        return new SqlServerStartResult()
+        return new SqlServerStartResult(result.Host)
         {
             Config = (MsConfig)result.Config,
             ServiceProvider = new AppServiceProvider(),
-            Services = result.Services,
             UsingDefaultConfig = result.UsingDefaultConfig
         };
     }

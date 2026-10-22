@@ -1,10 +1,8 @@
 using System.CommandLine;
-using Microsoft.Extensions.Logging;
-using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class ValidateConfigCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class ValidateConfigCommand : CommandSpec
 {
     protected override string CommandName => "validate-config";
     protected override string Description => "Validate the configuration and optionally print it to the console.";
@@ -37,9 +35,9 @@ public class ValidateConfigCommand(Action<ILogger> loggerCallback, Action<Source
         }
     }
 
-    protected override bool GetRelaxed(ParseResult parseResult) => !parseResult.GetValue(s_strictOption);
+    public override bool GetRelaxed(ParseResult parseResult) => !parseResult.GetValue(s_strictOption);
 
-    protected override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
+    public override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
     {
         bool printConfig = parseResult.GetValue(s_printConfigOption);
         context.CommandRunner.ValidateConfiguration(printConfig, context.Out);

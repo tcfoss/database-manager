@@ -95,6 +95,16 @@ public class StringExtensionsTests
     }
 
     [Fact]
+    public void ToIdentifier_Null_Returns_Empty()
+    {
+        string[]? strings = null;
+        string result = strings.ToIdentifier();
+
+        Assert.NotNull(result);
+        Assert.Empty(result);
+    }
+
+    [Fact]
     public void ToIdentifier_Empty_Returns_Empty()
     {
         string result = Array.Empty<string?>().ToIdentifier();

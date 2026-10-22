@@ -93,6 +93,9 @@
     <data name="Err_Parse_ExpectedOneOfButFound" xml:space="preserve">
         <value>Expected one of {{ {0} }}. Found {1}.</value>
     </data>
+    <data name="Err_Parse_DialectRequired" xml:space="preserve">
+        <value>{0} requires a dialect-specific parser. Select a SQL dialect to parse this statement.</value>
+    </data>
     <data name="Err_Lex" xml:space="preserve">
         <value>Lexing Error</value>
     </data>

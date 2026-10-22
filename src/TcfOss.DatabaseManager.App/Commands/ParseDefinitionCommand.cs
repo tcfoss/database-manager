@@ -1,12 +1,10 @@
 using System.CommandLine;
-using Microsoft.Extensions.Logging;
-using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public class ParseDefinitionCommand(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback) : CommandSpec(loggerCallback, sourceManagerCallback)
+public class ParseDefinitionCommand : CommandSpec
 {
 
     protected override string CommandName => "parse-definition";
@@ -73,9 +71,9 @@ public class ParseDefinitionCommand(Action<ILogger> loggerCallback, Action<Sourc
         }
     }
 
-    protected override bool GetRelaxed(ParseResult parseResult) => parseResult.GetValue(s_relaxedOption);
+    public override bool GetRelaxed(ParseResult parseResult) => parseResult.GetValue(s_relaxedOption);
 
-    protected override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
+    public override Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context)
     {
         bool relaxed = GetRelaxed(parseResult);
         string? outputPath = parseResult.GetValue(s_outputPathArgument);

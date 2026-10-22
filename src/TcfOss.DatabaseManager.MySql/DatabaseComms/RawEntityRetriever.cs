@@ -18,20 +18,9 @@ public class RawEntityRetriever(DbContext context) : IRetrieveRawEntities, IDisp
         {
             string safeSchema = procedureId.Schema.Name.Replace("`", "``");
             string safeName = procedureId.Name.Replace("`", "``");
-            List<CreateProcedureEntity> procs = await _context.Database
+            return (await _context.Database
                 .SqlQueryRaw<CreateProcedureEntity>($"SHOW CREATE PROCEDURE `{safeSchema}`.`{safeName}`")
-                .ToListAsync(cancellationToken);
-
-            if (procs.Count == 0)
-            {
-                throw new InvalidOperationException($"No procedure found with name {procedureId}");
-            }
-            else if (procs.Count > 1)
-            {
-                throw new InvalidOperationException($"Multiple procedures found with name {procedureId}");
-            }
-
-            return procs[0];
+                .ToListAsync(cancellationToken)).First();
         }
         finally
         {
@@ -46,20 +35,9 @@ public class RawEntityRetriever(DbContext context) : IRetrieveRawEntities, IDisp
         {
             string safeSchema = viewId.Schema.Name.Replace("`", "``");
             string safeName = viewId.Name.Replace("`", "``");
-            List<CreateViewEntity> views = await _context.Database
+            return (await _context.Database
                 .SqlQueryRaw<CreateViewEntity>($"SHOW CREATE VIEW `{safeSchema}`.`{safeName}`")
-                .ToListAsync(cancellationToken);
-
-            if (views.Count == 0)
-            {
-                throw new InvalidOperationException($"No view found with name {viewId}");
-            }
-            else if (views.Count > 1)
-            {
-                throw new InvalidOperationException($"Multiple views found with name {viewId}");
-            }
-
-            return views[0];
+                .ToListAsync(cancellationToken)).First();
         }
         finally
         {

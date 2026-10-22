@@ -64,7 +64,7 @@ public class ProviderSpecificStartAppTests
     {
         var workingDirectory = Directory.GetCurrentDirectory();
         var rawConfig = new GenericStartup().GetDefaultConfig(workingDirectory);
-        var result = new GenericStartApp().Start(rawConfig: rawConfig, workingDirectory: workingDirectory);
+        using var result = new GenericStartApp().Start(rawConfig: rawConfig, workingDirectory: workingDirectory);
 
         using var scope = result.Services.CreateScope();
         var parser = scope.ServiceProvider.GetRequiredService<IParseText>();
@@ -80,7 +80,7 @@ public class ProviderSpecificStartAppTests
     {
         var workingDirectory = Directory.GetCurrentDirectory();
         var rawConfig = new GenericStartup().GetDefaultConfig(workingDirectory);
-        var result = new GenericStartApp().Start(
+        using var result = new GenericStartApp().Start(
             rawConfig: rawConfig,
             workingDirectory: workingDirectory,
             options: new StartupOptions
@@ -126,7 +126,7 @@ public class ProviderSpecificStartAppTests
     {
         var app = new GenericStartApp();
 
-        var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
         {
             ConfigureBuilder = builder => builder.Services.AddSingleton<ITestRegistration>(new TestRegistration())
         });
@@ -142,7 +142,7 @@ public class ProviderSpecificStartAppTests
     {
         var app = new SqlServerStartApp();
 
-        var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
         {
             ConfigureBuilder = builder => builder.Services.AddSingleton<ITestRegistration>(new TestRegistration())
         });
@@ -158,7 +158,7 @@ public class ProviderSpecificStartAppTests
     {
         var app = new MySqlStartApp();
 
-        var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
         {
             ConfigureBuilder = builder => builder.Services.AddSingleton<ITestRegistration>(new TestRegistration())
         });
@@ -174,7 +174,7 @@ public class ProviderSpecificStartAppTests
     {
         var app = new MariaDbStartApp();
 
-        var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
         {
             ConfigureBuilder = builder => builder.Services.AddSingleton<ITestRegistration>(new TestRegistration())
         });

@@ -68,14 +68,22 @@ public abstract partial class StartAppBase<TStartResult>
         options?.ConfigureServices?.Invoke(builder.Services);
 
         IHost host = builder.Build();
-        startup.ConfigureAppServiceProvider(host.Services);
-
-        return new StartResult
+        try
         {
-            Config = config,
-            Services = host.Services,
-            UsingDefaultConfig = usingDefaultConfig
-        };
+            startup.ConfigureAppServiceProvider(host.Services);
+
+            return new StartResult
+            {
+                Config = config,
+                Host = host,
+                UsingDefaultConfig = usingDefaultConfig
+            };
+        }
+        catch
+        {
+            host.Dispose();
+            throw;
+        }
     }
 
     protected abstract StartupBase GetStartup();
@@ -85,7 +93,7 @@ public abstract partial class StartAppBase<TStartResult>
     protected readonly record struct StartResult
     {
         public required ConfigBase Config { get; init; }
-        public required IServiceProvider Services { get; init; }
+        public required IHost Host { get; init; }
         public required bool UsingDefaultConfig { get; init; }
     }
 

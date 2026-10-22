@@ -1,15 +1,11 @@
 using System.CommandLine;
-using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
-using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 
 namespace TcfOss.DatabaseManager.App.Commands;
 
-public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceManager> sourceManagerCallback)
+public abstract class CommandSpec
 {
-    public TextWriter Out { get; set; } = Console.Out;
-
     protected abstract string CommandName { get; }
     protected abstract string Description { get; }
 
@@ -20,7 +16,7 @@ public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceM
     protected abstract IEnumerable<Argument> Arguments { get; }
     protected abstract IEnumerable<Option> Options { get; }
 
-    public Command Build()
+    public Command Build(Func<ParseResult, Task<int>> executeCommand)
     {
         Command command = new(CommandName, Description);
         foreach (Argument argument in Arguments)
@@ -31,28 +27,11 @@ public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceM
         {
             command.Add(option);
         }
-        command.SetAction(RunAsync);
+        command.SetAction(executeCommand);
         return command;
     }
 
-    protected abstract Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context);
-
-    private async Task<int> RunAsync(ParseResult parseResult)
-    {
-        ExecutionConfig execConfig = BootstrapHelpers.LoadExecutionConfig(parseResult);
-        ValidateExecutionConfig(execConfig);
-
-        ExecutionContext context = BootstrapHelpers.LoadExecutionContext(
-            execConfig,
-            relaxed: GetRelaxed(parseResult),
-            outputWriter: Out,
-            loggerCallback: loggerCallback,
-            sourceManagerCallback: sourceManagerCallback
-        );
-        ValidateExecutionContext(context);
-
-        return await ParseAndExecuteAsync(parseResult, context);
-    }
+    public abstract Task<int> ParseAndExecuteAsync(ParseResult parseResult, ExecutionContext context);
 
     /// <summary>
     /// Returns whether the command should run in relaxed mode (i.e. with relaxed definition
@@ -60,9 +39,9 @@ public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceM
     /// for commands that don't require a strict definition, or to inspect
     /// <paramref name="parseResult"/> for a user-supplied flag.
     /// </summary>
-    protected virtual bool GetRelaxed(ParseResult parseResult) => false;
+    public virtual bool GetRelaxed(ParseResult parseResult) => false;
 
-    private void ValidateExecutionConfig(ExecutionConfig config)
+    public void ValidateExecutionConfig(ExecutionConfig config)
     {
         if (config.Dialect == SqlDialect.Generic && NonGenericDialectRequired)
         {
@@ -81,7 +60,7 @@ public abstract class CommandSpec(Action<ILogger> loggerCallback, Action<SourceM
         }
     }
 
-    private void ValidateExecutionContext(ExecutionContext context)
+    public void ValidateExecutionContext(ExecutionContext context)
     {
         if (!context.Config.DatabaseAvailable && ConnectionRequired)
         {

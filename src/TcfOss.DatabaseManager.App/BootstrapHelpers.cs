@@ -91,9 +91,7 @@ public static partial class BootstrapHelpers
     public static ExecutionContext LoadExecutionContext(
         ExecutionConfig execConfig,
         bool relaxed,
-        TextWriter outputWriter,
-        Action<ILogger> loggerCallback,
-        Action<SourceManager> sourceManagerCallback
+        TextWriter outputWriter
     )
     {
         StartupBase startup = execConfig.Dialect switch
@@ -127,7 +125,6 @@ public static partial class BootstrapHelpers
             logSetupAction: (innerLogger, _) =>
             {
                 logger = innerLogger;
-                loggerCallback.Invoke(innerLogger);
 
                 if (execConfig is { CliDialect: not null, ConfigDialect: not null } && execConfig.CliDialect != execConfig.ConfigDialect)
                 {
@@ -138,20 +135,27 @@ public static partial class BootstrapHelpers
             relaxed: relaxed);
 
         IHost host = builder.Build();
-        startup.ConfigureAppServiceProvider(host.Services);
-
-        SourceManager sm = host.Services.GetRequiredService<SourceManager>();
-        sourceManagerCallback.Invoke(sm);
-
-
-        return new ExecutionContext
+        try
         {
-            Out = outputWriter,
-            WorkingDirectory = execConfig.WorkingDirectory,
-            Logger = logger,
-            Config = config,
-            CommandRunner = host.Services.GetRequiredService<IRunCommands>()
-        };
+            startup.ConfigureAppServiceProvider(host.Services);
+
+            SourceManager sm = host.Services.GetRequiredService<SourceManager>();
+
+            return new ExecutionContext(host)
+            {
+                Out = outputWriter,
+                WorkingDirectory = execConfig.WorkingDirectory,
+                Logger = logger,
+                Config = config,
+                SourceManager = sm,
+                CommandRunner = host.Services.GetRequiredService<IRunCommands>()
+            };
+        }
+        catch
+        {
+            host.Dispose();
+            throw;
+        }
     }
 
     public record struct DialectLoadResult(

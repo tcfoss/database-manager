@@ -926,7 +926,7 @@ public class ReferencedItemsTests
     [Fact]
     public void Select_ValuesQueryInFrom_NoSelectItems()
     {
-        var text = "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c'))";
+        var text = "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) as vals";
         var select = ParseSelect(text);
 
         List<ItemRef> items = [.. select.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Unknown })];
