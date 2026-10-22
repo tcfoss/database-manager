@@ -27,6 +27,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS APPLY (SELECT col1, col2 FROM table_2) AS b")]
     [InlineData("SELECT a.*, b.* FROM table1 AS a NATURAL INNER JOIN table2 AS b")]
     [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b USING (id, name)")]
+    [InlineData("SELECT a, b FROM (SELECT a, b FROM mytable)")]
     /* Select - Into */
     [InlineData("SELECT a INTO myvar FROM old_table")]
     [InlineData("SELECT a, b INTO var1, var2 FROM old_table")]
@@ -352,7 +353,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var tokens = lexer.Tokenize("SELECT 1 AS");
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse([.. tokens]));
 
-        Assert.Contains("identifier", exception.Message);
+        Assert.Contains("alias", exception.Message);
     }
 
     [Fact]

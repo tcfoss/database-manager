@@ -8,6 +8,7 @@ namespace TcfOss.DatabaseManager.Core.Tests.DefinitionBuilding;
 public class PseudoTableSetTests
 {
     private readonly PseudoTableSet _pseudoTableSet;
+
     public PseudoTableSetTests()
     {
         var catalogId = new CatalogIdentifier("def", QuoteStyle.Ansi);
@@ -31,6 +32,7 @@ public class PseudoTableSetTests
             new("local1", new ObjectIdentifier("table1", schemaId1, QuoteStyle.Ansi), ["col1", "col2"], PseudoTableType.Table),
             new("local2", new ObjectIdentifier("table3", schemaId2, QuoteStyle.Ansi), ["col1", "col2", "col3"], PseudoTableType.Table),
             new("local3", new ObjectIdentifier("cte", new SchemaIdentifier("", new CatalogIdentifier(""))), ["colA", "colB"], PseudoTableType.CommonTableExpression),
+            new("local4", null, ["colX", "colY"], PseudoTableType.DerivedTable)
         };
 
         _pseudoTableSet = new PseudoTableSet(schemaId1, externalSources, [localSources]);
@@ -78,6 +80,15 @@ public class PseudoTableSetTests
     {
         var objectName = new ObjectName([.. componentNames.Select(name => new Identifier(name))]);
         Assert.Throws<SqlSyntaxException.ViewNonUniqueReferenceName>(() => _pseudoTableSet.GetRequiredPseudoTable(objectName));
+    }
+
+    [Fact]
+    public void GetRequiredPseudoTable_DisambiguatesByActiveSchema()
+    {
+        var objectName = new ObjectName([new Identifier("table3")]);
+        var table = _pseudoTableSet.GetRequiredPseudoTable(objectName);
+        Assert.Equal("table3", table.Identifier!.Name);
+        Assert.Equal("schema1", table.Identifier!.Schema.Name);
     }
 
     [Theory]
@@ -140,6 +151,15 @@ public class PseudoTableSetTests
     }
 
     [Fact]
+    public void GetSelectableItems_FindsItems()
+    {
+        var items = _pseudoTableSet.GetSelectableElements("colX");
+        var item = Assert.Single(items);
+        Assert.Equal("colX", item.Name);
+        Assert.Equal("local4", item.Source);
+    }
+
+    [Fact]
     public void LeaveSelectScope_NoScope_Throws()
     {
         Assert.Throws<InvalidOperationException>(() =>
@@ -147,5 +167,13 @@ public class PseudoTableSetTests
             _pseudoTableSet.LeaveSelectScope();
             _pseudoTableSet.LeaveSelectScope();
         });
+    }
+
+    [Fact]
+    public void GetLocalWildcardColumns_NoLocalSources_ReturnsEmpty()
+    {
+        var pseudoTableSet = new PseudoTableSet(null, [], null);
+        var wildcardColumns = pseudoTableSet.GetLocalWildcardColumns();
+        Assert.Empty(wildcardColumns);
     }
 }

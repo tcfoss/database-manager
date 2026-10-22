@@ -12,7 +12,7 @@ namespace TcfOss.DatabaseManager.Core.DefinitionBuilding;
 /// a subquery in a FROM clause).
 /// </summary>
 /// <param name="Name"></param>
-/// <param name="Identifier"></param>
+/// <param name="Identifier">Null for CTEs and derived tables</param>
 /// <param name="SelectableItems"></param>
 public record PseudoTable(string Name, ObjectIdentifier? Identifier, List<string> SelectableItems, PseudoTableType Type)
 {

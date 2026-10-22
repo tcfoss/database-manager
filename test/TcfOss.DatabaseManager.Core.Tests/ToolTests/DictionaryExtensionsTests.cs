@@ -6,6 +6,7 @@ namespace TcfOss.DatabaseManager.Core.Tests.ToolTests;
 public class DictionaryExtensionsTests
 {
     private readonly DatabaseObjectDict<string> _objectHandleDict;
+    private readonly DatabaseComponentDict<string> _componentDict;
     private readonly Dictionary<Identifier, string> _idDict;
     private readonly Dictionary<ColumnIdentifier, string> _columnDict;
 
@@ -39,6 +40,12 @@ public class DictionaryExtensionsTests
             [ColumnIdentifier.FromStrings("def", "schema1", "table1", "col2", QuoteStyle.Brackets)] = "Column 2",
             [ColumnIdentifier.FromStrings("def", "schema1", "table2", "col1", QuoteStyle.Brackets)] = "Column 3"
         };
+
+        _componentDict = new DatabaseComponentDict<string>();
+        foreach (var kvp in _idDict)
+        {
+            _componentDict[Handle.Create(kvp.Key, NameHandling.None)] = kvp.Value;
+        }
     }
 
     [Fact]
@@ -121,6 +128,29 @@ public class DictionaryExtensionsTests
     public void Test_Get_Identifier_Missing_Fails()
     {
         var result = Assert.Throws<KeyNotFoundException>(() => _idDict.GetItem("nonexistent"));
+        Assert.Equal("Item 'nonexistent' not found in dictionary.", result.Message);
+    }
+
+    [Theory]
+    [InlineData("id1", "Value 1")]
+    [InlineData("id2", "Value 2")]
+    public void Test_Get_Component_GetsItem(string key, string expected)
+    {
+        var result = _componentDict.GetItem(key);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void Test_Get_Component_WrongCase_Throws()
+    {
+        var result = Assert.Throws<KeyNotFoundException>(() => _componentDict.GetItem("ID1"));
+        Assert.Equal("Item 'ID1' not found in dictionary.", result.Message);
+    }
+
+    [Fact]
+    public void Test_Get_Component_Missing_Throws()
+    {
+        var result = Assert.Throws<KeyNotFoundException>(() => _componentDict.GetItem("nonexistent"));
         Assert.Equal("Item 'nonexistent' not found in dictionary.", result.Message);
     }
 }

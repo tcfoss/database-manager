@@ -64,20 +64,12 @@ public class PseudoTableSet
         }
         if (num > 1)
         {
-            if (schemaName == null)
+            if (schemaName == null && ActiveSchema != null)
             {
-                PseudoTable[] disambiguation = [.. matches.Where(x => x.Identifier!.Schema.Name == "")];
+                PseudoTable[] disambiguation = [.. matches.Where(x => x.Identifier!.Schema.Name == ActiveSchema.Name)];
                 if (disambiguation.Length == 1)
                 {
                     return disambiguation[0];
-                }
-                if (ActiveSchema != null)
-                {
-                    disambiguation = [.. matches.Where(x => x.Identifier!.Schema.Name == ActiveSchema)];
-                    if (disambiguation.Length == 1)
-                    {
-                        return disambiguation[0];
-                    }
                 }
             }
             throw new SqlSyntaxException.ViewNonUniqueReferenceName([catalogName, schemaName, tableName], sourceRef);
