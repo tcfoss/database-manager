@@ -1,6 +1,7 @@
 ﻿using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.Hosting;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
@@ -13,6 +14,8 @@ public abstract class DownloadSchemaFixture<TBuilderEntity, TContainerEntity> : 
     where TBuilderEntity : IContainerBuilder<TBuilderEntity, TContainerEntity, IContainerConfiguration>, new()
     where TContainerEntity : IContainer, IDatabaseContainer
 {
+    private IHost? _host;
+
     protected DbFixture<TBuilderEntity, TContainerEntity> DbFixture { get; init; } = null!;
     protected FsProjectFixture FsProjectFixture { get; init; } = null!;
     public MyConfig MyConfig { get; private set; } = null!;
@@ -24,7 +27,7 @@ public abstract class DownloadSchemaFixture<TBuilderEntity, TContainerEntity> : 
     {
         await DbFixture.Container.StartAsync();
         DbFixture.InitializeLibrarySchema();
-        MyConfig = DbFixture.GetLibrarySchemaConfig(RootDirectory.FullName, false, false, Dialect, objectNamePrefixWithSchema: false);
+        (MyConfig, _host) = DbFixture.GetLibrarySchemaConfig(RootDirectory.FullName, false, false, Dialect, objectNamePrefixWithSchema: false);
 
         var schemaDownloader = AppServiceProvider.SchemaDownloader;
         await schemaDownloader.ExecuteAsync();
@@ -32,6 +35,7 @@ public abstract class DownloadSchemaFixture<TBuilderEntity, TContainerEntity> : 
 
     public async ValueTask DisposeAsync()
     {
+        _host?.Dispose();
         await DbFixture.Container.StopAsync();
         await DbFixture.Container.DisposeAsync();
         FsProjectFixture.Dispose();

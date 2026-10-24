@@ -214,12 +214,13 @@ public class BootstrapHelpersTests
                 RawConfig = rawConfig
             };
 
-            using ExecutionContext context = BootstrapHelpers.LoadExecutionContext(
+            using (ExecutionContext context = BootstrapHelpers.LoadExecutionContext(
                 executionConfig,
                 relaxed: false,
-                outputWriter: new StringWriter());
-
-            Assert.IsType<MsCommandRunner>(context.CommandRunner);
+                outputWriter: new StringWriter()))
+            {
+                Assert.IsType<MsCommandRunner>(context.CommandRunner);
+            }
 
             string logFile = Directory.GetFiles(logDirectory).First(f => f.EndsWith(".json"));
             Assert.True(File.Exists(logFile));

@@ -35,7 +35,6 @@ public class LoggingRegistrationTests
 
             (ILogger logger, _) = builder.AddLogging(config);
             using var host = builder.Build();
-            using var serilogLogger = Assert.IsType<IDisposable>(host.Services.GetRequiredService<Serilog.ILogger>(), exactMatch: false);
             var hostLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Application");
 
             logger.LogInformation("Returned logger event");
@@ -73,7 +72,6 @@ public class LoggingRegistrationTests
 
         (ILogger logger, string? filePath) = builder.AddLogging(config);
         using var host = builder.Build();
-        using var serilogLogger = Assert.IsType<IDisposable>(host.Services.GetRequiredService<Serilog.ILogger>(), exactMatch: false);
         var hostLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Application");
 
         Assert.Null(filePath);
@@ -115,7 +113,6 @@ public class LoggingRegistrationTests
 
             using (var host = builder.Build())
             {
-                using var serilogLogger = Assert.IsType<IDisposable>(host.Services.GetRequiredService<Serilog.ILogger>(), exactMatch: false);
                 var factory = host.Services.GetRequiredService<ILoggerFactory>();
                 logger.LogInformation("Application event");
                 logger.LogDebug("Filtered application event");
@@ -139,6 +136,47 @@ public class LoggingRegistrationTests
             }
 
             Assert.Equal(s_expectedMessages, messages);
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.True(stream.Length > 0);
+            }
+            File.Delete(filePath);
+            Assert.False(File.Exists(filePath));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AddLogging_File_AsyncHostDisposalReleasesFile()
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("dbman-log-tests-");
+        try
+        {
+            var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
+            var config = new LogSettings
+            {
+                Target = LogTarget.File,
+                LogDirectory = directory.FullName,
+                LogLevel = LogLevel.Information
+            };
+            (ILogger logger, string? filePath) = builder.AddLogging(config);
+            Assert.NotNull(filePath);
+
+            await using (var host = Assert.IsType<IAsyncDisposable>(builder.Build(), exactMatch: false))
+            {
+                logger.LogInformation("Final event before disposal");
+            }
+
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            using (var reader = new StreamReader(stream))
+            {
+                Assert.Contains("Final event before disposal", await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+            }
+            File.Delete(filePath);
+            Assert.False(File.Exists(filePath));
         }
         finally
         {

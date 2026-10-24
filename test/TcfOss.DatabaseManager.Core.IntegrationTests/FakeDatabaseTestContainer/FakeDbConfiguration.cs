@@ -37,5 +37,3 @@ public class FakeDbConfiguration : ContainerConfiguration
     {
     }
 }
-
-#pragma warning restore

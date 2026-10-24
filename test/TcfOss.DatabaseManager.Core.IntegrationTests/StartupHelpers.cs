@@ -8,7 +8,7 @@ namespace TcfOss.DatabaseManager.Core.IntegrationTests;
 
 public static class StartupHelpers
 {
-    public static ConfigBase StartApp(this StartupBase startup, string rootPath, Config rawConfig, bool relaxed = false, EnvironmentVariableReaderBase? environmentVariableReader = null)
+    public static (ConfigBase Config, IHost Host) StartApp(this StartupBase startup, string rootPath, Config rawConfig, bool relaxed = false, EnvironmentVariableReaderBase? environmentVariableReader = null)
     {
         var builder = new HostApplicationBuilder(new HostApplicationBuilderSettings
         {
@@ -31,7 +31,15 @@ public static class StartupHelpers
 
         IHost host = builder.Build();
 
-        startup.ConfigureAppServiceProvider(host.Services);
-        return config;
+        try
+        {
+            startup.ConfigureAppServiceProvider(host.Services);
+            return (config, host);
+        }
+        catch
+        {
+            host.Dispose();
+            throw;
+        }
     }
 }

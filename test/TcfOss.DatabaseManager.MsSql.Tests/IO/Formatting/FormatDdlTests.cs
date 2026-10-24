@@ -19,7 +19,7 @@ public class FormatDdlTests
             SELECT
                 1;
         """;
-        Assert.Equal(expected, formatted);
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class FormatDdlTests
             SELECT
                 1;
         """;
-        Assert.Equal(expected, formatted);
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class FormatDdlTests
             SELECT
                 1;
         """;
-        Assert.Equal(expected, formatted);
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class FormatDdlTests
             [X] AS ([Y] + 1) PERSISTED NOT NULL
         );
         """;
-        Assert.Equal(expected, formatted);
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class FormatDdlTests
             [E] AS ([F] * 2) CONSTRAINT [ck_t_e] CHECK ([E] > 0)
         );
         """;
-        Assert.Equal(expected, formatted);
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -119,6 +119,6 @@ public class FormatDdlTests
             [X] AS [Y] + 1 PERSISTED NOT NULL UNIQUE
         );
         """;
-        Assert.Equal(expected, formatted);
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
     }
 }

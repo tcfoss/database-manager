@@ -44,11 +44,17 @@ public abstract class SimpleSchemaDifferFixture<TBuilderEntity, TContainerEntity
         _endFsFixture.CopyFiles(Path.Combine(CommonHelpers.SimpleSchemaSourceDirectory.FullName, "Test1"));
 
         var loggerFactory = new LoggerFactory();
-        DbFixture.GetSimpleSchemaConfig(_initialFsFixture.RootDirectory.FullName, Dialect);
-        var dbLoader = (MyDbDefinitionLoader)MyAppServiceProvider.DatabaseDefinitionLoader;
-        MyDefinition startDefinition = await dbLoader.LoadDefinitionAsync();
+        MyDefinition startDefinition;
+        {
+            var initialStartup = DbFixture.GetSimpleSchemaConfig(_initialFsFixture.RootDirectory.FullName, Dialect);
+            using var initialHost = initialStartup.Host;
+            var dbLoader = (MyDbDefinitionLoader)MyAppServiceProvider.DatabaseDefinitionLoader;
+            startDefinition = await dbLoader.LoadDefinitionAsync();
+        }
 
-        MyConfig config = DbFixture.GetSimpleSchemaConfig(_endFsFixture.RootDirectory.FullName, Dialect);
+        var (Config, Host) = DbFixture.GetSimpleSchemaConfig(_endFsFixture.RootDirectory.FullName, Dialect);
+        using var endHost = Host;
+        MyConfig config = Config;
         List<DeployScript> deployScripts = LoadDeployScripts(config);
         var fsLoader = (MyFsDefinitionLoader)MyAppServiceProvider.FilesystemDefinitionLoader;
         MyDefinition endDefinition = fsLoader.LoadDefinition(false);

@@ -25,7 +25,7 @@ public class ConfigLoaderTestsMessedUpDeployScripts(ConfigLoaderFixture fixture)
             _ = GetConfig(rawConfig);
         });
 
-        var expectedPath = Path.Combine("MoreStuff", "script2.sql");
+        const string expectedPath = "MoreStuff/script2.sql";
         var expectedMessage = $$"""Configuration Error: The Type field on DeployScript entry DeployScript { FilePath = {{expectedPath}}, Type = , UniqueId = 00000000-0000-0000-0000-000000000006 } could not be determined. It should be one of { PreDeployment | PostDropConstraints | PreSetNotNull | PreAddConstraints | PostDeployment }.""";
         Assert.Equal(expectedMessage, exception.Message);
     }

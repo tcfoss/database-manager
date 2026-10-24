@@ -79,4 +79,5 @@ startup, MySQL/MariaDB startup can contact the server to discover defaults.
 
 The result owns the host and implements `IDisposable` and `IAsyncDisposable`.
 Keep it alive until all operations and scopes have finished, then dispose it with
-`using` or `await using`.
+`using` or `await using`. The host also owns its configured logger; disposal
+closes file logging sinks before project files or temporary directories are removed.

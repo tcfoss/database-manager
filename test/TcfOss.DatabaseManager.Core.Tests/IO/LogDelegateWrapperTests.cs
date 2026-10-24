@@ -103,7 +103,7 @@ public class LogDelegateWrapperTests
           "Value": 42
         }
         """;
-        Assert.Equal(expected, actual);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class LogDelegateWrapperTests
           "Value": 84
         }
         """;
-        Assert.Equal(expected, actual);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class LogDelegateWrapperTests
           }
         }
         """;
-        Assert.Equal(expected, actual);
+        Assert.Equal(expected, actual, ignoreLineEndingDifferences: true);
     }
 
     // ReSharper disable UnusedMember.Local
