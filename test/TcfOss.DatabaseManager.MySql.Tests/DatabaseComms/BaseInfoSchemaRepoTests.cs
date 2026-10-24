@@ -21,6 +21,7 @@ public abstract class BaseInfoSchemaRepoTests
     protected virtual ReferentialAction DefaultReferentialAction => ReferentialAction.NoAction;
     protected virtual string DefaultIntegerWidth => "";
     protected virtual RoutineParameterDirection? FunctionParameterDirection => null;
+    protected virtual EventEnabledStatus DisableOnSlaveStatus => EventEnabledStatus.DisableOnReplica;
 
     [Fact]
     public async Task Get_Table_Identifiers_1()
@@ -393,5 +394,68 @@ public abstract class BaseInfoSchemaRepoTests
         var actual = evt.Body.ToSql();
         var expected = "BEGIN UPDATE site_user SET is_active = FALSE WHERE is_active = TRUE AND last_login < NOW() - INTERVAL 1 YEAR; END";
         Assert.Equal(expected, actual, ignoreCase: true, ignoreAllWhiteSpace: true);
+    }
+
+    [Fact]
+    public async Task Event_At()
+    {
+        var eventId = new ObjectIdentifier("event_at", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var evt = await Repo.GetEventAsync(eventId, TestContext.Current.CancellationToken);
+        Assert.NotNull(evt);
+        Assert.Equal("event_at", evt.Name.Name);
+
+        var schedule = Assert.IsType<EventSchedule.At>(evt.Schedule);
+        var expected = new LiteralValue(new Value.SingleQuotedString("2026-07-04 00:00:00"));
+        Assert.NotNull(schedule);
+        Assert.Equal(expected, schedule.Time);
+        Assert.False(evt.OnCompletionPreserve);
+        Assert.Equal(EventEnabledStatus.Enable, evt.EventEnabledStatus);
+    }
+
+    [Fact]
+    public async Task Event_Disable()
+    {
+        var eventId = new ObjectIdentifier("event_disable", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var evt = await Repo.GetEventAsync(eventId, TestContext.Current.CancellationToken);
+        Assert.NotNull(evt);
+        Assert.Equal("event_disable", evt.Name.Name);
+
+        Assert.True(evt.OnCompletionPreserve);
+        Assert.Equal(EventEnabledStatus.Disable, evt.EventEnabledStatus);
+    }
+
+    [Fact]
+    public async Task Event_Disable_On_Slave()
+    {
+        var eventId = new ObjectIdentifier("event_disable_on_slave", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var evt = await Repo.GetEventAsync(eventId, TestContext.Current.CancellationToken);
+        Assert.NotNull(evt);
+        Assert.Equal("event_disable_on_slave", evt.Name.Name);
+
+        Assert.True(evt.OnCompletionPreserve);
+        Assert.Equal(DisableOnSlaveStatus, evt.EventEnabledStatus);
+    }
+
+    [Fact]
+    public async Task Table_DescendingIndexes()
+    {
+        var tableId = new ObjectIdentifier("with_desc_index", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
+        Assert.NotNull(table);
+        Assert.Equal("with_desc_index", table.Name.Name);
+
+        Assert.NotNull(table.PrimaryKey);
+
+        var refCol = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
+        Assert.Equal("id", refCol.Name.Name);
+        Assert.Null(refCol.Length);
+        Assert.Equal(Direction.Descending, refCol.Direction);
+
+        var index = Assert.Single(table.Keys.Values);
+        var indexCol = Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns));
+        Assert.Equal("val", indexCol.Name.Name);
+        Assert.NotNull(indexCol.Length);
+        Assert.Equal(5u, indexCol.Length);
+        Assert.Equal(Direction.Descending, indexCol.Direction);
     }
 }
