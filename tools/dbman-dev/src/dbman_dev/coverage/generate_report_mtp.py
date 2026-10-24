@@ -22,9 +22,10 @@ import shutil as _shutil
 import subprocess as _sp
 import sys as _sys
 import tempfile as _tempfile
+import typing as _typing
 import xml.etree.ElementTree as _et
-import dbman_dev.utilities.shell_exec as _shell_exec
 import uuid as _uuid
+import dbman_dev.utilities.shell_exec as _shell_exec
 
 import attrs as _attrs
 
@@ -32,7 +33,7 @@ _DEFAULT_LICENSE_PATH = _p.Path.home() / "Code" / "Licenses" / "reportgenerator_
 _OPEN_COVER_FILENAME_PATTERN = _re.compile(r"coverage\.opencover\.\d+\.xml", _re.IGNORECASE)
 _RAW_COVERAGE_FILENAME_PATTERN = _re.compile(r"coverage\.\w+\.\d+\.xml", _re.IGNORECASE)
 _SOLUTION_EXTENSIONS = {".sln", ".slnx", ".slnf"}
-
+_COVERAGE_FILTER_PATH = _shutil.which("unreachable-coverage-filter")
 
 @_attrs.define()
 class _RunConfig:
@@ -56,10 +57,7 @@ def _check_reportgenerator_installed():
 
 def _check_coverage_filter_installed():
     """Check if CoverageFilter is installed."""
-    try:
-        _sp.check_output(["unreachable-coverage-filter", "-h"], encoding="utf-8")
-        print("UnreachableCoverageFilter is installed.")
-    except FileNotFoundError:
+    if _COVERAGE_FILTER_PATH is None:
         print("UnreachableCoverageFilter is not installed. Please install it to filter coverage reports.")
         _sys.exit(1)
 
@@ -264,7 +262,7 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
 
     filtered_files = [str(output_dir / _p.Path(path).name) for path in coverage_files]
     cmd = [
-        "unreachable-coverage-filter",
+        _typing.cast(str, _COVERAGE_FILTER_PATH),
         *coverage_files,
         "--output-directory",
         str(output_dir),
