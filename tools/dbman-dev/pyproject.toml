@@ -1,6 +1,6 @@
 [project]
 name = "dbman-dev"
-version = "0.5.25"
+version = "0.5.26"
 description = "Tools for automating NetDatabaseManager development tasks"
 authors = [
     {name = "Thomas Flanagan",email = "t@tcflanagan.net"}
