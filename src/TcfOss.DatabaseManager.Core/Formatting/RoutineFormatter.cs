@@ -108,7 +108,6 @@ internal static class RoutineFormatter
             writer.Write(")");
         }
 
-        // [IF NOT EXISTS] — indented
         if (ifNotExists)
         {
             writer.WriteLine();
@@ -123,7 +122,6 @@ internal static class RoutineFormatter
             writer.WriteSqlI($"RETURNS {returnType}");
         }
 
-        // [characteristic] — indented
         if (characteristic != null)
         {
             writer.WriteLine();
@@ -132,7 +130,6 @@ internal static class RoutineFormatter
             manager.DecreaseIndent();
         }
 
-        // [WITH options] — indented
         if (msOptions != null)
         {
             writer.WriteLine();
