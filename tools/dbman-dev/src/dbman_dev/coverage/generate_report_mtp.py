@@ -22,9 +22,10 @@ import shutil as _shutil
 import subprocess as _sp
 import sys as _sys
 import tempfile as _tempfile
+import typing as _typing
 import xml.etree.ElementTree as _et
-import dbman_dev.utilities.shell_exec as _shell_exec
 import uuid as _uuid
+import dbman_dev.utilities.shell_exec as _shell_exec
 
 import attrs as _attrs
 
@@ -261,7 +262,7 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
 
     filtered_files = [str(output_dir / _p.Path(path).name) for path in coverage_files]
     cmd = [
-        _COVERAGE_FILTER_PATH,
+        _typing.cast(str, _COVERAGE_FILTER_PATH),
         *coverage_files,
         "--output-directory",
         str(output_dir),

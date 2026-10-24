@@ -17,5 +17,7 @@ def is_user_admin() -> bool:
             return _ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore
         except Exception:
             return False
-    else:
+    elif IS_UNIX_LIKE:
+        assert hasattr(_os, "geteuid")
         return _os.geteuid() == 0
+    return False
