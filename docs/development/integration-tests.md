@@ -12,6 +12,26 @@ Integration tests live under `test/` and are grouped into five projects, all inc
 | `TcfOss.DatabaseManager.MsSql.IntegrationTests` | SQL Server database fixtures and helpers |
 | `TcfOss.DatabaseManager.App.IntegrationTests` | CLI end-to-end tests; depends on all of the above |
 
+## Running with limited Docker resources
+
+The full suite can start containers concurrently across test projects and test
+collections. On a Docker Desktop installation with limited memory, first run
+the affected project on its own with collection parallelization disabled:
+
+```powershell
+dotnet test --project test\TcfOss.DatabaseManager.MySql.IntegrationTests\TcfOss.DatabaseManager.MySql.IntegrationTests.csproj --parallel none
+```
+
+To limit concurrency across the integration suite as well:
+
+```powershell
+dotnet test --solution solutions\IntegrationTest.slnx --max-parallel-test-modules 1 --parallel none
+```
+
+These are .NET 10 / Microsoft.Testing.Platform commands. Container startup
+failures, Docker API errors, and timeouts still require investigation; do not
+hide them by weakening assertions or ignoring cleanup failures.
+
 
 ## Core integration test infrastructure
 
@@ -29,6 +49,24 @@ Integration tests live under `test/` and are grouped into five projects, all inc
 `FsProjectFixture` creates an isolated temporary directory at construction time and exposes it
 as `RootDirectory`. Tests copy schema files into it and run the CLI against it.
 The fixture disposes the directory when the test is done.
+
+### Cross-platform expectations and lifetimes
+
+- Use `ignoreLineEndingDifferences: true` for text equality assertions where LF
+  and CRLF are interchangeable. For substring assertions, normalize line endings
+  with `ReplaceLineEndings("\n")`; keep indentation and other whitespace significant.
+- Build filesystem paths with `Path.Combine`. When asserting diagnostics that
+  quote raw configuration values, preserve the configured separators instead.
+- Quote generated YAML paths correctly: double-quoted YAML treats backslashes
+  as escapes. Single-quoted scalars preserve backslashes; escape apostrophes by
+  doubling them.
+- `StartupHelpers.StartApp`, `GetLibrarySchemaConfig`, and `GetSimpleSchemaConfig`
+  return both the configuration and its host. The caller owns the host and must
+  dispose it before deleting the temporary directory or replacing the host.
+  Host disposal also closes the log file sink.
+- Read logs after host disposal where possible. Tests that inspect a live log
+  must open their read stream with `FileShare.ReadWrite` so the existing writer
+  remains permitted on Windows.
 
 
 ## Provider database fixtures

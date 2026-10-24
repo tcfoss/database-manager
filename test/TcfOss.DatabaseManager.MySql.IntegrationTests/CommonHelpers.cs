@@ -2,6 +2,7 @@
 using System.Text.RegularExpressions;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.Common;
@@ -58,7 +59,7 @@ public static partial class CommonHelpers
         };
     }
 
-    public static MyConfig GetLibrarySchemaConfig(this IDatabaseContainer container, string rootPath, bool includeScripts, bool includeRefactors, ushort port, SqlDialect dialect = SqlDialect.MariaDb, EnvironmentVariableReaderBase? environmentVariableReader = null, bool objectNamePrefixWithSchema = true, bool enableSensitiveLogging = false)
+    public static (MyConfig Config, IHost Host) GetLibrarySchemaConfig(this IDatabaseContainer container, string rootPath, bool includeScripts, bool includeRefactors, ushort port, SqlDialect dialect = SqlDialect.MariaDb, EnvironmentVariableReaderBase? environmentVariableReader = null, bool objectNamePrefixWithSchema = true, bool enableSensitiveLogging = false)
     {
         ConfigParsing.DeployScript[] catalogScripts = [];
         ConfigParsing.DeployScript[] activityScripts = [];
@@ -204,17 +205,17 @@ public static partial class CommonHelpers
             throw new NotSupportedException($"Dialect {dialect} is not supported.");
         }
 
-        MyConfig config = (MyConfig)startup.StartApp(
+        var result = startup.StartApp(
             rootPath,
             rawConfig,
             relaxed: false,
             environmentVariableReader: environmentVariableReader
         );
 
-        return config;
+        return ((MyConfig)result.Config, result.Host);
     }
 
-    public static MyConfig GetSimpleSchemaConfig(this IDatabaseContainer container, string rootPath, ushort port, SqlDialect dialect)
+    public static (MyConfig Config, IHost Host) GetSimpleSchemaConfig(this IDatabaseContainer container, string rootPath, ushort port, SqlDialect dialect)
     {
         ConfigParsing.DeployScript[] deployScripts = [];
         if (File.Exists(Path.Combine(rootPath, "Scripts", "01_populate_nulltest_name.sql")))
@@ -265,7 +266,8 @@ public static partial class CommonHelpers
         };
 
         Core.Hosting.StartupBase<MyConfig> startup = dialect == SqlDialect.MySql ? new MyStartup() : new MaStartup();
-        return (MyConfig)startup.StartApp(rootPath, rawConfig, relaxed: false);
+        var result = startup.StartApp(rootPath, rawConfig, relaxed: false);
+        return ((MyConfig)result.Config, result.Host);
     }
 
     public static MariaDbBuilder WithStandardOptions(this MariaDbBuilder builder)

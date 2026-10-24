@@ -8,7 +8,7 @@ public class FormatterClearTests
         using var formatter = Helpers.CreateFormatter(null);
         formatter.Format("SELECT 1");
         formatter.Format("SELECT 2");
-        string combined = formatter.GetFormatted();
+        string combined = formatter.GetFormatted().ReplaceLineEndings("\n");
 
         Assert.Contains("SELECT\n    1;", combined, StringComparison.Ordinal);
         Assert.Contains("SELECT\n    2;", combined, StringComparison.Ordinal);
@@ -69,7 +69,7 @@ public class FormatterClearTests
         using var formatter = Helpers.CreateFormatter(null);
         formatter.Format("SELECT 1");
         formatter.Format("SELECT 2");
-        string combined = formatter.GetFormatted();
+        string combined = formatter.GetFormatted().ReplaceLineEndings("\n");
 
         Assert.Contains("SELECT\n    1;", combined, StringComparison.Ordinal);
         Assert.Contains("SELECT\n    2;", combined, StringComparison.Ordinal);

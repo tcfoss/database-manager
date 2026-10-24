@@ -60,7 +60,7 @@ public static class LoggingRegistration
             .ReadFrom.KeyValuePairs(serilogConfig)
             .CreateLogger();
 
-        builder.Services.AddSerilog(logger);
+        builder.Services.AddSerilog(logger, dispose: true);
 
         var factory = new SerilogLoggerFactory(logger);
         return (factory.CreateLogger("CommandLineInterface"), logFileName);

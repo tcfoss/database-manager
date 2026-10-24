@@ -93,15 +93,17 @@ public class StartAppBaseTests
         Assert.NotNull(result.Services.GetRequiredService<IStubService>());
     }
 
-    [Fact]
-    public void Start_UsesExplicitConfigFile_WhenProvided()
+    [Theory]
+    [InlineData("")]
+    [InlineData(" with ' quote")]
+    public void Start_UsesExplicitConfigFile_WhenProvided(string suffix)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + suffix);
         Directory.CreateDirectory(tempDir);
         try
         {
             var configPath = Path.Combine(tempDir, "database-manager.yaml");
-            File.WriteAllText(configPath, "dialect: generic\nprojectDirectory: \"" + tempDir + "\"\n");
+            File.WriteAllText(configPath, "dialect: generic\nprojectDirectory: '" + tempDir.Replace("'", "''") + "'\n");
 
             var app = new FakeStartApp();
             using var result = app.Start(configFilePath: configPath, workingDirectory: tempDir);

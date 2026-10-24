@@ -1,6 +1,7 @@
 ﻿using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.Hosting;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.IO;
@@ -32,10 +33,12 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
     {
         await Container.InitializeLibrarySchema();
 
-        var fileFixture = new FsProjectFixture();
+        using var fileFixture = new FsProjectFixture();
         fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory(sourceDirectoryComponent).FullName);
 
-        var config = GetConfig(fileFixture, includeScripts, includeRefactors, enableSensitiveLogging: enableSensitiveLogging);
+        var startup = GetConfig(fileFixture, includeScripts, includeRefactors, enableSensitiveLogging: enableSensitiveLogging);
+        using var host = startup.Host;
+        MyConfig config = startup.Config;
 
         var changesPath = Path.Combine(fileFixture.RootDirectory.FullName, "Changes.sql");
         var computer = Core.Hosting.AppServiceProvider.ChangeComputer;
@@ -56,7 +59,9 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
             .First(x => x.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
 
         Assert.True(File.Exists(logFile));
-        var logContent = await File.ReadAllTextAsync(logFile, ct);
+        await using var logStream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var logReader = new StreamReader(logStream);
+        var logContent = await logReader.ReadToEndAsync(ct);
         Assert.False(string.IsNullOrWhiteSpace(logContent));
 
         if (enableSensitiveLogging)
@@ -86,7 +91,7 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
         return Container.ExecScriptAsync(script, ct).GetAwaiter().GetResult();
     }
 
-    private MyConfig GetConfig(FsProjectFixture fsFixture, bool includeScripts, bool includeRefactors, bool enableSensitiveLogging)
+    private (MyConfig Config, IHost Host) GetConfig(FsProjectFixture fsFixture, bool includeScripts, bool includeRefactors, bool enableSensitiveLogging)
     {
         var rootPath = fsFixture.RootDirectory.FullName;
         return Container.GetLibrarySchemaConfig(rootPath, includeScripts, includeRefactors, Container.GetPort(), Dialect, enableSensitiveLogging: enableSensitiveLogging);

@@ -1,6 +1,7 @@
 ﻿using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
@@ -20,6 +21,7 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
     where TBuilderEntity : IContainerBuilder<TBuilderEntity, TContainerEntity, IContainerConfiguration>, new()
     where TContainerEntity : IContainer, IDatabaseContainer
 {
+    private IHost? _host;
     private readonly FsProjectFixture _fsFixtureInitial = new();
     protected DbFixture<TBuilderEntity, TContainerEntity> DbFixture { get; init; } = null!;
     private MyConfig MyConfig { get; set; } = null!;
@@ -80,7 +82,7 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
     {
         await DbFixture.Container.StartAsync();
         DbFixture.InitializeLibrarySchema();
-        MyConfig = DbFixture.GetLibrarySchemaConfig(_fsFixtureInitial.RootDirectory.FullName, false, false, Dialect);
+        (MyConfig, _host) = DbFixture.GetLibrarySchemaConfig(_fsFixtureInitial.RootDirectory.FullName, false, false, Dialect);
         var dbLoader = (MyDbDefinitionLoader)MyAppServiceProvider.DatabaseDefinitionLoader;
 
         return await dbLoader.LoadDefinitionAsync();
@@ -89,7 +91,8 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
     private MyDefinition GetEndDefinition(TestChangeConfig testSet)
     {
         testSet.FsFixture.CopyFiles(testSet.SourcePath, testSet.FsFixture.RootDirectory.FullName);
-        MyConfig = DbFixture.GetLibrarySchemaConfig(testSet.FsFixture.RootDirectory.FullName, testSet.IncludeScripts, testSet.IncludeRefactors, Dialect);
+        _host?.Dispose();
+        (MyConfig, _host) = DbFixture.GetLibrarySchemaConfig(testSet.FsFixture.RootDirectory.FullName, testSet.IncludeScripts, testSet.IncludeRefactors, Dialect);
         var fsLoader = (MyFsDefinitionLoader)MyAppServiceProvider.FilesystemDefinitionLoader;
 
         return fsLoader.LoadDefinition(false);
@@ -116,9 +119,14 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
+        _host?.Dispose();
         await DbFixture.Container.StopAsync();
         await DbFixture.Container.DisposeAsync();
         _fsFixtureInitial.Dispose();
+        foreach (var testSet in TestSets)
+        {
+            testSet.FsFixture.Dispose();
+        }
         GC.SuppressFinalize(this);
     }
 

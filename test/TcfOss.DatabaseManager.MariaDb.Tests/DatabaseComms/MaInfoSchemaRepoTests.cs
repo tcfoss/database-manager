@@ -21,6 +21,7 @@ public class MaInfoSchemaRepoTests : BaseInfoSchemaRepoTests, IClassFixture<MaIn
     protected override ReferentialAction DefaultReferentialAction => ReferentialAction.Restrict;
     protected override string DefaultIntegerWidth => "(11)";
     protected override RoutineParameterDirection FunctionParameterDirection => RoutineParameterDirection.In;
+    protected override EventEnabledStatus DisableOnSlaveStatus => EventEnabledStatus.DisableOnSlave;
 
     private static string DefaultCollation => " COLLATE utf8mb4_uca1400_ai_ci";
 
