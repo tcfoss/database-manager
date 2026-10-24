@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 
-namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
+namespace TcfOss.DatabaseManager.MsSql.Tests.FormattingTests;
 
 public class FormatDdlTests
 {
@@ -59,6 +60,25 @@ public class FormatDdlTests
             @b VARCHAR(20),
             @c INT OUT
         )
+        AS
+            SELECT
+                1;
+        """;
+        Assert.Equal(expected, formatted, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
+    public void StoredProcedure_WithWith()
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        var text = """create procedure sp @a INT = 0, @b varchar(20) with encryption, execute as owner as select 1""";
+
+        var formatted = formatter.GetFormatted(text);
+
+        var expected = """
+        CREATE
+        PROCEDURE [sp] (@a INT = 0, @b VARCHAR(20))
+        WITH ENCRYPTION, EXECUTE AS OWNER
         AS
             SELECT
                 1;
