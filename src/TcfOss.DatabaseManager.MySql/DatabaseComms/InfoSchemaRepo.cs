@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TcfOss.DatabaseManager.Core;
@@ -39,9 +40,6 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     private readonly IDbContextFactory<InfoSchemaContext> _contextFactory;
     private readonly IRetrieveRawEntities _rawEntityRetriever;
-    private static readonly Regex s_algorithmRegex = GetAlgorithmRegex();
-    private static readonly Regex s_checkOptionRegex = GetCheckOptionRegex();
-
 
     public InfoSchemaRepo(MyConfig config, IDbContextFactory<InfoSchemaContext> contextFactory, IRetrieveRawEntities rawEntityRetriever)
     {
@@ -275,8 +273,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 {
                     Expression: SingleIdentifier { Identifier.QuoteStyle: QuoteStyle.None } idExpr
                 }
-                && ((dataType is MyDataType.MyChar ct && ct.Length >= idExpr.Identifier.Name.Length)
-                    || (dataType is MyDataType.MyVarchar vc && vc.Length >= idExpr.Identifier.Name.Length)))
+                && (dataType is MyDataType.BaseMyStringType))
             {
                 colDefault = new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(idExpr.Identifier.Name));
             }
@@ -622,21 +619,14 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         string createViewEntity = (await _rawEntityRetriever.GetCreateViewAsync(viewId, cancellationToken)).CreateView!;
 
         ViewAlgorithm? algorithm = null;
-        Match agloMatch = s_algorithmRegex.Match(createViewEntity);
+        Match agloMatch = GetAlgorithmRegex().Match(createViewEntity);
 
         if (agloMatch.Success)
         {
             algorithm = ViewAlgorithm.Parse(agloMatch.Groups[1].Value);
         }
 
-        ViewCheckOption? checkOption = null;
-        Match checkMatch = s_checkOptionRegex.Match(createViewEntity);
-        if (checkMatch.Success)
-        {
-            checkOption = string.IsNullOrWhiteSpace(checkMatch.Groups[1].Value)
-                ? ViewCheckOption.Cascaded
-                : ViewCheckOption.Parse(checkMatch.Groups[1].Value);
-        }
+        ViewCheckOption? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOption.Parse(isView.CheckOption!);
 
         return new MyView(viewId, body)
         {
@@ -794,6 +784,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         };
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Catch block is impossible to cover; Happy path is covered by consumers.")]
     private async Task<QueryLease<InfoSchemaContext>> GetConnectionAsync(CancellationToken cancellationToken)
     {
         await _queryGate.WaitAsync(cancellationToken);

@@ -26,6 +26,9 @@ public abstract class BaseInfoSchemaRepoTests
     protected abstract ViewAlgorithm? DefaultViewAlgorithm { get; }
     protected abstract string ViewExpectedText { get; }
 
+    protected ObjectIdentifier ObIdent(string name, string schema) =>
+        new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+
     [Fact]
     public async Task Get_Table_Identifiers_1()
     {
@@ -235,6 +238,43 @@ public abstract class BaseInfoSchemaRepoTests
     }
 
     [Fact]
+    public async Task Table_WithDescendingIndexes()
+    {
+        var tableId = new ObjectIdentifier("table_with_desc_index", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
+        Assert.NotNull(table);
+        Assert.Equal("table_with_desc_index", table.Name.Name);
+
+        Assert.NotNull(table.PrimaryKey);
+
+        var refCol = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
+        Assert.Equal("id", refCol.Name.Name);
+        Assert.Null(refCol.Length);
+        Assert.Equal(Direction.Descending, refCol.Direction);
+
+        var index = Assert.Single(table.Keys.Values);
+        var indexCol = Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns));
+        Assert.Equal("val", indexCol.Name.Name);
+        Assert.NotNull(indexCol.Length);
+        Assert.Equal(5u, indexCol.Length);
+        Assert.Equal(Direction.Descending, indexCol.Direction);
+    }
+
+    [Fact]
+    public async Task Table_NoConstraints()
+    {
+        var tableId = new ObjectIdentifier("table_no_constraints", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
+        Assert.NotNull(table);
+        Assert.Equal("table_no_constraints", table.Name.Name);
+
+        Assert.Null(table.PrimaryKey);
+        Assert.Empty(table.UniqueKeys);
+        Assert.Empty(table.ForeignKeys);
+        Assert.Single(table.Keys);
+    }
+
+    [Fact]
     public async Task Foreign_Keys()
     {
         var tableId = new ObjectIdentifier("book_author", new SchemaIdentifier("library_catalog", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
@@ -422,11 +462,24 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Equal("available_books", view.Name.Name);
 
         Assert.Equal(DefaultViewAlgorithm, view.Algorithm);
+        Assert.Null(view.CheckOption);
         Assert.Equal(SecurityContext.Invoker, view.SecurityContext);
         Assert.Equal(new Account.IdentityWithHost(new ExtendedIdentifier("admin", ExtendedQuoteStyle.Backticks), new ExtendedIdentifier("localhost", ExtendedQuoteStyle.Backticks)), view.Definer.Account);
 
         var actual = view.Body.ToSql();
         Assert.Equal(ViewExpectedText, actual, ignoreCase: true, ignoreAllWhiteSpace: true);
+    }
+
+    [Fact]
+    public async Task View_WithOptions()
+    {
+        var viewId = ObIdent("view_with_options", "extra_test");
+        var view = await Repo.GetViewAsync(viewId, TestContext.Current.CancellationToken);
+        Assert.NotNull(view);
+
+        Assert.Equal("view_with_options", view.Name.Name);
+        Assert.Equal(ViewAlgorithm.Merge, view.Algorithm);
+        Assert.Equal(ViewCheckOption.Local, view.CheckOption);
     }
 
     [Fact]
@@ -499,29 +552,8 @@ public abstract class BaseInfoSchemaRepoTests
 
         Assert.True(evt.OnCompletionPreserve);
         Assert.Equal(DisableOnSlaveStatus, evt.EventEnabledStatus);
-    }
-
-    [Fact]
-    public async Task Table_DescendingIndexes()
-    {
-        var tableId = new ObjectIdentifier("with_desc_index", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
-        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
-        Assert.NotNull(table);
-        Assert.Equal("with_desc_index", table.Name.Name);
-
-        Assert.NotNull(table.PrimaryKey);
-
-        var refCol = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
-        Assert.Equal("id", refCol.Name.Name);
-        Assert.Null(refCol.Length);
-        Assert.Equal(Direction.Descending, refCol.Direction);
-
-        var index = Assert.Single(table.Keys.Values);
-        var indexCol = Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns));
-        Assert.Equal("val", indexCol.Name.Name);
-        Assert.NotNull(indexCol.Length);
-        Assert.Equal(5u, indexCol.Length);
-        Assert.Equal(Direction.Descending, indexCol.Direction);
+        Assert.NotNull(evt.Comment);
+        Assert.Equal("different by dialect", evt.Comment.Text);
     }
 
     [Fact]

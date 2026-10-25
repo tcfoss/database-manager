@@ -17,11 +17,14 @@ mysql-with-charset --execute="GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost'
 mysql-with-charset --execute="GRANT SUPER ON *.* TO 'admin'@'localhost'; FLUSH PRIVILEGES;"
 
 mysql-with-charset --execute="CREATE DATABASE extra_test"
-mysql-with-charset extra_test < /InitialSchemas/Schema/with_desc_index.sql
+mysql-with-charset extra_test < /InitialSchemas/Schema/table_with_desc_index.sql
+mysql-with-charset extra_test < /InitialSchemas/Schema/table_no_constraints.sql
+mysql-with-charset extra_test < /InitialSchemas/Schema/table_column_defaults.sql
 mysql-with-charset extra_test < /InitialSchemas/Schema/event_at.sql
 mysql-with-charset extra_test < /InitialSchemas/Schema/event_disable.sql
 mysql-with-charset extra_test < /InitialSchemas/Schema/proc_no_params.sql
 mysql-with-charset extra_test < /InitialSchemas/Schema/func_no_params.sql
+mysql-with-charset extra_test < /InitialSchemas/Schema/view_with_options.sql
 
 server_version=$(mysql-with-charset --batch --skip-column-names --execute="SELECT VERSION()")
 if [[ "$server_version" == *MariaDB* ]]; then

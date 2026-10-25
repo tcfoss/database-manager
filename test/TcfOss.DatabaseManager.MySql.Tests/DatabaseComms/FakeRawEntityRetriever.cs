@@ -39,6 +39,14 @@ public class FakeRawEntityRetriever : IRetrieveRawEntities
                 CreateView = TestText.RawCreateView_LibraryActivity_AvailableBooks
             });
         }
+        if (viewId.Schema.Name == "extra_test" && viewId.Name == "view_with_options")
+        {
+            return Task.FromResult(new CreateViewEntity
+            {
+                View = viewId,
+                CreateView = TestText.RawCreateView_ExtraTest_ViewWithOptions
+            });
+        }
         throw new KeyNotFoundException($"No view found with name {viewId}");
     }
 }

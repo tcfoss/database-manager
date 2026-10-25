@@ -398,6 +398,20 @@ WHERE NOT EXISTS (
 );
     </value>
   </data>
+  <data name="RawCreateView_ExtraTest_ViewWithOptions" xml:space="preserve">
+    <value>
+CREATE
+    ALGORITHM = MERGE
+    DEFINER = 'root'@'localhost'
+    SQL SECURITY INVOKER
+VIEW view_with_options
+AS
+    SELECT tnc.id,
+           tnc.val
+    FROM table_no_constraints AS tnc
+    WITH LOCAL CHECK OPTION;;
+    </value>
+  </data>
   <data name="BadConfig_Template" xml:space="preserve">
     <value>
 Catalog: def

@@ -1,4 +1,4 @@
-CREATE TABLE with_desc_index (
+CREATE TABLE table_with_desc_index (
     id INT NOT NULL,
     val VARCHAR(10) NOT NULL,
     PRIMARY KEY (id desc),
