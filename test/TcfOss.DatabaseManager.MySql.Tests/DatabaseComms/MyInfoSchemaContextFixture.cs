@@ -39,23 +39,17 @@ public class MyInfoSchemaContextFixture : IDisposable
     private static void Seed(InfoSchemaContext context)
     {
         context.Tables.AddRange(MySqlContextTestData.GetTableEntities());
-        context.Tables.AddRange(MySqlExtraData.GetTableEntities());
         context.Columns.AddRange(MySqlContextTestData.GetColumnEntities());
-        context.Columns.AddRange(MySqlExtraData.GetColumnEntities());
         context.TableConstraints.AddRange(MySqlContextTestData.GetTableConstraintEntities());
-        context.TableConstraints.AddRange(MySqlExtraData.GetTableConstraintEntities());
         context.ReferentialConstraints.AddRange(MySqlContextTestData.GetReferentialConstraintEntities());
         context.KeyColumnUsages.AddRange(MySqlContextTestData.GetKeyColumnUsageEntities());
-        context.KeyColumnUsages.AddRange(MySqlExtraData.GetKeyColumnUsageEntities());
         context.Statistics.AddRange(MySqlContextTestData.GetStatisticsEntities());
-        context.Statistics.AddRange(MySqlExtraData.GetStatisticsEntities());
         context.CheckConstraints.AddRange(MySqlContextTestData.GetCheckConstraintEntities());
         context.Routines.AddRange(MySqlContextTestData.GetRoutineEntities());
         context.Parameters.AddRange(MySqlContextTestData.GetParameterEntities());
         context.Triggers.AddRange(MySqlContextTestData.GetTriggerEntities());
         context.Views.AddRange(MySqlContextTestData.GetViewEntities());
         context.Events.AddRange(MySqlContextTestData.GetEventEntities());
-        context.Events.AddRange(MySqlExtraData.GetEventEntities());
         context.Schematas.AddRange(MySqlContextTestData.GetSchemataEntities());
         context.Engines.AddRange(MySqlContextTestData.GetEngineEntities());
         context.CharacterSets.AddRange(MySqlContextTestData.GetCharacterSetEntities());

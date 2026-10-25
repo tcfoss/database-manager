@@ -1,0 +1,8 @@
+DELIMITER //
+
+CREATE PROCEDURE proc_no_params()
+BEGIN
+    SELECT 1;
+END //
+
+DELIMITER ;

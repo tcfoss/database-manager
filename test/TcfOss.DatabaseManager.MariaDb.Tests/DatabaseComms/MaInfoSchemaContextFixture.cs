@@ -40,23 +40,17 @@ public class MaInfoSchemaContextFixture : IDisposable
     private static void Seed(InfoSchemaContext context)
     {
         context.Tables.AddRange(MariaDbContextTestData.GetTableEntities());
-        context.Tables.AddRange(MariaDbExtraData.GetTableEntities());
         context.Columns.AddRange(MariaDbContextTestData.GetColumnEntities());
-        context.Columns.AddRange(MariaDbExtraData.GetColumnEntities());
         context.TableConstraints.AddRange(MariaDbContextTestData.GetTableConstraintEntities());
-        context.TableConstraints.AddRange(MariaDbExtraData.GetTableConstraintEntities());
         context.ReferentialConstraints.AddRange(MariaDbContextTestData.GetReferentialConstraintEntities());
         context.KeyColumnUsages.AddRange(MariaDbContextTestData.GetKeyColumnUsageEntities());
-        context.KeyColumnUsages.AddRange(MariaDbExtraData.GetKeyColumnUsageEntities());
         context.Statistics.AddRange(MariaDbContextTestData.GetStatisticsEntities());
-        context.Statistics.AddRange(MariaDbExtraData.GetStatisticsEntities());
         context.CheckConstraints.AddRange(MariaDbContextTestData.GetCheckConstraintEntities());
         context.Routines.AddRange(MariaDbContextTestData.GetRoutineEntities());
         context.Parameters.AddRange(MariaDbContextTestData.GetParameterEntities());
         context.Triggers.AddRange(MariaDbContextTestData.GetTriggerEntities());
         context.Views.AddRange(MariaDbContextTestData.GetViewEntities());
         context.Events.AddRange(MariaDbContextTestData.GetEventEntities());
-        context.Events.AddRange(MariaDbExtraData.GetEventEntities());
         context.Schematas.AddRange(MariaDbContextTestData.GetSchemataEntities());
         context.Engines.AddRange(MariaDbContextTestData.GetEngineEntities());
         context.CharacterSets.AddRange(MariaDbContextTestData.GetCharacterSetEntities());

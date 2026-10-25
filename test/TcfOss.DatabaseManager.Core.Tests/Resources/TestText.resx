@@ -366,6 +366,19 @@ BEGIN
 END
     </value>
   </data>
+  <data name="RawCreateProcedure_ExtraTest_ProcNoParams" xml:space="preserve">
+    <value>
+CREATE
+    DEFINER = 'root'@'localhost'
+PROCEDURE proc_no_params()
+    SQL SECURITY DEFINER
+BEGIN
+
+    SELECT 1;
+
+END
+    </value>
+  </data>
   <data name="RawCreateView_LibraryActivity_AvailableBooks" xml:space="preserve">
     <value>
 CREATE
