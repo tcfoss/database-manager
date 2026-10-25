@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/unit-test/">
+    <Project Path="../test/TcfOss.DatabaseManager.Core.Tests/TcfOss.DatabaseManager.Core.Tests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.MariaDb.Tests/TcfOss.DatabaseManager.MariaDb.Tests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.MsSql.Tests/TcfOss.DatabaseManager.MsSql.Tests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.MySql.Tests/TcfOss.DatabaseManager.MySql.Tests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.Hosting.Tests/TcfOss.DatabaseManager.Hosting.Tests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.Core.IntegrationTests/TcfOss.DatabaseManager.Core.IntegrationTests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.Hosting.IntegrationTests/TcfOss.DatabaseManager.Hosting.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
