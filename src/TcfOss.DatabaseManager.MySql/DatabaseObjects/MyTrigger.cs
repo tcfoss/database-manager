@@ -33,7 +33,7 @@ public record MyTrigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Trigger
         return new CreateTrigger(Name.ToObjectName(includeSchema ? 2 : 1), TriggerTime, [TriggerEvent], OnTable.ToObjectName(includeSchema ? 2 : 1), Body)
         {
             Definer = Definer,
-            ExecutionQuantifier = new TriggerExecutionQuantifier.ForEach(TriggerForEachType.Row, IncludeEach: true),
+            ExecutionQuantifier = new TriggerExecutionQuantifier.ForEach(TriggerForEachType.Row),
             Meta = new MetaData { RawText = RawBodyText }
         };
     }

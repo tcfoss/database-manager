@@ -205,6 +205,43 @@ public class FormatCreateTableTests
     }
 
     [Fact]
+    public void CreateTable_UnnamedIndexes()
+    {
+        var text = """
+            CREATE TABLE my_table (
+                id int not null,
+                name VARCHAR(100) not null,
+                description text not null,
+                location POINT NOT NULL,
+                INDEX (id),
+                unique key (name),
+                KEY (name),
+                fulltext index (description),
+                spatial key  (location)
+            );
+        """;
+
+        var formatted = """
+        CREATE TABLE `my_table`
+        (
+            `id` INT NOT NULL,
+            `name` VARCHAR(100) NOT NULL,
+            `description` TEXT NOT NULL,
+            `location` POINT NOT NULL,
+            INDEX (`id`),
+            UNIQUE KEY (`name`),
+            KEY (`name`),
+            FULLTEXT INDEX (`description`),
+            SPATIAL KEY (`location`)
+        );
+        """;
+
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
     public void CreateTable_Temporary()
     {
         var text = """
