@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TcfOss.DatabaseManager.MsSql\TcfOss.DatabaseManager.MsSql.csproj" />
+    <ProjectReference Include="..\..\src\TcfOss.DatabaseManager.MsSql.Hosting\TcfOss.DatabaseManager.MsSql.Hosting.csproj" />
     <ProjectReference Include="..\TcfOss.DatabaseManager.Core.IntegrationTests\TcfOss.DatabaseManager.Core.IntegrationTests.csproj" />
     <ProjectReference Include="..\TcfOss.DatabaseManager.MsSql.Tests\TcfOss.DatabaseManager.MsSql.Tests.csproj" />
   </ItemGroup>

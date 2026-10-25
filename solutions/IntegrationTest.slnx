@@ -5,5 +5,6 @@
     <Project Path="../test/TcfOss.DatabaseManager.MariaDb.IntegrationTests/TcfOss.DatabaseManager.MariaDb.IntegrationTests.csproj" />
     <Project Path="../test/TcfOss.DatabaseManager.MySql.IntegrationTests/TcfOss.DatabaseManager.MySql.IntegrationTests.csproj" />
     <Project Path="../test/TcfOss.DatabaseManager.MsSql.IntegrationTests/TcfOss.DatabaseManager.MsSql.IntegrationTests.csproj" />
+    <Project Path="../test/TcfOss.DatabaseManager.Hosting.IntegrationTests/TcfOss.DatabaseManager.Hosting.IntegrationTests.csproj" />
   </Folder>
 </Solution>
