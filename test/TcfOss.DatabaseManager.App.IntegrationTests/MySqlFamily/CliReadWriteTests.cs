@@ -21,7 +21,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
         await Container.InitializeLibrarySchema();
 
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test1").FullName);
+        fileFixture.CopyFiles(CommonHelpers.GetLibrarySchemaDirectory("Test1").FullName);
 
         var initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
 
@@ -42,7 +42,7 @@ public abstract class CliReadWriteTests<TBuilderEntity, TContainerEntity>(ITestO
         await Container.InitializeLibrarySchema();
 
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test2").FullName);
+        fileFixture.CopyFiles(CommonHelpers.GetLibrarySchemaDirectory("Test2").FullName);
 
         var initialChangesText = await Verify_DoubleDiff_NoChanges(fileFixture.RootDirectory.FullName, Container);
 

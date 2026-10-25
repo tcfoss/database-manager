@@ -34,7 +34,7 @@ public abstract class ChangeComputerTests<TBuilderEntity, TContainerEntity>(ITes
         await Container.InitializeLibrarySchema();
 
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory(sourceDirectoryComponent).FullName);
+        fileFixture.CopyFiles(CommonHelpers.GetLibrarySchemaDirectory(sourceDirectoryComponent).FullName);
 
         var startup = GetConfig(fileFixture, includeScripts, includeRefactors, enableSensitiveLogging: enableSensitiveLogging);
         using var host = startup.Host;

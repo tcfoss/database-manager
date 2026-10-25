@@ -18,6 +18,7 @@ public class MariaDbStartAppIntegrationTests
         rawConfig.Credentials!.Hostname = "127.0.0.1";
         rawConfig.Credentials.Port = "1";
         rawConfig.Credentials.ConnectionTimeout = 1;
+        rawConfig.Credentials.SocketPath = null;
 
         using var result = new MariaDbStartApp().Start(
             rawConfig: rawConfig,

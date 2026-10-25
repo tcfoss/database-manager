@@ -12,7 +12,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
     public override Task Verify_DoubleDiff_NoChanges_1()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test1").FullName);
+        fileFixture.CopyFiles(CommonHelpers.GetLibrarySchemaDirectory("Test1").FullName);
 
         var workingDir = fileFixture.RootDirectory.FullName;
 
@@ -29,7 +29,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
     public override Task Verify_DoubleDiff_NoChanges_2()
     {
         using var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Test2").FullName);
+        fileFixture.CopyFiles(CommonHelpers.GetLibrarySchemaDirectory("Test2").FullName);
 
         var workingDir = fileFixture.RootDirectory.FullName;
 

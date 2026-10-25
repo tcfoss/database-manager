@@ -30,12 +30,17 @@ public static partial class CommonHelpers
     private static readonly Regex s_passwordRegex = GetPasswordRegex();
 
     private static DirectoryInfo SchemasDirectory { get; } = new(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql"));
-    public static DirectoryInfo InitialSourceDirectory { get; } = new(Path.Combine(SchemasDirectory.FullName, "Initial"));
+    public static DirectoryInfo InitialSourceDirectory { get; } = new(Path.Combine(SchemasDirectory.FullName, "Library", "Initial"));
     public static DirectoryInfo SimpleSchemaSourceDirectory { get; } = new(Path.Combine(SchemasDirectory.FullName, "SimpleSchema"));
 
-    public static DirectoryInfo GetSchemaDirectory(string testSchemaName)
+    public static DirectoryInfo GetLibrarySchemaDirectory(string testSchemaName)
     {
-        return new DirectoryInfo(Path.Combine(SchemasDirectory.FullName, testSchemaName));
+        return new DirectoryInfo(Path.Combine(SchemasDirectory.FullName, "Library", testSchemaName));
+    }
+
+    public static DirectoryInfo GetSimpleSchemaDirectory(string testSchemaName)
+    {
+        return new DirectoryInfo(Path.Combine(SchemasDirectory.FullName, "SimpleSchema", testSchemaName));
     }
 
     public static DirectoryInfo GetSchemaDirectory(params string[] pathSegments)

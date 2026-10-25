@@ -13,6 +13,7 @@ BASE_CONFIGS = {
         key_columns=["TABLE_CATALOG", "TABLE_SCHEMA", "TABLE_NAME", "COLUMN_NAME"],
         model_name_override="Column",
         ignored_columns=["IS_SYSTEM_TIME_PERIOD_START", "IS_SYSTEM_TIME_PERIOD_END"],
+        not_null_overrides=["EXTRA"],
     ),
     "SCHEMATA": ModelConfig(
         table_name="SCHEMATA",

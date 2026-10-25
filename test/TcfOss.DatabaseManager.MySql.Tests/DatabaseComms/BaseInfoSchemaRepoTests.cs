@@ -458,4 +458,32 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Equal(5u, indexCol.Length);
         Assert.Equal(Direction.Descending, indexCol.Direction);
     }
+
+    [Fact]
+    public async Task GetUnappliedRefactors_NoSchemas_ReturnsEmpty()
+    {
+        var unappliedRefactors = await Repo.GetUnappliedRefactorsAsync([], ["abc123"], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedRefactors);
+    }
+
+    [Fact]
+    public async Task GetUnappliedRefactors_NoRefactors_ReturnsEmpty()
+    {
+        var unappliedRefactors = await Repo.GetUnappliedRefactorsAsync([new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle)], [], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedRefactors);
+    }
+
+    [Fact]
+    public async Task GetUnappliedDeployScripts_NoSchemas_ReturnsEmpty()
+    {
+        var unappliedDeployScripts = await Repo.GetUnappliedDeployScriptsAsync([], ["abc123"], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedDeployScripts);
+    }
+
+    [Fact]
+    public async Task GetUnappliedDeployScripts_NoDeployScripts_ReturnsEmpty()
+    {
+        var unappliedDeployScripts = await Repo.GetUnappliedDeployScriptsAsync([new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle)], [], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedDeployScripts);
+    }
 }

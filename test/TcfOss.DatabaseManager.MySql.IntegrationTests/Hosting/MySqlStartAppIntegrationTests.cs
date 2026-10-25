@@ -16,6 +16,7 @@ public class MySqlStartAppIntegrationTests
         rawConfig.Credentials!.Hostname = "127.0.0.1";
         rawConfig.Credentials.Port = "1";
         rawConfig.Credentials.ConnectionTimeout = 1;
+        rawConfig.Credentials.SocketPath = null;
 
         using var result = new MySqlStartApp().Start(
             rawConfig: rawConfig,

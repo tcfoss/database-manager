@@ -29,14 +29,14 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
 
     public List<TestChangeConfig> TestSets { get; } = [
         new() {
-            SourcePath = new DirectoryInfo(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql", "Initial")).FullName
+            SourcePath = new DirectoryInfo(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql", "Library", "Initial")).FullName
         },
         new() {
-            SourcePath = new DirectoryInfo(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql", "Test1")).FullName,
+            SourcePath = new DirectoryInfo(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql", "Library", "Test1")).FullName,
             IncludeScripts = true,
         },
         new() {
-            SourcePath = new DirectoryInfo(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql", "Test2")).FullName,
+            SourcePath = new DirectoryInfo(Path.Combine(CommonDirectoryPath.GetProjectDirectory().DirectoryPath, "..", "Resources", "TestSchemas", "MySql", "Library", "Test2")).FullName,
             IncludeRefactors = true,
         }
     ];

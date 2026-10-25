@@ -8,6 +8,7 @@ public static class MariaDbExtraData
     {
         return [
             new TableEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", TableType = "BASE TABLE", Engine = "InnoDB", RowFormat = "Dynamic", TableRows = 10, AvgRowLength = 100, DataLength = 1000, MaxDataLength = 1000, DataFree = 0, AutoIncrement = 1, CreateTime = DateTime.Now, UpdateTime = DateTime.Now, CheckTime = null, TableCollation = "utf8mb4_general_ci", Checksum = null, CreateOptions = "", TableComment = "", MaxIndexLength = 0, Temporary = "N" },
+            new TableEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "_database_manager", TableType = "BASE TABLE", Engine = "InnoDB", Version = 10, RowFormat = "Dynamic", TableRows = 2, AvgRowLength = 8192, DataLength = 16384, MaxDataLength = 0, IndexLength = 0, DataFree = 0, AutoIncrement = null, CreateTime = DateTime.Parse("2026-06-13T02:15:04"), UpdateTime = DateTime.Parse("2026-06-13T02:15:04"), CheckTime = null, TableCollation = "utf8mb4_general_ci", Checksum = null, CreateOptions = "", TableComment = "", Temporary = "N" },
         ];
     }
 
@@ -15,14 +16,17 @@ public static class MariaDbExtraData
     {
         return [
             new ColumnEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", ColumnName = "id", OrdinalPosition = 1, ColumnDefault = null, IsNullable = "NO", DataType = "int", CharacterMaximumLength = null, CharacterOctetLength = null, NumericPrecision = 10, NumericScale = 0, DatetimePrecision = null, CharacterSetName = null, CollationName = null, ColumnType = "int(11)", ColumnKey = "PRI", Extra = "auto_increment", Privileges = "select,insert,update,references", ColumnComment = "", IsGenerated = "NEVER", GenerationExpression = null },
-            new ColumnEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", ColumnName = "val", OrdinalPosition = 2, ColumnDefault = null, IsNullable = "NO", DataType = "varchar", CharacterMaximumLength = 10, CharacterOctetLength = 40, NumericPrecision = null, NumericScale = null, DatetimePrecision = null, CharacterSetName = "utf8mb4", CollationName = "utf8mb4_general_ci", ColumnType = "varchar(10)", ColumnKey = "MUL", Extra = "", Privileges = "select,insert,update,references", ColumnComment = "", IsGenerated = "NEVER", GenerationExpression = null }
+            new ColumnEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", ColumnName = "val", OrdinalPosition = 2, ColumnDefault = null, IsNullable = "NO", DataType = "varchar", CharacterMaximumLength = 10, CharacterOctetLength = 40, NumericPrecision = null, NumericScale = null, DatetimePrecision = null, CharacterSetName = "utf8mb4", CollationName = "utf8mb4_general_ci", ColumnType = "varchar(10)", ColumnKey = "MUL", Extra = "", Privileges = "select,insert,update,references", ColumnComment = "", IsGenerated = "NEVER", GenerationExpression = null },
+            new ColumnEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "_database_manager", ColumnName = "entry_key", OrdinalPosition = 1, ColumnDefault = null, IsNullable = "NO", DataType = "char", CharacterMaximumLength = 36, CharacterOctetLength = 144, NumericPrecision = null, NumericScale = null, DatetimePrecision = null, CharacterSetName = "utf8mb4", CollationName = "utf8mb4_general_ci", ColumnType = "char(36)", ColumnKey = "PRI", Extra = "", Privileges = "select,insert,update,references", ColumnComment = "", IsGenerated = "NEVER", GenerationExpression = "" },
+            new ColumnEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "_database_manager", ColumnName = "entry_type", OrdinalPosition = 2, ColumnDefault = null, IsNullable = "NO", DataType = "char", CharacterMaximumLength = 1, CharacterOctetLength = 4, NumericPrecision = null, NumericScale = null, DatetimePrecision = null, CharacterSetName = "utf8mb4", CollationName = "utf8mb4_general_ci", ColumnType = "char(1)", ColumnKey = "", Extra = "", Privileges = "select,insert,update,references", ColumnComment = "", IsGenerated = "NEVER", GenerationExpression = "" },
         ];
     }
 
     public static TableConstraintEntity[] GetTableConstraintEntities()
     {
         return [
-            new TableConstraintEntity { ConstraintCatalog = "def", ConstraintSchema = "extra_test", ConstraintName = "PRIMARY", TableSchema = "extra_test", TableName = "with_desc_index", ConstraintType = "PRIMARY KEY" }
+            new TableConstraintEntity { ConstraintCatalog = "def", ConstraintSchema = "extra_test", ConstraintName = "PRIMARY", TableSchema = "extra_test", TableName = "with_desc_index", ConstraintType = "PRIMARY KEY" },
+            new TableConstraintEntity { ConstraintCatalog = "def", ConstraintSchema = "extra_test", ConstraintName = "_database_manager_entry_key", TableSchema = "extra_test", TableName = "_database_manager", ConstraintType = "UNIQUE" },
         ];
     }
 
@@ -30,7 +34,8 @@ public static class MariaDbExtraData
     {
         return [
             new StatisticsEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", NonUnique = 0, IndexSchema = "extra_test", IndexName = "PRIMARY", SeqInIndex = 1, ColumnName = "id", Collation = "D", Cardinality = 0, SubPart = null, Packed = null, Nullable = "", IndexType = "BTREE", Comment = "", IndexComment = "", Ignored = "NO" },
-            new StatisticsEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", NonUnique = 1, IndexSchema = "extra_test", IndexName = "idx_with_desc_index_val", SeqInIndex = 1, ColumnName = "val", Collation = "D", Cardinality = 0, SubPart = 5, Packed = null, Nullable = "", IndexType = "BTREE", Comment = "", IndexComment = "", Ignored = "NO" }
+            new StatisticsEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "with_desc_index", NonUnique = 1, IndexSchema = "extra_test", IndexName = "idx_with_desc_index_val", SeqInIndex = 1, ColumnName = "val", Collation = "D", Cardinality = 0, SubPart = 5, Packed = null, Nullable = "", IndexType = "BTREE", Comment = "", IndexComment = "", Ignored = "NO" },
+            new StatisticsEntity { TableCatalog = "def", TableSchema = "extra_test", TableName = "_database_manager", NonUnique = 0, IndexSchema = "extra_test", IndexName = "_database_manager_entry_key", SeqInIndex = 1, ColumnName = "entry_key", Collation = "A", Cardinality = 1, SubPart = null, Packed = null, Nullable = "", IndexType = "BTREE", Comment = "", IndexComment = "", Ignored = "NO" },
         ];
     }
 
@@ -38,6 +43,7 @@ public static class MariaDbExtraData
     {
         return [
             new KeyColumnUsageEntity { ConstraintCatalog = "def", ConstraintSchema = "extra_test", ConstraintName = "PRIMARY", TableCatalog = "def",TableSchema = "extra_test", TableName = "with_desc_index", ColumnName = "id", OrdinalPosition = 1, PositionInUniqueConstraint = null, ReferencedTableSchema = null, ReferencedTableName = null, ReferencedColumnName = null },
+            new KeyColumnUsageEntity { ConstraintCatalog = "def", ConstraintSchema = "extra_test", ConstraintName = "_database_manager_entry_key", TableCatalog = "def", TableSchema = "extra_test", TableName = "_database_manager", ColumnName = "entry_key", OrdinalPosition = 1, PositionInUniqueConstraint = null, ReferencedTableSchema = null, ReferencedTableName = null, ReferencedColumnName = null, },
         ];
     }
 
