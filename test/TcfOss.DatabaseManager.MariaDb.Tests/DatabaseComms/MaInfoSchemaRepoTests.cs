@@ -23,6 +23,7 @@ public class MaInfoSchemaRepoTests : BaseInfoSchemaRepoTests, IClassFixture<MaIn
     protected override string DefaultCollation => " COLLATE utf8mb4_uca1400_ai_ci";
     protected override ViewAlgorithm? DefaultViewAlgorithm => ViewAlgorithm.Undefined;
     protected override string ViewExpectedText => "SELECT `bc`.`book_id` AS `book_id`, `bc`.`full_title` AS `full_title` FROM `library_catalog`.`book` AS `bc` WHERE NOT EXISTS (SELECT 1 FROM `library_activity`.`active_rental` AS `ar` WHERE `ar`.`book_id` = `bc`.`book_id` AND `ar`.`really_active` = 'Y' LIMIT 1)";
+    protected override string ExpectedLowercaseFunctionName => "LCASE";
 
     public MaInfoSchemaRepoTests(MaInfoSchemaContextFixture fixture)
     {

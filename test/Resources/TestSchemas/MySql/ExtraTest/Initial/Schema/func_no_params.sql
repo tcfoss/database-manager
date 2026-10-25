@@ -3,6 +3,7 @@ DELIMITER //
 CREATE FUNCTION func_no_params()
 RETURNS INT
 DETERMINISTIC
+COMMENT 'func comment'
 BEGIN
     RETURN 1;
 END //

@@ -58,6 +58,7 @@ public class MyFunctionNameProvider : IFunctionNameProvider
         "CHAR_LENGTH",
         "UPPER",
         "LOWER",
+        "LCASE",
         "TRIM",
         "LTRIM",
         "RTRIM",

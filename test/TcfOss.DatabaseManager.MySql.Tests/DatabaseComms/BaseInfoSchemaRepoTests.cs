@@ -25,6 +25,7 @@ public abstract class BaseInfoSchemaRepoTests
     protected abstract string DefaultCollation { get; }
     protected abstract ViewAlgorithm? DefaultViewAlgorithm { get; }
     protected abstract string ViewExpectedText { get; }
+    protected abstract string ExpectedLowercaseFunctionName { get; }
 
     protected ObjectIdentifier ObIdent(string name, string schema) =>
         new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
@@ -272,6 +273,26 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Empty(table.UniqueKeys);
         Assert.Empty(table.ForeignKeys);
         Assert.Single(table.Keys);
+    }
+
+    [Fact]
+    public async Task Table_ColumnDefaults_DistinguishesExpressionsAndLiterals()
+    {
+        var table = await Repo.GetTableAsync(ObIdent("table_column_defaults", "extra_test"), TestContext.Current.CancellationToken);
+        var defaults = table.Columns.ToDictionary(column => column.Name.Name, column => column.Default);
+
+        Assert.Null(defaults["id"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("default")), defaults["base_col"]);
+        var expectedReference = new ColumnOption.ColumnDefault.DefaultExpression(new SingleIdentifier(new Identifier("base_col", QuoteStyle.Backticks)));
+        Assert.Equal(expectedReference, defaults["ref_quoted"]);
+        Assert.Equal(expectedReference, defaults["ref_unquoted"]);
+        var functionDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(defaults["ref_func"]);
+        var functionCall = Assert.IsType<FunctionCall>(functionDefault.Expression);
+        Assert.Equal(ExpectedLowercaseFunctionName, functionCall.Name.ToString());
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("lower(`base_col`)")), defaults["string_looks_like_func"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("2024-01-01")), defaults["date_type"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.HexString("64656661756C745F736563726574")), defaults["bin_type"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("")), defaults["empty_str"]);
     }
 
     [Fact]

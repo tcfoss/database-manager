@@ -11,7 +11,6 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Statements;
-using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework.Entities;
@@ -267,16 +266,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             bool isNullable = q.IsNullable == "YES";
             ColumnOption.Nullability nullability = isNullable ? new ColumnOption.Nullability.Null() : new ColumnOption.Nullability.NotNull();
 
-            ColumnOption.ColumnDefault? colDefault = _helper.ParseColumnDefault(q.ColumnDefault, isNullable);
-
-            if (colDefault is ColumnOption.ColumnDefault.DefaultExpression
-                {
-                    Expression: SingleIdentifier { Identifier.QuoteStyle: QuoteStyle.None } idExpr
-                }
-                && (dataType is MyDataType.BaseMyStringType))
-            {
-                colDefault = new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(idExpr.Identifier.Name));
-            }
+            ColumnOption.ColumnDefault? colDefault = _helper.ParseColumnDefault(q.ColumnDefault, isNullable, dataType, q.Extra);
 
             ColumnOption.Generated? generation = _helper.ParseGenerated(q.GenerationExpression, q.Extra, _config.ParseSettings.RemoveSlashesBeforeQuotesGenerationExpression);
 

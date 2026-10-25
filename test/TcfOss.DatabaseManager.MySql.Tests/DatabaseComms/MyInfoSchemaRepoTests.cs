@@ -16,6 +16,7 @@ public class MyInfoSchemaRepoTests : BaseInfoSchemaRepoTests, IClassFixture<MyIn
     protected override string DefaultCollation => " COLLATE utf8mb4_0900_ai_ci";
     protected override ViewAlgorithm? DefaultViewAlgorithm => null;
     protected override string ViewExpectedText => "SELECT `bc`.`book_id` AS `book_id`, `bc`.`full_title` AS `full_title` FROM `library_catalog`.`book` AS `bc` WHERE EXISTS (SELECT 1 FROM `library_activity`.`active_rental` AS `ar` WHERE ((`ar`.`book_id` = `bc`.`book_id`) AND (`ar`.`really_active` = 'Y'))) IS FALSE";
+    protected override string ExpectedLowercaseFunctionName => "LOWER";
 
     public MyInfoSchemaRepoTests(MyInfoSchemaContextFixture fixture)
     {
