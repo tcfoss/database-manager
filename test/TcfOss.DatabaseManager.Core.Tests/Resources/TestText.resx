@@ -366,6 +366,19 @@ BEGIN
 END
     </value>
   </data>
+  <data name="RawCreateProcedure_ExtraTest_ProcNoParams" xml:space="preserve">
+    <value>
+CREATE
+    DEFINER = 'root'@'localhost'
+PROCEDURE proc_no_params()
+    SQL SECURITY DEFINER
+BEGIN
+
+    SELECT 1;
+
+END
+    </value>
+  </data>
   <data name="RawCreateView_LibraryActivity_AvailableBooks" xml:space="preserve">
     <value>
 CREATE
@@ -383,6 +396,20 @@ WHERE NOT EXISTS (
     WHERE ar.book_id = bc.book_id
     AND ar.really_active = 'Y'
 );
+    </value>
+  </data>
+  <data name="RawCreateView_ExtraTest_ViewWithOptions" xml:space="preserve">
+    <value>
+CREATE
+    ALGORITHM = MERGE
+    DEFINER = 'root'@'localhost'
+    SQL SECURITY INVOKER
+VIEW view_with_options
+AS
+    SELECT tnc.id,
+           tnc.val
+    FROM table_no_constraints AS tnc
+    WITH LOCAL CHECK OPTION;;
     </value>
   </data>
   <data name="BadConfig_Template" xml:space="preserve">

@@ -12,14 +12,6 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
-/// <summary>
-/// T-SQL DDL parser. Most parsing is shared with Core <see cref="DdlParser"/>;
-/// this subclass narrows behavior where T-SQL is stricter than the kitchen-sink
-/// Core implementation: rejects MySQL-only modifiers (DEFINER, ALGORITHM, SQL
-/// SECURITY, AGGREGATE), rejects <c>BEFORE</c> trigger time, and replaces the
-/// MySQL-style routine parameter form with the T-SQL <c>@name TYPE [= default]
-/// [OUT|OUTPUT]</c> form.
-/// </summary>
 public class MsDdlParser(MsParser parser) : DdlParser(parser)
 {
     private readonly MsParser _p = parser;

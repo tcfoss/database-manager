@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TcfOss.DatabaseManager.Core;
@@ -10,7 +11,6 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Statements;
-using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework.Entities;
@@ -39,9 +39,6 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     private readonly IDbContextFactory<InfoSchemaContext> _contextFactory;
     private readonly IRetrieveRawEntities _rawEntityRetriever;
-    private static readonly Regex s_algorithmRegex = GetAlgorithmRegex();
-    private static readonly Regex s_checkOptionRegex = GetCheckOptionRegex();
-
 
     public InfoSchemaRepo(MyConfig config, IDbContextFactory<InfoSchemaContext> contextFactory, IRetrieveRawEntities rawEntityRetriever)
     {
@@ -269,17 +266,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             bool isNullable = q.IsNullable == "YES";
             ColumnOption.Nullability nullability = isNullable ? new ColumnOption.Nullability.Null() : new ColumnOption.Nullability.NotNull();
 
-            ColumnOption.ColumnDefault? colDefault = _helper.ParseColumnDefault(q.ColumnDefault, isNullable);
-
-            if (colDefault is ColumnOption.ColumnDefault.DefaultExpression
-                {
-                    Expression: SingleIdentifier { Identifier.QuoteStyle: QuoteStyle.None } idExpr
-                }
-                && ((dataType is MyDataType.MyChar ct && ct.Length >= idExpr.Identifier.Name.Length)
-                    || (dataType is MyDataType.MyVarchar vc && vc.Length >= idExpr.Identifier.Name.Length)))
-            {
-                colDefault = new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(idExpr.Identifier.Name));
-            }
+            ColumnOption.ColumnDefault? colDefault = _helper.ParseColumnDefault(q.ColumnDefault, isNullable, dataType, q.Extra);
 
             ColumnOption.Generated? generation = _helper.ParseGenerated(q.GenerationExpression, q.Extra, _config.ParseSettings.RemoveSlashesBeforeQuotesGenerationExpression);
 
@@ -622,21 +609,14 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         string createViewEntity = (await _rawEntityRetriever.GetCreateViewAsync(viewId, cancellationToken)).CreateView!;
 
         ViewAlgorithm? algorithm = null;
-        Match agloMatch = s_algorithmRegex.Match(createViewEntity);
+        Match agloMatch = GetAlgorithmRegex().Match(createViewEntity);
 
         if (agloMatch.Success)
         {
             algorithm = ViewAlgorithm.Parse(agloMatch.Groups[1].Value);
         }
 
-        ViewCheckOption? checkOption = null;
-        Match checkMatch = s_checkOptionRegex.Match(createViewEntity);
-        if (checkMatch.Success)
-        {
-            checkOption = string.IsNullOrWhiteSpace(checkMatch.Groups[1].Value)
-                ? ViewCheckOption.Cascaded
-                : ViewCheckOption.Parse(checkMatch.Groups[1].Value);
-        }
+        ViewCheckOption? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOption.Parse(isView.CheckOption!);
 
         return new MyView(viewId, body)
         {
@@ -794,6 +774,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         };
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Catch block is impossible to cover; Happy path is covered by consumers.")]
     private async Task<QueryLease<InfoSchemaContext>> GetConnectionAsync(CancellationToken cancellationToken)
     {
         await _queryGate.WaitAsync(cancellationToken);

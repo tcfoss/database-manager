@@ -40,7 +40,9 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), INDEX my_index (my_val) INCLUDE (my_id))", Label = "Included Column")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val1 VARCHAR(5), my_val2 VARCHAR(5), INDEX my_index (my_val1) INCLUDE (my_val2, my_id))", Label = "Included Column Multiple")]
     /* Spatial and Fulltext */
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), SPATIAL (my_val))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), SPATIAL my_key (my_val))")]
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), FULLTEXT (my_val))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), FULLTEXT my_key (my_val))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), FULLTEXT my_key (my_val) COMMENT = 'Fulltext index')")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), SPATIAL INDEX my_key (my_val))")]
@@ -57,7 +59,7 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val BIGINT GENERATED ALWAYS AS (3 + 4) STORED)")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val BIGINT GENERATED ALWAYS AS (3 + 4) VIRTUAL)")]
     /* Unique Indexes */
-    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE (my_val))")]
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE (my_val))", Label = "Unique No Label No Name")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE KEY key_name (my_val))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE KEY (my_val))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE INDEX (my_val))")]
@@ -68,6 +70,11 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE KEY (my_id) COMMENT 'Unique index')")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), UNIQUE INDEX my_index (my_val) INCLUDE (my_id))", Label = "Unique Included Column")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val1 VARCHAR(5), my_val2 VARCHAR(5), UNIQUE INDEX my_index (my_val1) INCLUDE (my_val2, my_id))", Label = "Unique Included Column Multiple")]
+    /* Standard Indexes */
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, INDEX my_index (my_id))")]
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, KEY my_index (my_id))")]
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, INDEX (my_id))")]
+    [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, KEY (my_id))")]
     /* Index Methods */
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, PRIMARY KEY USING BTREE (my_id))")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, PRIMARY KEY USING HASH (my_id))")]

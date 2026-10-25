@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
@@ -586,7 +587,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         var body = (Select)_helper.ParseStatement(isView.ViewDefinition);
 
         SecurityContext securityContext = SecurityContext.Parse(isView.SecurityType);
-        ViewCheckOption? checkOption = isView.CheckOption is null or "NONE" or "" ? null : ViewCheckOption.Parse(isView.CheckOption);
+        ViewCheckOption? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOption.Parse(isView.CheckOption);
         ViewAlgorithm algorithm = ViewAlgorithm.Parse(isView.Algorithm);
 
         return new MyView(viewId, body)
@@ -743,6 +744,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         };
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Catch block is impossible to cover; Happy path is covered by consumers.")]
     private async Task<QueryLease<InfoSchemaContext>> GetConnectionAsync(CancellationToken cancellationToken)
     {
         await _queryGate.WaitAsync(cancellationToken);

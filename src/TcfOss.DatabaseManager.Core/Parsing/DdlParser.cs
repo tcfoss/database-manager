@@ -170,7 +170,6 @@ public class DdlParser
 
         ObjectName name = _parseObjectName(state);
 
-
         ObjectName? tableName = ParseOptionalTriggerOnTableBeforeTime(state);
         bool tableNameBeforeTimeAndEvent = tableName != null;
 
@@ -218,15 +217,13 @@ public class DdlParser
 
     private static TriggerExecutionQuantifier.ForEach? ParseOptionalTriggerExecutionQuantifier(ParserState state)
     {
-        if (!state.ParseKeyword(Keyword.FOR))
+        if (!state.ParseKeywordsAll(Keyword.FOR, Keyword.EACH))
         {
             return null;
         }
 
-        bool includeEach = state.ParseKeyword(Keyword.EACH);
-
         TriggerForEachType type = ParseTriggerForEachType(state);
-        return new TriggerExecutionQuantifier.ForEach(type, includeEach);
+        return new TriggerExecutionQuantifier.ForEach(type);
     }
 
     private static TriggerForEachType ParseTriggerForEachType(ParserState state)

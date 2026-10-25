@@ -10,7 +10,7 @@ if ! command -v mysql-with-charset > /dev/null 2>&1; then
     alias mysql-with-charset='mysql --user=root --default-character-set=utf8mb4'
 fi
 
-mysql-with-charset --execute="CREATE USER 'admin'@'localhost' IDENTIFIED BY 'password'; FLUSH PRIVILEGES;"
+mysql-with-charset --execute="CREATE USER IF NOT EXISTS 'admin'@'localhost' IDENTIFIED BY 'password'; FLUSH PRIVILEGES;"
 mysql-with-charset --execute="GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost'; FLUSH PRIVILEGES;"
 mysql-with-charset --execute="GRANT SUPER ON *.* TO 'admin'@'localhost'; FLUSH PRIVILEGES;"
 

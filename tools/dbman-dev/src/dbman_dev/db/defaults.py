@@ -9,5 +9,3 @@ ENVIRONMENT = {
     "MYSQL_USER": "data",
     "MYSQL_PASSWORD": "password",
 }
-
-SCHEMAS = ["library_catalog", "library_identity", "library_activity"]

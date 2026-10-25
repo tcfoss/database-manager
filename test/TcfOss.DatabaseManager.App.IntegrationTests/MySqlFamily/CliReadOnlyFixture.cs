@@ -28,7 +28,7 @@ public abstract class CliReadOnlyFixture<TBuilderEntity, TContainerEntity>
         await DbFixture.Container.StartAsync();
         await DbFixture.Container.InitializeLibrarySchema();
 
-        InitialFsFixture.CopyFiles(CommonHelpers.GetSchemaDirectory("Initial").FullName);
+        InitialFsFixture.CopyFiles(CommonHelpers.GetLibrarySchemaDirectory("Initial").FullName);
     }
 
     public override async ValueTask DisposeAsync()

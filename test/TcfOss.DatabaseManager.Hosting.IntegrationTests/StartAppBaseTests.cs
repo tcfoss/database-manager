@@ -6,17 +6,24 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration.Parsing;
 using TcfOss.DatabaseManager.Core.Hosting;
+using TcfOss.DatabaseManager.Core.IntegrationTests;
 
-namespace TcfOss.DatabaseManager.Hosting.Tests;
+namespace TcfOss.DatabaseManager.Hosting.IntegrationTests;
 
-public class StartAppBaseTests
+[CollectionDefinition(nameof(HostStartupCollection), DisableParallelization = true)]
+public sealed class HostStartupCollection;
+
+[Collection(nameof(HostStartupCollection))]
+public class StartAppBaseTests(FsProjectFixture fixture) : IClassFixture<FsProjectFixture>
 {
+    private FsProjectFixture Fixture { get; } = fixture;
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Start_ResultDisposesResolvedServices(bool asynchronously)
     {
-        using var result = new FakeStartApp().Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = new FakeStartApp().Start(workingDirectory: CreateWorkingDirectory(), options: new StartupOptions
         {
             ConfigureServices = services => services.AddSingleton<StubService>()
         });
@@ -39,7 +46,7 @@ public class StartAppBaseTests
     public async Task Start_ResultAsynchronouslyDisposesAsyncOnlyServices()
     {
         AsyncOnlyStubService service;
-        await using (var result = new FakeStartApp().Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        await using (var result = new FakeStartApp().Start(workingDirectory: CreateWorkingDirectory(), options: new StartupOptions
         {
             ConfigureServices = services => services.AddSingleton<AsyncOnlyStubService>()
         }))
@@ -64,7 +71,7 @@ public class StartAppBaseTests
         });
 
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => app.Start(
-            workingDirectory: Path.GetTempPath(),
+            workingDirectory: CreateWorkingDirectory(),
             options: new StartupOptions
             {
                 ConfigureServices = services => services.AddSingleton<StubService>()
@@ -81,7 +88,7 @@ public class StartAppBaseTests
     {
         var app = new FakeStartApp();
 
-        using var result = app.Start(workingDirectory: Path.GetTempPath(), options: new StartupOptions
+        using var result = app.Start(workingDirectory: CreateWorkingDirectory(), options: new StartupOptions
         {
             ConfigureBuilder = builder => builder.Services.AddSingleton<IStubService>(new StubService()),
             ConfigureServices = services => services.AddSingleton<IStubService>(new StubService())
@@ -98,70 +105,53 @@ public class StartAppBaseTests
     [InlineData(" with ' quote")]
     public void Start_UsesExplicitConfigFile_WhenProvided(string suffix)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + suffix);
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var configPath = Path.Combine(tempDir, "database-manager.yaml");
-            File.WriteAllText(configPath, "dialect: generic\nprojectDirectory: '" + tempDir.Replace("'", "''") + "'\n");
+        var tempDir = CreateWorkingDirectory(suffix);
+        var configPath = Path.Combine(tempDir, "database-manager.yaml");
+        File.WriteAllText(configPath, "dialect: generic\nprojectDirectory: '" + tempDir.Replace("'", "''") + "'\n");
 
-            var app = new FakeStartApp();
-            using var result = app.Start(configFilePath: configPath, workingDirectory: tempDir);
+        var app = new FakeStartApp();
+        using var result = app.Start(configFilePath: configPath, workingDirectory: tempDir);
 
-            Assert.False(result.UsingDefaultConfig);
-            Assert.Equal(tempDir, result.Config.ProjectDirectory);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, recursive: true);
-        }
+        Assert.False(result.UsingDefaultConfig);
+        Assert.Equal(tempDir, result.Config.ProjectDirectory);
     }
 
     [Fact]
     public void Start_UsesDefaultConfig_WhenNoConfigFileExists()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var app = new FakeStartApp();
-            using var result = app.Start(workingDirectory: tempDir);
+        var tempDir = CreateWorkingDirectory();
+        var app = new FakeStartApp();
+        using var result = app.Start(workingDirectory: tempDir);
 
-            Assert.True(result.UsingDefaultConfig);
-            Assert.Equal(tempDir, result.Config.ProjectDirectory);
-            Assert.NotNull(result.Services);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, recursive: true);
-        }
+        Assert.True(result.UsingDefaultConfig);
+        Assert.Equal(tempDir, result.Config.ProjectDirectory);
+        Assert.NotNull(result.Services);
     }
 
     [Fact]
     public void Start_UsesProvidedRawConfig_WithoutLoadingFile()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
+        var tempDir = CreateWorkingDirectory();
+        var app = new FakeStartApp();
+        var rawConfig = new Config
         {
-            var app = new FakeStartApp();
-            var rawConfig = new Config
-            {
-                ProjectDirectory = tempDir,
-                Catalog = "def",
-                Dialect = SqlDialect.Generic,
-                Schemas = []
-            };
+            ProjectDirectory = tempDir,
+            Catalog = "def",
+            Dialect = SqlDialect.Generic,
+            Schemas = []
+        };
 
-            using var result = app.Start(rawConfig: rawConfig, workingDirectory: tempDir);
+        using var result = app.Start(rawConfig: rawConfig, workingDirectory: tempDir);
 
-            Assert.False(result.UsingDefaultConfig);
-            Assert.Equal(tempDir, result.Config.ProjectDirectory);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, recursive: true);
-        }
+        Assert.False(result.UsingDefaultConfig);
+        Assert.Equal(tempDir, result.Config.ProjectDirectory);
+    }
+
+    private string CreateWorkingDirectory(string suffix = "")
+    {
+        string path = Fixture.CombinePath(Guid.NewGuid().ToString("N") + suffix);
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     private sealed class FakeStartApp(Action<IServiceProvider>? configureApp = null) : StartAppBase<FakeStartResult>

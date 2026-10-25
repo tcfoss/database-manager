@@ -46,7 +46,7 @@ public class ColumnConfig : IEntityTypeConfiguration<ColumnEntity>
         builder.Property(e => e.ColumnKey)
             .HasColumnName("COLUMN_KEY")
             .HasColumnType("enum('','PRI','UNI','MUL')");
-        builder.VarcharProperty(e => e.Extra, "EXTRA", 256, isRequired: false);
+        builder.VarcharProperty(e => e.Extra, "EXTRA", 256, isRequired: true);
         builder.VarcharProperty(e => e.Privileges, "PRIVILEGES", 154, isRequired: false);
         builder.Property(e => e.ColumnComment)
             .HasColumnName("COLUMN_COMMENT")

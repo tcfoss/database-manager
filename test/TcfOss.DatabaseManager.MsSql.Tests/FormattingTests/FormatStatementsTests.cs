@@ -1,4 +1,4 @@
-namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
+namespace TcfOss.DatabaseManager.MsSql.Tests.FormattingTests;
 
 public class FormatStatementsTests
 {

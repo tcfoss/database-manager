@@ -230,4 +230,85 @@ public class InfoSchemaRepoHelperTests
 
         Assert.Equal(expected, actual);
     }
+
+    [Theory]
+    [InlineData("VARCHAR(20)", "default")]
+    [InlineData("VARCHAR(20)", "lower(`base_col`)")]
+    [InlineData("VARCHAR(20)", "(base_col)")]
+    [InlineData("VARCHAR(20)", "NULL")]
+    [InlineData("VARCHAR(20)", "123")]
+    [InlineData("VARCHAR(20)", "")]
+    [InlineData("VARCHAR(20)", "a''b")]
+    [InlineData("VARCHAR(20)", "a'b\\c")]
+    [InlineData("DATE", "2024-01-01")]
+    [InlineData("DATETIME(6)", "2024-01-01 12:34:56.123456")]
+    [InlineData("TIMESTAMP", "2024-01-01 12:34:56")]
+    [InlineData("TIME(6)", "-12:34:56.123456")]
+    [InlineData("ENUM('a', 'b')", "a")]
+    [InlineData("SET('a', 'b')", "a,b")]
+    public void ColumnDefault_PreservesUnquotedLiteral(string dataType, string text)
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "");
+
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(text)), actual);
+    }
+
+    [Theory]
+    [InlineData("VARCHAR(20)", "lower(`base_col`)", "DEFAULT_GENERATED")]
+    [InlineData("VARCHAR(20)", "`base_col`", "DEFAULT_GENERATED")]
+    [InlineData("VARCHAR(20)", "base_col", "default_generated")]
+    [InlineData("VARCHAR(20)", "'constant'", "DEFAULT_GENERATED")]
+    [InlineData("INT", "1 + 2", "DEFAULT_GENERATED")]
+    [InlineData("VARBINARY(20)", "uuid_to_bin(uuid())", "DEFAULT_GENERATED")]
+    [InlineData("TIMESTAMP(6)", "CURRENT_TIMESTAMP(6)", "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(6)")]
+    public void ColumnDefault_UsesExtraToRecognizeExpressions(string dataType, string text, string extra)
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), extra);
+
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultExpression(repoHelper.ParseExpr(text)), actual);
+    }
+
+    [Theory]
+    [InlineData("INT", "42")]
+    [InlineData("INT", "-42")]
+    [InlineData("DECIMAL(10,2)", "12.34")]
+    [InlineData("DOUBLE", "1.25")]
+    [InlineData("YEAR", "2024")]
+    public void ColumnDefault_PreservesNumericParsing(string dataType, string text)
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "");
+
+        Assert.Equal(repoHelper.ParseColumnDefault(text, false), actual);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ColumnDefault_PreservesNullHandling(bool isNullable)
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(null, isNullable, repoHelper.ParseDataType("VARCHAR(20)"), "");
+
+        Assert.Equal(repoHelper.ParseColumnDefault(null, isNullable), actual);
+    }
+
+    [Theory]
+    [InlineData("VARBINARY(20)", "0x64656661756C745F736563726574", "64656661756C745F736563726574")]
+    [InlineData("BINARY(4)", "0x61626300", "61626300")]
+    [InlineData("VARBINARY(20)", "0x", "")]
+    public void ColumnDefault_ParsesBinaryHexLiteral(string dataType, string text, string expectedHex)
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "");
+
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.HexString(expectedHex)), actual);
+    }
 }

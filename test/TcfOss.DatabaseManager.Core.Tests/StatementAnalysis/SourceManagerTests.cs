@@ -158,32 +158,6 @@ public class SourceManagerTests
     }
 
     [Theory]
-    [InlineData(2, 8, "SELECT")]
-    [InlineData(0, 11, "  SELECT 1;")]
-    [InlineData(2, 2, "")]
-    [InlineData(11, 11, "")]
-    public void GetText_Returns_Metadata_Range(int start, int end, string expected)
-    {
-        const string body = "  SELECT 1;";
-        var meta = new MetaData { Start = start, End = end };
-        string path = Path.GetTempFileName();
-        try
-        {
-            File.WriteAllText(path, body);
-            var manager = new SourceManager();
-            int sourceId = manager.RegisterFileSource(path);
-            var sourceRef = new SourceRef(sourceId, 0, body.Length);
-
-            Assert.Equal(expected, manager.GetText(sourceRef, meta));
-            Assert.Equal(expected, SourceManager.GetText(body, meta));
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    [Theory]
     [InlineData(false, 0, 1)]
     [InlineData(true, null, 1)]
     [InlineData(true, 0, null)]

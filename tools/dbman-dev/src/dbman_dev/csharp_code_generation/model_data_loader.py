@@ -1,13 +1,12 @@
 """Generate data for testing."""
 
 from pathlib import Path
-from attrs import define as _define
+from attrs import define as _define, field as _field
 from dbman_dev.containers import db_container
 from dbman_dev.csharp_code_generation.model_config import ModelConfig as _ModelConfig
 from dbman_dev.db.get_show_fields_results import get_show_fields_results
 from dbman_dev.db import defaults as db_defaults
 from dbman_dev.utilities import linq, text_conversion
-
 
 _FUNC_TEMPLATE = """
     public static {entity_type}Entity[] Get{entity_type}Entities()
@@ -32,6 +31,50 @@ public static class {dialect}ContextTestData
 """
 
 
+@_define
+class ProjectConfig:
+    """A schema project's sources, database names, and initialization scripts."""
+
+    name: str
+    source_path: Path
+    schemas: list[str]
+    initialization_scripts: list[str]
+
+
+def _validate_projects(projects: list[ProjectConfig]) -> list[str]:
+    """Validate initialization inputs and return the combined schema names."""
+    if not projects:
+        raise ValueError("At least one project is required")
+
+    project_names: set[str] = set()
+    schemas: list[str] = []
+    for project in projects:
+        if not project.name or project.name in project_names:
+            raise ValueError(f"Empty or duplicate project name: {project.name!r}")
+        project_names.add(project.name)
+        if not project.schemas or any(not schema for schema in project.schemas):
+            raise ValueError(f"Project {project.name}: at least one schema name is required")
+        for schema in project.schemas:
+            if schema in schemas:
+                raise ValueError(f"Project {project.name}: duplicate schema {schema!r}")
+            schemas.append(schema)
+        if not project.source_path.is_dir():
+            raise ValueError(
+                f"Project {project.name}: missing source directory {project.source_path}"
+            )
+        if not project.initialization_scripts:
+            raise ValueError(
+                f"Project {project.name}: at least one initialization script is required"
+            )
+        init_path = (project.source_path / "Init").resolve()
+        for script in project.initialization_scripts:
+            script_path = (init_path / script).resolve()
+            if not script_path.is_relative_to(init_path) or not script_path.is_file():
+                raise ValueError(f"Project {project.name}: missing or invalid script {script!r}")
+
+    return schemas
+
+
 class TestDataGenerator:
     """Generate test data for some RDBMS."""
 
@@ -40,8 +83,6 @@ class TestDataGenerator:
         image: str,
         tables: list[_ModelConfig],
         environment: dict[str, str],
-        source_path: Path,
-        output_path: Path,
     ):
 
         self.container = db_container.MySqlContainer(
@@ -51,8 +92,22 @@ class TestDataGenerator:
         )
 
         self.tables = tables
-        self.source_path = source_path
-        self.output_path = output_path
+
+    @staticmethod
+    def _exec_checked(
+        container: db_container.MySqlContainer,
+        project: ProjectConfig,
+        command: list[str],
+        workdir: str | None = None,
+    ) -> None:
+        """Run an initialization command, reporting its project and output on failure."""
+        result = container.exec_run(command, workdir=workdir)
+        if result.exit_code != 0:
+            output = result.output.decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Project {project.name}: command {command!r} failed "
+                f"with exit code {result.exit_code}:\n{output}"
+            )
 
     def __construct_columns_and_data_query(
         self,
@@ -68,7 +123,9 @@ class TestDataGenerator:
         columns = [x for x in columns if x.column_name not in ignored_columns]
 
         schema_column = linq.first_or_default(
-            columns, lambda x: x.column_name.lower().endswith("_schema")
+            columns,
+            lambda column: column.column_name.lower().endswith("_schema")
+            or column.column_name.lower() == "schema_name",
         )
         select_fields = ", ".join(x.column_name for x in columns)
         query = f"SELECT {select_fields} FROM `{model_config.table_name}`"
@@ -78,26 +135,36 @@ class TestDataGenerator:
 
         return (columns, query)
 
-    def generate_data(
-        self, schemas: list[str], initialization_scripts: list[str]
-    ) -> dict[str, list[str]]:
+    def _initialize_project(
+        self, container: db_container.MySqlContainer, project: ProjectConfig
+    ) -> None:
+        """Stage and initialize one project without discarding database state."""
+        print(f"Initializing project: {project.name}")
+        self._exec_checked(container, project, ["rm", "-rf", "/InitialSchemas"])
+        self._exec_checked(container, project, ["mkdir", "/InitialSchemas"])
+        container.upload_file(source_path=str(project.source_path), target_path="/InitialSchemas")
+
+        for script in project.initialization_scripts:
+            print(f"Running script for {project.name}: {script}")
+            self._exec_checked(
+                container,
+                project,
+                ["bash", "-e", "-o", "pipefail", script],
+                workdir="/InitialSchemas/Init",
+            )
+
+    def generate_data(self, projects: list[ProjectConfig]) -> dict[str, list[str]]:
         """Generate and insert test data into the database."""
+
+        schemas = _validate_projects(projects)
 
         with self.container as c:
             assert c.container is not None, "Container should be running"
             print("Container started with ID:", c.container.id)
             print("Container status:", c.container.status)
 
-            print("Creating directory in the container...")
-            c.exec_run("mkdir /InitialSchemas")
-
-            print("Uploading initial schema files...")
-            c.upload_file(source_path=str(self.source_path), target_path="/InitialSchemas")
-
-            print("Running initialization scripts...")
-            for script in initialization_scripts:
-                print(f"Running script: {script}")
-                _ = c.exec_run(["bash", script], workdir="/InitialSchemas/Init")
+            for project in projects:
+                self._initialize_project(c, project)
 
             data_sets = {}
 
@@ -131,15 +198,13 @@ class ModelDataLoaderConfig:
     """Configuration for model data loader."""
 
     dialect: str
-    source_path: Path
+    projects: list[ProjectConfig]
     output_path: Path
     image: str
-    schemas: list[str]
     tables: list[_ModelConfig]
     entity_namespace: str
     output_namespace: str
-    initialization_scripts: list[str] = []
-    environment: dict[str, str] = db_defaults.ENVIRONMENT
+    environment: dict[str, str] = _field(factory=db_defaults.ENVIRONMENT.copy)
 
 
 def run(args: ModelDataLoaderConfig) -> None:
@@ -149,11 +214,9 @@ def run(args: ModelDataLoaderConfig) -> None:
         image=args.image,
         environment=args.environment,
         tables=args.tables,
-        source_path=args.source_path,
-        output_path=args.output_path,
     )
 
-    data_sets = generator.generate_data(args.schemas, args.initialization_scripts)
+    data_sets = generator.generate_data(args.projects)
 
     function_strings = [
         _FUNC_TEMPLATE.format(entity_type=table_name, entity_rows="\n".join(lines))

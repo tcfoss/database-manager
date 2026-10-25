@@ -17,6 +17,14 @@ public class FakeRawEntityRetriever : IRetrieveRawEntities
                 CreateProcedure = TestText.RawCreateProcedure_LibraryActivity_SearchAvailableBooks
             });
         }
+        if (procedureId.Schema.Name == "extra_test" && procedureId.Name == "proc_no_params")
+        {
+            return Task.FromResult(new CreateProcedureEntity
+            {
+                Procedure = procedureId,
+                CreateProcedure = TestText.RawCreateProcedure_ExtraTest_ProcNoParams
+            });
+        }
         throw new KeyNotFoundException($"No procedure found with name {procedureId}");
     }
 
@@ -29,6 +37,14 @@ public class FakeRawEntityRetriever : IRetrieveRawEntities
             {
                 View = viewId,
                 CreateView = TestText.RawCreateView_LibraryActivity_AvailableBooks
+            });
+        }
+        if (viewId.Schema.Name == "extra_test" && viewId.Name == "view_with_options")
+        {
+            return Task.FromResult(new CreateViewEntity
+            {
+                View = viewId,
+                CreateView = TestText.RawCreateView_ExtraTest_ViewWithOptions
             });
         }
         throw new KeyNotFoundException($"No view found with name {viewId}");

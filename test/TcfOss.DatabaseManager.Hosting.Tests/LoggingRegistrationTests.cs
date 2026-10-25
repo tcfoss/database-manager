@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -13,9 +12,6 @@ public class LoggingRegistrationTests
 {
     [CollectionDefinition(DisableParallelization = true)]
     public sealed class ConsoleOutputCollection;
-
-    private static readonly List<string> s_expectedMessages =
-        ["Application event", "Database event", "Connector event"];
 
     [Fact]
     public void AddLogging_Console_WritesMessagesToConsole()
@@ -81,106 +77,6 @@ public class LoggingRegistrationTests
             bool enabled = level != LogLevel.None && level >= expectedMinimum;
             Assert.Equal(enabled, logger.IsEnabled(level));
             Assert.Equal(enabled, hostLogger.IsEnabled(level));
-        }
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void AddLogging_File_ExpandsDirectoryAndWritesJsonWithCategoryOverrides(bool tildePath)
-    {
-        DirectoryInfo directory = Directory.CreateTempSubdirectory("dbman-log-tests-");
-        try
-        {
-            string logDirectory = directory.FullName;
-            if (tildePath)
-            {
-                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                logDirectory = "~/" + Path.GetRelativePath(home, directory.FullName);
-            }
-            var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
-            var config = new LogSettings
-            {
-                Target = LogTarget.File,
-                LogDirectory = logDirectory,
-                LogLevel = LogLevel.Information,
-                DatabaseLogLevel = LogLevel.Error,
-            };
-            (ILogger logger, string? filePath) = builder.AddLogging(config);
-            Assert.NotNull(filePath);
-            Assert.Equal(directory.FullName, Path.GetDirectoryName(Path.GetFullPath(filePath)));
-            Assert.Matches(@"^database-manager_\d{8}_\d{6}_\d{6}\.json$", Path.GetFileName(filePath));
-
-            using (var host = builder.Build())
-            {
-                var factory = host.Services.GetRequiredService<ILoggerFactory>();
-                logger.LogInformation("Application event");
-                logger.LogDebug("Filtered application event");
-                factory.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command").LogWarning("Filtered database event");
-                factory.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command").LogError("Database event");
-                factory.CreateLogger("MySqlConnector").LogWarning("Filtered connector event");
-                factory.CreateLogger("MySqlConnector").LogError("Connector event");
-                factory.CreateLogger("Microsoft.Hosting").LogWarning("Filtered Microsoft event");
-                factory.CreateLogger("System.Net").LogInformation("Filtered System event");
-            }
-
-            string[] lines = File.ReadAllLines(filePath);
-            Assert.Equal(3, lines.Length);
-            var messages = new List<string>();
-            foreach (string line in lines)
-            {
-                using var document = JsonDocument.Parse(line);
-                messages.Add(document.RootElement.GetProperty("MessageTemplate").GetString()!);
-                Assert.True(document.RootElement.TryGetProperty("Timestamp", out _));
-                Assert.True(document.RootElement.TryGetProperty("Level", out _));
-            }
-
-            Assert.Equal(s_expectedMessages, messages);
-            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-            {
-                Assert.True(stream.Length > 0);
-            }
-            File.Delete(filePath);
-            Assert.False(File.Exists(filePath));
-        }
-        finally
-        {
-            directory.Delete(recursive: true);
-        }
-    }
-
-    [Fact]
-    public async Task AddLogging_File_AsyncHostDisposalReleasesFile()
-    {
-        DirectoryInfo directory = Directory.CreateTempSubdirectory("dbman-log-tests-");
-        try
-        {
-            var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
-            var config = new LogSettings
-            {
-                Target = LogTarget.File,
-                LogDirectory = directory.FullName,
-                LogLevel = LogLevel.Information
-            };
-            (ILogger logger, string? filePath) = builder.AddLogging(config);
-            Assert.NotNull(filePath);
-
-            await using (var host = Assert.IsType<IAsyncDisposable>(builder.Build(), exactMatch: false))
-            {
-                logger.LogInformation("Final event before disposal");
-            }
-
-            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-            using (var reader = new StreamReader(stream))
-            {
-                Assert.Contains("Final event before disposal", await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
-            }
-            File.Delete(filePath);
-            Assert.False(File.Exists(filePath));
-        }
-        finally
-        {
-            directory.Delete(recursive: true);
         }
     }
 

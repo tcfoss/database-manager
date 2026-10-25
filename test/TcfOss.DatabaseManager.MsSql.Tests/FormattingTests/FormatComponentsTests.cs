@@ -13,7 +13,7 @@ using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
 using TcfOss.DatabaseManager.MsSql.Statements;
 
-namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
+namespace TcfOss.DatabaseManager.MsSql.Tests.FormattingTests;
 
 public class FormatComponentsTests
 {

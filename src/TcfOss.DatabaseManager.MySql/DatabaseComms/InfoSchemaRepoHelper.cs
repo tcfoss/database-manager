@@ -114,6 +114,28 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         return dataType;
     }
 
+    public ColumnOption.ColumnDefault? ParseColumnDefault(string? text, bool isNullable, DataType dataType, string columnExtra)
+    {
+        if (text == null)
+        {
+            return ParseColumnDefault(text, isNullable);
+        }
+
+        if (columnExtra.Contains("DEFAULT_GENERATED", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ColumnOption.ColumnDefault.DefaultExpression(ParseExpr(text));
+        }
+
+        if (dataType.Class is DataTypeClass.String
+            or DataTypeClass.Date or DataTypeClass.DateTime or DataTypeClass.Time
+            or DataTypeClass.Enum or DataTypeClass.Set)
+        {
+            return new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(text));
+        }
+
+        return ParseColumnDefault(text, isNullable);
+    }
+
     public ColumnOption.ColumnDefault? ParseColumnDefault(string? text, bool isNullable)
     {
         if (text == null)
@@ -127,10 +149,6 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
                 return null;
             }
         }
-        if (text == "")
-        {
-            return new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(""));
-        }
 
         if (text.StartsWith('(') && text.EndsWith(')'))
         {
@@ -142,6 +160,10 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
         if (defState.TryParse(ValueParser.ParseValue, out Value? val))
         {
+            if (val is Value.HexString hexString)
+            {
+                return new ColumnOption.ColumnDefault.DefaultValue(hexString with { Value = hexString.Value.ToUpperInvariant() });
+            }
             return new ColumnOption.ColumnDefault.DefaultValue(val);
         }
 
@@ -151,7 +173,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
     }
 
-    public ColumnOption.Generated? ParseGenerated(string? text, string? columnExtra, bool removeSlashesBeforeQuotes)
+    public ColumnOption.Generated? ParseGenerated(string? text, string columnExtra, bool removeSlashesBeforeQuotes)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -165,7 +187,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
         Expression genExpr = ParseExpr(genText);
 
-        GenerationMode genMode = columnExtra?.Contains("STORED GENERATED", StringComparison.InvariantCultureIgnoreCase) == true ? GenerationMode.Stored : GenerationMode.Virtual;
+        GenerationMode genMode = columnExtra.Contains("STORED GENERATED", StringComparison.InvariantCultureIgnoreCase) ? GenerationMode.Stored : GenerationMode.Virtual;
         return new ColumnOption.Generated.AsExpression(genExpr, genMode);
     }
 

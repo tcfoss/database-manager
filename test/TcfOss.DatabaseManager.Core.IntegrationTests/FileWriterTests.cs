@@ -4,14 +4,14 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.Core.IntegrationTests;
 
-public class FileWriterTests
+public class FileWriterTests : IClassFixture<FsProjectFixture>
 {
     private DirectoryInfo RootDirectory { get; }
     private FileWriter FileWriter { get; }
 
-    public FileWriterTests()
+    public FileWriterTests(FsProjectFixture fixture)
     {
-        RootDirectory = new DirectoryInfo(Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        RootDirectory = new DirectoryInfo(fixture.CombinePath(Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(RootDirectory.FullName);
         FileWriter = new FileWriter(new LoggerFactory().CreateLogger<FileWriter>());
     }

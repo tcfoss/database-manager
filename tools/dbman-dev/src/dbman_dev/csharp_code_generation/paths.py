@@ -11,7 +11,7 @@ MARIADB_ENTITY_FRAMEWORK_DIR = (
     REPO_ROOT / "src" / "TcfOss.DatabaseManager.MariaDb" / "DatabaseComms" / "EntityFramework"
 )
 
-MYSQL_TEST_SCHEMA_DIR = REPO_ROOT / "test" / "Resources" / "TestSchemas" / "MySql" / "Initial"
+MYSQL_TEST_PROJECTS_DIR = REPO_ROOT / "test" / "Resources" / "TestSchemas" / "MySql"
 
 MYSQL_TEST_DATA = (
     REPO_ROOT

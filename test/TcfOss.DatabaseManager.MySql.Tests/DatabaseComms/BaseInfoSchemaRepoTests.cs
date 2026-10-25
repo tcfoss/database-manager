@@ -22,6 +22,13 @@ public abstract class BaseInfoSchemaRepoTests
     protected virtual string DefaultIntegerWidth => "";
     protected virtual RoutineParameterDirection? FunctionParameterDirection => null;
     protected virtual EventEnabledStatus DisableOnSlaveStatus => EventEnabledStatus.DisableOnReplica;
+    protected abstract string DefaultCollation { get; }
+    protected abstract ViewAlgorithm? DefaultViewAlgorithm { get; }
+    protected abstract string ViewExpectedText { get; }
+    protected abstract string ExpectedLowercaseFunctionName { get; }
+
+    protected ObjectIdentifier ObIdent(string name, string schema) =>
+        new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
 
     [Fact]
     public async Task Get_Table_Identifiers_1()
@@ -232,6 +239,63 @@ public abstract class BaseInfoSchemaRepoTests
     }
 
     [Fact]
+    public async Task Table_WithDescendingIndexes()
+    {
+        var tableId = new ObjectIdentifier("table_with_desc_index", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
+        Assert.NotNull(table);
+        Assert.Equal("table_with_desc_index", table.Name.Name);
+
+        Assert.NotNull(table.PrimaryKey);
+
+        var refCol = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
+        Assert.Equal("id", refCol.Name.Name);
+        Assert.Null(refCol.Length);
+        Assert.Equal(Direction.Descending, refCol.Direction);
+
+        var index = Assert.Single(table.Keys.Values);
+        var indexCol = Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns));
+        Assert.Equal("val", indexCol.Name.Name);
+        Assert.NotNull(indexCol.Length);
+        Assert.Equal(5u, indexCol.Length);
+        Assert.Equal(Direction.Descending, indexCol.Direction);
+    }
+
+    [Fact]
+    public async Task Table_NoConstraints()
+    {
+        var tableId = new ObjectIdentifier("table_no_constraints", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
+        Assert.NotNull(table);
+        Assert.Equal("table_no_constraints", table.Name.Name);
+
+        Assert.Null(table.PrimaryKey);
+        Assert.Empty(table.UniqueKeys);
+        Assert.Empty(table.ForeignKeys);
+        Assert.Single(table.Keys);
+    }
+
+    [Fact]
+    public async Task Table_ColumnDefaults_DistinguishesExpressionsAndLiterals()
+    {
+        var table = await Repo.GetTableAsync(ObIdent("table_column_defaults", "extra_test"), TestContext.Current.CancellationToken);
+        var defaults = table.Columns.ToDictionary(column => column.Name.Name, column => column.Default);
+
+        Assert.Null(defaults["id"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("default")), defaults["base_col"]);
+        var expectedReference = new ColumnOption.ColumnDefault.DefaultExpression(new SingleIdentifier(new Identifier("base_col", QuoteStyle.Backticks)));
+        Assert.Equal(expectedReference, defaults["ref_quoted"]);
+        Assert.Equal(expectedReference, defaults["ref_unquoted"]);
+        var functionDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(defaults["ref_func"]);
+        var functionCall = Assert.IsType<FunctionCall>(functionDefault.Expression);
+        Assert.Equal(ExpectedLowercaseFunctionName, functionCall.Name.ToString());
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("lower(`base_col`)")), defaults["string_looks_like_func"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("2024-01-01")), defaults["date_type"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.HexString("64656661756C745F736563726574")), defaults["bin_type"]);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString("")), defaults["empty_str"]);
+    }
+
+    [Fact]
     public async Task Foreign_Keys()
     {
         var tableId = new ObjectIdentifier("book_author", new SchemaIdentifier("library_catalog", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
@@ -338,6 +402,41 @@ public abstract class BaseInfoSchemaRepoTests
     }
 
     [Fact]
+    public async Task Procedure()
+    {
+        var procedureId = new ObjectIdentifier("search_available_books", new SchemaIdentifier("library_activity", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var procedure = await Repo.GetProcedureAsync(procedureId, TestContext.Current.CancellationToken);
+        Assert.NotNull(procedure);
+        Assert.Equal("search_available_books", procedure.Name.Name);
+
+        Assert.Equal(SecurityContext.Definer, procedure.SecurityContext);
+
+        Assert.Equal(new Account.IdentityWithHost(new ExtendedIdentifier("admin", ExtendedQuoteStyle.Backticks), new ExtendedIdentifier("localhost", ExtendedQuoteStyle.Backticks)), procedure.Definer.Account);
+
+        var parameters = procedure.Parameters.ToList();
+        var parameter = Assert.Single(parameters);
+        Assert.Equal("search_term", parameter.Name.Name);
+        Assert.Equal($"VARCHAR(255) CHARACTER SET utf8mb4{DefaultCollation}", parameter.DataType.ToSql());
+        Assert.Equal(RoutineParameterDirection.In, Assert.IsType<RoutineParameter.Directed>(parameter).Direction);
+
+        var expected = "BEGIN SELECT ab.book_id, ab.full_title, bs.title, bs.description, bs.authors, bs.genres FROM available_books AS ab INNER JOIN book_search AS bs ON ab.book_id = bs.book_id WHERE MATCH (bs.title, bs.description, bs.authors, bs.genres) AGAINST (search_term IN NATURAL LANGUAGE MODE) OR ab.full_title LIKE CONCAT('%', search_term, '%') OR bs.description LIKE CONCAT('%', search_term, '%'); END";
+        var actual = procedure.Body.ToSql();
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task Procedure_NoParams()
+    {
+        var procId = new ObjectIdentifier("proc_no_params", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var proc = await Repo.GetProcedureAsync(procId, TestContext.Current.CancellationToken);
+        Assert.NotNull(proc);
+        Assert.Equal("proc_no_params", proc.Name.Name);
+
+        Assert.Empty(proc.Parameters);
+    }
+
+    [Fact]
     public async Task Function()
     {
         var functionId = new ObjectIdentifier("get_late_charge", new SchemaIdentifier("library_activity", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
@@ -362,6 +461,46 @@ public abstract class BaseInfoSchemaRepoTests
         var actual = function.Body.ToSql();
         var expected = "BEGIN DECLARE late_charge DECIMAL(10,2) DEFAULT 0.00; IF CURRENT_DATE() <= (SELECT due_date FROM active_rental AS ar WHERE ar.rental_id = rental_id) THEN RETURN 0.00; END IF; SELECT (DATEDIFF(CURRENT_DATE(), ar.due_date) * lateness_rate) INTO late_charge FROM active_rental AS ar WHERE ar.rental_id = rental_id; RETURN IFNULL(late_charge, 0); END";
         Assert.Equal(expected, actual, ignoreCase: true, ignoreAllWhiteSpace: true);
+    }
+
+    [Fact]
+    public async Task Function_NoParams()
+    {
+        var funcId = new ObjectIdentifier("func_no_params", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var func = await Repo.GetFunctionAsync(funcId, TestContext.Current.CancellationToken);
+        Assert.NotNull(func);
+        Assert.Equal("func_no_params", func.Name.Name);
+
+        Assert.Empty(func.Parameters);
+    }
+
+    [Fact]
+    public async Task View()
+    {
+        var viewId = new ObjectIdentifier("available_books", new SchemaIdentifier("library_activity", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+        var view = await Repo.GetViewAsync(viewId, TestContext.Current.CancellationToken);
+        Assert.NotNull(view);
+        Assert.Equal("available_books", view.Name.Name);
+
+        Assert.Equal(DefaultViewAlgorithm, view.Algorithm);
+        Assert.Null(view.CheckOption);
+        Assert.Equal(SecurityContext.Invoker, view.SecurityContext);
+        Assert.Equal(new Account.IdentityWithHost(new ExtendedIdentifier("admin", ExtendedQuoteStyle.Backticks), new ExtendedIdentifier("localhost", ExtendedQuoteStyle.Backticks)), view.Definer.Account);
+
+        var actual = view.Body.ToSql();
+        Assert.Equal(ViewExpectedText, actual, ignoreCase: true, ignoreAllWhiteSpace: true);
+    }
+
+    [Fact]
+    public async Task View_WithOptions()
+    {
+        var viewId = ObIdent("view_with_options", "extra_test");
+        var view = await Repo.GetViewAsync(viewId, TestContext.Current.CancellationToken);
+        Assert.NotNull(view);
+
+        Assert.Equal("view_with_options", view.Name.Name);
+        Assert.Equal(ViewAlgorithm.Merge, view.Algorithm);
+        Assert.Equal(ViewCheckOption.Local, view.CheckOption);
     }
 
     [Fact]
@@ -405,7 +544,7 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Equal("event_at", evt.Name.Name);
 
         var schedule = Assert.IsType<EventSchedule.At>(evt.Schedule);
-        var expected = new LiteralValue(new Value.SingleQuotedString("2026-07-04 00:00:00"));
+        var expected = new LiteralValue(new Value.SingleQuotedString("2050-07-04 00:00:00"));
         Assert.NotNull(schedule);
         Assert.Equal(expected, schedule.Time);
         Assert.False(evt.OnCompletionPreserve);
@@ -434,28 +573,35 @@ public abstract class BaseInfoSchemaRepoTests
 
         Assert.True(evt.OnCompletionPreserve);
         Assert.Equal(DisableOnSlaveStatus, evt.EventEnabledStatus);
+        Assert.NotNull(evt.Comment);
+        Assert.Equal("different by dialect", evt.Comment.Text);
     }
 
     [Fact]
-    public async Task Table_DescendingIndexes()
+    public async Task GetUnappliedRefactors_NoSchemas_ReturnsEmpty()
     {
-        var tableId = new ObjectIdentifier("with_desc_index", new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
-        var table = await Repo.GetTableAsync(tableId, TestContext.Current.CancellationToken);
-        Assert.NotNull(table);
-        Assert.Equal("with_desc_index", table.Name.Name);
+        var unappliedRefactors = await Repo.GetUnappliedRefactorsAsync([], ["abc123"], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedRefactors);
+    }
 
-        Assert.NotNull(table.PrimaryKey);
+    [Fact]
+    public async Task GetUnappliedRefactors_NoRefactors_ReturnsEmpty()
+    {
+        var unappliedRefactors = await Repo.GetUnappliedRefactorsAsync([new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle)], [], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedRefactors);
+    }
 
-        var refCol = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
-        Assert.Equal("id", refCol.Name.Name);
-        Assert.Null(refCol.Length);
-        Assert.Equal(Direction.Descending, refCol.Direction);
+    [Fact]
+    public async Task GetUnappliedDeployScripts_NoSchemas_ReturnsEmpty()
+    {
+        var unappliedDeployScripts = await Repo.GetUnappliedDeployScriptsAsync([], ["abc123"], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedDeployScripts);
+    }
 
-        var index = Assert.Single(table.Keys.Values);
-        var indexCol = Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns));
-        Assert.Equal("val", indexCol.Name.Name);
-        Assert.NotNull(indexCol.Length);
-        Assert.Equal(5u, indexCol.Length);
-        Assert.Equal(Direction.Descending, indexCol.Direction);
+    [Fact]
+    public async Task GetUnappliedDeployScripts_NoDeployScripts_ReturnsEmpty()
+    {
+        var unappliedDeployScripts = await Repo.GetUnappliedDeployScriptsAsync([new SchemaIdentifier("extra_test", MyConfig.Catalog, MyConfig.QuoteStyle)], [], TestContext.Current.CancellationToken);
+        Assert.Empty(unappliedDeployScripts);
     }
 }

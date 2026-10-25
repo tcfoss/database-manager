@@ -17,7 +17,7 @@ public abstract class CliReadOnlyTests_NoDatabase : CliReadOnlyTests<CliReadOnly
     public override Task DownloadSchema()
     {
         var fileFixture = new FsProjectFixture();
-        fileFixture.CopyFile(Path.Combine(CommonHelpers.GetSchemaDirectory("Initial").FullName, "database-manager.yaml"));
+        fileFixture.CopyFile(Path.Combine(CommonHelpers.GetLibrarySchemaDirectory("Initial").FullName, "database-manager.yaml"));
 
         UpdateConfiguration(fileFixture.RootDirectory.FullName);
 

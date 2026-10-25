@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -6,8 +7,8 @@ using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public class GenericConfigLoader(ILogger logger)
-    : ConfigLoaderBase<GenericConfig, SchemaMappingBase>(logger)
+public class GenericConfigLoader(ILogger logger, IFileSystem? fileSystem = null)
+    : ConfigLoaderBase<GenericConfig, SchemaMappingBase>(logger, fileSystem)
 {
     public override GenericConfig LoadConfig(
         string configDirectory,

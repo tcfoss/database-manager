@@ -12,12 +12,11 @@ public abstract record TriggerExecutionQuantifier : IWriteSql
         ToSql(writer);
     }
 
-    public record ForEach(TriggerForEachType Type, bool IncludeEach) : TriggerExecutionQuantifier
+    public record ForEach(TriggerForEachType Type) : TriggerExecutionQuantifier
     {
         public override void ToSql(SqlTextWriter writer)
         {
-            string? each = IncludeEach ? " EACH " : null;
-            writer.WriteSql($"FOR{each}{Type}");
+            writer.WriteSql($"FOR EACH {Type}");
         }
     }
 }
