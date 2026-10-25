@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -10,8 +11,8 @@ using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.MySql.Configuration;
 
-public class MyConfigLoader(ILogger logger)
-    : ConfigLoaderBase<MyConfig, MySchemaMapping>(logger), IConfigLoader<MyConfig, MySchemaMapping>
+public class MyConfigLoader(ILogger logger, IFileSystem? fileSystem = null)
+    : ConfigLoaderBase<MyConfig, MySchemaMapping>(logger, fileSystem), IConfigLoader<MyConfig, MySchemaMapping>
 {
     public virtual Version DefaultVersion { get; } = new(8, 4, 6);
 

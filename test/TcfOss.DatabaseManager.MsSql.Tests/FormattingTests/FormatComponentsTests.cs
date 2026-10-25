@@ -12,7 +12,6 @@ using TcfOss.DatabaseManager.MsSql.BuiltIn;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
 using TcfOss.DatabaseManager.MsSql.Statements;
-using TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 
 namespace TcfOss.DatabaseManager.MsSql.Tests.FormattingTests;
 

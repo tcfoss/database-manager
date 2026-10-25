@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.MsSql.BuiltIn;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
 
-namespace TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
+namespace TcfOss.DatabaseManager.MsSql.Tests.FormattingTests;
 
 public static class Helpers
 {

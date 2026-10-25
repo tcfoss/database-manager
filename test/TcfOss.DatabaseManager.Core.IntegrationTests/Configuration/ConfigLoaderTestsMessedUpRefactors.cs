@@ -21,9 +21,6 @@ public class ConfigLoaderTestsMessedUpRefactors
           Type: TableRename
           NewName: new_table_name
         """;
-        var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
-        Directory.CreateDirectory(schemaDirectory);
-
         await PrepareFixture(fixture, refactorContents);
 
         var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(fixture.RootDirectory.FullName));
@@ -40,9 +37,6 @@ public class ConfigLoaderTestsMessedUpRefactors
           Type: TableRename
           OldName: old_table_name
         """;
-        var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
-        Directory.CreateDirectory(schemaDirectory);
-
         await PrepareFixture(fixture, refactorContents);
 
         var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(fixture.RootDirectory.FullName));
@@ -60,9 +54,6 @@ public class ConfigLoaderTestsMessedUpRefactors
           TableName: my_table
           NewName: new_column_name
         """;
-        var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
-        Directory.CreateDirectory(schemaDirectory);
-
         await PrepareFixture(fixture, refactorContents);
 
         var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(fixture.RootDirectory.FullName));
@@ -80,9 +71,6 @@ public class ConfigLoaderTestsMessedUpRefactors
           TableName: my_table
           OldName: old_column_name
         """;
-        var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
-        Directory.CreateDirectory(schemaDirectory);
-
         await PrepareFixture(fixture, refactorContents);
 
         var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(fixture.RootDirectory.FullName));
@@ -100,9 +88,6 @@ public class ConfigLoaderTestsMessedUpRefactors
           OldName: old_column_name
           NewName: new_column_name
         """;
-        var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
-        Directory.CreateDirectory(schemaDirectory);
-
         await PrepareFixture(fixture, refactorContents);
 
         var ex = Assert.Throws<ConfigurationException.MissingFieldException>(() => BuildConfig(fixture.RootDirectory.FullName));
@@ -145,9 +130,7 @@ public class ConfigLoaderTestsMessedUpRefactors
 
         foreach (var directoryName in new[] { "SchemaA", "SchemaB" })
         {
-            var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, directoryName);
-            Directory.CreateDirectory(schemaDirectory);
-            await fixture.WriteTextAsync(Path.Combine(schemaDirectory, "refactor.yaml"), refactorContents, TestContext.Current.CancellationToken);
+            await fixture.WriteTextAsync(Path.Combine(directoryName, "refactor.yaml"), refactorContents, TestContext.Current.CancellationToken);
         }
 
         var schemas = new[]
@@ -162,10 +145,7 @@ public class ConfigLoaderTestsMessedUpRefactors
 
     private static async Task PrepareFixture(FsProjectFixture fixture, string refactorContents)
     {
-        var schemaDirectory = Path.Combine(fixture.RootDirectory.FullName, "MySchema");
-        Directory.CreateDirectory(schemaDirectory);
-
-        await fixture.WriteTextAsync(Path.Combine(schemaDirectory, "refactor.yaml"), refactorContents, TestContext.Current.CancellationToken);
+        await fixture.WriteTextAsync(Path.Combine("MySchema", "refactor.yaml"), refactorContents, TestContext.Current.CancellationToken);
     }
 
     private static GenericConfig BuildConfig(string rootDirectory)

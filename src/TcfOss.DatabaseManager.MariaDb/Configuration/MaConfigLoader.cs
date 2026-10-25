@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -8,7 +9,7 @@ using TcfOss.DatabaseManager.MySql.Configuration;
 
 namespace TcfOss.DatabaseManager.MariaDb.Configuration;
 
-public class MaConfigLoader(ILogger logger) : MyConfigLoader(logger)
+public class MaConfigLoader(ILogger logger, IFileSystem? fileSystem = null) : MyConfigLoader(logger, fileSystem)
 {
     public override Version DefaultVersion { get; } = new(11, 8, 2);
 

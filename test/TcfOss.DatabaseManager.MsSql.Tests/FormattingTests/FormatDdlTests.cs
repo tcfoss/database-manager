@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
-using TcfOss.DatabaseManager.MsSql.Tests.IO.Formatting;
 
 namespace TcfOss.DatabaseManager.MsSql.Tests.FormattingTests;
 

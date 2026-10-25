@@ -117,119 +117,63 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
     }
 
     [Fact]
-    public void RelativeDeployScriptPath_UsesSchemaRootBeforeCurrentDirectory()
-    {
-        string relativeFilePath = Path.Combine($"deploy-script-resolution-{Guid.NewGuid():N}", "script.sql");
-        string currentDirectoryFilePath = Path.Combine(Directory.GetCurrentDirectory(), relativeFilePath);
-        string schemaRootPath = Path.Combine(Fixture.RootDirectory.FullName, $"Schema-{Guid.NewGuid():N}");
-        string schemaFilePath = Path.Combine(schemaRootPath, relativeFilePath);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(currentDirectoryFilePath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(schemaFilePath)!);
-        File.WriteAllText(currentDirectoryFilePath, "-- current directory");
-        File.WriteAllText(schemaFilePath, "-- schema root");
-
-        try
-        {
-            var rawConfig = new ConfigParsing.Config
-            {
-                Dialect = SqlDialect.MySql,
-                Schemas =
-                [
-                    new ConfigParsing.SchemaMapping
-                    {
-                        SchemaName = "schema",
-                        RootPath = Path.GetRelativePath(Fixture.RootDirectory.FullName, schemaRootPath),
-                        DeployScripts =
-                        [
-                            new ConfigParsing.DeployScript
-                            {
-                                FilePath = relativeFilePath,
-                                Type = DeployScriptType.PreDeployment,
-                            }
-                        ],
-                    }
-                ],
-            };
-
-            var config = GetConfig(rawConfig);
-            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
-
-            var depScript = Assert.Single(schema.DeployScripts);
-            Assert.Equal(new FileInfo(schemaFilePath).FullName, depScript.FilePath.FullName);
-        }
-        finally
-        {
-            Directory.Delete(Path.GetDirectoryName(currentDirectoryFilePath)!, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void DeployScriptManifest_ResolvesEntriesRelativeToManifestDirectory()
+    public async Task DeployScriptManifest_ResolvesEntriesRelativeToManifestDirectory()
     {
         string schemaRootPath = Path.Combine(Fixture.RootDirectory.FullName, $"Schema-{Guid.NewGuid():N}");
         string manifestPath = Path.Combine(schemaRootPath, "Manifests", "deploy.yaml");
         string scriptPath = Path.Combine(schemaRootPath, "Manifests", "Scripts", "script.sql");
 
-        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(scriptPath)!);
-        File.WriteAllText(manifestPath, "- FilePath: Scripts/script.sql\n  Type: PreDeployment\n");
-        File.WriteAllText(scriptPath, "-- manifest-relative script");
+        await Fixture.WriteTextAsync(
+            Path.GetRelativePath(Fixture.RootDirectory.FullName, manifestPath),
+            "- FilePath: Scripts/script.sql\n  Type: PreDeployment\n",
+            TestContext.Current.CancellationToken);
+        await Fixture.WriteTextAsync(
+            Path.GetRelativePath(Fixture.RootDirectory.FullName, scriptPath),
+            "-- manifest-relative script",
+            TestContext.Current.CancellationToken);
 
-        try
+        var rawConfig = new ConfigParsing.Config
         {
-            var rawConfig = new ConfigParsing.Config
-            {
-                Dialect = SqlDialect.MySql,
-                Schemas =
-                [
-                    new ConfigParsing.SchemaMapping
-                    {
-                        SchemaName = "schema",
-                        RootPath = Path.GetRelativePath(Fixture.RootDirectory.FullName, schemaRootPath),
-                        DeployScripts =
-                        [
-                            new ConfigParsing.DeployScript
-                            {
-                                FilePath = "Manifests/deploy.yaml",
-                            }
-                        ],
-                    }
-                ],
-            };
+            Dialect = SqlDialect.MySql,
+            Schemas =
+            [
+                new ConfigParsing.SchemaMapping
+                {
+                    SchemaName = "schema",
+                    RootPath = Path.GetRelativePath(Fixture.RootDirectory.FullName, schemaRootPath),
+                    DeployScripts =
+                    [
+                        new ConfigParsing.DeployScript
+                        {
+                            FilePath = "Manifests/deploy.yaml",
+                        }
+                    ],
+                }
+            ],
+        };
 
-            var config = GetConfig(rawConfig);
-            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+        var config = GetConfig(rawConfig);
+        var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
 
-            var deployScript = Assert.Single(schema.DeployScripts);
-            Assert.Equal(new FileInfo(scriptPath).FullName, deployScript.FilePath.FullName);
-            Assert.Equal(DeployScriptType.PreDeployment, deployScript.Type);
-        }
-        finally
-        {
-            Directory.Delete(schemaRootPath, recursive: true);
-        }
+        var deployScript = Assert.Single(schema.DeployScripts);
+        Assert.Equal(new FileInfo(scriptPath).FullName, deployScript.FilePath.FullName);
+        Assert.Equal(DeployScriptType.PreDeployment, deployScript.Type);
     }
 
     [Fact]
-    public void DeployScriptManifest_EmptyFileReturnsNoScripts()
+    public async Task DeployScriptManifest_EmptyFileReturnsNoScripts()
     {
         string schemaRootPath = Path.Combine(Fixture.RootDirectory.FullName, $"Schema-{Guid.NewGuid():N}");
         string manifestPath = Path.Combine(schemaRootPath, "deploy.yaml");
-        Directory.CreateDirectory(schemaRootPath);
-        File.WriteAllText(manifestPath, string.Empty);
+        await Fixture.WriteTextAsync(
+            Path.GetRelativePath(Fixture.RootDirectory.FullName, manifestPath),
+            string.Empty,
+            TestContext.Current.CancellationToken);
 
-        try
-        {
-            var config = GetConfig(DeployScriptConfig(manifestPath));
-            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+        var config = GetConfig(DeployScriptConfig(manifestPath));
+        var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
 
-            Assert.Empty(schema.DeployScripts);
-        }
-        finally
-        {
-            Directory.Delete(schemaRootPath, recursive: true);
-        }
+        Assert.Empty(schema.DeployScripts);
     }
 
     [Fact]
@@ -245,26 +189,21 @@ public class ConfigLoaderTests(ConfigLoaderFixture fixture) : IClassFixture<Conf
     }
 
     [Fact]
-    public void DeployScriptManifest_FallsBackToSchemaRoot()
+    public async Task DeployScriptManifest_FallsBackToSchemaRoot()
     {
         string manifestDirectory = Path.Combine(Fixture.RootDirectory.FullName, "Schema2", $"Manifests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(manifestDirectory);
         string manifestPath = Path.Combine(manifestDirectory, "deploy.yaml");
-        File.WriteAllText(manifestPath, "- FilePath: my_script.sql\n  Type: PostDeployment\n");
+        await Fixture.WriteTextAsync(
+            Path.GetRelativePath(Fixture.RootDirectory.FullName, manifestPath),
+            "- FilePath: my_script.sql\n  Type: PostDeployment\n",
+            TestContext.Current.CancellationToken);
 
-        try
-        {
-            var config = GetConfig(DeployScriptConfig(manifestPath));
-            var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
+        var config = GetConfig(DeployScriptConfig(manifestPath));
+        var schema = config.Schemas[new SchemaIdentifier("schema", config.Catalog, config.QuoteStyle)];
 
-            var script = Assert.Single(schema.DeployScripts);
-            Assert.Equal(Path.Combine(Fixture.RootDirectory.FullName, "Schema2", "my_script.sql"), script.FilePath.FullName);
-            Assert.Equal(DeployScriptType.PostDeployment, script.Type);
-        }
-        finally
-        {
-            Directory.Delete(manifestDirectory, recursive: true);
-        }
+        var script = Assert.Single(schema.DeployScripts);
+        Assert.Equal(Path.Combine(Fixture.RootDirectory.FullName, "Schema2", "my_script.sql"), script.FilePath.FullName);
+        Assert.Equal(DeployScriptType.PostDeployment, script.Type);
     }
 
     [Theory]

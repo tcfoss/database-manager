@@ -9,30 +9,31 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 
-namespace TcfOss.DatabaseManager.Core.Tests.App;
+namespace TcfOss.DatabaseManager.Core.IntegrationTests.App;
 
-public sealed class SqlFormatterTests : IDisposable
+public sealed class SqlFormatterTests(FsProjectFixture fixture) : IClassFixture<FsProjectFixture>
 {
-    private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("dbman-format-tests-");
+    private FsProjectFixture Fixture { get; } = fixture;
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void FormatSql_InPlace_FormatsEveryFileAndHonorsBackupSetting(bool noBackup)
     {
-        string firstPath = Path.Combine(_directory.FullName, "first.sql");
-        string secondPath = Path.Combine(_directory.FullName, "second.sql");
+        string directory = CreateTestDirectory();
+        string firstPath = Path.Combine(directory, "first.sql");
+        string secondPath = Path.Combine(directory, "second.sql");
         File.WriteAllText(firstPath, "select 1");
         File.WriteAllText(secondPath, "select 2");
 
-        var formatter = CreateFormatter();
+        var formatter = CreateFormatter(directory);
         formatter.FormatSql([firstPath, secondPath], null, noBackup: noBackup);
 
         Assert.Equal($"SELECT{Environment.NewLine}    1;", File.ReadAllText(firstPath));
         Assert.Equal($"SELECT{Environment.NewLine}    2;", File.ReadAllText(secondPath));
         if (noBackup)
         {
-            Assert.Empty(Directory.GetFiles(_directory.FullName, "*.bak.*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.bak.*"));
         }
         else
         {
@@ -48,11 +49,12 @@ public sealed class SqlFormatterTests : IDisposable
     [InlineData(FileExistsAction.Error)]
     public void FormatSql_OutputPattern_PreservesInputAndHonorsExistingFilePolicy(FileExistsAction action)
     {
-        string inputPath = Path.Combine(_directory.FullName, "input.sql");
-        string outputPath = Path.Combine(_directory.FullName, "formatted-input.sql");
+        string directory = CreateTestDirectory();
+        string inputPath = Path.Combine(directory, "input.sql");
+        string outputPath = Path.Combine(directory, "formatted-input.sql");
         File.WriteAllText(inputPath, "select 1");
         File.WriteAllText(outputPath, "existing output");
-        var formatter = CreateFormatter();
+        var formatter = CreateFormatter(directory);
 
         if (action == FileExistsAction.Error)
         {
@@ -77,11 +79,18 @@ public sealed class SqlFormatterTests : IDisposable
         }
     }
 
-    private SqlFormatter<ConfigBase> CreateFormatter()
+    private string CreateTestDirectory()
+    {
+        string path = Fixture.CombinePath(Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private static SqlFormatter<ConfigBase> CreateFormatter(string projectDirectory)
     {
         var config = new ConfigBase
         {
-            ProjectDirectory = _directory.FullName,
+            ProjectDirectory = projectDirectory,
             Catalog = new CatalogIdentifier("def"),
             Dialect = SqlDialect.Generic,
             QuoteStyle = QuoteStyle.Ansi,
@@ -93,10 +102,5 @@ public sealed class SqlFormatterTests : IDisposable
             new TextParser(new Lexer<RunState>(), new Parser()),
             new FunctionNameProvider(),
             NullLogger<SqlFormatter<ConfigBase>>.Instance);
-    }
-
-    public void Dispose()
-    {
-        _directory.Delete(recursive: true);
     }
 }

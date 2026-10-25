@@ -3,9 +3,15 @@ using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 
 namespace TcfOss.DatabaseManager.Core.IntegrationTests;
 
-public partial class FsProjectFixture(string? prefix = null) : IDisposable
+public partial class FsProjectFixture : IDisposable
 {
-    public DirectoryInfo RootDirectory { get; } = Directory.CreateTempSubdirectory(prefix ?? "dbman-test_");
+    private const string DefaultPrefix = "dbman-test_";
+    public DirectoryInfo RootDirectory { get; }
+
+    public FsProjectFixture()
+    {
+        RootDirectory = Directory.CreateTempSubdirectory(DefaultPrefix);
+    }
 
     public void CopyFiles(string sourceDirectory, string? targetDirectory = null)
     {

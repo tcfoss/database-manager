@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -12,12 +13,13 @@ using ConfigParsing = TcfOss.DatabaseManager.Core.Configuration.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.Configuration;
 
-public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger logger)
+public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger logger, IFileSystem? fileSystem = null)
     : IConfigLoader<TConfig, TSchemaMapping>
     where TConfig : ConfigWithSchemaMapsBase<TSchemaMapping>
     where TSchemaMapping : ISchemaMapping
 {
     private readonly ILogger _logger = logger;
+    private readonly IFileSystem _fileSystem = fileSystem ?? new FileSystem();
 
     public abstract TConfig LoadConfig(string configDirectory, ConfigParsing.Config rawConfig, Dictionary<string, object> otherInformation, bool relaxed = false);
 
@@ -75,7 +77,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                 uniqueId = parentUniqueId;
             }
 
-            if (fullPath.Attributes.HasFlag(FileAttributes.Directory))
+            if (_fileSystem.Directory.Exists(fullPath.FullName))
             {
                 expandedDeployScripts.AddRange(ExpandDeployScriptsFromDirectory(new DirectoryInfo(fullPath.FullName), schemaId, schemaRootPath, parentRootPath, uniqueId, scriptType));
             }
@@ -107,7 +109,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         s_logSearchingForDeployScriptsInDirectory(_logger, directoryPath);
 
         return ExpandDeployScripts(
-            Directory.EnumerateFiles(directoryPath.FullName, "*", SearchOption.AllDirectories)
+            _fileSystem.Directory.EnumerateFiles(directoryPath.FullName, "*", SearchOption.AllDirectories)
             .OrderBy(subFile => subFile)
             .Select(subFile => new ConfigParsing.DeployScript
             {
@@ -126,7 +128,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
     {
         s_logReadingDeployScriptFromYaml(_logger, yamlFile);
 
-        string yaml = File.ReadAllText(yamlFile.FullName);
+        string yaml = _fileSystem.File.ReadAllText(yamlFile.FullName);
         if (string.IsNullOrWhiteSpace(yaml))
         {
             s_logEmptyDeployScriptYaml(_logger, yamlFile);
@@ -158,13 +160,13 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         throw new ConfigurationException.DeployScriptMissingType(deployScript);
     }
 
-    private static FileInfo ExtractDeployScriptPath(string filePath, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath = null)
+    private FileInfo ExtractDeployScriptPath(string filePath, DirectoryInfo schemaRootPath, DirectoryInfo? parentRootPath = null)
     {
         FileInfo fileInfo;
         if (Path.IsPathRooted(filePath))
         {
             fileInfo = new FileInfo(filePath);
-            if (Exists(fileInfo))
+            if (Exists(fileInfo.FullName))
             {
                 return fileInfo;
             }
@@ -173,21 +175,21 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         if (parentRootPath != null)
         {
             fileInfo = new FileInfo(Path.Combine(parentRootPath.FullName, filePath));
-            if (Exists(fileInfo))
+            if (Exists(fileInfo.FullName))
             {
                 return fileInfo;
             }
         }
 
         fileInfo = new FileInfo(Path.Combine(schemaRootPath.FullName, filePath));
-        if (Exists(fileInfo))
+        if (Exists(fileInfo.FullName))
         {
             return fileInfo;
         }
 
         throw new FileNotFoundException($"Deploy script file '{filePath}' not found in schema root or parent root.", filePath);
 
-        static bool Exists(FileInfo fileToCheck) => fileToCheck.Exists || Directory.Exists(fileToCheck.FullName);
+        bool Exists(string path) => _fileSystem.File.Exists(path) || _fileSystem.Directory.Exists(path);
     }
 
     protected Refactor[] GetRefactors(SchemaIdentifier schemaId, string schemaRootPath, IReadOnlyCollection<string>? refactorFiles, QuoteStyle quoteStyle)
@@ -220,7 +222,8 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
         string fullFilePath = Path.GetFullPath(filePath);
         s_logLoadingRefactors(_logger, fullFilePath, null);
 
-        List<ConfigParsing.Refactor> rawRefactors = Serialization.ParseConfig<List<ConfigParsing.Refactor>>(fullFilePath);
+        string yaml = _fileSystem.File.ReadAllText(fullFilePath);
+        List<ConfigParsing.Refactor> rawRefactors = Serialization.ParseConfig<List<ConfigParsing.Refactor>>(yaml, fullFilePath);
         s_logLoadedRefactors(_logger, fullFilePath, rawRefactors.Count, null);
         return rawRefactors;
     }
