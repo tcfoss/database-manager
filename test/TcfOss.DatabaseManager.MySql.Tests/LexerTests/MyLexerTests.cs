@@ -10,6 +10,67 @@ namespace TcfOss.DatabaseManager.MySql.Tests.LexerTests;
 public class MyLexerTests : LexerTestBase
 {
     [Fact]
+    public void Select_String_With_Charset()
+    {
+        var test = "SELECT _utf8'blah'";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("blah") { Location = new Location(), CharSet = "_utf8" }
+        };
+
+        Compare(expected, actual);
+    }
+    [Fact]
+
+    public void Select_String_With_Charset_With_Space()
+    {
+        var test = "SELECT _utf8 'blah'";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("blah") { Location = new Location(), CharSet = "_utf8" }
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Select_UnderscoreVar_NotCharset()
+    {
+        var test = "SELECT _var;";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new Word("_var") { Location = new Location() },
+            new Semicolon { Location = new Location() }
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Select_UnderscoreVar_NotCharset_AtEnd()
+    {
+        var test = "SELECT _var";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new Word("_var") { Location = new Location() },
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
     public void Delimiter()
     {
         var lexer = new MyLexer();
@@ -60,7 +121,7 @@ public class MyLexerTests : LexerTestBase
     public void Select_String_With_Quote_Escapes()
     {
         var test = "SELECT 'bl''ah'";
-        var actual = new GenericLexer().Tokenize(test);
+        var actual = new MyLexer().Tokenize(test);
         var expected = new List<Token>()
         {
             new Word("SELECT") { Location = new Location() },
@@ -74,7 +135,7 @@ public class MyLexerTests : LexerTestBase
     public void Select_String_With_Backslash_Escapes()
     {
         var test = @"SELECT 'bl\'ah'";
-        var actual = new GenericLexer().Tokenize(test);
+        var actual = new MyLexer().Tokenize(test);
         var expected = new List<Token>()
         {
             new Word("SELECT") { Location = new Location() },

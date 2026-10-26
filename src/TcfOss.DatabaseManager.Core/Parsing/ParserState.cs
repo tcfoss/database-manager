@@ -491,15 +491,7 @@ public class ParserState
             foundString = $"'{found}'";
         }
 
-        IEnumerable<string> realExpected = expected.Select(e =>
-        {
-            if (e.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
-            {
-                return $"'{e}'";
-            }
-            return e;
-        });
-        return new ParseException.ExpectedOneOfButFound(realExpected, foundString, found.Location);
+        return new ParseException.ExpectedOneOfButFound(expected, foundString, found.Location);
     }
 
     public static ParseException ExpectedException(string expected, Token found)

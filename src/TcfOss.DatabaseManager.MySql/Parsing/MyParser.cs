@@ -140,11 +140,7 @@ public class MyParser : Parser
 
     private static Statements.SetDelimiter ParseSetDelimiter(ParserState state)
     {
-        if (state.Peek() is not SetDelimiter next)
-        {
-            throw state.ExpectedException("DELIMITER");
-        }
-        state.Next();
+        var next = (SetDelimiter)state.Next();
         return new Statements.SetDelimiter(next.Delimiter);
     }
 

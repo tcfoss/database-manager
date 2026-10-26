@@ -267,7 +267,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
 
     [Theory]
-    [InlineData("CREATE TRIGGER mytrigger UPDATE ON mytable FOR EACH ROW SELECT 1", "{ BEFORE | AFTER | 'INSTEAD OF' | FOR }")]
+    [InlineData("CREATE TRIGGER mytrigger UPDATE ON mytable FOR EACH ROW SELECT 1", "{ BEFORE | AFTER | INSTEAD OF | FOR }")]
     [InlineData("CREATE TRIGGER mytrigger AFTER ON mytable FOR EACH ROW SELECT 1", "{ INSERT | UPDATE | DELETE }")]
     [InlineData("CREATE ALGORITHM = INVALID VIEW myview AS SELECT 1 FROM mytable", "{ UNDEFINED | MERGE | TEMPTABLE }")]
     [InlineData("CREATE VIEW myview AS SELECT 1 FROM mytable WITH MISSING CHECK OPTION", "{ CASCADED | LOCAL }")]

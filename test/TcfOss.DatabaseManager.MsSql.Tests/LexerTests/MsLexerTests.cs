@@ -111,7 +111,7 @@ public class MsLexerTests : LexerTestBase
     public void Select_String_With_Quote_Escapes()
     {
         var test = "SELECT 'bl''ah'";
-        var actual = new GenericLexer().Tokenize(test);
+        var actual = new MsLexer().Tokenize(test);
         var expected = new List<Token>()
         {
             new Word("SELECT") { Location = new Location() },

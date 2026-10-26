@@ -40,6 +40,8 @@ public class Lexer<TRunState> : ILexer
             PostProcessToken(curr, tokens, ref runState);
         }
 
+        PostProcessStream(tokens, ref runState);
+
         if (nonSql.Count > 0)
         {
             tokens.Add(new NonSqlContainer(nonSql) { Location = nonSql[0].Location });
@@ -56,6 +58,11 @@ public class Lexer<TRunState> : ILexer
     protected virtual void PostProcessToken(Token token, List<Token> tokens, ref TRunState runState)
     {
         tokens.Add(token);
+    }
+
+    protected virtual void PostProcessStream(List<Token> tokens, ref TRunState runState)
+    {
+        // Do nothing by default.
     }
 
     protected virtual Token NextToken(ref LexerState state, ref TRunState runState)

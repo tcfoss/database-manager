@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -47,7 +48,7 @@ public class MyLexer : Lexer<MyRunState>
             runState.TerminatorStringStart = runState.TerminatorString?[0];
         }
 
-        if (token is Word w && w.Value.StartsWith('_'))
+        if (token is Word { QuoteStyle: QuoteStyle.None } w && w.Value.StartsWith('_'))
         {
             runState.MaybeCharset = w;
             // Don't add the token yet, until we know what comes next
@@ -55,6 +56,16 @@ public class MyLexer : Lexer<MyRunState>
         }
 
         tokens.Add(token);
+    }
+
+    protected override void PostProcessStream(List<Token> tokens, ref MyRunState runState)
+    {
+        if (runState.MaybeCharset != null)
+        {
+            // It was not a charset.
+            tokens.Add(runState.MaybeCharset);
+            runState.MaybeCharset = null;
+        }
     }
 
     protected override Token NextToken(ref LexerState state, ref MyRunState runState)

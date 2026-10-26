@@ -84,7 +84,7 @@ public class TableParser
             {
                 continue;
             }
-            throw state.ExpectedException(",", ")");
+            throw state.ExpectedException("','", "')'");
         }
 
         return (columns, constraints);
