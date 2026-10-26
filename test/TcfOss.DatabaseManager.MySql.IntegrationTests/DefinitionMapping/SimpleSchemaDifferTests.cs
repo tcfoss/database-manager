@@ -17,6 +17,7 @@ public abstract class SimpleSchemaDifferTests<TBuilderEntity, TContainerEntity, 
     {
         var actualStatements = Fixture.ActualChanges
             .OrderBy(change => change.Weight)
+            .ThenBy(change => change.SubWeight)
             .ThenBy(change => change.Statement.ToSql())
             .Select(change => change.Statement.ToSql())
             .ToArray();

@@ -7,6 +7,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -33,14 +34,7 @@ public partial class MyDiffer
     private ImmutableHashSet<ForeignKeyInfo> _foreignKeys = [];
     private readonly HashSet<DroppedForeignKey> _droppedForeignKeys = [];
 
-    private uint _nextRefactorWeight = DefaultWeights.ApplyRename;
-    private uint _nextPreDeploymentScriptWeight = DefaultWeights.PreDeploymentScript;
-    private uint _nextPostDropConstraintsScriptWeight = DefaultWeights.PostDropConstraintsScript;
-    private uint _nextPreSetNotNullWeight = DefaultWeights.PreSetNotNullScript;
-    private uint _nextPreAddConstraintsScriptWeight = DefaultWeights.PreAddConstraintsScript;
-    private uint _nextPostDeploymentScriptWeight = DefaultWeights.PostDeploymentScript;
-    private uint _nextAlterTableWeight = DefaultWeights.AlterTable;
-    private uint _nextCreateProgramObjectWeight = DefaultWeights.CreateProgramObject;
+    private readonly Dictionary<DefinitionAlterPhase, uint> _nextSubWeights = [];
 
     private readonly SqlValueList<DefinitionAlterStatement> _refactorStatements = [];
     private readonly Dictionary<SchemaIdentifier, List<string>> _appliedRefactors = [];
@@ -91,9 +85,16 @@ public partial class MyDiffer
             results.AddRange(GetInsertRefactorStatements());
             results.AddRange(GetInsertDeployScriptStatements());
 
-            _results = [.. results.OrderBy(x => x.Weight)];
+            _results = [.. results.OrderBy(x => x.Weight).ThenBy(x => x.SubWeight)];
         }
         return _results;
+    }
+
+    private uint NextSubWeight(DefinitionAlterPhase phase)
+    {
+        uint subWeight = _nextSubWeights.GetValueOrDefault(phase);
+        _nextSubWeights[phase] = checked(subWeight + 1);
+        return subWeight;
     }
 
     private List<DefinitionAlterStatement> GetDeployScriptStatements()
@@ -101,17 +102,17 @@ public partial class MyDiffer
         var results = new List<DefinitionAlterStatement>();
         foreach (DeployScript deployScript in _deployScripts.OrderBy(ds => ds.FileName, StringComparer.OrdinalIgnoreCase))
         {
-            uint weight = deployScript.Type switch
+            DefinitionAlterPhase weight = deployScript.Type switch
             {
-                DeployScriptType.PreDeployment => _nextPreDeploymentScriptWeight++,
-                DeployScriptType.PostDropConstraints => _nextPostDropConstraintsScriptWeight++,
-                DeployScriptType.PreSetNotNull => _nextPreSetNotNullWeight++,
-                DeployScriptType.PreAddConstraints => _nextPreAddConstraintsScriptWeight++,
-                DeployScriptType.PostDeployment => _nextPostDeploymentScriptWeight++,
-                _ => throw new InvalidOperationException($"Unknown deploy script type '{deployScript.Type}'.")
+                DeployScriptType.PreDeployment => DefinitionAlterPhase.PreDeploymentScript,
+                DeployScriptType.PostDropConstraints => DefinitionAlterPhase.PostDropConstraintsScript,
+                DeployScriptType.PreSetNotNull => DefinitionAlterPhase.PreSetNotNullScript,
+                DeployScriptType.PreAddConstraints => DefinitionAlterPhase.PreAddConstraintsScript,
+                DeployScriptType.PostDeployment => DefinitionAlterPhase.PostDeploymentScript,
+                _ => throw new DefensiveGuardException("DeployScriptWeight", deployScript.Type.ToString(), "Unknown values are rejected in config loading")
             };
             var statement = new StatementGroup(deployScript.Body) { Meta = { RawText = deployScript.RawBodyText } };
-            results.Add(new DefinitionAlterStatement(weight, deployScript.SchemaId, statement, $"Applying script from {deployScript.FullPath}", true));
+            results.Add(new DefinitionAlterStatement(weight, deployScript.SchemaId, statement, $"Applying script from {deployScript.FullPath}", true, NextSubWeight(weight)));
         }
         return results;
     }
@@ -139,7 +140,7 @@ public partial class MyDiffer
                 Columns = [new Identifier("entry_key", Config.QuoteStyle), new Identifier("entry_type", Config.QuoteStyle)]
             };
 
-            results.Add(new DefinitionAlterStatement(DefaultWeights.InsertRefactor, schemaId, insertStatement));
+            results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.InsertRefactor, schemaId, insertStatement));
         }
 
         return results;
@@ -159,14 +160,14 @@ public partial class MyDiffer
         foreach (IGrouping<DeployScriptType, DeployScript> group in deployScriptsByType)
         {
             DeployScriptType type = group.Key;
-            uint weight = type switch
+            DefinitionAlterPhase weight = type switch
             {
-                DeployScriptType.PreDeployment => DefaultWeights.InsertPreDeployMeta,
-                DeployScriptType.PostDropConstraints => DefaultWeights.InsertPostDropConstraintsMeta,
-                DeployScriptType.PreSetNotNull => DefaultWeights.InsertPreSetNotNullMeta,
-                DeployScriptType.PreAddConstraints => DefaultWeights.InsertPreAddConstraintsMeta,
-                DeployScriptType.PostDeployment => DefaultWeights.InsertPostDeployMeta,
-                _ => throw new InvalidOperationException($"Unknown deploy script type '{type}'.")
+                DeployScriptType.PreDeployment => DefinitionAlterPhase.InsertPreDeployMeta,
+                DeployScriptType.PostDropConstraints => DefinitionAlterPhase.InsertPostDropConstraintsMeta,
+                DeployScriptType.PreSetNotNull => DefinitionAlterPhase.InsertPreSetNotNullMeta,
+                DeployScriptType.PreAddConstraints => DefinitionAlterPhase.InsertPreAddConstraintsMeta,
+                DeployScriptType.PostDeployment => DefinitionAlterPhase.InsertPostDeployMeta,
+                _ => throw new DefensiveGuardException("DeployScriptMetaWeight", type.ToString(), "Unknown values are rejected in config loading")
             };
 
             IEnumerable<IGrouping<SchemaIdentifier, DeployScript>> deployScriptsBySchema = group
@@ -221,7 +222,7 @@ public partial class MyDiffer
                     ApplyColumnRename(rename);
                     break;
                 default:
-                    throw new NotSupportedException($"Refactor type {refactor.GetType()} is not supported.");
+                    throw new DefensiveGuardException(true, "Refactor", refactor.GetType().ToString(), "All cases of union type are covered");
             }
         }
         foreach (IGrouping<SchemaIdentifier, Refactor> x in _refactors.GroupBy(x => x.SchemaId))
@@ -253,17 +254,17 @@ public partial class MyDiffer
 
             _refactorStatements.Add(
                 new DefinitionAlterStatement(
-                    _nextRefactorWeight,
+                    DefinitionAlterPhase.ApplyRename,
                     rename.OldName.Schema,
                     new AlterTable(
                         rename.OldName.ToObjectName(Depth),
                         [
                             new AlterTableOperation.Rename(rename.OldName.Schema == rename.NewName.Schema ? rename.NewName.ToObjectName(Depth) : rename.NewName.ToObjectName(2))
                         ]
-                    )
+                    ),
+                    SubWeight: NextSubWeight(DefinitionAlterPhase.ApplyRename)
                 )
             );
-            _nextRefactorWeight++;
             _foreignKeys = GetForeignKeys(_start, _validationHelper, Config.NameHandling);
         }
         else
@@ -288,17 +289,17 @@ public partial class MyDiffer
 
             _refactorStatements.Add(
                 new DefinitionAlterStatement(
-                    _nextRefactorWeight,
+                    DefinitionAlterPhase.ApplyRename,
                     rename.OldName.Table.Schema,
                     new AlterTable(
                         rename.OldName.Table.ToObjectName(Depth),
                         [
                             new AlterTableOperation.RenameColumn(rename.OldName.ToSimpleIdentifier(), rename.NewName.ToSimpleIdentifier())
                         ]
-                    )
+                    ),
+                    SubWeight: NextSubWeight(DefinitionAlterPhase.ApplyRename)
                 )
             );
-            _nextRefactorWeight++;
         }
         else
         {
@@ -475,7 +476,7 @@ public partial class MyDiffer
             {
                 results.Add(
                     new DefinitionAlterStatement(
-                        DefaultWeights.CreateTable,
+                        DefinitionAlterPhase.CreateTable,
                         tableMap.End!.Name.Schema,
                         tableMap.End!.ToCreateStatement(
                             _includeSchema,
@@ -490,7 +491,7 @@ public partial class MyDiffer
             {
                 results.Add(
                     new DefinitionAlterStatement(
-                        DefaultWeights.DropTable,
+                        DefinitionAlterPhase.DropTable,
                         tableMap.Start!.Name.Schema,
                         new DropObject([tableMap.Start!.Name.ToObjectName(Depth)], DroppableObject.Table)
                     )
@@ -518,7 +519,7 @@ public partial class MyDiffer
                 {
                     results.Add(
                         new DefinitionAlterStatement(
-                            DefaultWeights.SetTableProperty,
+                            DefinitionAlterPhase.SetTableProperty,
                             tableMap.Start!.Name.Schema,
                             new AlterTable(tableMap.End.Name.ToObjectName(Depth), tableLevelAlterations)
                         )
@@ -567,8 +568,7 @@ public partial class MyDiffer
 
     private List<DefinitionAlterStatement> GetAlterTableColumns(ObjectHandle tableHandle, MyTable start, MyTable end)
     {
-        var tableDiffer = new ColumnDiffer(this, tableHandle, start, end, _nextAlterTableWeight);
-        _nextAlterTableWeight = tableDiffer.MyOrder;
+        var tableDiffer = new ColumnDiffer(this, tableHandle, start, end);
         return tableDiffer.Statements;
     }
 
@@ -581,7 +581,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Procedure)));
+                results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Procedure)));
             }
             if (map.End != null)
             {
@@ -593,7 +593,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Function)));
+                results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Function)));
             }
             if (map.End != null)
             {
@@ -605,7 +605,7 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropView, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.View), Comment: $"Drop view {map.Start.Name}"));
+                results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.DropView, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.View), Comment: $"Drop view {map.Start.Name}"));
             }
             if (map.End != null)
             {
@@ -619,8 +619,7 @@ public partial class MyDiffer
         foreach (DbObjectNode node in sortedNodes)
         {
 
-            results.Add(new DefinitionAlterStatement(_nextCreateProgramObjectWeight, node.Name.Schema, node.CreateStatement, Comment: $"Create {node.ObjectType} {node.Name}"));
-            _nextCreateProgramObjectWeight++;
+            results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.CreateProgramObject, node.Name.Schema, node.CreateStatement, Comment: $"Create {node.ObjectType} {node.Name}", SubWeight: NextSubWeight(DefinitionAlterPhase.CreateProgramObject)));
         }
 
         return results;
@@ -636,7 +635,7 @@ public partial class MyDiffer
             if (map.Start != null)
             {
                 results.Add(new DefinitionAlterStatement(
-                    DefaultWeights.DropProgramObject,
+                    DefinitionAlterPhase.DropProgramObject,
                     map.Start.Name.Schema,
                     new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Trigger),
                     Comment: $"Drop trigger {map.Start.Name}"
@@ -645,7 +644,7 @@ public partial class MyDiffer
             if (map.End != null)
             {
                 results.Add(new DefinitionAlterStatement(
-                    DefaultWeights.CreateTrigger,
+                    DefinitionAlterPhase.CreateTrigger,
                     map.End.Name.Schema,
                     map.End.ToCreateStatement(_includeSchema),
                     Comment: $"Create trigger {map.End.Name}"
@@ -665,11 +664,11 @@ public partial class MyDiffer
         {
             if (map.Start != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Event)));
+                results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.DropProgramObject, map.Start.Name.Schema, new DropObject([map.Start.Name.ToObjectName(Depth)], DroppableObject.Event)));
             }
             if (map.End != null)
             {
-                results.Add(new DefinitionAlterStatement(DefaultWeights.CreateEvent, map.End.Name.Schema, map.End.ToCreateStatement(_includeSchema)));
+                results.Add(new DefinitionAlterStatement(DefinitionAlterPhase.CreateEvent, map.End.Name.Schema, map.End.ToCreateStatement(_includeSchema)));
             }
         }
 

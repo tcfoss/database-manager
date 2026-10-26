@@ -21,7 +21,7 @@ public class DifferStatementWriterTests
         SchemaIdentifier schema = SI();
 
         var ops = new DefinitionAlterStatement(
-            1,
+            DefinitionAlterPhase.AlterTable,
             schema,
             new AlterTable(ON("mytable", "myschema"), [new AlterTableOperation.TableComment("My table comment")]),
             "My operation comment");
@@ -33,7 +33,7 @@ public class DifferStatementWriterTests
         }
 
         ops = new DefinitionAlterStatement(
-            2,
+            DefinitionAlterPhase.AlterTable,
             schema,
             new AlterTable(ON("mytable", "myschema"), [new AlterTableOperation.TableComment("My table comment")]),
             "My operation comment");
@@ -58,10 +58,11 @@ public class DifferStatementWriterTests
     {
         string? comment = hasComment ? "My operation comment" : null;
         var ops = new DefinitionAlterStatement(
-            1,
+            DefinitionAlterPhase.AlterTable,
             SI(),
             new AlterTable(ON("mytable", "myschema"), [new AlterTableOperation.TableComment("My table comment")]),
-            comment
+            comment,
+            SubWeight: 42
         );
 
         var (writer, output) = ConstructWriter(emitComments: emitComments);
@@ -70,11 +71,11 @@ public class DifferStatementWriterTests
         var actual = output.ToString();
         if (expectComment)
         {
-            Assert.Contains("/* My operation comment (1) */", actual);
+            Assert.Contains("/* My operation comment (AlterTable, 42) */", actual);
         }
         else
         {
-            Assert.DoesNotContain("/* My operation comment (1) */", actual);
+            Assert.DoesNotContain("/* My operation comment (AlterTable, 42) */", actual);
         }
     }
 
@@ -99,7 +100,7 @@ public class DifferStatementWriterTests
         }
 
         var ops = new DefinitionAlterStatement(
-            1,
+            DefinitionAlterPhase.AlterTable,
             SI(),
             stmt,
             "My operation comment"

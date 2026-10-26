@@ -18,8 +18,6 @@ public partial class MyDiffer
 {
     sealed class ColumnDiffer
     {
-        public uint MyOrder { get; private set; }
-
         private List<AlterTableOperation> _currentModifications = [];
         private readonly MyDiffer _parent;
         private readonly ObjectHandle _tableHandle;
@@ -31,9 +29,8 @@ public partial class MyDiffer
 
         private readonly DifferFormatManager _manager;
 
-        public ColumnDiffer(MyDiffer parent, ObjectHandle tableHandle, MyTable start, MyTable end, uint initialOrder)
+        public ColumnDiffer(MyDiffer parent, ObjectHandle tableHandle, MyTable start, MyTable end)
         {
-            MyOrder = initialOrder;
             _parent = parent;
             _tableHandle = tableHandle;
             _start = start;
@@ -61,12 +58,12 @@ public partial class MyDiffer
             if (_currentModifications.Count != 0)
             {
                 Statements.Add(new DefinitionAlterStatement(
-                    MyOrder,
+                    DefinitionAlterPhase.AlterTable,
                     _start.Name.Schema,
                     new AlterTable(_tableName, [.. _currentModifications]),
-                    $"Applying column modifications to table {_tableName}"
+                    $"Applying column modifications to table {_tableName}",
+                    SubWeight: _parent.NextSubWeight(DefinitionAlterPhase.AlterTable)
                 ));
-                MyOrder++;
                 _currentModifications = [];
             }
         }
@@ -131,7 +128,7 @@ public partial class MyDiffer
                 MyColumn endNotNull = end;
                 end = end with { Nullability = new ColumnOption.Nullability.Null() };
                 Statements.Add(new DefinitionAlterStatement(
-                    DefaultWeights.SetNotNull,
+                    DefinitionAlterPhase.SetNotNull,
                     _end.Name.Schema,
                     new AlterTable(_tableName, [new AlterTableOperation.ModifyColumn(endNotNull.ToStatementColumn(_manager))]),
                     $"Setting NOT NULL on column {end.Name}"
@@ -157,7 +154,7 @@ public partial class MyDiffer
             {
                 var statementCol = (start with { AutoIncrement = false }).ToStatementColumn(_manager);
                 Statements.Add(new DefinitionAlterStatement(
-                    DefaultWeights.DropAutoIncrement,
+                    DefinitionAlterPhase.DropAutoIncrement,
                     _start.Name.Schema,
                     new AlterTable(_tableName, [new AlterTableOperation.ModifyColumn(statementCol)]),
                     $"Dropping auto-increment from column {start.Name}"
@@ -174,7 +171,7 @@ public partial class MyDiffer
             {
                 /* Separate adding the column from applying the AUTO_INCREMENT */
                 Statements.Add(new DefinitionAlterStatement(
-                     DefaultWeights.AddAutoIncrement,
+                     DefinitionAlterPhase.AddAutoIncrement,
                      _start.Name.Schema,
                      new AlterTable(_tableName, [new AlterTableOperation.ModifyColumn(end.ToStatementColumn(_manager))]),
                      $"Adding auto-increment to column {end.Name}"
@@ -202,22 +199,22 @@ public partial class MyDiffer
             if (_currentModifications.Count != 0)
             {
                 Statements.Add(new DefinitionAlterStatement(
-                    MyOrder,
+                    DefinitionAlterPhase.AlterTable,
                     _start.Name.Schema,
                     new AlterTable(_tableName, [.. _currentModifications]),
-                    $"Applying pending modifications before dropping generation for column {start.Name}"
+                    $"Applying pending modifications before dropping generation for column {start.Name}",
+                    SubWeight: _parent.NextSubWeight(DefinitionAlterPhase.AlterTable)
                 ));
-                MyOrder++;
                 _currentModifications = [];
             }
 
             Statements.Add(new DefinitionAlterStatement(
-                MyOrder,
+                DefinitionAlterPhase.AlterTable,
                 _start.Name.Schema,
                 new StatementGroup(statements),
-                $"Dropping generation from column {start.Name} by recreating as {end.Name}"
+                $"Dropping generation from column {start.Name} by recreating as {end.Name}",
+                SubWeight: _parent.NextSubWeight(DefinitionAlterPhase.AlterTable)
             ));
-            MyOrder++;
             columnChanges &= ~ColumnChangeType.DropGeneration;
 
             return columnChanges;
@@ -240,7 +237,7 @@ public partial class MyDiffer
         private (ColumnChangeType, MyColumn) ApplyAddAutoIncrement(MyColumn end, ColumnChangeType colChanges)
         {
             Statements.Add(new DefinitionAlterStatement(
-                DefaultWeights.AddAutoIncrement,
+                DefinitionAlterPhase.AddAutoIncrement,
                 _start.Name.Schema,
                 new AlterTable(_tableName, [new AlterTableOperation.ModifyColumn(end.ToStatementColumn(_manager))]),
                 $"Adding auto-increment to column {end.Name}"
@@ -253,7 +250,7 @@ public partial class MyDiffer
         {
             var startWithoutAi = (start with { AutoIncrement = false }).ToStatementColumn(_manager);
             Statements.Add(new DefinitionAlterStatement(
-                DefaultWeights.DropAutoIncrement,
+                DefinitionAlterPhase.DropAutoIncrement,
                 _start.Name.Schema,
                 new AlterTable(_tableName, [new AlterTableOperation.ModifyColumn(startWithoutAi)]),
                 $"Dropping auto-increment from column {start.Name}"
@@ -305,7 +302,7 @@ public partial class MyDiffer
                 if (_parent.NotifyDroppingForeignKey(_tableHandle, _start.Name, localFk.Name!))
                 {
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.DropForeignKey,
+                        DefinitionAlterPhase.DropForeignKey,
                         _start.Name.Schema,
                         new AlterTable(_tableName, [new AlterTableOperation.DropForeignKey(localFk.Name!)]),
                         $"Dropping foreign key {localFk.Name} due to column change {start.Name}"
@@ -318,7 +315,7 @@ public partial class MyDiffer
                 if (_parent.NotifyDroppingForeignKey(refFk.TableHandle, refFk.TableId, refFk.ForeignKey))
                 {
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.DropForeignKey,
+                        DefinitionAlterPhase.DropForeignKey,
                         refFk.TableId.Schema,
                         new AlterTable(refFk.TableId.ToObjectName(_parent.Depth), [new AlterTableOperation.DropForeignKey(refFk.ForeignKey)]),
                         $"Dropping referencing foreign key {refFk.ForeignKey} in table {refFk.TableHandle} due to column change {start.Name}"
