@@ -12,6 +12,7 @@ public class Lexer<TRunState> : ILexer
     where TRunState : struct
 {
     private const int StackAllocationThreshold = 256;
+    protected virtual bool SupportBackslashQuoteEscape => true;
 
     public virtual List<Token> Tokenize(string sql) => Tokenize(sql.AsSpan());
 
@@ -331,14 +332,14 @@ public class Lexer<TRunState> : ILexer
 
         int startPosition = state.Position;
 
-        state.TakeWhile(char.IsDigit);
+        state.AdvanceThroughDigits();
 
         if (state.Peek() == CharSymbols.Dot)
         {
             state.Next();
         }
 
-        state.TakeWhile(char.IsDigit);
+        state.AdvanceThroughDigits();
 
         if (state.SpanFrom(startPosition) is [CharSymbols.Dot])
         {
@@ -380,7 +381,7 @@ public class Lexer<TRunState> : ILexer
             state.Next(); // Consume the '+' or '-'
         }
 
-        state.TakeWhile(char.IsDigit);
+        state.AdvanceThroughDigits();
     }
 
     private StringLiteral TokenizeStringLiteral(ref LexerState state)
@@ -402,7 +403,7 @@ public class Lexer<TRunState> : ILexer
             return new Word(new string(ExtractWordTrustNoNewLines(ref state))) { Location = state.Location };
         }
 
-        string hex = ExtractString(ref state, backslashEscape: true);
+        string hex = ExtractString(ref state);
         return new HexStringLiteral(hex) { Location = initialLocation };
     }
 
@@ -501,7 +502,7 @@ public class Lexer<TRunState> : ILexer
         return content;
     }
 
-    private string ExtractString(ref LexerState state, char quoteChar = CharSymbols.SingleQuote, bool backslashEscape = true)
+    private string ExtractString(ref LexerState state, char quoteChar = CharSymbols.SingleQuote)
     {
         Location startLocation = state.Location;
 
@@ -532,7 +533,7 @@ public class Lexer<TRunState> : ILexer
                 return result;
             }
 
-            if (backslashEscape && curr == CharSymbols.Backslash)
+            if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
             {
                 // String contains backslash escapes. Have to do it the slower way.
                 break;
@@ -634,7 +635,7 @@ public class Lexer<TRunState> : ILexer
                         }
                     }
                 }
-                else if (backslashEscape && curr == CharSymbols.Backslash)
+                else if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
                 {
                     Append(curr, stackBuffer);
                     state.Next();

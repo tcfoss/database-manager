@@ -7,6 +7,8 @@ namespace TcfOss.DatabaseManager.MsSql.Lexing;
 
 public class MsLexer : Lexer<MsRunState>
 {
+    protected override bool SupportBackslashQuoteEscape => false;
+
     protected override Token NextToken(ref LexerState state, ref MsRunState runState)
     {
         char character = state.Peek();
