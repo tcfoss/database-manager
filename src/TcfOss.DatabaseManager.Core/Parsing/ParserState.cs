@@ -462,7 +462,7 @@ public class ParserState
     public ParseException ExpectedException(string expected)
     {
         Token found = Peek();
-        return ExpectedException($"{expected}", found);
+        return ExpectedException(expected, found);
     }
 
     public ParseException ExpectedCategoryException(string expectedCategory)

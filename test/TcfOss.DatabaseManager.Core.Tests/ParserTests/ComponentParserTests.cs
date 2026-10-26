@@ -80,6 +80,20 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("3.2")]
+    [InlineData("*")]
+    [InlineData("<>")]
+    [InlineData("(")]
+    [InlineData(".")]
+    public static void ParseExtendedIdentifier_InvalidValue_Throws(string badSql)
+    {
+        var state = GetState(badSql);
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ComponentParser.ParseExtendedIdentifier(state));
+        Assert.Contains("identifier", ex.Message);
+    }
+
+    [Theory]
     [InlineData("aardvark")]
     [InlineData("aardvark.`bobcat`")]
     [InlineData("aardvark.`bobcat`.\"cat\"")]
@@ -158,6 +172,86 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
 
         var (expected, actual) = GetExpectedActual(s => parser.ComponentParser.ParseParenthesizedKeyPartList(s, false), sql);
         Assert.Equal(expected, $"({actual})");
+    }
+
+    [Fact]
+    public static void ParseParenthesizedKeyPartList_Unclosed_Throws()
+    {
+        var state = GetState("(`aardvark` (3)");
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ComponentParser.ParseParenthesizedKeyPartList(state, false));
+        Assert.Contains(")", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("ROW")]
+    [InlineData("ROWS")]
+    public static void ParseOffsetFetch_Offset_AcceptsRowOrRows(string rowLabel)
+    {
+        var state = GetState($"OFFSET 5 {rowLabel}");
+        var parser = new Parser();
+
+        var offsetFetch = parser.ComponentParser.ParseOffsetFetch(state);
+        Assert.NotNull(offsetFetch);
+        Assert.Equal(new LiteralValue(new Value.Number("5", false)), offsetFetch.Offset);
+        Assert.Null(offsetFetch.Fetch);
+    }
+
+    [Fact]
+    public static void ParseOffsetFetch_Offset_MissingRows_Throws()
+    {
+        var state = GetState("OFFSET 5");
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ComponentParser.ParseOffsetFetch(state));
+        Assert.Contains("ROW | ROWS", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("FIRST", "ROWS")]
+    [InlineData("NEXT", "ROWS")]
+    [InlineData("FIRST", "ROW")]
+    [InlineData("NEXT", "ROW")]
+    public static void ParseOffsetFetch_Fetch(string fetchLabel, string rowLabel)
+    {
+        var state = GetState($"OFFSET 5 ROWS FETCH {fetchLabel} 10 {rowLabel} ONLY");
+        var parser = new Parser();
+
+        var offsetFetch = parser.ComponentParser.ParseOffsetFetch(state);
+        Assert.NotNull(offsetFetch);
+        Assert.Equal(new LiteralValue(new Value.Number("5", false)), offsetFetch.Offset);
+        Assert.Equal(new LiteralValue(new Value.Number("10", false)), offsetFetch.Fetch);
+    }
+
+    [Fact]
+    public static void ParseOffsetFetch_Fetch_MissingLabel_Throws()
+    {
+        var state = GetState("OFFSET 5 ROWS FETCH BLAH");
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ComponentParser.ParseOffsetFetch(state));
+        Assert.Contains("FIRST | NEXT", ex.Message);
+    }
+
+    [Fact]
+    public static void ParseOffsetFetch_Fetch_MissingRowLabel_Throws()
+    {
+        var state = GetState("OFFSET 5 ROWS FETCH FIRST 10 BLAH");
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ComponentParser.ParseOffsetFetch(state));
+        Assert.Contains("ROW | ROWS", ex.Message);
+    }
+
+    [Fact]
+    public static void ParseOffsetFetch_Fetch_MissingOnly_Throws()
+    {
+        var state = GetState("OFFSET 5 ROWS FETCH FIRST 10 ROWS BLAH");
+        var parser = new Parser();
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ComponentParser.ParseOffsetFetch(state));
+        Assert.Contains("ONLY", ex.Message);
     }
 
     [Theory]

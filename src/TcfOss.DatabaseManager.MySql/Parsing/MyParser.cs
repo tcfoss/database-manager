@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
@@ -469,20 +470,15 @@ public class MyParser : Parser
             {
                 return new ShowDiagnostic.Count(ShowDiagnosticType.Warnings);
             }
-            throw state.ExpectedException("WARNINGS", "ERRORS");
+            throw state.ExpectedException("ERRORS", "WARNINGS");
         }
 
-        ShowDiagnosticType? diagnosticType = state.Next() switch
+        ShowDiagnosticType diagnosticType = state.Next() switch
         {
             Word { Keyword: Keyword.ERRORS } => ShowDiagnosticType.Errors,
             Word { Keyword: Keyword.WARNINGS } => ShowDiagnosticType.Warnings,
-            _ => null
+            _ => throw new DefensiveGuardException("SHOW WARNINGS/ERRORS", "If something else, ParseShow will have already thrown.")
         };
-        if (diagnosticType == null)
-        {
-            state.Rewind();
-            throw state.ExpectedException("ERRORS", "WARNINGS");
-        }
 
         Limit? limit = null;
         if (state.PeekKeyword(Keyword.LIMIT))

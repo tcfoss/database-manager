@@ -187,6 +187,20 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Equal(expected, actual);
     }
 
+    [Fact]
+    public void ShowDiagnostics_Unknown_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements("SHOW UNKNOWN"));
+        Assert.Contains("{ ERRORS | WARNINGS | COUNT }", ex.Message);
+    }
+
+    [Fact]
+    public void ShowDiagnostics_WithCount_NotErrorsOrWarnings_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements("SHOW COUNT(*) UNKNOWN"));
+        Assert.Contains("{ ERRORS | WARNINGS }", ex.Message);
+    }
+
     [Theory]
     [InlineData("START TRANSACTION")]
     [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
@@ -307,5 +321,52 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         var parser = new MyParser();
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("//", "//////")]
+    [InlineData("@", "@@")]
+    [InlineData("$$$", "$$$$$$")]
+    public void CustomDelimiter_Multiples_Gobbled(string singleDelimiter, string multipleDelimiters)
+    {
+        var given = $"""
+        DELIMITER {singleDelimiter}
+
+        SELECT 1{multipleDelimiters}
+
+        DELIMITER ;
+        """;
+
+        var statements = ParseStatements(given);
+        var statement = Assert.Single(statements);
+
+        Assert.Equal($"SELECT 1", statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("///")]
+    public void CustomDelimiter_NonMultiple_Throws(string delimiter)
+    {
+        var given = $"""
+        DELIMITER //
+
+        SELECT 1{delimiter}
+
+        DELIMITER ;
+        """;
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
+    }
+
+    [Fact]
+    public void Loop_Unclosed_Throws()
+    {
+        var given = """
+        LOOP
+        """;
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
+        Assert.Contains("END LOOP", ex.Message);
     }
 }

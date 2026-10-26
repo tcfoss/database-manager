@@ -194,6 +194,35 @@ public class TokenEquatability
         Assert.False(token1.Equals(null));
     }
 
+    [Theory]
+    [InlineData("col1")]
+    [InlineData("select")]
+    [InlineData("@myvar")]
+    public void Word_Equality(string word)
+    {
+        var token1 = new Word(word) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new Word(word) { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.Equal(token1, token2);
+        Assert.Equal(token1, (object)token2);
+        Assert.Equal(token1, (Token)token2);
+        Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
+    }
+
+    [Fact]
+    public void Word_Inequality()
+    {
+        var token1 = new Word("col1") { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new Word("col2") { Location = new Lexing.Location(4, 5, 6) };
+
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token1, (object)token2);
+        Assert.NotEqual(token1, (Token)token2);
+        Assert.NotEqual(token1.GetHashCode(), token2.GetHashCode());
+
+        Assert.False(token1.Equals(null));
+    }
+
     public class TokenTestData : IEnumerable<TheoryDataRow<Token, Token>>
     {
         public IEnumerator<TheoryDataRow<Token, Token>> GetEnumerator()
