@@ -117,7 +117,7 @@ public class DifferStatementWriter
 
         if (definitionAlterStatement.Comment != null && _settings.EmitCommentsWithWeights)
         {
-            _writer.WriteLine($"/* {definitionAlterStatement.Comment} ({definitionAlterStatement.Weight}) */");
+            _writer.WriteLine($"/* {definitionAlterStatement.Comment} ({definitionAlterStatement.Weight}, {definitionAlterStatement.SubWeight}) */");
         }
 
         WriteStatement(definitionAlterStatement.Statement, definitionAlterStatement.FromDeployScript);

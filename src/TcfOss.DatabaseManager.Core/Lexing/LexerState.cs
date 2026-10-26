@@ -91,6 +91,17 @@ public ref struct LexerState
         Position += n;
     }
 
+    public int AdvanceThroughDigits()
+    {
+        int start = Position;
+        while (Position < _characters.Length && char.IsDigit(_characters[Position]))
+        {
+            Position++;
+        }
+        _column += Position - start;
+        return Position - start;
+    }
+
     public ReadOnlySpan<char> TakeWhile(Func<char, bool> predicate)
     {
         int start = Position;

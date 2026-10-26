@@ -76,12 +76,14 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("4 + INTERVAL 5 DAY_MINUTE")]
     [InlineData("4 + INTERVAL 5 DAY_HOUR")]
     [InlineData("4 + INTERVAL 5 YEAR_MONTH")]
-    public static void ParseExpr_TextMatch(string sql)
+    [InlineData("NOT (a + b)")]
+    [InlineData("!(a + b)", "NOT (a + b)")]
+    public static void ParseExpr_TextMatch(string sql, string? realExpected = null)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
 
-        Assert.Equal(expected, actual);
+        Assert.Equal(realExpected ?? expected, actual);
     }
 
     [Theory]
@@ -106,6 +108,14 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseWildcardOrExpr, "*", "*");
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ParseWildcardOrExpression_InvalidToken_Throws()
+    {
+        var parser = new Parser();
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseWildcardOrExpr(GetState("mytable.;")));
+        Assert.Contains("identifier or .*", ex.Message);
     }
 
     [Theory]
@@ -134,6 +144,16 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Fact]
+    public void ParseEmptyParens_Throws()
+    {
+        var parser = new Parser();
+        var state = GetState("()");
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseExpr(state));
+        Assert.Contains("expression", ex.Message);
+    }
+
+    [Fact]
     public static void And_Higher_Precedence_Than_Or()
     {
         var parser = new Parser();
@@ -149,5 +169,26 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 
         var actualOp2 = Assert.IsType<BinaryOperatorExp>(actual);
         Assert.Equal(BinaryOperatorOp.Or, actualOp2.Operator);
+    }
+
+    [Fact]
+    public void Similar_MissingTo_Throws()
+    {
+        var parser = new Parser();
+        var state = GetState("x SIMILAR");
+
+        var x = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseExpr(state));
+        Assert.Contains("TO", x.Message);
+    }
+
+    [Theory]
+    [InlineData("x ILIKE 'pattern'")]
+    [InlineData("x SIMILAR TO 'pattern'")]
+    public void NotYetImplemented_Throws(string sql)
+    {
+        var parser = new Parser();
+        var state = GetState(sql);
+
+        Assert.Throws<NotImplementedException>(() => parser.ExpressionParser.ParseExpr(state));
     }
 }

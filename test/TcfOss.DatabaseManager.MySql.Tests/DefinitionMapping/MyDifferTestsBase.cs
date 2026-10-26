@@ -200,17 +200,183 @@ public abstract class MyDifferTestsBase
         Assert.Collection(changes,
             scriptChange =>
             {
-                Assert.Equal(DefaultWeights.PreSetNotNullScript, scriptChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.PreSetNotNullScript, scriptChange.Weight);
                 Assert.True(scriptChange.FromDeployScript);
                 Assert.Equal("TRUNCATE `mytable`;\n", scriptChange.Statement.ToSql());
             },
             metadataChange =>
             {
-                Assert.Equal(DefaultWeights.InsertPreSetNotNullMeta, metadataChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.InsertPreSetNotNullMeta, metadataChange.Weight);
                 Assert.False(metadataChange.FromDeployScript);
                 Assert.Equal($"INSERT INTO `schema1`.`_database_manager` (`entry_key`, `entry_type`) VALUES ('{scriptId}', 'D')", metadataChange.Statement.ToSql());
             }
         );
+    }
+
+    [Fact]
+    public void DeployScript_AllOrdersCorrect()
+    {
+        var startText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(255) NULL,
+            PRIMARY KEY (`id`),
+            INDEX idx_mytable_name (`name`)
+        );
+
+        CREATE TABLE myothertable (
+            id INT NOT NULL,
+            name VARCHAR(255) NULL,
+            PRIMARY KEY (`id`),
+            INDEX idx_myothertable_name (`name`),
+            CONSTRAINT fk_mytable_name FOREIGN KEY (`name`) REFERENCES `mytable` (`name`)
+        );
+        """;
+
+        var endText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            PRIMARY KEY (`id`),
+            INDEX idx_mytable_name (`name`)
+        );
+
+        CREATE TABLE myothertable (
+            id INT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            PRIMARY KEY (`id`),
+            INDEX idx_myothertable_name (`name`),
+            CONSTRAINT fk_mytable_name FOREIGN KEY (`name`) REFERENCES `mytable` (`name`)
+        );
+        """;
+
+        DefinitionMappingDeployScript[] deployScripts =
+        [
+            new(
+                DeployScriptType.PostDeployment,
+                s_schema,
+                "post_deployment.sql",
+                "/fake/project/root/post_deployment.sql",
+                [GetSelect("5")]) { UniqueId = "SCRIPT5" },
+            new(
+                DeployScriptType.PreAddConstraints,
+                s_schema,
+                "pre_add_constraints.sql",
+                "/fake/project/root/pre_add_constraints.sql",
+                [GetSelect("4")]) { UniqueId = "SCRIPT4" },
+            new(
+                DeployScriptType.PreSetNotNull,
+                s_schema,
+                "pre_set_not_null.sql",
+                "/fake/project/root/pre_set_not_null.sql",
+                [GetSelect("3")]) { UniqueId = "SCRIPT3" },
+            new(
+                DeployScriptType.PostDropConstraints,
+                s_schema,
+                "post_drop_constraints.sql",
+                "/fake/project/root/post_drop_constraints.sql",
+                [GetSelect("2")]) { UniqueId = "SCRIPT2" },
+            new(
+                DeployScriptType.PreDeployment,
+                s_schema,
+                "pre_deployment.sql",
+                "/fake/project/root/pre_deployment.sql",
+                [GetSelect("1")]) { UniqueId = "SCRIPT1" }
+        ];
+
+        var changes = ComputeChanges(startText, endText, deployScripts: deployScripts);
+
+        Assert.Collection(changes,
+            preDeploy => // 0
+            {
+                Assert.Equal(DefinitionAlterPhase.PreDeploymentScript, preDeploy.Weight);
+                Assert.Contains("SELECT 1", preDeploy.Statement.ToSql());
+            },
+            preDeployMeta => // 1
+            {
+                Assert.Equal(DefinitionAlterPhase.InsertPreDeployMeta, preDeployMeta.Weight);
+                Assert.IsType<Insert>(preDeployMeta.Statement);
+                Assert.Contains("SCRIPT1", preDeployMeta.Statement.ToSql());
+            },
+            dropFk => // 2
+            {
+                Assert.Equal(DefinitionAlterPhase.DropForeignKey, dropFk.Weight);
+                var alterTable = Assert.IsType<AlterTable>(dropFk.Statement);
+                var operation = Assert.IsType<AlterTableOperation.DropForeignKey>(Assert.Single(alterTable.Operations));
+            },
+            postDropConstraint => // 3
+            {
+                Assert.Equal(DefinitionAlterPhase.PostDropConstraintsScript, postDropConstraint.Weight);
+                Assert.Contains("SELECT 2", postDropConstraint.Statement.ToSql());
+            },
+            postDropConstraintMeta => // 4
+            {
+                Assert.Equal(DefinitionAlterPhase.InsertPostDropConstraintsMeta, postDropConstraintMeta.Weight);
+                Assert.IsType<Insert>(postDropConstraintMeta.Statement);
+                Assert.Contains("SCRIPT2", postDropConstraintMeta.Statement.ToSql());
+            },
+            preSetNotNull => // 5
+            {
+                Assert.Equal(DefinitionAlterPhase.PreSetNotNullScript, preSetNotNull.Weight);
+                Assert.Contains("SELECT 3", preSetNotNull.Statement.ToSql());
+            },
+            preSetNotNullMeta => // 6
+            {
+                Assert.Equal(DefinitionAlterPhase.InsertPreSetNotNullMeta, preSetNotNullMeta.Weight);
+                Assert.IsType<Insert>(preSetNotNullMeta.Statement);
+                Assert.Contains("SCRIPT3", preSetNotNullMeta.Statement.ToSql());
+            },
+            setNotNullOtherTable => // 7
+            {
+                Assert.Equal(DefinitionAlterPhase.SetNotNull, setNotNullOtherTable.Weight);
+                var alterTable = Assert.IsType<AlterTable>(setNotNullOtherTable.Statement);
+                var operation = Assert.IsType<AlterTableOperation.ModifyColumn>(Assert.Single(alterTable.Operations));
+                var sql = setNotNullOtherTable.Statement.ToSql();
+                Assert.Contains("NOT NULL", sql);
+                Assert.Contains("`myothertable`", sql);
+            },
+            setNotNullMyTable => // 8
+            {
+                Assert.Equal(DefinitionAlterPhase.SetNotNull, setNotNullMyTable.Weight);
+                var alterTable = Assert.IsType<AlterTable>(setNotNullMyTable.Statement);
+                var operation = Assert.IsType<AlterTableOperation.ModifyColumn>(Assert.Single(alterTable.Operations));
+                var sql = setNotNullMyTable.Statement.ToSql();
+                Assert.Contains("NOT NULL", sql);
+                Assert.Contains("`mytable`", sql);
+            },
+            preAddConstraint => // 9
+            {
+                Assert.Equal(DefinitionAlterPhase.PreAddConstraintsScript, preAddConstraint.Weight);
+                Assert.Contains("SELECT 4", preAddConstraint.Statement.ToSql());
+            },
+            preAddConstraintMeta => // 10
+            {
+                Assert.Equal(DefinitionAlterPhase.InsertPreAddConstraintsMeta, preAddConstraintMeta.Weight);
+                Assert.IsType<Insert>(preAddConstraintMeta.Statement);
+                Assert.Contains("SCRIPT4", preAddConstraintMeta.Statement.ToSql());
+            },
+            addForeignKey => // 11
+            {
+                Assert.Equal(DefinitionAlterPhase.AddForeignKey, addForeignKey.Weight);
+                var alterTable = Assert.IsType<AlterTable>(addForeignKey.Statement);
+                var operation = Assert.IsType<AlterTableOperation.AddForeignKey>(Assert.Single(alterTable.Operations));
+            },
+            postDeploy => // 12
+            {
+                Assert.Equal(DefinitionAlterPhase.PostDeploymentScript, postDeploy.Weight);
+                Assert.Contains("SELECT 5", postDeploy.Statement.ToSql());
+            },
+            postDeployMeta => // 13
+            {
+                Assert.Equal(DefinitionAlterPhase.InsertPostDeployMeta, postDeployMeta.Weight);
+                Assert.IsType<Insert>(postDeployMeta.Statement);
+                Assert.Contains("SCRIPT5", postDeployMeta.Statement.ToSql());
+            });
+
+        static SimpleSelect GetSelect(string number)
+        {
+            return new SimpleSelect([new SimpleSelectItem.UnnamedExpression(new LiteralValue(new Value.Number(number, false)))]);
+        }
     }
 
     [Fact]
@@ -581,13 +747,13 @@ public abstract class MyDifferTestsBase
         Assert.Collection(changes,
             scriptChange =>
             {
-                Assert.Equal(DefaultWeights.PreSetNotNullScript, scriptChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.PreSetNotNullScript, scriptChange.Weight);
                 Assert.True(scriptChange.FromDeployScript);
                 Assert.Equal("UPDATE mytable SET name = '' WHERE name IS NULL;\n", scriptChange.Statement.ToSql());
             },
             notNullChange =>
             {
-                Assert.Equal(DefaultWeights.SetNotNull, notNullChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.SetNotNull, notNullChange.Weight);
                 Assert.False(notNullChange.FromDeployScript);
                 Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(255) NOT NULL", notNullChange.Statement.ToSql());
             }
@@ -626,19 +792,19 @@ public abstract class MyDifferTestsBase
         Assert.Collection(changes,
             nullableChange =>
             {
-                Assert.Equal(DefaultWeights.AlterTable, nullableChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.AlterTable, nullableChange.Weight);
                 Assert.False(nullableChange.FromDeployScript);
                 Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(500) NULL", nullableChange.Statement.ToSql());
             },
             scriptChange =>
             {
-                Assert.Equal(DefaultWeights.PreSetNotNullScript, scriptChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.PreSetNotNullScript, scriptChange.Weight);
                 Assert.True(scriptChange.FromDeployScript);
                 Assert.Equal("UPDATE mytable SET name = '' WHERE name IS NULL;\n", scriptChange.Statement.ToSql());
             },
             notNullChange =>
             {
-                Assert.Equal(DefaultWeights.SetNotNull, notNullChange.Weight);
+                Assert.Equal(DefinitionAlterPhase.SetNotNull, notNullChange.Weight);
                 Assert.False(notNullChange.FromDeployScript);
                 Assert.Equal("ALTER TABLE `mytable` MODIFY COLUMN `name` VARCHAR(500) NOT NULL", notNullChange.Statement.ToSql());
             }
@@ -972,6 +1138,8 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         Assert.Equal(3, changes.Count);
+        Assert.All(changes, change => Assert.Equal(DefinitionAlterPhase.AlterTable, change.Weight));
+        Assert.Equal([0u, 1u, 2u], changes.Select(change => change.SubWeight));
 
         var first = changes[0].Statement as AlterTable;
         Assert.NotNull(first);
@@ -2308,6 +2476,8 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText, refactors);
         Assert.Equal(3, changes.Count);
+        Assert.Equal([DefinitionAlterPhase.ApplyRename, DefinitionAlterPhase.ApplyRename, DefinitionAlterPhase.InsertRefactor], changes.Select(change => change.Weight));
+        Assert.Equal([0u, 1u, 0u], changes.Select(change => change.SubWeight));
 
         var first = changes[0].Statement as AlterTable;
         Assert.NotNull(first);
@@ -2789,5 +2959,102 @@ public abstract class MyDifferTestsBase
         var secondOperation = Assert.IsType<AlterTableOperation.AddStandardKey>(Assert.Single(secondAlterTable.Operations));
         var secondExpected = $"ADD KEY `idx_name_2`{expectedMethod} ((UPPER(`name`)){expectedDirection})";
         Assert.Equal(secondExpected, secondOperation.ToSql());
+    }
+
+    [Theory]
+    [InlineData(DeployScriptType.PreDeployment, DefinitionAlterPhase.PreDeploymentScript, DefinitionAlterPhase.InsertPreDeployMeta)]
+    [InlineData(DeployScriptType.PostDropConstraints, DefinitionAlterPhase.PostDropConstraintsScript, DefinitionAlterPhase.InsertPostDropConstraintsMeta)]
+    [InlineData(DeployScriptType.PreSetNotNull, DefinitionAlterPhase.PreSetNotNullScript, DefinitionAlterPhase.InsertPreSetNotNullMeta)]
+    [InlineData(DeployScriptType.PreAddConstraints, DefinitionAlterPhase.PreAddConstraintsScript, DefinitionAlterPhase.InsertPreAddConstraintsMeta)]
+    [InlineData(DeployScriptType.PostDeployment, DefinitionAlterPhase.PostDeploymentScript, DefinitionAlterPhase.InsertPostDeployMeta)]
+    public void DeployScript_SubWeights_Do_Not_Spill_Into_Other_Phases(DeployScriptType type, DefinitionAlterPhase phase, DefinitionAlterPhase metadataPhase)
+    {
+        const int scriptCount = 10_001;
+        var deployScripts = Enumerable.Range(0, scriptCount).Reverse().Select(index =>
+            new DefinitionMappingDeployScript(
+                type,
+                s_schema,
+                $"script_{index:D5}.sql",
+                $"/fake/project/root/script_{index:D5}.sql",
+                [new Truncate(new ObjectName(new Identifier("mytable", QuoteStyle.Backticks)))])
+            {
+                UniqueId = index == scriptCount - 1 ? "00000000-0000-0000-0000-000000000099" : null,
+            });
+
+        var changes = ComputeChanges("", "CREATE TABLE mytable (id INT NOT NULL);", deployScripts: deployScripts);
+        var scriptChanges = changes.Where(change => change.FromDeployScript).ToList();
+
+        Assert.Equal(scriptCount, scriptChanges.Count);
+        Assert.All(scriptChanges, change => Assert.Equal(phase, change.Weight));
+        Assert.Equal(Enumerable.Range(0, scriptCount).Select(index => (uint)index), scriptChanges.Select(change => change.SubWeight));
+        Assert.Equal(
+            Enumerable.Range(0, scriptCount).Select(index => $"Applying script from /fake/project/root/script_{index:D5}.sql"),
+            scriptChanges.Select(change => change.Comment));
+        var metadataChange = Assert.Single(changes, change => change.Weight == metadataPhase);
+        Assert.Equal(0u, metadataChange.SubWeight);
+        Assert.Equal(changes.IndexOf(scriptChanges[^1]) + 1, changes.IndexOf(metadataChange));
+    }
+
+    [Fact]
+    public void DeployScript_SubWeights_Start_At_Zero_For_Each_Phase()
+    {
+        var deployScripts = Enum.GetValues<DeployScriptType>().SelectMany(type =>
+            Enumerable.Range(0, 2).Reverse().Select(index =>
+                new DefinitionMappingDeployScript(
+                    type,
+                    s_schema,
+                    $"script_{index}.sql",
+                    $"/fake/project/root/script_{index}.sql",
+                    [new Truncate(new ObjectName(new Identifier("mytable", QuoteStyle.Backticks)))])));
+
+        var changes = ComputeChanges("", "", deployScripts: deployScripts);
+
+        Assert.Equal(Enum.GetValues<DeployScriptType>().Length * 2, changes.Count);
+        foreach (var group in changes.GroupBy(change => change.Weight))
+        {
+            Assert.Equal([0u, 1u], group.Select(change => change.SubWeight));
+            Assert.Equal(
+                ["Applying script from /fake/project/root/script_0.sql", "Applying script from /fake/project/root/script_1.sql"],
+                group.Select(change => change.Comment));
+        }
+    }
+
+    [Fact]
+    public void ProgramObject_SubWeights_Preserve_Dependency_Order()
+    {
+        var startText = "CREATE TABLE mytable (id INT NOT NULL);";
+        var endText = """
+        CREATE TABLE mytable (id INT NOT NULL);
+        CREATE DEFINER = 'admin'@'localhost' SQL SECURITY DEFINER VIEW dependent_view AS SELECT id FROM base_view;
+        CREATE DEFINER = 'admin'@'localhost' SQL SECURITY DEFINER VIEW base_view AS SELECT id FROM mytable;
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+
+        Assert.Equal(2, changes.Count);
+        Assert.All(changes, change => Assert.Equal(DefinitionAlterPhase.CreateProgramObject, change.Weight));
+        Assert.Equal([0u, 1u], changes.Select(change => change.SubWeight));
+        Assert.Contains("VIEW `base_view` AS", changes[0].Statement.ToSql());
+        Assert.Contains("VIEW `dependent_view` AS", changes[1].Statement.ToSql());
+    }
+
+    [Fact]
+    public void Column_SubWeights_Continue_Across_Tables()
+    {
+        var startText = """
+        CREATE TABLE first_table (id INT NOT NULL);
+        CREATE TABLE second_table (id INT NOT NULL);
+        """;
+        var endText = """
+        CREATE TABLE first_table (id BIGINT NOT NULL);
+        CREATE TABLE second_table (id BIGINT NOT NULL);
+        """;
+
+        var changes = ComputeChanges(startText, endText);
+
+        Assert.Equal(2, changes.Count);
+        Assert.All(changes, change => Assert.Equal(DefinitionAlterPhase.AlterTable, change.Weight));
+        Assert.Equal([0u, 1u], changes.Select(change => change.SubWeight));
+        Assert.All(changes, change => Assert.IsType<AlterTable>(change.Statement));
     }
 }

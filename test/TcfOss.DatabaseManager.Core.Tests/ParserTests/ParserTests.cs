@@ -334,10 +334,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [Fact]
     public void Select_WithAs_IdentifierAsString_ConvertsToUnquoted()
     {
-        var lexer = new GenericLexer();
-        var parser = new Parser();
-        var tokens = lexer.Tokenize("SELECT 1 AS 'alias'");
-        var statements = parser.Parse([.. tokens]);
+        var statements = ParseStatements("SELECT 1 AS 'alias'");
         var statement = Assert.Single(statements);
 
         var select = Assert.IsType<Select>(statement);

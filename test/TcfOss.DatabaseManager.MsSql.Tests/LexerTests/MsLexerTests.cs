@@ -1,13 +1,14 @@
-using FluentAssertions;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
+using TcfOss.DatabaseManager.Core.Tests.LexerTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.MsSql.Tests.LexerTests;
 
-public class MsLexerTests
+public class MsLexerTests : LexerTestBase
 {
     [Fact]
     public void BracketedIdentifier_Tokenized()
@@ -106,17 +107,33 @@ public class MsLexerTests
         Assert.Equal(QuoteStyle.None, word.QuoteStyle);
     }
 
-    private static void Compare(List<Token> expected, List<Token> actual)
+    [Fact]
+    public void Select_String_With_Quote_Escapes()
     {
-        Assert.Equal(expected.Count, actual.Count);
-
-        for (var i = 0; i < expected.Count; i++)
+        var test = "SELECT 'bl''ah'";
+        var actual = new MsLexer().Tokenize(test);
+        var expected = new List<Token>()
         {
-            Assert.IsType(expected[i].GetType(), actual[i]);
-            expected[i].Should().BeEquivalentTo(actual[i], options =>
-            {
-                return options.RespectingRuntimeTypes().Excluding(t => t.Location).Excluding(t => t.PreNonSql);
-            });
-        }
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("bl''ah") { Location = new Location() }
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Select_String_With_Backslash_Escapes_Throws()
+    {
+        var lexer = new MsLexer();
+        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(@"SELECT 'bl\'ah'"));
+    }
+
+    [Fact]
+    public void Select_Long_String_With_Backslash_Escapes_Throws()
+    {
+        var lexer = new MsLexer();
+        var contents = new string('a', 200) + @"bl\'ah" + new string('b', 200);
+        var sql = "SELECT '" + contents + "'";
+        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
     }
 }

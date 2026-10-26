@@ -1,14 +1,75 @@
-﻿using FluentAssertions;
-using TcfOss.DatabaseManager.Core.Errors;
+﻿using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
+using TcfOss.DatabaseManager.Core.Tests.LexerTests;
 using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.MySql.Tests.LexerTests;
 
-public class MyLexerTests
+public class MyLexerTests : LexerTestBase
 {
+    [Fact]
+    public void Select_String_With_Charset()
+    {
+        var test = "SELECT _utf8'blah'";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("blah") { Location = new Location(), CharSet = "_utf8" }
+        };
+
+        Compare(expected, actual);
+    }
+    [Fact]
+
+    public void Select_String_With_Charset_With_Space()
+    {
+        var test = "SELECT _utf8 'blah'";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("blah") { Location = new Location(), CharSet = "_utf8" }
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Select_UnderscoreVar_NotCharset()
+    {
+        var test = "SELECT _var;";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new Word("_var") { Location = new Location() },
+            new Semicolon { Location = new Location() }
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Select_UnderscoreVar_NotCharset_AtEnd()
+    {
+        var test = "SELECT _var";
+        var actual = new MyLexer().Tokenize(test);
+
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new Word("_var") { Location = new Location() },
+        };
+
+        Compare(expected, actual);
+    }
+
     [Fact]
     public void Delimiter()
     {
@@ -55,6 +116,35 @@ public class MyLexerTests
         Assert.Equal(token1.GetHashCode(), token2.GetHashCode());
     }
 
+
+    [Fact]
+    public void Select_String_With_Quote_Escapes()
+    {
+        var test = "SELECT 'bl''ah'";
+        var actual = new MyLexer().Tokenize(test);
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("bl''ah") { Location = new Location() }
+        };
+
+        Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Select_String_With_Backslash_Escapes()
+    {
+        var test = @"SELECT 'bl\'ah'";
+        var actual = new MyLexer().Tokenize(test);
+        var expected = new List<Token>()
+        {
+            new Word("SELECT") { Location = new Location() },
+            new StringLiteral("bl\\'ah") { Location = new Location() }
+        };
+
+        Compare(expected, actual);
+    }
+
     [Fact]
     public void SetDelimiter_Inequality()
     {
@@ -70,19 +160,5 @@ public class MyLexerTests
         Assert.NotEqual(token1, null);
         Assert.False(token1.Equals(null));
 #pragma warning restore xUnit2000 // Constants and literals should be the expected argument
-    }
-
-    private static void Compare(List<Token> expected, List<Token> actual)
-    {
-        Assert.Equal(expected.Count, actual.Count);
-
-        for (var i = 0; i < expected.Count; i++)
-        {
-            Assert.IsType(expected[i].GetType(), actual[i]);
-            expected[i].Should().BeEquivalentTo(actual[i], options =>
-            {
-                return options.RespectingRuntimeTypes().Excluding(t => t.Location).Excluding(t => t.PreNonSql);
-            });
-        }
     }
 }

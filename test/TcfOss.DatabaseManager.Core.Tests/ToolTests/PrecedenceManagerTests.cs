@@ -50,6 +50,7 @@ public static class PrecedenceManagerTests
     [InlineData("ilike", Precedence.Like, null)]
     [InlineData("regexp", Precedence.Like, null)]
     [InlineData("rlike", Precedence.Like, null)]
+    [InlineData("similar", Precedence.Like, null)]
     [InlineData("div", Precedence.MultiplyDivide, null)]
     [InlineData("=", Precedence.Between, null)]
     [InlineData("<>", Precedence.Between, null)]
@@ -115,7 +116,7 @@ public static class PrecedenceManagerTests
     [Theory]
     [InlineData("NOT LIKE 'dog%'")]
     [InlineData("NOT ILIKE 'dog%'")]
-    [InlineData("NOT SIMILAR 'dog%'")]
+    [InlineData("NOT SIMILAR TO 'dog%'")]
     [InlineData("NOT REGEXP 'dog%'")]
     [InlineData("NOT RLIKE 'dog%'")]
     public static void Not_Like_Etc(string text)

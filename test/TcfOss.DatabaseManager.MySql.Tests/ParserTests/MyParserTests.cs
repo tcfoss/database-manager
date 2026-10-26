@@ -11,57 +11,6 @@ namespace TcfOss.DatabaseManager.MySql.Tests.ParserTests;
 public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 {
     [Theory]
-    [InlineData("SELECT a INTO result FROM source")]
-    [InlineData("SELECT a, b INTO result FROM source")]
-    [InlineData("SELECT a FROM source INTO result")]
-    [InlineData("SELECT a, b FROM source INTO result")]
-    [InlineData("SELECT a UNION SELECT b LIMIT 1 INTO result")]
-    [InlineData("(SELECT a) LIMIT 1 INTO result")]
-    [InlineData("(SELECT a) UNION SELECT b LIMIT 1 INTO result")]
-    [InlineData("SELECT a UNION SELECT b UNION SELECT c LIMIT 1 INTO result")]
-    public void SelectInto_SingleName_IsVariableRegardlessOfQueryShape(string sql)
-    {
-        var select = Assert.IsType<Select>(ParseStatement(sql));
-        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
-
-        var into = Assert.IsType<SelectInto.SelectIntoVariables>(target);
-        Assert.Equal("result", Assert.Single(into.Variables).Name);
-    }
-
-    [Theory]
-    [InlineData("SELECT a, b INTO first_result, second_result FROM source")]
-    [InlineData("SELECT a, b FROM source INTO first_result, second_result")]
-    public void SelectInto_MultipleNames_AreVariables(string sql)
-    {
-        var select = Assert.IsType<Select>(ParseStatement(sql));
-        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
-
-        var into = Assert.IsType<SelectInto.SelectIntoVariables>(target);
-        Assert.Equal(["first_result", "second_result"], into.Variables.Select(variable => variable.Name));
-    }
-
-    [Theory]
-    [InlineData("SELECT a INTO OUTFILE 'result.txt' FROM source")]
-    [InlineData("SELECT a FROM source INTO OUTFILE 'result.txt'")]
-    public void SelectInto_Outfile_IsFile(string sql)
-    {
-        var select = Assert.IsType<Select>(ParseStatement(sql));
-        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
-
-        var into = Assert.IsType<SelectInto.SelectIntoFile>(target);
-        Assert.Equal("result.txt", into.FilePath);
-    }
-
-    [Theory]
-    [InlineData("SELECT a INTO target_schema.result FROM source")]
-    [InlineData("SELECT a FROM source INTO target_schema.result")]
-    public void SelectInto_QualifiedTableTarget_Throws(string sql)
-    {
-        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(sql));
-    }
-
-    [Theory]
-    /* IF block */
     [InlineData("IF a > b THEN SELECT 1; END IF")]
     [InlineData("IF a > b THEN SELECT 1; SELECT 2; END IF")]
     [InlineData("IF a > b THEN SELECT 1; ELSE SELECT 2; END IF")]
@@ -70,11 +19,18 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("IF a > b THEN SELECT 1; ELSEIF c > d THEN SELECT 2; ELSEIF e > f THEN SELECT 3; END IF")]
     [InlineData("IF a > b THEN SELECT 1; ELSEIF c > d THEN SELECT 2; ELSEIF e > f THEN SELECT 3; ELSEIF g > h THEN SELECT 4; END IF")]
     [InlineData("IF a > b THEN SELECT 1; ELSEIF c > d THEN SELECT 2; ELSEIF e > f THEN SELECT 3; ELSEIF g > h THEN SELECT 4; ELSE SELECT 5; END IF")]
-    /* DECLARE local variable */
+    [InlineData("IF a > b THEN SELECT 1; ELSEIF c > d THEN SELECT 2; END IF")]
+    public void If_TextMatch(string sql)
+    {
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("DECLARE myvar INT")]
     [InlineData("DECLARE myvar VARCHAR(10)")]
     [InlineData("DECLARE myvar DECIMAL(10,2) DEFAULT 0.5")]
-    public void Statement_TextMatch(string sql)
+    public void DeclareLocalVariable_TextMatch(string sql)
     {
         var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
@@ -187,6 +143,20 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Equal(expected, actual);
     }
 
+    [Fact]
+    public void ShowDiagnostics_Unknown_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements("SHOW UNKNOWN"));
+        Assert.Contains("{ ERRORS | WARNINGS | COUNT }", ex.Message);
+    }
+
+    [Fact]
+    public void ShowDiagnostics_WithCount_NotErrorsOrWarnings_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements("SHOW COUNT(*) UNKNOWN"));
+        Assert.Contains("{ ERRORS | WARNINGS }", ex.Message);
+    }
+
     [Theory]
     [InlineData("START TRANSACTION")]
     [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
@@ -280,6 +250,56 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("SELECT a INTO result FROM source")]
+    [InlineData("SELECT a, b INTO result FROM source")]
+    [InlineData("SELECT a FROM source INTO result")]
+    [InlineData("SELECT a, b FROM source INTO result")]
+    [InlineData("SELECT a UNION SELECT b LIMIT 1 INTO result")]
+    [InlineData("(SELECT a) LIMIT 1 INTO result")]
+    [InlineData("(SELECT a) UNION SELECT b LIMIT 1 INTO result")]
+    [InlineData("SELECT a UNION SELECT b UNION SELECT c LIMIT 1 INTO result")]
+    public void SelectInto_SingleName_IsVariableRegardlessOfQueryShape(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoVariables>(target);
+        Assert.Equal("result", Assert.Single(into.Variables).Name);
+    }
+
+    [Theory]
+    [InlineData("SELECT a, b INTO first_result, second_result FROM source")]
+    [InlineData("SELECT a, b FROM source INTO first_result, second_result")]
+    public void SelectInto_MultipleNames_AreVariables(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoVariables>(target);
+        Assert.Equal(["first_result", "second_result"], into.Variables.Select(variable => variable.Name));
+    }
+
+    [Theory]
+    [InlineData("SELECT a INTO OUTFILE 'result.txt' FROM source")]
+    [InlineData("SELECT a FROM source INTO OUTFILE 'result.txt'")]
+    public void SelectInto_Outfile_IsFile(string sql)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql));
+        SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
+
+        var into = Assert.IsType<SelectInto.SelectIntoFile>(target);
+        Assert.Equal("result.txt", into.FilePath);
+    }
+
+    [Theory]
+    [InlineData("SELECT a INTO target_schema.result FROM source")]
+    [InlineData("SELECT a FROM source INTO target_schema.result")]
+    public void SelectInto_QualifiedTableTarget_Throws(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(sql));
+    }
+
+    [Theory]
     [InlineData("CALL my_stored_procedure()")]
     [InlineData("CALL my_stored_procedure(`param1`)")]
     [InlineData("CALL my_stored_procedure(param1, param2)")]
@@ -307,5 +327,77 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         var parser = new MyParser();
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("//", "//////")]
+    [InlineData("@", "@@")]
+    [InlineData("$$$", "$$$$$$")]
+    public void CustomDelimiter_Multiples_Gobbled(string singleDelimiter, string multipleDelimiters)
+    {
+        var given = $"""
+        DELIMITER {singleDelimiter}
+
+        SELECT 1{multipleDelimiters}
+
+        DELIMITER ;
+        """;
+
+        var statements = ParseStatements(given);
+        var statement = Assert.Single(statements);
+
+        Assert.Equal($"SELECT 1", statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("///")]
+    public void CustomDelimiter_NonMultiple_Throws(string delimiter)
+    {
+        var given = $"""
+        DELIMITER //
+
+        SELECT 1{delimiter}
+
+        DELIMITER ;
+        """;
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
+    }
+
+    [Fact]
+    public void Loop_Unclosed_Throws()
+    {
+        var given = """
+        LOOP
+        """;
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
+        Assert.Contains("END LOOP", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("IF 1 = 1 THEN SELECT 1;")]
+    [InlineData("IF 1 = 1 THEN SELECT 1; ELSEIF 1 = 0 THEN SELECT 0;")]
+    public void If_Unclosed_Throws(string sql)
+    {
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements(sql));
+        Assert.Contains("{ ELSEIF | ELSE | END IF }", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("IF 1 = 1 THEN SELECT 1; ELSE SELECT 0;")]
+    [InlineData("IF 1 = 1 THEN SELECT 1; ELSEIF 1 = 0 THEN SELECT 0; ELSE SELECT -1;")]
+    public void If_WithElse_Unclosed_Throws(string sql)
+    {
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(sql));
+        Assert.Contains("END IF", ex.Message);
+    }
+
+    [Fact]
+    public void Statements_Without_Delimiter_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 1"));
+        Assert.Contains("end of statement", ex.Message);
     }
 }

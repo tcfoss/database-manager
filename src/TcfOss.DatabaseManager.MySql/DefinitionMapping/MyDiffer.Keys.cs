@@ -99,7 +99,7 @@ public partial class MyDiffer
             {
                 // Primary key added
                 Statements.Add(new DefinitionAlterStatement(
-                    DefaultWeights.AddPrimaryKey,
+                    DefinitionAlterPhase.AddPrimaryKey,
                     _end!.Name.Schema,
                     new AlterTable(_tableName,
                     [
@@ -111,7 +111,7 @@ public partial class MyDiffer
             {
                 // Primary key removed
                 Statements.Add(new DefinitionAlterStatement(
-                    DefaultWeights.DropPrimaryKey,
+                    DefinitionAlterPhase.DropPrimaryKey,
                     _start!.Name.Schema,
                     new AlterTable(_tableName,
                     [
@@ -150,7 +150,7 @@ public partial class MyDiffer
                 {
                     // Unique key added or modified
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.AddKey,
+                        DefinitionAlterPhase.AddKey,
                         _end!.Name.Schema,
                         new AlterTable(_tableName,
                         [
@@ -162,7 +162,7 @@ public partial class MyDiffer
                 {
                     // Unique key removed
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.DropKey,
+                        DefinitionAlterPhase.DropKey,
                         _start!.Name.Schema,
                         new AlterTable(_tableName,
                         [
@@ -187,7 +187,7 @@ public partial class MyDiffer
                     {
                         // Foreign key was dropped to allow modification
                         Statements.Add(new DefinitionAlterStatement(
-                            DefaultWeights.AddForeignKey,
+                            DefinitionAlterPhase.AddForeignKey,
                             _end!.Name.Schema,
                             new AlterTable(_tableName,
                             [
@@ -207,7 +207,7 @@ public partial class MyDiffer
                 {
                     // Foreign key added or modified
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.AddForeignKey,
+                        DefinitionAlterPhase.AddForeignKey,
                         _end!.Name.Schema,
                         new AlterTable(_tableName,
                         [
@@ -227,7 +227,7 @@ public partial class MyDiffer
                     if (_parent.NotifyDroppingForeignKey(_tableHandle, _tableId, start.Name!))
                     {
                         Statements.Add(new DefinitionAlterStatement(
-                            DefaultWeights.DropForeignKey,
+                            DefinitionAlterPhase.DropForeignKey,
                             _start!.Name.Schema,
                             new AlterTable(_tableName,
                             [
@@ -273,7 +273,7 @@ public partial class MyDiffer
 
                     // Key added or modified
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.AddKey,
+                        DefinitionAlterPhase.AddKey,
                         _end!.Name.Schema,
                         new AlterTable(_tableName, [operation]),
                         $"Add or modify key {name}"));
@@ -282,7 +282,7 @@ public partial class MyDiffer
                 {
                     // Key removed
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.DropKey,
+                        DefinitionAlterPhase.DropKey,
                         _start!.Name.Schema,
                         new AlterTable(_tableName,
                         [
@@ -304,7 +304,7 @@ public partial class MyDiffer
                 if (_parent.NotifyDroppingForeignKey(fk.TableHandle, fk.TableId, fk.ForeignKey))
                 {
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.DropForeignKey,
+                        DefinitionAlterPhase.DropForeignKey,
                         fk.TableId.Schema,
                         new AlterTable(fk.TableId.ToObjectName(_parent.Depth),
                         [
@@ -333,7 +333,7 @@ public partial class MyDiffer
                 {
                     // Check constraint added or modified
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.AddKey,
+                        DefinitionAlterPhase.AddKey,
                         _end!.Name.Schema,
                         new AlterTable(_tableName,
                         [
@@ -345,7 +345,7 @@ public partial class MyDiffer
                 {
                     // Check constraint removed
                     Statements.Add(new DefinitionAlterStatement(
-                        DefaultWeights.DropKey,
+                        DefinitionAlterPhase.DropKey,
                         _start!.Name.Schema,
                         new AlterTable(_tableName,
                         [

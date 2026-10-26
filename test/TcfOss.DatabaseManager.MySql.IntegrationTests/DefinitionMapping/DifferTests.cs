@@ -32,6 +32,7 @@ public abstract class DifferTests<TBuilderEntity, TContainerEntity, TFixture> : 
         var actualStatements = Fixture.TestSets[1]
             .ActualChanges
             .OrderBy(c => c.Weight)
+            .ThenBy(c => c.SubWeight)
             .ThenBy(c => c.Statement.ToSql())
             .Select(c => c.Statement.ToSql())
             .ToArray();
@@ -87,6 +88,7 @@ public abstract class DifferTests<TBuilderEntity, TContainerEntity, TFixture> : 
         var actualStatements = Fixture.TestSets[2]
             .ActualChanges
             .OrderBy(c => c.Weight)
+            .ThenBy(c => c.SubWeight)
             .ThenBy(c => c.Statement.ToSql())
             .Select(c => c.Statement.ToSql())
             .ToArray();

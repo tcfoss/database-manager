@@ -168,40 +168,48 @@ public class ExpressionParser
             state.ExpectKeywordsAll(Keyword.TIME, Keyword.ZONE);
             return new AtTimeZone(left, ParseSubExpression(state, precedence));
         }
-        if (keyword is Keyword.NOT or Keyword.IN or Keyword.BETWEEN
-                or Keyword.LIKE or Keyword.ILIKE or Keyword.SIMILAR
-                or Keyword.REGEXP or Keyword.RLIKE)
+
+        bool negated = false;
+        if (keyword == Keyword.NOT)
+        {
+            negated = true;
+        }
+        else
         {
             state.Rewind();
-            bool negated = state.ParseKeyword(Keyword.NOT);
-
-            if (state.ParseKeyword(Keyword.REGEXP))
-            {
-                return new Regexp(left, negated, ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like)), false);
-            }
-            if (state.ParseKeyword(Keyword.RLIKE))
-            {
-                return new Regexp(left, negated, ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like)), true);
-            }
-            if (state.ParseKeyword(Keyword.IN))
-            {
-                return ParseIn(state, left, negated);
-            }
-            if (state.ParseKeyword(Keyword.BETWEEN))
-            {
-                return ParseBetween(state, left, negated);
-            }
-            if (state.ParseKeyword(Keyword.LIKE))
-            {
-                return ParseLike(state, left, negated);
-            }
-
-            // TODO : Handle ILIKE, SIMILAR, etc
-
-            throw state.ExpectedException("IN", "BETWEEN", "LIKE", "REGEXP", "RLIKE");
         }
 
-        throw new NotImplementedException($"Infix operator not implemented for keyword '{keyword}'.");
+        if (state.ParseKeyword(Keyword.REGEXP))
+        {
+            return new Regexp(left, negated, ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like)), false);
+        }
+        if (state.ParseKeyword(Keyword.RLIKE))
+        {
+            return new Regexp(left, negated, ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like)), true);
+        }
+        if (state.ParseKeyword(Keyword.IN))
+        {
+            return ParseIn(state, left, negated);
+        }
+        if (state.ParseKeyword(Keyword.BETWEEN))
+        {
+            return ParseBetween(state, left, negated);
+        }
+        if (state.ParseKeyword(Keyword.LIKE))
+        {
+            return ParseLike(state, left, negated);
+        }
+        if (state.ParseKeyword(Keyword.SIMILAR))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            throw new NotImplementedException("SIMILAR TO is not implemented yet.");
+        }
+        if (state.ParseKeyword(Keyword.ILIKE))
+        {
+            throw new NotImplementedException("ILIKE is not implemented yet.");
+        }
+
+        throw new DefensiveGuardException("ParseInfixWord", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
     }
 
     private static bool PeekSubquery(ParserState state)
@@ -612,7 +620,7 @@ public class ExpressionParser
             SqlValueList<Expression> expressions = state.ParseCommaSeparated(ParseExpr);
             expr = expressions.Count switch
             {
-                0 => throw state.ExpectedCategoryException("comma-separated list"),
+                // Result cannot be 0 (ParseExpr sees closing paren and expects an expression)
                 1 => new Nested(expressions.First()),
                 _ => new Expressions.Tuple(expressions)
             };
@@ -689,7 +697,7 @@ public class ExpressionParser
         {
             return position;
         }
-        Word initialAsWord = (state.Next() as Word) ?? throw ParserState.ExpectedException("POSITION", state.Peek());
+        Word initialAsWord = (Word)state.Next(); // Only enter this function if state.Next() yields POSITION
 
         return ParseFunction(state, new ObjectName([new Identifier(initialAsWord.Value)]));
     }

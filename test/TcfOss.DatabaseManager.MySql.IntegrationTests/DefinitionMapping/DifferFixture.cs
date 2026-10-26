@@ -65,13 +65,13 @@ public class DifferFixture<TBuilderEntity, TContainerEntity> : IAsyncLifetime
 
             var actualChanges = differ.ComputeChanges();
 
-            // Collapse weights to get deterministic ordering for tests.
+            // Collapse column subweights to get deterministic ordering for tests.
             for (int i = 0; i < actualChanges.Count; i++)
             {
                 var change = actualChanges[i];
-                if (change.Weight is >= DefaultWeights.AlterTable and < DefaultWeights.CreateTable)
+                if (change.Weight == DefinitionAlterPhase.AlterTable)
                 {
-                    actualChanges[i] = change with { Weight = DefaultWeights.AlterTable };
+                    actualChanges[i] = change with { SubWeight = 0 };
                 }
             }
             testSet.ActualChanges = actualChanges;

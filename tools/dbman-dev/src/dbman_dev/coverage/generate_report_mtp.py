@@ -15,6 +15,7 @@ dotnet tool install --global dotnet-reportgenerator-globaltool
 """
 
 import argparse as _ap
+import datetime as _dt
 import os as _os
 import pathlib as _p
 import re as _re
@@ -24,7 +25,6 @@ import sys as _sys
 import tempfile as _tempfile
 import typing as _typing
 import xml.etree.ElementTree as _et
-import uuid as _uuid
 import dbman_dev.utilities.shell_exec as _shell_exec
 
 import attrs as _attrs
@@ -34,16 +34,22 @@ _OPEN_COVER_FILENAME_PATTERN = _re.compile(r"coverage\.opencover\.\d+\.xml", _re
 _RAW_COVERAGE_FILENAME_PATTERN = _re.compile(r"coverage\.\w+\.\d+\.xml", _re.IGNORECASE)
 _SOLUTION_EXTENSIONS = {".sln", ".slnx", ".slnf"}
 _COVERAGE_FILTER_PATH = _shutil.which("unreachable-coverage-filter")
+_DEFAULT_TEST_RESULTS_SUBDIR = "test-results"
+_DEFAULT_COVERAGE_HISTORY_SUBDIR = "coverage-history"
+
 
 @_attrs.define()
 class _RunConfig:
     solution: _p.Path
     test_results_dir: _p.Path
+    raw_results_dir: _p.Path
     history_dir: _p.Path | None = None
     license: str | None = None
     keep_raw_coverage_files: bool = False
     release_mode: bool = False
     skip_coverage_guard: bool = False
+    preserve_raw_results: bool = False
+    update_latest: bool = False
 
 
 def _check_reportgenerator_installed():
@@ -55,11 +61,15 @@ def _check_reportgenerator_installed():
         print("ReportGenerator is not installed. Please install it to generate coverage reports.")
         _sys.exit(1)
 
+
 def _check_coverage_filter_installed():
     """Check if CoverageFilter is installed."""
     if _COVERAGE_FILTER_PATH is None:
-        print("UnreachableCoverageFilter is not installed. Please install it to filter coverage reports.")
+        print(
+            "UnreachableCoverageFilter is not installed. Please install it to filter coverage reports."
+        )
         _sys.exit(1)
+
 
 def _remove_empty_subdirs(path: _p.Path):
     """Remove empty subdirectories under the given path."""
@@ -68,11 +78,16 @@ def _remove_empty_subdirs(path: _p.Path):
             print(f"Removing empty directory: {subdir}")
             subdir.rmdir()
 
+
 def _remove_raw_coverage_files(coverage_paths: list[str]):
     """Remove raw coverage files after report generation."""
     paths = {_p.Path(coverage_path) for coverage_path in coverage_paths}
     for directory in {_p.Path(coverage_path).parent for coverage_path in coverage_paths}:
-        paths.update(path for path in directory.glob("*.xml") if _RAW_COVERAGE_FILENAME_PATTERN.fullmatch(path.name))
+        paths.update(
+            path
+            for path in directory.glob("*.xml")
+            if _RAW_COVERAGE_FILENAME_PATTERN.fullmatch(path.name)
+        )
 
     for path in paths:
         try:
@@ -155,7 +170,9 @@ def _get_report_generator_license(arg_license: str | None) -> str | None:
     return None
 
 
-def _validate_or_create_directory(path: _p.Path, description: str) -> _p.Path:
+def _validate_or_create_directory(
+    path: _p.Path, description: str, parents: bool = False
+) -> _p.Path:
     """Validate that the given path is a directory, or create it if it doesn't exist."""
     if path.exists():
         if not path.is_dir():
@@ -164,12 +181,12 @@ def _validate_or_create_directory(path: _p.Path, description: str) -> _p.Path:
         print(f"Using existing {description} directory at {path}")
         return path.resolve()
 
-    path.mkdir(parents=False)
+    path.mkdir(parents=parents)
     print(f"Created {description} directory at {path}")
     return path.resolve()
 
 
-def _get_history_dir(solution_dir: _p.Path, arg_history_path: str | None) -> _p.Path:
+def _get_history_dir(solution: _p.Path, arg_history_path: str | None) -> _p.Path:
     """Get the directory for storing coverage history."""
     if arg_history_path:
         history_dir = _p.Path(arg_history_path)
@@ -179,17 +196,35 @@ def _get_history_dir(solution_dir: _p.Path, arg_history_path: str | None) -> _p.
         history_dir = _p.Path(arg_history_path)
         return _validate_or_create_directory(history_dir, "coverage history")
 
-    history_dir = solution_dir / "coverage-history"
-    return _validate_or_create_directory(history_dir, "coverage history")
+    history_dir = _p.Path.cwd() / _DEFAULT_COVERAGE_HISTORY_SUBDIR / solution.stem
+    return _validate_or_create_directory(history_dir, "coverage history", parents=True)
 
 
-def _get_test_results_dir(arg_results_path: str | None) -> _p.Path:
+def _get_test_results_dir(arg_results_path: str | None, solution: _p.Path) -> _p.Path:
     """Get the directory where test results are stored."""
     if arg_results_path:
         results_path = _p.Path(arg_results_path)
         return _validate_or_create_directory(results_path, "test results")
 
-    return _validate_or_create_directory(_p.Path("test-results") / str(_uuid.uuid4()), "test results")
+    timestamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    if solution:
+        timestamp = timestamp + "_" + solution.stem
+    return _validate_or_create_directory(
+        _p.Path(_DEFAULT_TEST_RESULTS_SUBDIR) / timestamp, "test results"
+    )
+
+
+def _update_latest_copy(results_dir: _p.Path):
+    """Replace the "latest" directory in the parent directory with a copy of the given results."""
+    latest = results_dir.parent / "latest"
+    staging = results_dir.parent / f".latest-{_os.getpid()}"
+    _shutil.copytree(results_dir, staging)
+    if latest.is_symlink() or latest.is_file():
+        latest.unlink()
+    elif latest.exists():
+        _shutil.rmtree(latest)
+    staging.rename(latest)
+    print(f"Copied {results_dir} to {latest}")
 
 
 def _run_tests(config: _RunConfig) -> list[str]:
@@ -197,14 +232,14 @@ def _run_tests(config: _RunConfig) -> list[str]:
     # MTP mode of `dotnet test` requires --solution/--project instead of a positional path.
     target_flag = "--solution" if config.solution.suffix in _SOLUTION_EXTENSIONS else "--project"
 
-    print(f"Using test results directory: {config.test_results_dir}")
+    print(f"Using raw test results directory: {config.raw_results_dir}")
     cmd = [
         "dotnet",
         "test",
         target_flag,
         str(config.solution),
         "--results-directory",
-        str(config.test_results_dir)
+        str(config.raw_results_dir),
     ]
 
     if config.release_mode:
@@ -213,7 +248,11 @@ def _run_tests(config: _RunConfig) -> list[str]:
 
     _shell_exec.run_output(cmd, cwd=config.solution.parent)
 
-    search_paths = [x for x in config.test_results_dir.glob("*.xml") if _OPEN_COVER_FILENAME_PATTERN.fullmatch(x.name)]
+    search_paths = [
+        x
+        for x in config.raw_results_dir.glob("*.xml")
+        if _OPEN_COVER_FILENAME_PATTERN.fullmatch(x.name)
+    ]
     if not search_paths:
         print("Could not find an OpenCover report in the test results directory.")
         _sys.exit(1)
@@ -232,7 +271,9 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
         source_root = source_root.parent
     source_root = source_root / "src"
 
-    project_directories = {project.stem: project.parent for project in source_root.glob("*/*.csproj")}
+    project_directories = {
+        project.stem: project.parent for project in source_root.glob("*/*.csproj")
+    }
     module_names: set[str] = set()
     for coverage_file in coverage_files:
         root = _et.parse(coverage_file).getroot()
@@ -252,12 +293,16 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
             continue
         project_output_dir = project_directory / "bin" / configuration / "net10.0"
         if not (project_output_dir / module_name).is_file():
-            print(f"Built assembly not found for coverage module {module_name}: {project_output_dir}")
+            print(
+                f"Built assembly not found for coverage module {module_name}: {project_output_dir}"
+            )
             continue
         module_assemblies[module_name] = project_output_dir / module_name
 
     if not module_assemblies and any(not _p.Path(name).is_absolute() for name in module_names):
-        print(f"Could not locate built source assemblies for coverage modules under {source_root}.")
+        print(
+            f"Could not locate built source assemblies for coverage modules under {source_root}."
+        )
         _sys.exit(1)
 
     filtered_files = [str(output_dir / _p.Path(path).name) for path in coverage_files]
@@ -270,6 +315,8 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
         r"throw new (TcfOss\.)?(DatabaseManager\.)?(Core\.)?(Errors\.)?DefensiveGuardException\(",
         "--source-root",
         str(source_root),
+        "--log-directory",
+        str(config.raw_results_dir),
     ]
     print(f"Filtering coverage reports into {output_dir}...")
     with _tempfile.TemporaryDirectory(prefix="dbman-coverage-assemblies-") as assembly_directory:
@@ -277,7 +324,9 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
             _shutil.copy2(source_assembly, _p.Path(assembly_directory) / module_name)
             source_pdb = source_assembly.with_suffix(".pdb")
             if not source_pdb.is_file():
-                raise FileNotFoundError(f"Matching PDB not found for coverage module {module_name}: {source_pdb}")
+                raise FileNotFoundError(
+                    f"Matching PDB not found for coverage module {module_name}: {source_pdb}"
+                )
             _shutil.copy2(source_pdb, _p.Path(assembly_directory) / source_pdb.name)
 
         cmd.extend(["--assembly-directory", assembly_directory])
@@ -285,17 +334,18 @@ def _filter_coverage_reports(config: _RunConfig, coverage_files: list[str]) -> l
 
     missing_files = [path for path in filtered_files if not _p.Path(path).is_file()]
     if missing_files:
-        raise FileNotFoundError(f"Coverage filter did not produce expected report: {missing_files[0]}")
+        raise FileNotFoundError(
+            f"Coverage filter did not produce expected report: {missing_files[0]}"
+        )
 
     return filtered_files
 
 
 def _generate_report(config: _RunConfig, test_results_files: list[str]):
     """Generate the coverage report."""
-    output_dir = _p.Path(test_results_files[0]).parent
+    output_dir = config.test_results_dir
     print(f"Generating report in {output_dir}...")
 
-    config.test_results_dir = config.test_results_dir or output_dir
     if config.skip_coverage_guard:
         print("Skipping UnreachableCoverageFilter; using unfiltered coverage reports.")
         filtered_files = test_results_files
@@ -306,7 +356,7 @@ def _generate_report(config: _RunConfig, test_results_files: list[str]):
         "reportgenerator",
         f"-reports:{';'.join(filtered_files)}",
         f"-targetdir:{output_dir}",
-        "-reporttypes:Html;TextSummary;Cobertura;OpenCover"
+        "-reporttypes:Html;TextSummary;Cobertura;OpenCover",
     ]
     if config.history_dir:
         print(f"Using specified history directory: {config.history_dir}")
@@ -332,38 +382,39 @@ def _parse_args() -> _RunConfig:
         "--history-dir",
         help="Directory to store coverage history for tracking coverage changes over time.",
     )
-    parser.add_argument(
-        "--test-results-dir",
-        help="Directory where test results are stored."
-    )
+    parser.add_argument("--test-results-dir", help="Directory where test results are stored.")
     parser.add_argument(
         "--keep-raw-coverage-files",
         action="store_true",
         help="Keep raw coverage files after report generation.",
     )
-    parser.add_argument(
-        "--release-mode",
-        action="store_true",
-        help="Run tests in release mode."
-    )
+    parser.add_argument("--release-mode", action="store_true", help="Run tests in release mode.")
     parser.add_argument(
         "--skip-coverage-guard",
         action="store_true",
         help="Skip filtering defensive guards from coverage reports.",
     )
+    parser.add_argument(
+        "--preserve-raw-results",
+        action="store_true",
+        help="Do not delete the temporary directory containing raw dotnet test output.",
+    )
     args = parser.parse_args()
 
     solution = _get_solution_file(_p.Path.cwd(), args.solution)
-    test_results_dir = _get_test_results_dir(args.test_results_dir)
+    test_results_dir = _get_test_results_dir(args.test_results_dir, solution)
 
     return _RunConfig(
         solution=solution,
         license=_get_report_generator_license(args.license),
-        history_dir=_get_history_dir(solution.parent, args.history_dir),
+        history_dir=_get_history_dir(solution, args.history_dir),
         test_results_dir=test_results_dir,
+        raw_results_dir=_p.Path(_tempfile.mkdtemp(prefix="dbman-coverage-raw-")),
+        preserve_raw_results=args.preserve_raw_results,
         keep_raw_coverage_files=args.keep_raw_coverage_files,
         release_mode=args.release_mode,
         skip_coverage_guard=args.skip_coverage_guard,
+        update_latest=not args.test_results_dir,
     )
 
 
@@ -371,14 +422,23 @@ def main():
     """Main entry point for the script."""
     _check_reportgenerator_installed()
     config = _parse_args()
-    if not config.skip_coverage_guard:
-        _check_coverage_filter_installed()
-    test_results_files = _run_tests(config)
-    _generate_report(config, test_results_files)
-    if not config.keep_raw_coverage_files:
-        _remove_raw_coverage_files(test_results_files)
-    if config.test_results_dir:
-        _remove_empty_subdirs(config.test_results_dir)
+    try:
+        if not config.skip_coverage_guard:
+            _check_coverage_filter_installed()
+        test_results_files = _run_tests(config)
+        _generate_report(config, test_results_files)
+        if not config.keep_raw_coverage_files:
+            _remove_raw_coverage_files(test_results_files)
+        if config.test_results_dir:
+            _remove_empty_subdirs(config.test_results_dir)
+        if config.update_latest:
+            _update_latest_copy(config.test_results_dir)
+    finally:
+        if config.preserve_raw_results:
+            print(f"Preserving raw test results in {config.raw_results_dir}")
+        else:
+            print(f"Removing raw test results directory: {config.raw_results_dir}")
+            _shutil.rmtree(config.raw_results_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

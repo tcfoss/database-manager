@@ -32,7 +32,7 @@ public class LexerSimpleTests : LexerTestBase
     [Fact]
     public void Select_Almost_Numerics()
     {
-        var actual = new GenericLexer().Tokenize("SELECT 1ea, 1e-10a, 1e-10-10");
+        var actual = new GenericLexer().Tokenize("SELECT 1ea, 1e-10a, 1e-10-10, 1e+a, 3.a");
         var expected = new Token[]
         {
             new Word("SELECT") { Location = new Location() },
@@ -45,6 +45,14 @@ public class LexerSimpleTests : LexerTestBase
             new NumericLiteral("1e-10") { Location = new Location() },
             new Minus() { Location = new Location() },
             new NumericLiteral("10") { Location = new Location() },
+            new Comma() { Location = new Location() },
+            new NumericLiteral("1") { Location = new Location() },
+            new Word("e") { Location = new Location() },
+            new Plus() { Location = new Location() },
+            new Word("a") { Location = new Location() },
+            new Comma() { Location = new Location() },
+            new NumericLiteral("3.") { Location = new Location() },
+            new Word("a") { Location = new Location() }
         };
         Compare(expected, actual);
     }
@@ -133,7 +141,7 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Fact]
-    public void Select_String_With_Quotes()
+    public void Select_String_With_Quote_Escapes()
     {
         var test = "SELECT 'bl''ah'";
         var actual = new GenericLexer().Tokenize(test);
