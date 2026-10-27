@@ -96,14 +96,14 @@ public class StatementComponentTests
 
         Assert.Equal("cte (col1) AS (SELECT 1) FROM previous", body.ToSql());
         string expectedFormatted = """
-        "cte" (col1) AS (
+        cte (col1) AS (
             SELECT
                 1) FROM previous
         """;
         Assert.Equal(expectedFormatted, FormatComponent(body).ReplaceLineEndings("\n"));
         var cte = new CommonTableExpression([body with { From = null }, body with { Name = new Identifier("second"), From = null }], true);
-        Assert.StartsWith("WITH RECURSIVE \"cte\" (col1) AS (", FormatComponent(cte));
-        Assert.Contains(",\n\"second\" (col1) AS (", FormatComponent(cte).ReplaceLineEndings("\n"));
+        Assert.StartsWith("WITH RECURSIVE cte (col1) AS (", FormatComponent(cte));
+        Assert.Contains(",\nsecond (col1) AS (", FormatComponent(cte).ReplaceLineEndings("\n"));
     }
 
     [Fact]

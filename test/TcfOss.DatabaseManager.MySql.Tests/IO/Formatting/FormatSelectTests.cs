@@ -334,7 +334,7 @@ public class FormatSelectTests
         """;
 
         var formatted = """
-        WITH `authors` AS (
+        WITH authors AS (
             SELECT
                 `ba`.`book_id`,
                 `c`.`last_name`,
@@ -412,7 +412,7 @@ public class FormatSelectTests
         """;
 
         var formatted = """
-        WITH `recent_books` AS (
+        WITH recent_books AS (
             SELECT
                 `b`.`title`,
                 `b`.`published_year`

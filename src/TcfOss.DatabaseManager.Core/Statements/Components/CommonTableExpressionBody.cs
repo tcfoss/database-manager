@@ -27,7 +27,8 @@ public record CommonTableExpressionBody(Identifier Name, SqlValueList<Identifier
 
     public void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
-        Name.FormatSql(writer, manager);
+        writer.Write(manager.Indent);
+        writer.Write(manager.ComponentNormalizer.NormalizeSingleIdentifier(Name, manager.Formatting.CteDeclarationQuoting));
         if (Columns.SafeAny())
         {
             writer.WriteSql($" ({Columns})");
