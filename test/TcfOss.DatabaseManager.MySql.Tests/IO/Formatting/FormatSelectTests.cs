@@ -712,6 +712,20 @@ public class FormatSelectTests
     }
 
     [Fact]
+    public void ValuesQuery_SingleRow()
+    {
+        var text = "VALUES (1, 'a', mycol)";
+        var formatted = """
+        VALUES
+        (1, 'a', `mycol`);
+        """;
+
+        using var formatter = Helpers.CreateFormatter(null, valueListMultiLineThreshold: null);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
     public void ValuesQuery_SingleRow_AboveThreshold()
     {
         var text = "VALUES (1, 'a', mycol)";

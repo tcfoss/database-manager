@@ -55,6 +55,13 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     /* Select - CTE */
     [InlineData("WITH book_authors AS (SELECT person_id, name FROM authors) SELECT * FROM book_authors")]
     [InlineData("WITH RECURSIVE expanded_genres AS (SELECT * FROM genres AS g WHERE g.parent_id IS NULL UNION ALL SELECT * FROM genres AS gsub INNER JOIN expanded_genres AS eg ON gsub.parent_id = eg.id) SELECT * FROM expanded_genres", Label = "WITH RECURSIVE expanded_genres")]
+    /* Values */
+    [InlineData("VALUES (1, 2, 3)")]
+    [InlineData("VALUES ('a', 'b', 'c')")]
+    [InlineData("VALUES (1, 2, 3), (4, 5, 6)")]
+    [InlineData("VALUES ROW (1, 2, 3)")]
+    [InlineData("VALUES ROW ('a', 'b', 'c')")]
+    [InlineData("VALUES ROW (1, 2, 3), ROW (4, 5, 6)")]
     /* INSERT */
     [InlineData("INSERT INTO mytable (col1, col2, col3) VALUES ('v1', 'v2', 'v3'), ('v4', 'v5', 'v6'), ('v7', 'v8', 'v9')")]
     /* INSERT - CTE */

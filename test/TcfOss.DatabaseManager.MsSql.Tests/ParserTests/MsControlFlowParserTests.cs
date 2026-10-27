@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -15,6 +16,13 @@ public class MsControlFlowParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void Declare_NonVarName_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("DECLARE nonvar INT"));
+        Assert.Contains("local variable", ex.Message);
     }
 
     [Theory]

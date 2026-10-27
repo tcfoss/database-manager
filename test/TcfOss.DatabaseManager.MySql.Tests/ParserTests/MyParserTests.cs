@@ -395,7 +395,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Fact]
-    public void Statements_Without_Delimiter_Throws()
+    public void Statements_WithoutDelimiter_Throws()
     {
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 1"));
         Assert.Contains("end of statement", ex.Message);

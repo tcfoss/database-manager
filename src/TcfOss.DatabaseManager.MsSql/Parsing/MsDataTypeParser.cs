@@ -5,11 +5,6 @@ using TcfOss.DatabaseManager.MsSql.BuiltIn;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
-/// <summary>
-/// Microsoft SQL Server-specific data-type parser. Recognises T-SQL types
-/// (NVARCHAR(MAX), DATETIME2, UNIQUEIDENTIFIER, MONEY, BIT, etc.) and
-/// otherwise delegates to the Core <see cref="DataTypeParser"/>.
-/// </summary>
 public class MsDataTypeParser : DataTypeParser
 {
     public override bool IsDataTypeKeyword(Keyword? keyword) => keyword is
@@ -24,10 +19,7 @@ public class MsDataTypeParser : DataTypeParser
     public override DataType ParseDataType(ParserState state)
     {
         Token token = state.Peek();
-        if (token is not Word word)
-        {
-            return base.ParseDataType(state);
-        }
+        Word word = token as Word ?? throw ParserState.ExpectedCategoryException("data_type", token);
 
         switch (word.Keyword)
         {
