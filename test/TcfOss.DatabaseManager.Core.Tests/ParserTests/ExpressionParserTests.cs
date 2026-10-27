@@ -10,75 +10,186 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 // ReSharper disable ClassNeverInstantiated.Global
 public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 {
+    /* Identifiers and wildcards */
     [Theory]
-    [InlineData("x.y.*")]
-    [InlineData("x IS NULL")]
-    [InlineData("x.y IS NULL")]
-    [InlineData("x IS TRUE")]
-    [InlineData("a + b IS FALSE")]
-    [InlineData("CONCAT(a, b) IS NOT UNKNOWN")]
-    [InlineData("CONCAT(a, b) = 'mystring'")]
-    [InlineData("CONCAT(first = a, second = b) = 'mystring'")]
-    [InlineData("CONCAT(first := a, second := b) = 'mystring'")]
-    [InlineData("CONCAT(first => a, second => b) = 'mystring'")]
-    [InlineData("a IS DISTINCT FROM b")]
-    [InlineData("x IS NOT NULL")]
-    [InlineData("x BETWEEN 5 AND 10")]
-    [InlineData("CASE WHEN x > 5 THEN TRUE END")]
-    [InlineData("CASE WHEN x > 5 THEN TRUE WHEN x < 5 THEN FALSE ELSE NULL END")]
-    [InlineData("CASE x WHEN 1 THEN TRUE WHEN 2 THEN FALSE ELSE NULL END")]
-    [InlineData("x >= ALL(SELECT colname FROM tablename)")]
-    [InlineData("x <> ANY(SELECT colname FROM tablename)")]
-    [InlineData("x <= SOME(SELECT colname FROM tablename)")]
-    [InlineData("x > ALL((1, 2, 3))")]
-    [InlineData("GROUP_CONCAT(DISTINCT author_name ORDER BY author_name DESC SEPARATOR ', ')", Label = "GROUP_CONCAT ORDER BY")]
-    [InlineData("GROUP_CONCAT(DISTINCT author_name LIMIT 10 SEPARATOR ', ')", Label = "GROUP_CONCAT LIMIT")]
-    [InlineData("GROUP_CONCAT(author_name SEPARATOR ', ')")]
-    [InlineData("GROUP_CONCAT(author_name ORDER BY author_name LIMIT 10 SEPARATOR ', ')")]
-    [InlineData("COUNT(*) OVER ()")]
-    [InlineData("COUNT(*) OVER (PARTITION BY category)")]
-    [InlineData("COUNT(*) OVER (ORDER BY category)")]
-    [InlineData("x NOT BETWEEN 1 AND 3")]
-    [InlineData("x NOT IN (1, 2)")]
-    [InlineData("x NOT LIKE 'pattern'")]
-    [InlineData("x IS NOT DISTINCT FROM y")]
-    [InlineData("EXISTS (SELECT 1 FROM my_table)")]
-    [InlineData("NOT EXISTS (SELECT 1 FROM my_table)")]
-    [InlineData("'2025-06-28T12:00:00' AT TIME ZONE 'Eastern Standard Time'", Label = "AT TIME ZONE long TZ")]
-    [InlineData("+3 > 0")]
-    [InlineData("-3 < 0")]
-    [InlineData("4 IN (3, 4, 5)")]
-    [InlineData("4 NOT IN (SELECT pk FROM my_table)")]
-    [InlineData("NOT (a OR b)")]
-    [InlineData("COUNT(*)")]
-    [InlineData("COUNT(table.*)")]
-    [InlineData("CHAR(3) 'Hello'")]
-    [InlineData("x LIKE y ESCAPE '_'")]
-    [InlineData("x NOT LIKE ANY ('pat1', 'pat2', 'pat3')")]
-    [InlineData("x REGEXP 'pattern'")]
-    [InlineData("x NOT REGEXP 'pattern'")]
-    [InlineData("x RLIKE 'pattern'")]
-    [InlineData("x NOT RLIKE 'pattern'")]
-    [InlineData("POSITION('sub' IN 'substring')")]
-    [InlineData("POSITION('x', 'not', 'a', 'real', 'function')", Label = "POSITION many args")]
-    [InlineData("x % 2 = 0")]
-    [InlineData("a AND b")]
-    [InlineData("a OR b")]
-    [InlineData("a XOR b")]
-    [InlineData("4 + INTERVAL 5 SECOND_MICROSECOND")]
-    [InlineData("4 + INTERVAL 5 MINUTE_MICROSECOND")]
-    [InlineData("4 + INTERVAL 5 MINUTE_SECOND")]
-    [InlineData("4 + INTERVAL 5 HOUR_MICROSECOND")]
-    [InlineData("4 + INTERVAL 5 HOUR_SECOND")]
-    [InlineData("4 + INTERVAL 5 HOUR_MINUTE")]
-    [InlineData("4 + INTERVAL 5 DAY_MICROSECOND")]
-    [InlineData("4 + INTERVAL 5 DAY_SECOND")]
-    [InlineData("4 + INTERVAL 5 DAY_MINUTE")]
-    [InlineData("4 + INTERVAL 5 DAY_HOUR")]
-    [InlineData("4 + INTERVAL 5 YEAR_MONTH")]
-    [InlineData("NOT (a + b)")]
-    [InlineData("!(a + b)", "NOT (a + b)")]
-    public static void ParseExpr_TextMatch(string sql, string? realExpected = null)
+    [InlineData("x.y.*", Label = "qualified wildcard")]
+    public static void ParseExpr_IdentifiersAndWildcards_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* IS and comparison predicates */
+    [Theory]
+    [InlineData("x IS NULL", Label = "is null")]
+    [InlineData("x.y IS NULL", Label = "qualified is null")]
+    [InlineData("x IS TRUE", Label = "is true")]
+    [InlineData("a + b IS FALSE", Label = "expression is false")]
+    [InlineData("CONCAT(a, b) IS NOT UNKNOWN", Label = "is not unknown")]
+    [InlineData("CONCAT(a, b) = 'mystring'", Label = "function equality")]
+    [InlineData("CONCAT(first = a, second = b) = 'mystring'", Label = "function named arguments equals")]
+    [InlineData("CONCAT(first := a, second := b) = 'mystring'", Label = "function named arguments assign")]
+    [InlineData("CONCAT(first => a, second => b) = 'mystring'", Label = "function named arguments arrow")]
+    [InlineData("a IS DISTINCT FROM b", Label = "is distinct from")]
+    [InlineData("x IS NOT NULL", Label = "is not null")]
+    [InlineData("x IS NOT DISTINCT FROM y", Label = "is not distinct from")]
+    public static void ParseExpr_IsAndComparisonPredicates_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Range and membership predicates */
+    [Theory]
+    [InlineData("x BETWEEN 5 AND 10", Label = "between")]
+    [InlineData("x NOT BETWEEN 1 AND 3", Label = "not between")]
+    [InlineData("4 IN (3, 4, 5)", Label = "in values")]
+    [InlineData("4 NOT IN (SELECT pk FROM my_table)", Label = "not in subquery")]
+    [InlineData("x NOT IN (1, 2)", Label = "not in values")]
+    public static void ParseExpr_RangeAndMembershipPredicates_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* CASE expressions */
+    [Theory]
+    [InlineData("CASE WHEN x > 5 THEN TRUE END", Label = "searched case")]
+    [InlineData("CASE WHEN x > 5 THEN TRUE WHEN x < 5 THEN FALSE ELSE NULL END", Label = "searched case branches")]
+    [InlineData("CASE x WHEN 1 THEN TRUE WHEN 2 THEN FALSE ELSE NULL END", Label = "simple case branches")]
+    public static void ParseExpr_CaseExpressions_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Quantified comparisons */
+    [Theory]
+    [InlineData("x >= ALL(SELECT colname FROM tablename)", Label = "greater equal all subquery")]
+    [InlineData("x <> ANY(SELECT colname FROM tablename)", Label = "not equal any subquery")]
+    [InlineData("x <= SOME(SELECT colname FROM tablename)", Label = "less equal some subquery")]
+    [InlineData("x > ALL((1, 2, 3))", Label = "greater all values")]
+    public static void ParseExpr_QuantifiedComparisons_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Aggregate and window functions */
+    [Theory]
+    [InlineData("GROUP_CONCAT(DISTINCT author_name ORDER BY author_name DESC SEPARATOR ', ')", Label = "group concat order by")]
+    [InlineData("GROUP_CONCAT(DISTINCT author_name LIMIT 10 SEPARATOR ', ')", Label = "group concat limit")]
+    [InlineData("GROUP_CONCAT(author_name SEPARATOR ', ')", Label = "group concat separator")]
+    [InlineData("GROUP_CONCAT(author_name ORDER BY author_name LIMIT 10 SEPARATOR ', ')", Label = "group concat order and limit")]
+    [InlineData("COUNT(*)", Label = "count wildcard")]
+    [InlineData("COUNT(table.*)", Label = "count qualified wildcard")]
+    [InlineData("COUNT(*) OVER ()", Label = "window empty")]
+    [InlineData("COUNT(*) OVER (PARTITION BY category)", Label = "window partition")]
+    [InlineData("COUNT(*) OVER (ORDER BY category)", Label = "window order")]
+    public static void ParseExpr_AggregateAndWindowFunctions_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Existence predicates */
+    [Theory]
+    [InlineData("EXISTS (SELECT 1 FROM my_table)", Label = "exists subquery")]
+    [InlineData("NOT EXISTS (SELECT 1 FROM my_table)", Label = "not exists subquery")]
+    public static void ParseExpr_ExistencePredicates_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Pattern predicates */
+    [Theory]
+    [InlineData("x LIKE y ESCAPE '_'", Label = "like escape")]
+    [InlineData("x NOT LIKE 'pattern'", Label = "not like")]
+    [InlineData("x NOT LIKE ANY ('pat1', 'pat2', 'pat3')", Label = "not like any")]
+    [InlineData("x REGEXP 'pattern'", Label = "regexp")]
+    [InlineData("x NOT REGEXP 'pattern'", Label = "not regexp")]
+    [InlineData("x RLIKE 'pattern'", Label = "rlike")]
+    [InlineData("x NOT RLIKE 'pattern'", Label = "not rlike")]
+    public static void ParseExpr_PatternPredicates_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Function calls and typed literals */
+    [Theory]
+    [InlineData("CHAR(3) 'Hello'", Label = "typed character literal")]
+    [InlineData("POSITION('sub' IN 'substring')", Label = "position in syntax")]
+    [InlineData("POSITION('x', 'not', 'a', 'real', 'function')", Label = "position many arguments")]
+    [InlineData("'2025-06-28T12:00:00' AT TIME ZONE 'Eastern Standard Time'", Label = "at time zone")]
+    public static void ParseExpr_FunctionCallsAndTypedLiterals_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Arithmetic, comparison, and logical operators */
+    [Theory]
+    [InlineData("+3 > 0", Label = "unary plus comparison")]
+    [InlineData("-3 < 0", Label = "unary minus comparison")]
+    [InlineData("x % 2 = 0", Label = "modulo comparison")]
+    [InlineData("a AND b", Label = "and")]
+    [InlineData("a OR b", Label = "or")]
+    [InlineData("a XOR b", Label = "xor")]
+    public static void ParseExpr_ArithmeticComparisonAndLogicalOperators_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* INTERVAL expressions */
+    [Theory]
+    [InlineData("4 + INTERVAL 5 SECOND_MICROSECOND", Label = "interval second microsecond")]
+    [InlineData("4 + INTERVAL 5 MINUTE_MICROSECOND", Label = "interval minute microsecond")]
+    [InlineData("4 + INTERVAL 5 MINUTE_SECOND", Label = "interval minute second")]
+    [InlineData("4 + INTERVAL 5 HOUR_MICROSECOND", Label = "interval hour microsecond")]
+    [InlineData("4 + INTERVAL 5 HOUR_SECOND", Label = "interval hour second")]
+    [InlineData("4 + INTERVAL 5 HOUR_MINUTE", Label = "interval hour minute")]
+    [InlineData("4 + INTERVAL 5 DAY_MICROSECOND", Label = "interval day microsecond")]
+    [InlineData("4 + INTERVAL 5 DAY_SECOND", Label = "interval day second")]
+    [InlineData("4 + INTERVAL 5 DAY_MINUTE", Label = "interval day minute")]
+    [InlineData("4 + INTERVAL 5 DAY_HOUR", Label = "interval day hour")]
+    [InlineData("4 + INTERVAL 5 YEAR_MONTH", Label = "interval year month")]
+    public static void ParseExpr_IntervalExpressions_TextMatch(string sql, string? realExpected = null)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
+
+        Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    /* Unary logical expressions */
+    [Theory]
+    [InlineData("NOT (a OR b)", Label = "not grouped expression")]
+    [InlineData("NOT (a + b)", Label = "not arithmetic expression")]
+    [InlineData("!(a + b)", "NOT (a + b)", Label = "bang as not")]
+    public static void ParseExpr_UnaryLogicalExpressions_TextMatch(string sql, string? realExpected = null)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);

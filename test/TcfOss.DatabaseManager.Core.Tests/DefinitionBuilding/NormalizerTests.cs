@@ -856,17 +856,17 @@ public class NormalizerTests
     }
 
     [Theory]
-    [InlineData("simple_name", QuoteStyle.Ansi, IdentifierQuotationHandling.Always, "\"simple_name\"")]
-    [InlineData("@session_var", QuoteStyle.Backticks, IdentifierQuotationHandling.Always, "@session_var")]
-    [InlineData("`has-dash`", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecial, "`has-dash`")]
-    [InlineData("simple_name", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecial, "simple_name")]
-    [InlineData("`has-dash`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecial, "`has-dash`")]
-    [InlineData("`simple_name`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecial, "simple_name")]
-    [InlineData("`NOW`", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecialOrFunction, "`NOW`")]
-    [InlineData("simple_name", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecialOrFunction, "simple_name")]
-    [InlineData("`NOW`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecialOrFunction, "`NOW`")]
-    [InlineData("`simple_name`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecialOrFunction, "simple_name")]
-    [InlineData("`original_name`", QuoteStyle.Ansi, IdentifierQuotationHandling.LeaveOriginal, "`original_name`")]
+    [InlineData("simple_name", QuoteStyle.Ansi, IdentifierQuotationHandling.Always, "\"simple_name\"", Label = "always quote unquoted name")]
+    [InlineData("@session_var", QuoteStyle.Backticks, IdentifierQuotationHandling.Always, "@session_var", Label = "always preserve session variable")]
+    [InlineData("`has-dash`", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecial, "`has-dash`", Label = "if special retain quoted name")]
+    [InlineData("simple_name", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecial, "simple_name", Label = "if special leave simple name")]
+    [InlineData("`has-dash`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecial, "`has-dash`", Label = "only special remains quoted")]
+    [InlineData("`simple_name`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecial, "simple_name", Label = "only special removes simple quotes")]
+    [InlineData("`NOW`", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecialOrFunction, "`NOW`", Label = "if function retain function quote")]
+    [InlineData("simple_name", QuoteStyle.Backticks, IdentifierQuotationHandling.IfSpecialOrFunction, "simple_name", Label = "if function leave simple name")]
+    [InlineData("`NOW`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecialOrFunction, "`NOW`", Label = "only function remains quoted")]
+    [InlineData("`simple_name`", QuoteStyle.Backticks, IdentifierQuotationHandling.OnlyIfSpecialOrFunction, "simple_name", Label = "only function removes simple quotes")]
+    [InlineData("`original_name`", QuoteStyle.Ansi, IdentifierQuotationHandling.LeaveOriginal, "`original_name`", Label = "leave original quote style")]
     public void NormalizeSingleIdentifier_IdentifierQuotationHandling(string givenText, QuoteStyle quoteStyle, IdentifierQuotationHandling identifierQuotationHandling, string expectedIdentifier)
     {
         var actual = GetNormalizedIdentifier(givenText, quoteStyle, identifierQuotationHandling);

@@ -12,86 +12,184 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 // ReSharper disable once ClassNeverInstantiated.Global
 public class ParserTests : ParserTestsBase<GenericLexer, Parser>
 {
-    [Theory]
-    [InlineData("SELECT * FROM mytable")]
     /* Select - Joins */
-    [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b ON a.id = b.id WHERE a.name >= 'Jones' OR b.category IN (1, 2, 5) AND b.name <= 'Smith'", Label = "SELECT complex joins and filters")]
-    [InlineData("SELECT * FROM table1")]
-    [InlineData("SELECT a + b, a - b, a * b, a / b FROM table1 AS t1 INNER JOIN table2 AS t2 ON t1.a = t2.id LEFT OUTER JOIN table3 AS t3 ON t2.b = t3.id")]
-    [InlineData("SELECT a + b, a - b, a * b, a / b FROM table1 AS t1 INNER JOIN table2 AS t2 ON t1.a = t2.id RIGHT OUTER JOIN table3 AS t3 ON t2.b = t3.id")]
-    [InlineData("SELECT a + b, a - b, a * b, a / b FROM table1 AS t1 INNER JOIN table2 AS t2 ON t1.a = t2.id FULL OUTER JOIN table3 AS t3 ON t2.b = t3.id")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b ON a.id = b.id WHERE (a.name >= 'Jones' OR b.category IN (1, 2, 5)) AND b.name <= 'Smith'")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS JOIN table2 AS b")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS APPLY table2 AS b")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a OUTER APPLY table2 AS b")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS APPLY (SELECT col1, col2 FROM table_2) AS b")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a NATURAL INNER JOIN table2 AS b")]
-    [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b USING (id, name)")]
-    [InlineData("SELECT a, b FROM (SELECT a, b FROM mytable)")]
+    [Theory]
+    [InlineData("SELECT * FROM mytable", Label = "SELECT from table")]
+    [InlineData("SELECT * FROM table1", Label = "SELECT single table")]
+    [InlineData("SELECT a + b, a - b, a * b, a / b FROM table1 AS t1 INNER JOIN table2 AS t2 ON t1.a = t2.id LEFT OUTER JOIN table3 AS t3 ON t2.b = t3.id", Label = "SELECT left outer join")]
+    [InlineData("SELECT a + b, a - b, a * b, a / b FROM table1 AS t1 INNER JOIN table2 AS t2 ON t1.a = t2.id RIGHT OUTER JOIN table3 AS t3 ON t2.b = t3.id", Label = "SELECT right outer join")]
+    [InlineData("SELECT a + b, a - b, a * b, a / b FROM table1 AS t1 INNER JOIN table2 AS t2 ON t1.a = t2.id FULL OUTER JOIN table3 AS t3 ON t2.b = t3.id", Label = "SELECT full outer join")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b ON a.id = b.id WHERE a.name >= 'Jones' OR b.category IN (1, 2, 5) AND b.name <= 'Smith'", Label = "SELECT joins and filters")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b ON a.id = b.id WHERE (a.name >= 'Jones' OR b.category IN (1, 2, 5)) AND b.name <= 'Smith'", Label = "SELECT grouped join filters")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS JOIN table2 AS b", Label = "SELECT cross join")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS APPLY table2 AS b", Label = "SELECT cross apply")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a OUTER APPLY table2 AS b", Label = "SELECT outer apply")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a CROSS APPLY (SELECT col1, col2 FROM table_2) AS b", Label = "SELECT apply subquery")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a NATURAL INNER JOIN table2 AS b", Label = "SELECT natural join")]
+    [InlineData("SELECT a.*, b.* FROM table1 AS a INNER JOIN table2 AS b USING (id, name)", Label = "SELECT join using columns")]
+    [InlineData("SELECT a, b FROM (SELECT a, b FROM mytable)", Label = "SELECT subquery from")]
+    public static void Statement_SelectJoins_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* Select - Into */
-    [InlineData("SELECT a INTO myvar FROM old_table")]
-    [InlineData("SELECT a, b INTO var1, var2 FROM old_table")]
-    [InlineData("SELECT a, b INTO new_table FROM old_table")]
-    [InlineData("SELECT a, b INTO new_table FROM old_table WHERE a > 10")]
-    [InlineData("SELECT a, b INTO new_table FROM old_table WHERE a > 10 ORDER BY b DESC")]
-    [InlineData("SELECT a, b INTO new_schema.new_table FROM old_table")]
-    [InlineData("SELECT a, b INTO new_schema.new_table FROM old_table WHERE a > 10")]
-    [InlineData("SELECT a, b INTO new_schema.new_table FROM old_table WHERE a > 10 ORDER BY b DESC")]
-    [InlineData("SELECT a, b INTO OUTFILE 'output.txt' FROM old_table")]
-    [InlineData("SELECT a FROM old_table INTO myvar")]
-    [InlineData("SELECT a, b FROM old_table INTO var1, var2")]
-    [InlineData("SELECT a, b FROM old_table INTO new_table")]
-    [InlineData("SELECT a, b FROM old_table INTO new_schema.new_table")]
-    [InlineData("SELECT a, b FROM old_table INTO OUTFILE 'output.txt'")]
-    [InlineData("SELECT DISTINCT a, b FROM mytable")]
-    [InlineData("SELECT t.name, COUNT(*) FROM table1 AS t GROUP BY t.name HAVING COUNT(*) > 5")]
+    [Theory]
+    [InlineData("SELECT a INTO myvar FROM old_table", Label = "SELECT into variable")]
+    [InlineData("SELECT a, b INTO var1, var2 FROM old_table", Label = "SELECT into variables")]
+    [InlineData("SELECT a, b INTO new_table FROM old_table", Label = "SELECT into table")]
+    [InlineData("SELECT a, b INTO new_table FROM old_table WHERE a > 10", Label = "SELECT into table with where")]
+    [InlineData("SELECT a, b INTO new_table FROM old_table WHERE a > 10 ORDER BY b DESC", Label = "SELECT into table with order")]
+    [InlineData("SELECT a, b INTO new_schema.new_table FROM old_table", Label = "SELECT into qualified table")]
+    [InlineData("SELECT a, b INTO new_schema.new_table FROM old_table WHERE a > 10", Label = "SELECT qualified into with where")]
+    [InlineData("SELECT a, b INTO new_schema.new_table FROM old_table WHERE a > 10 ORDER BY b DESC", Label = "SELECT qualified into with order")]
+    [InlineData("SELECT a, b INTO OUTFILE 'output.txt' FROM old_table", Label = "SELECT into outfile before from")]
+    [InlineData("SELECT a FROM old_table INTO myvar", Label = "SELECT into trailing variable")]
+    [InlineData("SELECT a, b FROM old_table INTO var1, var2", Label = "SELECT into trailing variables")]
+    [InlineData("SELECT a, b FROM old_table INTO new_table", Label = "SELECT into trailing table")]
+    [InlineData("SELECT a, b FROM old_table INTO new_schema.new_table", Label = "SELECT into trailing qualified table")]
+    [InlineData("SELECT a, b FROM old_table INTO OUTFILE 'output.txt'", Label = "SELECT into trailing outfile")]
+    [InlineData("SELECT DISTINCT a, b FROM mytable", Label = "SELECT distinct")]
+    [InlineData("SELECT t.name, COUNT(*) FROM table1 AS t GROUP BY t.name HAVING COUNT(*) > 5", Label = "SELECT group and having")]
+    public static void Statement_SelectInto_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* Select - Sets */
-    [InlineData("SELECT a, b FROM table1 UNION SELECT c, d FROM table2")]
-    [InlineData("SELECT a, b FROM table1 UNION ALL SELECT c, d FROM table2")]
-    [InlineData("SELECT a, b FROM table1 INTERSECT DISTINCT SELECT c, d FROM table2")]
-    [InlineData("SELECT a, b FROM table1 INTERSECT ALL SELECT c, d FROM table2")]
-    [InlineData("SELECT a, b FROM table1 EXCEPT SELECT c, d FROM table2")]
-    [InlineData("SELECT a, b FROM table1 EXCEPT ALL SELECT c, d FROM table2")]
+    [Theory]
+    [InlineData("SELECT a, b FROM table1 UNION SELECT c, d FROM table2", Label = "SELECT union")]
+    [InlineData("SELECT a, b FROM table1 UNION ALL SELECT c, d FROM table2", Label = "SELECT union all")]
+    [InlineData("SELECT a, b FROM table1 INTERSECT DISTINCT SELECT c, d FROM table2", Label = "SELECT intersect distinct")]
+    [InlineData("SELECT a, b FROM table1 INTERSECT ALL SELECT c, d FROM table2", Label = "SELECT intersect all")]
+    [InlineData("SELECT a, b FROM table1 EXCEPT SELECT c, d FROM table2", Label = "SELECT except")]
+    [InlineData("SELECT a, b FROM table1 EXCEPT ALL SELECT c, d FROM table2", Label = "SELECT except all")]
+    public static void Statement_SelectSets_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* Select - CTE */
-    [InlineData("WITH book_authors AS (SELECT person_id, name FROM authors) SELECT * FROM book_authors")]
+    [Theory]
+    [InlineData("WITH book_authors AS (SELECT person_id, name FROM authors) SELECT * FROM book_authors", Label = "SELECT with cte")]
     [InlineData("WITH RECURSIVE expanded_genres AS (SELECT * FROM genres AS g WHERE g.parent_id IS NULL UNION ALL SELECT * FROM genres AS gsub INNER JOIN expanded_genres AS eg ON gsub.parent_id = eg.id) SELECT * FROM expanded_genres", Label = "WITH RECURSIVE expanded_genres")]
+    public static void Statement_SelectCte_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* Values */
-    [InlineData("VALUES (1, 2, 3)")]
-    [InlineData("VALUES ('a', 'b', 'c')")]
-    [InlineData("VALUES (1, 2, 3), (4, 5, 6)")]
-    [InlineData("VALUES ROW (1, 2, 3)")]
-    [InlineData("VALUES ROW ('a', 'b', 'c')")]
-    [InlineData("VALUES ROW (1, 2, 3), ROW (4, 5, 6)")]
+    [Theory]
+    [InlineData("VALUES (1, 2, 3)", Label = "VALUES numeric row")]
+    [InlineData("VALUES ('a', 'b', 'c')", Label = "VALUES string row")]
+    [InlineData("VALUES (1, 2, 3), (4, 5, 6)", Label = "VALUES multiple rows")]
+    [InlineData("VALUES ROW (1, 2, 3)", Label = "VALUES row keyword")]
+    [InlineData("VALUES ROW ('a', 'b', 'c')", Label = "VALUES string row keyword")]
+    [InlineData("VALUES ROW (1, 2, 3), ROW (4, 5, 6)", Label = "VALUES multiple row keywords")]
+    public static void Statement_Values_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* INSERT */
-    [InlineData("INSERT INTO mytable (col1, col2, col3) VALUES ('v1', 'v2', 'v3'), ('v4', 'v5', 'v6'), ('v7', 'v8', 'v9')")]
+    [Theory]
+    [InlineData("INSERT INTO mytable (col1, col2, col3) VALUES ('v1', 'v2', 'v3'), ('v4', 'v5', 'v6'), ('v7', 'v8', 'v9')", Label = "INSERT multiple rows")]
+    public static void Statement_Insert_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* INSERT - CTE */
-    [InlineData("WITH mycte AS (SELECT * FROM mytable) INSERT INTO mytable SELECT t.a, t.b, t.c FROM mycte AS t")]
+    [Theory]
+    [InlineData("WITH mycte AS (SELECT * FROM mytable) INSERT INTO mytable SELECT t.a, t.b, t.c FROM mycte AS t", Label = "INSERT with cte")]
+    public static void Statement_InsertCte_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* UPDATE - CTE */
-    [InlineData("WITH mycte AS (SELECT * FROM mytable) UPDATE othertable AS ot SET ot.val = mycte.val WHERE mycte.id = ot.id")]
+    [Theory]
+    [InlineData("WITH mycte AS (SELECT * FROM mytable) UPDATE othertable AS ot SET ot.val = mycte.val WHERE mycte.id = ot.id", Label = "UPDATE with cte")]
+    public static void Statement_UpdateCte_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* DELETE - CTE */
-    [InlineData("WITH mycte AS (SELECT * FROM mytable) DELETE FROM othertable AS ot WHERE mycte.id = ot.id")]
-    /* IF block */
+    [Theory]
+    [InlineData("WITH mycte AS (SELECT * FROM mytable) DELETE FROM othertable AS ot WHERE mycte.id = ot.id", Label = "DELETE with cte")]
+    public static void Statement_DeleteCte_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* DECLARE */
-    [InlineData("DECLARE mycon CONDITION FOR SQLSTATE 'ABCDE'")]
-    [InlineData("DECLARE mycon CONDITION FOR 1234")]
-    [InlineData("DECLARE CONTINUE HANDLER FOR 1234 SELECT 1")]
-    [InlineData("DECLARE CONTINUE HANDLER FOR SQLSTATE '42S02', SQLWARNING SELECT 1")]
-    [InlineData("DECLARE EXIT HANDLER FOR SQLEXCEPTION, NOT FOUND, 1234 BEGIN SELECT 1; END")]
-    [InlineData("DECLARE UNDO HANDLER FOR mycon BEGIN SELECT 1; SELECT 2; END")]
-    [InlineData("DECLARE mycur CURSOR FOR SELECT col1, col2, col3 FROM mytable")]
+    [Theory]
+    [InlineData("DECLARE mycon CONDITION FOR SQLSTATE 'ABCDE'", Label = "DECLARE condition by sqlstate")]
+    [InlineData("DECLARE mycon CONDITION FOR 1234", Label = "DECLARE condition by code")]
+    [InlineData("DECLARE CONTINUE HANDLER FOR 1234 SELECT 1", Label = "DECLARE continue handler")]
+    [InlineData("DECLARE CONTINUE HANDLER FOR SQLSTATE '42S02', SQLWARNING SELECT 1", Label = "DECLARE handler conditions")]
+    [InlineData("DECLARE EXIT HANDLER FOR SQLEXCEPTION, NOT FOUND, 1234 BEGIN SELECT 1; END", Label = "DECLARE exit handler block")]
+    [InlineData("DECLARE UNDO HANDLER FOR mycon BEGIN SELECT 1; SELECT 2; END", Label = "DECLARE undo handler block")]
+    [InlineData("DECLARE mycur CURSOR FOR SELECT col1, col2, col3 FROM mytable", Label = "DECLARE cursor")]
+    public static void Statement_Declare_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* SET VARIABLE */
-    [InlineData("SET myvar = 3")]
-    [InlineData("SET myvar = a + b")]
-    [InlineData("SET qual.myvar = 'string'")]
-    [InlineData("SET myvar = (SELECT col1 FROM mytable WHERE col2 > 4 LIMIT 1)")]
-    [InlineData("SET myvar1 = 3, myvar2 = 'string', myvar3 = a + b, myvar4 = (SELECT col1 FROM mytable WHERE col2 > 4 LIMIT 1)")]
+    [Theory]
+    [InlineData("SET myvar = 3", Label = "SET numeric variable")]
+    [InlineData("SET myvar = a + b", Label = "SET expression variable")]
+    [InlineData("SET qual.myvar = 'string'", Label = "SET qualified variable")]
+    [InlineData("SET myvar = (SELECT col1 FROM mytable WHERE col2 > 4 LIMIT 1)", Label = "SET subquery variable")]
+    [InlineData("SET myvar1 = 3, myvar2 = 'string', myvar3 = a + b, myvar4 = (SELECT col1 FROM mytable WHERE col2 > 4 LIMIT 1)", Label = "SET multiple variables")]
+    public static void Statement_SetVariable_TextMatch(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
     /* USE */
-    [InlineData("USE mydatabase")]
-    [InlineData("USE DATABASE mydatabase")]
-    [InlineData("USE SCHEMA myschema")]
-    [InlineData("USE CATALOG mycatalog")]
-    [InlineData("USE mycatalog.myschema")]
-    public static void Statement_TextMatch(string sql)
+    [Theory]
+    [InlineData("USE mydatabase", Label = "USE database")]
+    [InlineData("USE DATABASE mydatabase", Label = "USE database keyword")]
+    [InlineData("USE SCHEMA myschema", Label = "USE schema")]
+    [InlineData("USE CATALOG mycatalog", Label = "USE catalog")]
+    [InlineData("USE mycatalog.myschema", Label = "USE qualified namespace")]
+    public static void Statement_Use_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
