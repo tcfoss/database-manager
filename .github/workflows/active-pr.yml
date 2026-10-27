@@ -79,8 +79,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     if: >
-      !startsWith(github.head_ref, 'release/') &&
-      !contains(github.event.pull_request.labels.*.name, 'full-ci')
+      contains(github.event.pull_request.labels.*.name, 'unit-test-only')
     uses: tcfoss/github-actions/.github/workflows/dotnet-test.yml@v1
     permissions:
       contents: read
@@ -93,8 +92,7 @@ jobs:
   all-tests:
     name: Full Test Suite
     if: >
-      startsWith(github.head_ref, 'release/') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci')
+      !contains(github.event.pull_request.labels.*.name, 'unit-test-only')
     uses: tcfoss/github-actions/.github/workflows/dotnet-test.yml@v1
     permissions:
       contents: read
