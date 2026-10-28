@@ -8,6 +8,7 @@ public record FormattingSettings
     public int TabSize { get; init; } = 4;
 
     public IdentifierQuotationHandling Quoting { get; init; } = IdentifierQuotationHandling.Always;
+    public IdentifierQuotationHandling CteDeclarationQuoting { get; init; } = IdentifierQuotationHandling.OnlyIfSpecialOrFunction;
     public bool ObjectNamePrefixWithSchema { get; init; }
     public bool OmitModifiersIfDefault { get; init; } = true;
     public bool OpeningParensOnNewLine { get; init; } = true;

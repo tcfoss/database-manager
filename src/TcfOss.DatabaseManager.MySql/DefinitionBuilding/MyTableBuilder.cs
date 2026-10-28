@@ -160,7 +160,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 AddKey(sp, sourceRef);
                 break;
             default:
-                throw new DefensiveGuardException("MyTableBuilder.AddIndexOrConstraint", constraint.GetType().ToString());
+                throw new DefensiveGuardException("table constraint type", constraint.GetType());
         }
     }
 
@@ -186,7 +186,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 _tableComment = new Comment(com.Value);
                 break;
             default:
-                throw new DefensiveGuardException("MyTableBuilder.AddOption", tableOption.GetType().ToString());
+                throw new DefensiveGuardException("table option type", tableOption.GetType());
         }
     }
 
@@ -301,7 +301,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 key = new MyKey.Spatial(spatialColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             default:
-                throw new DefensiveGuardException("MyTableBuilder.AddKey", keyStatement.GetType().ToString());
+                throw new DefensiveGuardException("key statement type", keyStatement.GetType());
         }
         _keys[Handle.Create(keyStatement.IndexName ?? new Identifier(Guid.NewGuid().ToString(), _quoteStyle), NameHandling)] = key;
     }
@@ -404,7 +404,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                     break;
                 }
                 default:
-                    throw new DefensiveGuardException(true, "MyTableBuilder.NormalizeKeyParts", part.GetType());
+                    throw new DefensiveGuardException(true, "key part type", part.GetType());
             }
         }
         return normalized;
@@ -425,7 +425,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                     NormalizedExpression = flattened
                 };
             default:
-                throw new DefensiveGuardException(true, "MyTableBuilder.NormalizeDefault", givenDefault.GetType());
+                throw new DefensiveGuardException(true, "column default type", givenDefault.GetType());
         }
     }
 

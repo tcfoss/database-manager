@@ -128,33 +128,78 @@ public class FormatComponentsTests
     }
 
     [Theory]
-    [InlineData("PRIMARY KEY (id)", "PRIMARY KEY ([id])")]
-    [InlineData("PRIMARY KEY CLUSTERED (id)", "PRIMARY KEY CLUSTERED ([id])")]
-    [InlineData("CONSTRAINT pk PRIMARY KEY NONCLUSTERED (id DESC)", "CONSTRAINT [pk] PRIMARY KEY NONCLUSTERED ([id] DESC)")]
-    [InlineData("PRIMARY KEY (id) WITH (PAD_INDEX = ON, FILLFACTOR = 80)", "PRIMARY KEY ([id]) WITH (PAD_INDEX = ON, FILLFACTOR = 80)")]
-    [InlineData("PRIMARY KEY (id) ON [PRIMARY]", "PRIMARY KEY ([id]) ON [PRIMARY]")]
-    [InlineData("PRIMARY KEY NONCLUSTERED (id) WITH (ALLOW_ROW_LOCKS = OFF) ON [ps] ([id])", "PRIMARY KEY NONCLUSTERED ([id]) WITH (ALLOW_ROW_LOCKS = OFF) ON [ps] ([id])")]
-    [InlineData("UNIQUE (id)", "UNIQUE ([id])")]
-    [InlineData("UNIQUE CLUSTERED (id)", "UNIQUE CLUSTERED ([id])")]
-    [InlineData("CONSTRAINT uq UNIQUE NONCLUSTERED (id)", "CONSTRAINT [uq] UNIQUE NONCLUSTERED ([id])")]
-    [InlineData("UNIQUE (id) WITH (FILLFACTOR = 80)", "UNIQUE ([id]) WITH (FILLFACTOR = 80)")]
-    [InlineData("UNIQUE (id) WITH (IGNORE_DUP_KEY = ON, ALLOW_PAGE_LOCKS = OFF) ON [PRIMARY]", "UNIQUE ([id]) WITH (IGNORE_DUP_KEY = ON, ALLOW_PAGE_LOCKS = OFF) ON [PRIMARY]")]
-    [InlineData("UNIQUE NONCLUSTERED (id) INCLUDE (extra)", "UNIQUE NONCLUSTERED ([id]) INCLUDE ([extra])")]
-    [InlineData("INDEX ix (id)", "INDEX [ix] ([id])")]
-    [InlineData("INDEX ix CLUSTERED (id)", "INDEX [ix] CLUSTERED ([id])")]
-    [InlineData("INDEX ix NONCLUSTERED (id)", "INDEX [ix] NONCLUSTERED ([id])")]
-    [InlineData("INDEX ix (id) INCLUDE (extra)", "INDEX [ix] ([id]) INCLUDE ([extra])")]
-    [InlineData("INDEX ix (id) WHERE id > 0", "INDEX [ix] ([id]) WHERE [id] > 0")]
-    [InlineData("INDEX ix (id) WITH (STATISTICS_NORECOMPUTE = ON) ON [PRIMARY]", "INDEX [ix] ([id]) WITH (STATISTICS_NORECOMPUTE = ON) ON [PRIMARY]")]
-    [InlineData("INDEX ix NONCLUSTERED (id DESC, extra ASC) INCLUDE (other) WHERE id > 0 WITH (FILLFACTOR = 90, PAD_INDEX = OFF) ON [ps] ([id])", "INDEX [ix] NONCLUSTERED ([id] DESC, [extra] ASC) INCLUDE ([other]) WHERE [id] > 0 WITH (FILLFACTOR = 90, PAD_INDEX = OFF) ON [ps] ([id])")]
-    [InlineData("INDEX ix UNIQUE (id)", "INDEX [ix] UNIQUE ([id])")]
-    [InlineData("INDEX ix UNIQUE CLUSTERED (id)", "INDEX [ix] UNIQUE CLUSTERED ([id])")]
-    [InlineData("INDEX ix UNIQUE NONCLUSTERED (id)", "INDEX [ix] UNIQUE NONCLUSTERED ([id])")]
-    [InlineData("INDEX ix UNIQUE (id) INCLUDE (extra)", "INDEX [ix] UNIQUE ([id]) INCLUDE ([extra])")]
-    [InlineData("INDEX ix UNIQUE (id) WHERE id > 0", "INDEX [ix] UNIQUE ([id]) WHERE [id] > 0")]
-    [InlineData("INDEX ix UNIQUE (id) WITH (FILLFACTOR = 80) ON [PRIMARY]", "INDEX [ix] UNIQUE ([id]) WITH (FILLFACTOR = 80) ON [PRIMARY]")]
-    [InlineData("INDEX ix UNIQUE NONCLUSTERED (id DESC, extra ASC) INCLUDE (other) WHERE id > 0 WITH (FILLFACTOR = 90, PAD_INDEX = ON) ON [ps] ([id])", "INDEX [ix] UNIQUE NONCLUSTERED ([id] DESC, [extra] ASC) INCLUDE ([other]) WHERE [id] > 0 WITH (FILLFACTOR = 90, PAD_INDEX = ON) ON [ps] ([id])")]
-    public void TableConstraint(string constraintSql, string expected)
+    [InlineData("PRIMARY KEY (id)", "PRIMARY KEY ([id])", Label = "primary key")]
+    [InlineData("PRIMARY KEY CLUSTERED (id)", "PRIMARY KEY CLUSTERED ([id])", Label = "clustered primary key")]
+    [InlineData("CONSTRAINT pk PRIMARY KEY NONCLUSTERED (id DESC)", "CONSTRAINT [pk] PRIMARY KEY NONCLUSTERED ([id] DESC)", Label = "named nonclustered primary key")]
+    [InlineData("PRIMARY KEY (id) WITH (PAD_INDEX = ON, FILLFACTOR = 80)", "PRIMARY KEY ([id]) WITH (PAD_INDEX = ON, FILLFACTOR = 80)", Label = "primary key options")]
+    [InlineData("PRIMARY KEY (id) ON [PRIMARY]", "PRIMARY KEY ([id]) ON [PRIMARY]", Label = "primary key filegroup")]
+    [InlineData("PRIMARY KEY NONCLUSTERED (id) WITH (ALLOW_ROW_LOCKS = OFF) ON [ps] ([id])", "PRIMARY KEY NONCLUSTERED ([id]) WITH (ALLOW_ROW_LOCKS = OFF) ON [ps] ([id])", Label = "primary key partition scheme")]
+    public void TableConstraint_PrimaryKey_TextMatch(string constraintSql, string expected)
+    {
+        var parser = new TextParser(new MsLexer(), new MsParser());
+        var table = Assert.IsType<CreateTable>(Assert.Single(parser.ParseText($"CREATE TABLE t (id INT, extra INT, other INT, {constraintSql})")));
+        var constraint = Assert.Single(table.Constraints);
+
+        var actual = FormatComponent(constraint);
+        Assert.Equal(expected, actual);
+
+        using var writer = new SqlTextWriter(new StringBuilder());
+        constraint.ToSql(writer);
+        Assert.Equal(constraintSql, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("UNIQUE (id)", "UNIQUE ([id])", Label = "unique")]
+    [InlineData("UNIQUE CLUSTERED (id)", "UNIQUE CLUSTERED ([id])", Label = "clustered unique")]
+    [InlineData("CONSTRAINT uq UNIQUE NONCLUSTERED (id)", "CONSTRAINT [uq] UNIQUE NONCLUSTERED ([id])", Label = "named nonclustered unique")]
+    [InlineData("UNIQUE (id) WITH (FILLFACTOR = 80)", "UNIQUE ([id]) WITH (FILLFACTOR = 80)", Label = "unique options")]
+    [InlineData("UNIQUE (id) WITH (IGNORE_DUP_KEY = ON, ALLOW_PAGE_LOCKS = OFF) ON [PRIMARY]", "UNIQUE ([id]) WITH (IGNORE_DUP_KEY = ON, ALLOW_PAGE_LOCKS = OFF) ON [PRIMARY]", Label = "unique options filegroup")]
+    [InlineData("UNIQUE NONCLUSTERED (id) INCLUDE (extra)", "UNIQUE NONCLUSTERED ([id]) INCLUDE ([extra])", Label = "unique include")]
+    public void TableConstraint_Unique_TextMatch(string constraintSql, string expected)
+    {
+        var parser = new TextParser(new MsLexer(), new MsParser());
+        var table = Assert.IsType<CreateTable>(Assert.Single(parser.ParseText($"CREATE TABLE t (id INT, extra INT, other INT, {constraintSql})")));
+        var constraint = Assert.Single(table.Constraints);
+
+        var actual = FormatComponent(constraint);
+        Assert.Equal(expected, actual);
+
+        using var writer = new SqlTextWriter(new StringBuilder());
+        constraint.ToSql(writer);
+        Assert.Equal(constraintSql, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("INDEX ix (id)", "INDEX [ix] ([id])", Label = "index")]
+    [InlineData("INDEX ix CLUSTERED (id)", "INDEX [ix] CLUSTERED ([id])", Label = "clustered index")]
+    [InlineData("INDEX ix NONCLUSTERED (id)", "INDEX [ix] NONCLUSTERED ([id])", Label = "nonclustered index")]
+    [InlineData("INDEX ix (id) INCLUDE (extra)", "INDEX [ix] ([id]) INCLUDE ([extra])", Label = "index include")]
+    [InlineData("INDEX ix (id) WHERE id > 0", "INDEX [ix] ([id]) WHERE [id] > 0", Label = "filtered index")]
+    [InlineData("INDEX ix (id) WITH (STATISTICS_NORECOMPUTE = ON) ON [PRIMARY]", "INDEX [ix] ([id]) WITH (STATISTICS_NORECOMPUTE = ON) ON [PRIMARY]", Label = "index options filegroup")]
+    [InlineData("INDEX ix NONCLUSTERED (id DESC, extra ASC) INCLUDE (other) WHERE id > 0 WITH (FILLFACTOR = 90, PAD_INDEX = OFF) ON [ps] ([id])", "INDEX [ix] NONCLUSTERED ([id] DESC, [extra] ASC) INCLUDE ([other]) WHERE [id] > 0 WITH (FILLFACTOR = 90, PAD_INDEX = OFF) ON [ps] ([id])", Label = "index options partition scheme")]
+    public void TableConstraint_Index_TextMatch(string constraintSql, string expected)
+    {
+        var parser = new TextParser(new MsLexer(), new MsParser());
+        var table = Assert.IsType<CreateTable>(Assert.Single(parser.ParseText($"CREATE TABLE t (id INT, extra INT, other INT, {constraintSql})")));
+        var constraint = Assert.Single(table.Constraints);
+
+        var actual = FormatComponent(constraint);
+        Assert.Equal(expected, actual);
+
+        using var writer = new SqlTextWriter(new StringBuilder());
+        constraint.ToSql(writer);
+        Assert.Equal(constraintSql, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("INDEX ix UNIQUE (id)", "INDEX [ix] UNIQUE ([id])", Label = "unique index")]
+    [InlineData("INDEX ix UNIQUE CLUSTERED (id)", "INDEX [ix] UNIQUE CLUSTERED ([id])", Label = "clustered unique index")]
+    [InlineData("INDEX ix UNIQUE NONCLUSTERED (id)", "INDEX [ix] UNIQUE NONCLUSTERED ([id])", Label = "nonclustered unique index")]
+    [InlineData("INDEX ix UNIQUE (id) INCLUDE (extra)", "INDEX [ix] UNIQUE ([id]) INCLUDE ([extra])", Label = "unique index include")]
+    [InlineData("INDEX ix UNIQUE (id) WHERE id > 0", "INDEX [ix] UNIQUE ([id]) WHERE [id] > 0", Label = "filtered unique index")]
+    [InlineData("INDEX ix UNIQUE (id) WITH (FILLFACTOR = 80) ON [PRIMARY]", "INDEX [ix] UNIQUE ([id]) WITH (FILLFACTOR = 80) ON [PRIMARY]", Label = "unique index options filegroup")]
+    [InlineData("INDEX ix UNIQUE NONCLUSTERED (id DESC, extra ASC) INCLUDE (other) WHERE id > 0 WITH (FILLFACTOR = 90, PAD_INDEX = ON) ON [ps] ([id])", "INDEX [ix] UNIQUE NONCLUSTERED ([id] DESC, [extra] ASC) INCLUDE ([other]) WHERE [id] > 0 WITH (FILLFACTOR = 90, PAD_INDEX = ON) ON [ps] ([id])", Label = "unique index options partition scheme")]
+    public void TableConstraint_UniqueIndex_TextMatch(string constraintSql, string expected)
     {
         var parser = new TextParser(new MsLexer(), new MsParser());
         var table = Assert.IsType<CreateTable>(Assert.Single(parser.ParseText($"CREATE TABLE t (id INT, extra INT, other INT, {constraintSql})")));

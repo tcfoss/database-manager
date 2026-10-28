@@ -1,4 +1,4 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -34,36 +34,16 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Equal(expected, actual);
     }
 
+
     [Theory]
-    [InlineData("INT", DataTypeClass.Integral)]
-    [InlineData("SMALLINT", DataTypeClass.Integral)]
-    [InlineData("MONEY", DataTypeClass.ExactDecimal)]
-    [InlineData("SMALLMONEY", DataTypeClass.ExactDecimal)]
-    [InlineData("BIT", DataTypeClass.Boolean)]
-    [InlineData("DATE", DataTypeClass.DateTime)]
-    [InlineData("DATETIME", DataTypeClass.DateTime)]
-    [InlineData("DATETIME2", DataTypeClass.DateTime)]
-    [InlineData("DATETIMEOFFSET", DataTypeClass.DateTime)]
-    [InlineData("SMALLDATETIME", DataTypeClass.DateTime)]
-    [InlineData("TIME", DataTypeClass.DateTime)]
-    [InlineData("TIME(3)", DataTypeClass.DateTime)]
-    [InlineData("DATETIMEOFFSET(3)", DataTypeClass.DateTime)]
-    [InlineData("UNIQUEIDENTIFIER", DataTypeClass.Guid)]
-    [InlineData("ROWVERSION", DataTypeClass.Binary)]
-    [InlineData("IMAGE", DataTypeClass.Binary)]
-    [InlineData("NTEXT", DataTypeClass.String)]
-    [InlineData("NCHAR(3)", DataTypeClass.String)]
-    [InlineData("BINARY(16)", DataTypeClass.Binary)]
-    [InlineData("VARBINARY(MAX)", DataTypeClass.Binary)]
-    public void DataType_Classes(string typeDefinition, DataTypeClass expectedClass)
+    [InlineData("NCHAR")]
+    [InlineData("BINARY")]
+    [InlineData("VARBINARY")]
+    public void DataType_RequiredLengthMissing_Throws(string dataType)
     {
-        var createTableSql = $"CREATE TABLE T (X {typeDefinition})";
-        var statements = ParseStatements(createTableSql);
-
-        var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
-        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(createTable.Columns!));
-
-        Assert.Equal(expectedClass, column.DataType.Class);
+        var sql = $"CREATE TABLE T (X {dataType})";
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(sql));
+        Assert.Contains("data_type_length", ex.Message);
     }
 
     [Theory]
@@ -84,7 +64,7 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         var statements = ParseStatements(createTableSql);
 
         var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
-        var column = Assert.IsType<StatementColumn.MsComputed>(Assert.Single(createTable.Columns!));
+        var column = Assert.IsType<StatementColumn.MsComputed>(Assert.Single(createTable.Columns));
 
         var actual = column.ToSql();
         Assert.Equal(columnDefinition, actual);
@@ -132,5 +112,77 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
 
         var sep = Assert.IsType<Statements.MsBatchSeparator>(statements[^1]);
         Assert.Equal(7, sep.Count);
+    }
+
+    [Fact]
+    public void TryCatch_TextMatch()
+    {
+        var text = "BEGIN TRY SELECT 1; END TRY BEGIN CATCH SELECT 2; END CATCH";
+        var (expected, actual) = GetExpectedActual(text, normalizeActualWhitespace: true, normalizeExpectedWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void TryCatch_TryNotEnded_Throws()
+    {
+        var state = GetState("BEGIN TRY SELECT 1");
+        var parser = new MsParser();
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(state, null));
+        Assert.Contains("END TRY", ex.Message);
+    }
+
+    [Fact]
+    public void TryCatch_NoCatch_Throws()
+    {
+        var state = GetState("BEGIN TRY SELECT 1; END TRY");
+        var parser = new MsParser();
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(state, null));
+        Assert.Contains("BEGIN", ex.Message);
+    }
+
+    [Fact]
+    public void TryCatch_CatchNotEnded_Throws()
+    {
+        var state = GetState("BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2");
+        var parser = new MsParser();
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(state, null));
+        Assert.Contains("END CATCH", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("TRAN")]
+    [InlineData("TRANSACTION")]
+    public void SaveTransaction_TextMatch(string transactionKeyword)
+    {
+        var text = $"SAVE {transactionKeyword} mySavePoint";
+        var (expected, actual) = GetExpectedActual(text, normalizeActualWhitespace: true, normalizeExpectedWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("SELECT")]
+    [InlineData("3")]
+    public void SaveTransaction_NoTranKeyword_Throws(string nextText)
+    {
+        var state = GetState($"SAVE {nextText}");
+        var parser = new MsParser();
+        var ex = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse(state, null));
+        Assert.Contains("TRAN | TRANSACTION", ex.Message);
+    }
+
+    [Fact]
+    public void ParseBegin_NonWordAfter_Throws()
+    {
+        var state = GetState("BEGIN 3");
+        var parser = new MsParser();
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.Parse(state, null));
+        Assert.Contains("statement", ex.Message);
+    }
+
+    [Fact]
+    public void Statements_WithoutDelimiter_Throws()
+    {
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 2"));
+        Assert.Contains("end of statement", ex.Message);
     }
 }

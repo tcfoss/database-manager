@@ -155,6 +155,27 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         Assert.EndsWith(expected, ex.Message);
     }
 
+    [Theory]
+    [ClassData(typeof(IsDataTypeKeywordTests))]
+    public void TestIsDataTypeKeyword(Keyword keyword, bool expected)
+    {
+        var actual = new Parser().DataTypeParser.IsDataTypeKeyword(keyword);
+        Assert.Equal(expected, actual);
+    }
+
+    public class IsDataTypeKeywordTests : ExhaustiveKeywordTestData<bool>
+    {
+        protected override IEnumerable<TheoryDataRow<Keyword, bool>> GetSupportedData()
+        {
+            foreach (var keyword in DataTypeKeywords.All)
+            {
+                yield return new TheoryDataRow<Keyword, bool>(keyword, true);
+            }
+        }
+
+        protected override bool GetDefaultValue() => false;
+    }
+
     private static DataType GetDataType(string sql)
     {
         var parser = new Parser();

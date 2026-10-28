@@ -254,7 +254,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
                     new ColumnIdentifier(raw.OldName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.OldName)), tableName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.TableName)), quoteStyle),
                     new ColumnIdentifier(raw.NewName ?? throw new ConfigurationException.MissingFieldException(nameof(raw.NewName)), tableName, quoteStyle) // will have already thrown if tableName is null
                 ),
-                _ => throw new DefensiveGuardException("Refactor Conversion", raw.Type.ToString())
+                _ => throw new DefensiveGuardException("refactor type", raw.Type.ToString())
             };
             refactors.Add(refactor);
         }

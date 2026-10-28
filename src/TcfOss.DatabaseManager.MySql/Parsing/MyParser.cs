@@ -473,7 +473,7 @@ public class MyParser : Parser
         {
             Word { Keyword: Keyword.ERRORS } => ShowDiagnosticType.Errors,
             Word { Keyword: Keyword.WARNINGS } => ShowDiagnosticType.Warnings,
-            _ => throw new DefensiveGuardException("SHOW WARNINGS/ERRORS", "If something else, ParseShow will have already thrown.")
+            var other => throw new DefensiveGuardException("SHOW diagnostic keyword", $"{other}", "If something else, ParseShow will have already thrown.")
         };
 
         Limit? limit = null;

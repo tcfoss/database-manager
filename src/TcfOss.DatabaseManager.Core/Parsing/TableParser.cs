@@ -434,7 +434,7 @@ public class TableParser
                 }
                 columns = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
             }
-            else if (state.Peek() is Word word && word.Keyword == Keyword.undefined)
+            else if (state.Peek() is Word { Keyword: Keyword.undefined })
             {
                 indexName = _p.ComponentParser.ParseIdentifier(state);
             }
@@ -1043,7 +1043,7 @@ public class TableParser
         bool includeDefault = nextKeyword == Keyword.DEFAULT;
         if (includeDefault)
         {
-            AlterTableOperation? defaultCharsetOrCollation = SubParseAlterCharSetOrCollation(state, includeDefault)
+            AlterTableOperation defaultCharsetOrCollation = SubParseAlterCharSetOrCollation(state, includeDefault)
                 ?? throw state.ExpectedException("CHARACTER SET", "COLLATE");
             return defaultCharsetOrCollation;
         }

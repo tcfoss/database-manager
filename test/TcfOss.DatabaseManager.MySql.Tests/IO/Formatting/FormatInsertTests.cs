@@ -176,6 +176,29 @@ public class FormatInsertTests
     }
 
     [Fact]
+    public void Insert_Select_WithCte()
+    {
+        var text = "WITH cte AS (SELECT id FROM authors) INSERT INTO books (author_id) SELECT id FROM cte";
+        var formatted = """
+        WITH cte AS (
+            SELECT
+                `authors`.`id`
+            FROM `schema1`.`authors`)
+        INSERT INTO `schema1`.`books`
+        (
+            `author_id`
+        )
+        SELECT
+            `id`
+        FROM `cte`;
+        """;
+
+        using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1, objectNamePrefixWithSchema: true);
+        var actual = formatter.GetFormatted(text);
+        Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+    }
+
+    [Fact]
     public void Insert_Values_OnDuplicateKeyUpdate_NoPseudoTables()
     {
         var text = "INSERT INTO books (title, published_year) VALUES ('My Book', 2024) ON DUPLICATE KEY UPDATE published_year = 2024";

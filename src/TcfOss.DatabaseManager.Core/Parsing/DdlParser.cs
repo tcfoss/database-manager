@@ -157,7 +157,7 @@ public class DdlParser
             {
                 return new ExecuteAsClause.User(sqs);
             }
-            throw new DefensiveGuardException("DdlParser.ParseExecuteAsTarget", value.GetType());
+            throw new DefensiveGuardException("EXECUTE AS user value type", value.GetType());
         }
         throw state.ExpectedException("CALLER", "SELF", "OWNER", "'username'");
     }

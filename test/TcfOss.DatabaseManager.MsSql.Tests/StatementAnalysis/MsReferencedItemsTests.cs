@@ -158,6 +158,22 @@ public class MsReferencedItemsTests
     }
 
     [Fact]
+    public void MsRaiseError_WithArguments()
+    {
+        var text = "RAISERROR ('Error message', 16, 1, @arg1, @arg2)";
+        var stmt = ParseStatement(text);
+
+        Assert.IsType<MsRaiseError>(stmt);
+
+        var items = stmt.GetReferencedItems(CreateReferencedItemsManager()).ToList();
+
+        Assert.Equal(2, items.Count);
+        Assert.All(items, item => Assert.Equal(ItemType.Variable, item.Type));
+        Assert.Contains(items, item => item.N() == "arg1");
+        Assert.Contains(items, item => item.N() == "arg2");
+    }
+
+    [Fact]
     public void MsThrow_AllLiterals()
     {
         var text = "THROW 50000, 'Error message', 1";

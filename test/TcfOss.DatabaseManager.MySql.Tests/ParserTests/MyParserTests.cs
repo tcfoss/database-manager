@@ -346,7 +346,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         var statements = ParseStatements(given);
         var statement = Assert.Single(statements);
 
-        Assert.Equal($"SELECT 1", statement.ToSql());
+        Assert.Equal("SELECT 1", statement.ToSql());
     }
 
     [Theory]
@@ -362,7 +362,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         DELIMITER ;
         """;
 
-        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
     }
 
     [Fact]
@@ -395,7 +395,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Fact]
-    public void Statements_Without_Delimiter_Throws()
+    public void Statements_WithoutDelimiter_Throws()
     {
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 1"));
         Assert.Contains("end of statement", ex.Message);

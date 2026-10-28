@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.App;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -25,7 +26,7 @@ public partial class MySqlFormatter(MyConfig config, IWriteFiles fileWriter, IPa
                 : _fsDefinitionLoader.LoadDefinition(relaxed: relaxed);
             return definition.ToPseudoTableSet(Config.Schemas.Keys.First());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not DefensiveGuardException)
         {
             s_failedToLoadDefinition(_logger, ex.Message, ex);
             return null;

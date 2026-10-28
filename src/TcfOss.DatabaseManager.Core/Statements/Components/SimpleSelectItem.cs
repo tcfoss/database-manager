@@ -79,7 +79,7 @@ public abstract record SimpleSelectItem() : IWriteSql, IHaveMeta
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            writer.Write($"{manager.Indent}");
+            writer.Write(manager.Indent);
             Expression.FormatSql(writer, manager);
             writer.WriteSql($" AS {Alias}");
             if (!manager.SelectItemsLast)

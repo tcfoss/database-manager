@@ -268,7 +268,7 @@ public partial class MyDiffer
                         MyKey.Standard key => new AlterTableOperation.AddStandardKey(key.ToStatementConstraint(_manager)),
                         MyKey.FullText key => new AlterTableOperation.AddFullTextKey(key.ToStatementConstraint(_manager)),
                         MyKey.Spatial key => new AlterTableOperation.AddSpatialKey(key.ToStatementConstraint(_manager)),
-                        _ => throw new DefensiveGuardException(true, "MyDiffer.Keys.ComputeKeyDifferences", end.GetType())
+                        _ => throw new DefensiveGuardException(true, "key type", end.GetType())
                     };
 
                     // Key added or modified

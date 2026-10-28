@@ -302,7 +302,7 @@ public abstract class MyDifferTestsBase
             {
                 Assert.Equal(DefinitionAlterPhase.DropForeignKey, dropFk.Weight);
                 var alterTable = Assert.IsType<AlterTable>(dropFk.Statement);
-                var operation = Assert.IsType<AlterTableOperation.DropForeignKey>(Assert.Single(alterTable.Operations));
+                Assert.IsType<AlterTableOperation.DropForeignKey>(Assert.Single(alterTable.Operations));
             },
             postDropConstraint => // 3
             {
@@ -330,7 +330,7 @@ public abstract class MyDifferTestsBase
             {
                 Assert.Equal(DefinitionAlterPhase.SetNotNull, setNotNullOtherTable.Weight);
                 var alterTable = Assert.IsType<AlterTable>(setNotNullOtherTable.Statement);
-                var operation = Assert.IsType<AlterTableOperation.ModifyColumn>(Assert.Single(alterTable.Operations));
+                Assert.IsType<AlterTableOperation.ModifyColumn>(Assert.Single(alterTable.Operations));
                 var sql = setNotNullOtherTable.Statement.ToSql();
                 Assert.Contains("NOT NULL", sql);
                 Assert.Contains("`myothertable`", sql);
@@ -339,7 +339,7 @@ public abstract class MyDifferTestsBase
             {
                 Assert.Equal(DefinitionAlterPhase.SetNotNull, setNotNullMyTable.Weight);
                 var alterTable = Assert.IsType<AlterTable>(setNotNullMyTable.Statement);
-                var operation = Assert.IsType<AlterTableOperation.ModifyColumn>(Assert.Single(alterTable.Operations));
+                Assert.IsType<AlterTableOperation.ModifyColumn>(Assert.Single(alterTable.Operations));
                 var sql = setNotNullMyTable.Statement.ToSql();
                 Assert.Contains("NOT NULL", sql);
                 Assert.Contains("`mytable`", sql);
@@ -359,7 +359,7 @@ public abstract class MyDifferTestsBase
             {
                 Assert.Equal(DefinitionAlterPhase.AddForeignKey, addForeignKey.Weight);
                 var alterTable = Assert.IsType<AlterTable>(addForeignKey.Statement);
-                var operation = Assert.IsType<AlterTableOperation.AddForeignKey>(Assert.Single(alterTable.Operations));
+                Assert.IsType<AlterTableOperation.AddForeignKey>(Assert.Single(alterTable.Operations));
             },
             postDeploy => // 12
             {

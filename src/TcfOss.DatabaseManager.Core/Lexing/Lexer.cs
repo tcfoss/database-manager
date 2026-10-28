@@ -172,7 +172,7 @@ public class Lexer<TRunState> : ILexer
                 quoteStyle = QuoteStyle.Backticks;
                 break;
             default:
-                throw new DefensiveGuardException("Lexer.TokenizeQuotedIdentifier", quoteStart.ToString());
+                throw new DefensiveGuardException("identifier quote character", quoteStart.ToString());
         }
 
         char? lastChar = null;

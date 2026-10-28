@@ -109,7 +109,7 @@ public partial class MyDiffer
                 DeployScriptType.PreSetNotNull => DefinitionAlterPhase.PreSetNotNullScript,
                 DeployScriptType.PreAddConstraints => DefinitionAlterPhase.PreAddConstraintsScript,
                 DeployScriptType.PostDeployment => DefinitionAlterPhase.PostDeploymentScript,
-                _ => throw new DefensiveGuardException("DeployScriptWeight", deployScript.Type.ToString(), "Unknown values are rejected in config loading")
+                _ => throw new DefensiveGuardException("deploy script type", deployScript.Type.ToString(), "Unknown values are rejected in config loading")
             };
             var statement = new StatementGroup(deployScript.Body) { Meta = { RawText = deployScript.RawBodyText } };
             results.Add(new DefinitionAlterStatement(weight, deployScript.SchemaId, statement, $"Applying script from {deployScript.FullPath}", true, NextSubWeight(weight)));
@@ -167,7 +167,7 @@ public partial class MyDiffer
                 DeployScriptType.PreSetNotNull => DefinitionAlterPhase.InsertPreSetNotNullMeta,
                 DeployScriptType.PreAddConstraints => DefinitionAlterPhase.InsertPreAddConstraintsMeta,
                 DeployScriptType.PostDeployment => DefinitionAlterPhase.InsertPostDeployMeta,
-                _ => throw new DefensiveGuardException("DeployScriptMetaWeight", type.ToString(), "Unknown values are rejected in config loading")
+                _ => throw new DefensiveGuardException("deploy script type", type.ToString(), "Unknown values are rejected in config loading")
             };
 
             IEnumerable<IGrouping<SchemaIdentifier, DeployScript>> deployScriptsBySchema = group
@@ -222,7 +222,7 @@ public partial class MyDiffer
                     ApplyColumnRename(rename);
                     break;
                 default:
-                    throw new DefensiveGuardException(true, "Refactor", refactor.GetType().ToString(), "All cases of union type are covered");
+                    throw new DefensiveGuardException(true, "refactor type", refactor.GetType(), "All cases of union type are covered");
             }
         }
         foreach (IGrouping<SchemaIdentifier, Refactor> x in _refactors.GroupBy(x => x.SchemaId))

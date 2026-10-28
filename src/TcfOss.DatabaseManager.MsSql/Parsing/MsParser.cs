@@ -96,7 +96,7 @@ public class MsParser : Parser
     {
         return token switch
         {
-            MsBatchSeparatorToken => ParseBatchSeparator(state),
+            MsBatchSeparatorToken mbsToken => ParseBatchSeparator(state, mbsToken),
             _ => base.ParseNormalStatement(state, token, label)
         };
     }
@@ -105,7 +105,7 @@ public class MsParser : Parser
     {
         return first.Keyword switch
         {
-            Keyword.EXEC or Keyword.EXECUTE => ParseExecute(state),
+            Keyword.EXEC or Keyword.EXECUTE => ParseExecute(state, first.Keyword),
             Keyword.WHILE => ParseWhile(state),
             Keyword.BREAK => ParseBreak(state),
             Keyword.CONTINUE => ParseContinue(state),
@@ -119,12 +119,9 @@ public class MsParser : Parser
         };
     }
 
-    private static MsBatchSeparatorStatement ParseBatchSeparator(ParserState state)
+    private static MsBatchSeparatorStatement ParseBatchSeparator(ParserState state, MsBatchSeparatorToken token)
     {
-        if (state.Next() is not MsBatchSeparatorToken token)
-        {
-            throw state.ExpectedException("GO");
-        }
+        state.Next(); // Consume the GO token
         return new MsBatchSeparatorStatement(token.Count);
     }
 
@@ -134,13 +131,9 @@ public class MsParser : Parser
     /// arguments, and <c>OUTPUT</c>/<c>DEFAULT</c> argument modifiers) and the
     /// parenthesized dynamic-SQL form <c>EXEC (string_expression)</c>.
     /// </summary>
-    private MsExecute ParseExecute(ParserState state)
+    private MsExecute ParseExecute(ParserState state, Keyword kw)
     {
-        Keyword kw = state.ParseKeywordsAny(Keyword.EXEC, Keyword.EXECUTE);
-        if (kw == Keyword.undefined)
-        {
-            throw state.ExpectedException("EXEC", "EXECUTE");
-        }
+        state.Next(); // Consume the EXEC or EXECUTE keyword
         bool useExecute = kw == Keyword.EXECUTE;
 
         // Dynamic-SQL form: EXEC ( <string expression> )
@@ -156,7 +149,7 @@ public class MsParser : Parser
 
         // Optional return-status capture: EXEC @ret = proc_name ...
         Identifier? returnVariable = null;
-        if (state.Peek() is Word { Sigil: SigilKind.Variable } && state.PeekNth(1) is Equal)
+        if (state.Peek() is Word { Sigil: SigilKind.Variable } && state.PeekNthIs<Equal>(1))
         {
             returnVariable = ComponentParser.ParseIdentifier(state);
             state.Next(); // consume '='
@@ -333,8 +326,7 @@ public class MsParser : Parser
     private MsBeginTransaction ParseBeginTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.BEGIN);
-        TransactionNoun noun = TryParseTransactionNoun(state)
-            ?? throw state.ExpectedException("TRAN", "TRANSACTION");
+        TransactionNoun noun = ParseTransactionNoun(state);
         Identifier? name = TryParseTransactionName(state);
         return new MsBeginTransaction(noun) { Name = name };
     }
@@ -367,17 +359,28 @@ public class MsParser : Parser
     private MsSaveTransaction ParseSaveTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.SAVE);
-        TransactionNoun noun = TryParseTransactionNoun(state)
-            ?? throw state.ExpectedException("TRAN", "TRANSACTION");
+        TransactionNoun noun = ParseTransactionNoun(state);
         Identifier name = ComponentParser.ParseIdentifier(state);
         return new MsSaveTransaction(noun, name);
     }
 
     /// <summary>
-    /// Consumes a <c>TRAN</c> or <c>TRANSACTION</c> keyword if present and
+    /// Parses a required T-SQL <c>TRAN</c> or <c>TRANSACTION</c> keyword.
+    /// </summary>
+    private static TransactionNoun ParseTransactionNoun(ParserState state)
+    {
+        if (state.Peek() is Word { Keyword: Keyword.TRAN or Keyword.TRANSACTION } word)
+        {
+            state.Next();
+            return TransactionNoun.Parse(word.Value);
+        }
+        throw state.ExpectedException("TRAN", "TRANSACTION");
+    }
+
+    /// <summary>
+    /// Parses an optional <c>TRAN</c> or <c>TRANSACTION</c> keyword if present and
     /// returns the corresponding <see cref="TransactionNoun"/>, or null if
-    /// neither is next. (T-SQL does not accept the SQL-standard <c>WORK</c>
-    /// noun in transaction-control statements.)
+    /// neither is next.
     /// </summary>
     private static TransactionNoun? TryParseTransactionNoun(ParserState state)
     {

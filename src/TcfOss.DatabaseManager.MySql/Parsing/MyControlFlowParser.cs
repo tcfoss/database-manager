@@ -82,7 +82,7 @@ public class MyControlFlowParser : ControlFlowParser
         }
 
         state.ExpectKeyword(Keyword.ELSE);
-        SqlValueList<Statement>? elseStatements = _p.Parse(state, new EndSubstatements()
+        SqlValueList<Statement> elseStatements = _p.Parse(state, new EndSubstatements()
         {
             GetFinished = s => s.ParseKeywordsAll(Keyword.END, Keyword.IF),
             GetEofException = s => s.ExpectedException("END IF")

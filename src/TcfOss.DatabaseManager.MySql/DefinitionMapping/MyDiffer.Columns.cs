@@ -272,7 +272,7 @@ public partial class MyDiffer
             {
                 ColumnOption.ColumnDefault.DefaultValue dv => new StatementColumnOption.Default.DefaultValue(dv.Value),
                 ColumnOption.ColumnDefault.DefaultExpression de => new StatementColumnOption.Default.DefaultExpression(de.Expression),
-                _ => throw new DefensiveGuardException("MyDiffer.Columns.ApplySetDefault", end.Default?.GetType() ?? typeof(object), "ColumnChangeType.SetDefault should not be active if end default is null. Switch is otherwise exhaustive.")
+                _ => throw new DefensiveGuardException("column default type", end.Default?.GetType() ?? typeof(object), "ColumnChangeType.SetDefault should not be active if end default is null. Switch is otherwise exhaustive.")
             };
 
             _currentModifications.Add(new AlterTableOperation.SetDefault(end.Name.ToSimpleIdentifier(), newDefault));
