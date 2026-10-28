@@ -44,7 +44,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             FunctionArgumentExpression.Wildcard => expr,
             FunctionArgumentExpression.QualifiedWildcard qw => new FunctionArgumentExpression.QualifiedWildcard(ComponentNormalizer.NormalizeObjectName(qw.Name)),
             FunctionArgumentExpression.FunctionExpression fe => new FunctionArgumentExpression.FunctionExpression(NormalizeExpression(fe.Expression, inSelect: inSelect, flatten: flatten)),
-            _ => throw new DefensiveGuardException(true, "Normalizer.NormalizeFunctionArgumentExpression", expr.GetType())
+            _ => throw new DefensiveGuardException(true, "function argument expression type", expr.GetType())
         };
     }
 
@@ -54,7 +54,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         {
             FunctionArgument.Unnamed un => new FunctionArgument.Unnamed(NormalizeFunctionArgumentExpression(un.Argument, inSelect: inSelect, flatten: flatten)),
             FunctionArgument.Named named => new FunctionArgument.Named(ComponentNormalizer.NormalizeSingleIdentifier(named.Name), NormalizeFunctionArgumentExpression(named.Argument, inSelect: inSelect, flatten: flatten), named.Operator),
-            _ => throw new DefensiveGuardException(true, "Normalizer.NormalizeFunctionArgument", arg.GetType())
+            _ => throw new DefensiveGuardException(true, "function argument type", arg.GetType())
         };
     }
 
@@ -239,7 +239,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             SimpleSelectItem.QualifiedWildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
             SimpleSelectItem.Wildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
             _ => throw new NotImplementedException()
-        } ?? throw new DefensiveGuardException(true, "Normalizer.NormalizeSelectItem", item.GetType());
+        } ?? throw new DefensiveGuardException(true, "select item type", item.GetType());
 
         return result;
     }
@@ -301,7 +301,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             TableFactor.Table t => NormalizeTableFactor(t),
             TableFactor.Derived d => NormalizeTableFactor(d),
             TableFactor.NestedJoin n => NormalizeTableFactor(n),
-            _ => throw new DefensiveGuardException(true, "Normalizer.NormalizeTableFactor", table.GetType())
+            _ => throw new DefensiveGuardException(true, "table factor type", table.GetType())
         };
     }
 
@@ -440,7 +440,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             case SelectBody.ValuesQuery:
                 throw new NotImplementedException("VALUES in views is not (yet) supported.");
             default:
-                throw new DefensiveGuardException(true, "Normalizer.NormalizeSelectBody", body.GetType());
+                throw new DefensiveGuardException(true, "select body type", body.GetType());
         }
     }
 

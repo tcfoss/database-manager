@@ -5,7 +5,7 @@ namespace TcfOss.DatabaseManager.Core.Tests;
 
 public abstract class ExhaustiveKeywordTestData<T> : IEnumerable<TheoryDataRow<Keyword, T>>
 {
-    protected readonly  HashSet<Keyword> SupportedKeywords = [];
+    protected readonly HashSet<Keyword> SupportedKeywords = [];
     protected abstract IEnumerable<TheoryDataRow<Keyword, T>> GetSupportedData();
 
     protected abstract T GetDefaultValue();

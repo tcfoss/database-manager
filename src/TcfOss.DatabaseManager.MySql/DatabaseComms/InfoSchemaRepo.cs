@@ -672,7 +672,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             "ENABLED" => EventEnabledStatus.Enable,
             "DISABLED" => EventEnabledStatus.Disable,
             "REPLICA_SIDE_DISABLED" => EventEnabledStatus.DisableOnReplica,
-            _ => throw new DefensiveGuardException("InfoSchemaRepo.GetEvent::parse status", isEvent.Status)
+            _ => throw new DefensiveGuardException("event status", isEvent.Status)
         };
 
 
@@ -804,7 +804,4 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
     [GeneratedRegex(@"^\s*CREATE\s+ALGORITHM\s*=\s*(\w+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
     private static partial Regex GetAlgorithmRegex();
-
-    [GeneratedRegex(@"\s+WITH\s+(?:(\w+)\s+)?CHECK\s+OPTION\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
-    private static partial Regex GetCheckOptionRegex();
 }

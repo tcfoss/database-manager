@@ -110,7 +110,7 @@ public static class TokenExtensions
                     break;
 
                 default:
-                    throw new DefensiveGuardException(true, "TokenExtensions.ToStatementNonSql", curr.NonSqlType.GetType());
+                    throw new DefensiveGuardException(true, "non-SQL token type", curr.NonSqlType.ToString());
             }
         }
 

@@ -644,7 +644,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             "ENABLED" => EventEnabledStatus.Enable,
             "DISABLED" => EventEnabledStatus.Disable,
             "SLAVESIDE_DISABLED" => EventEnabledStatus.DisableOnSlave,
-            _ => throw new DefensiveGuardException("InfoSchemaRepo.GetEvent", $"Event status {isEvent.Status}")
+            _ => throw new DefensiveGuardException("event status", isEvent.Status)
         };
 
 
@@ -770,5 +770,4 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         _queryGate.Dispose();
         GC.SuppressFinalize(this);
     }
-
 }

@@ -346,7 +346,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         var statements = ParseStatements(given);
         var statement = Assert.Single(statements);
 
-        Assert.Equal($"SELECT 1", statement.ToSql());
+        Assert.Equal("SELECT 1", statement.ToSql());
     }
 
     [Theory]
@@ -362,7 +362,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         DELIMITER ;
         """;
 
-        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(given));
     }
 
     [Fact]

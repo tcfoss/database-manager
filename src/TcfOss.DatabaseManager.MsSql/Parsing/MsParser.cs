@@ -289,7 +289,7 @@ public class MsParser : Parser
         {
             return ParseTryCatch(state);
         }
-        if (next is Word { Keyword: Keyword.TRAN or Keyword.TRANSACTION } w)
+        if (next is Word { Keyword: Keyword.TRAN or Keyword.TRANSACTION })
         {
             return ParseBeginTransaction(state);
         }

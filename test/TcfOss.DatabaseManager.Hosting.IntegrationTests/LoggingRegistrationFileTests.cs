@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Hosting;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 
@@ -88,15 +89,59 @@ public class LoggingRegistrationFileTests(FsProjectFixture fixture) : IClassFixt
         (ILogger logger, string? filePath) = builder.AddLogging(config);
         Assert.NotNull(filePath);
 
-        await using (var host = Assert.IsType<IAsyncDisposable>(builder.Build(), exactMatch: false))
+        await using (_ = Assert.IsType<IAsyncDisposable>(builder.Build(), exactMatch: false))
         {
             logger.LogInformation("Final event before disposal");
         }
 
-        using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        await using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
         using (var reader = new StreamReader(stream))
         {
             Assert.Contains("Final event before disposal", await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+        }
+        File.Delete(filePath);
+        Assert.False(File.Exists(filePath));
+    }
+
+
+    [Fact]
+    public async Task DefensiveGuard_ExpectedInfoIncludedInLogs()
+    {
+        string directory = CreateLogDirectory();
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
+        var config = new LogSettings
+        {
+            Target = LogTarget.File,
+            LogDirectory = directory,
+            LogLevel = LogLevel.Information
+        };
+        (ILogger logger, string? filePath) = builder.AddLogging(config);
+        Assert.NotNull(filePath);
+
+        using (builder.Build())
+        {
+            try
+            {
+                throw new DefensiveGuardException("Logging Tests", "unexpected value", "justification");
+            }
+            catch (DefensiveGuardException ex)
+            {
+                logger.LogError(ex, "Caught DefensiveGuardException");
+            }
+        }
+
+        string line = Assert.Single(await File.ReadAllLinesAsync(filePath, TestContext.Current.CancellationToken));
+        using (var document = JsonDocument.Parse(line))
+        {
+            JsonElement root = document.RootElement;
+            Assert.Equal("Caught DefensiveGuardException", root.GetProperty("MessageTemplate").GetString());
+            Assert.Equal("Error", root.GetProperty("Level").GetString());
+            string exception = root.GetProperty("Exception").GetString()!;
+            Assert.StartsWith(typeof(DefensiveGuardException).FullName!, exception);
+            Assert.Contains("'unexpected value'", exception);
+            Assert.Contains("'Logging Tests'", exception);
+            Assert.Contains("LoggingRegistrationFileTests.cs:125 in DefensiveGuard_ExpectedInfoIncludedInLogs", exception);
+            Assert.Contains(DefensiveGuardException.RepositoryUrl, exception);
         }
         File.Delete(filePath);
         Assert.False(File.Exists(filePath));

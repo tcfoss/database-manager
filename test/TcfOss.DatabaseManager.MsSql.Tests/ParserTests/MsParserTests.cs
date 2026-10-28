@@ -64,7 +64,7 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         var statements = ParseStatements(createTableSql);
 
         var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
-        var column = Assert.IsType<StatementColumn.MsComputed>(Assert.Single(createTable.Columns!));
+        var column = Assert.IsType<StatementColumn.MsComputed>(Assert.Single(createTable.Columns));
 
         var actual = column.ToSql();
         Assert.Equal(columnDefinition, actual);

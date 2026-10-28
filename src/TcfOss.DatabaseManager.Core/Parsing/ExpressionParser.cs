@@ -146,7 +146,7 @@ public class ExpressionParser
                 Keyword.ALL => new QuantifiedBinaryOperator(left, op, right, AggregateQuantifier.All),
                 Keyword.ANY => new QuantifiedBinaryOperator(left, op, right, AggregateQuantifier.Any),
                 Keyword.SOME => new QuantifiedBinaryOperator(left, op, right, AggregateQuantifier.Some),
-                _ => throw new DefensiveGuardException("ExpressionParser.ParseInfixBinaryOperator", qualifierKeyword.ToString())
+                _ => throw new DefensiveGuardException("comparison quantifier keyword", qualifierKeyword.ToString())
             };
         }
 
@@ -209,7 +209,7 @@ public class ExpressionParser
             throw new NotImplementedException("ILIKE is not implemented yet.");
         }
 
-        throw new DefensiveGuardException("ParseInfixWord", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
+        throw new DefensiveGuardException("infix keyword", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
     }
 
     private static bool PeekSubquery(ParserState state)

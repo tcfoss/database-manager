@@ -389,7 +389,7 @@ public class SelectParser
                         Keyword.LEFT => constraint => new JoinOperator.LeftOuter(constraint),
                         Keyword.RIGHT => constraint => new JoinOperator.RightOuter(constraint),
                         Keyword.FULL => constraint => new JoinOperator.FullOuter(constraint),
-                        _ => throw new DefensiveGuardException(true, "SelectParser.ParseTableWithJoins", joinKeywords[0].GetType())
+                        _ => throw new DefensiveGuardException(true, "outer join keyword", joinKeywords[0].ToString())
                     };
                 }
                 else if (peeked == Keyword.OUTER)

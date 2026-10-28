@@ -48,7 +48,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
             QuoteStyle.Ansi => ExtendedQuoteStyle.Ansi,
             QuoteStyle.Brackets => ExtendedQuoteStyle.Brackets,
             QuoteStyle.None => ExtendedQuoteStyle.None,
-            _ => throw new DefensiveGuardException("InfoSchemaRepoHelper.ParseAccount::parse quote style", _quoteStyle.ToString())
+            _ => throw new DefensiveGuardException("quote style", _quoteStyle.ToString())
         };
 
         Account account = ComponentParser.ParseAccount(GetState(text));
