@@ -1,15 +1,16 @@
 <Project>
     <PropertyGroup>
         <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     </PropertyGroup>
 
     <!-- Core Dependencies -->
     <ItemGroup>
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
-        <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.8" />
-        <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
-        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
-        <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.14" />
         <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
         <PackageVersion Include="TestableIO.System.IO.Abstractions" Version="22.3.0" />
         <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.3.0" />
@@ -21,9 +22,9 @@
     <!-- Application Dependencies -->
     <ItemGroup>
         <PackageVersion Include="System.CommandLine" Version="3.0.0-rc.1.26425.128" />
-        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
-        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.8" />
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
         <PackageVersion Include="Serilog" Version="4.3.0" />
         <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
         <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
@@ -36,8 +37,10 @@
 
     <!-- Database Providers -->
     <ItemGroup>
-        <PackageVersion Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.12" />
+        <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.14" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
+        <!-- Microsoft.Data.SqlClient is required for Microsoft.EntityFrameworkCore.SqlServer, which currently chooses a version with vulnerabilities -->
+        <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.8" />
     </ItemGroup>
 
     <!-- Common Testing Dependencies -->
@@ -50,7 +53,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.7" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
     </ItemGroup>
 
     <ItemGroup>

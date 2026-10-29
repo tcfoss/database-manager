@@ -50,5 +50,4 @@ public class ProviderSpecificConstructionTests
         Assert.Contains("CREATE TABLE", formatted);
         Assert.Single(parser.ParseText(formatted));
     }
-
 }
