@@ -26,7 +26,7 @@ public class MyParser : Parser
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MyFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MyDataTypeParser(this);
-        ComponentParser = new ComponentParser(this);
+        ComponentParser = new MyComponentParser(this);
         ExpressionParser = new MyExpressionParser(this);
         SelectParser = new MySelectParser(this);
         DmlParser = new MyDmlParser(this);

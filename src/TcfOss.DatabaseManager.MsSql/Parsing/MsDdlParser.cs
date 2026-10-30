@@ -4,10 +4,8 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
-using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
-using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
@@ -93,39 +91,4 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
         return true;
     }
 
-    public override CreateProcedure ParseCreateProcedure(ParserState state, CreateOrLabel? createOrLabel = null, Definer? definer = null)
-    {
-        if (definer != null)
-        {
-            throw state.ExpectedException("PROCEDURE");
-        }
-        return base.ParseCreateProcedure(state, createOrLabel, definer);
-    }
-
-    public override CreateFunction ParseCreateFunction(ParserState state, bool aggregate = false, CreateOrLabel? createOrLabel = null, Definer? definer = null)
-    {
-        if (aggregate || definer != null)
-        {
-            throw state.ExpectedException("FUNCTION");
-        }
-        return base.ParseCreateFunction(state, aggregate, createOrLabel, definer);
-    }
-
-    public override CreateTrigger ParseCreateTrigger(ParserState state, CreateOrLabel? createOrLabel = null, Definer? definer = null)
-    {
-        if (definer != null)
-        {
-            throw state.ExpectedException("TRIGGER");
-        }
-        return base.ParseCreateTrigger(state, createOrLabel, definer);
-    }
-
-    public override CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext)
-    {
-        if (definer != null || viewAlgorithm != null || securityContext != null)
-        {
-            throw state.ExpectedException("VIEW");
-        }
-        return base.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext);
-    }
 }

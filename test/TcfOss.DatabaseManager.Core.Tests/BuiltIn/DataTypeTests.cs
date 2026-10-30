@@ -270,6 +270,12 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         return parser.DataTypeParser.ParseDataType(state);
     }
 
+    [Fact]
+    public void ParseDataType_NonWordToken_Throws()
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => GetDataType("*"));
+    }
+
 
     [Theory]
     [InlineData("mood")]

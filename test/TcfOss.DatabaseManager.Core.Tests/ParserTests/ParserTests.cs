@@ -360,6 +360,14 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expectedMessage, exception.Message);
     }
 
+    [Theory]
+    [InlineData("CREATE")]
+    [InlineData("CREATE *")]
+    public void Create_MissingOrNonWordObjectType_Throws(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements(sql));
+    }
+
     [Fact]
     public static void NonSqlContainer_Whitespace()
     {

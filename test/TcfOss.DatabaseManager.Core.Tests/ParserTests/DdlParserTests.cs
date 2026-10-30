@@ -402,6 +402,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TEMPORARY TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE AGGREGATE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE DEFINER = 'user'@'host' TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE ALGORITHM = MERGE TABLE sample (id INT)")]
     public void CreateType_MalformedOrUnsupportedFormsThrow(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
