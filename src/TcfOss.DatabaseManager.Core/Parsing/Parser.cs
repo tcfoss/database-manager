@@ -323,6 +323,7 @@ public class Parser : IParser
 
         return objectTypeWord.Keyword switch
         {
+            Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
             Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
             Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),

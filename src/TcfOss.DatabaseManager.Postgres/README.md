@@ -1,8 +1,8 @@
 # TcfOss.DatabaseManager.Postgres
 
 Initial PostgreSQL parsing support for DatabaseManager, targeting PostgreSQL 18
-built-in general-purpose scalar types, built-in range/multirange types, and
-enumerated/composite type declarations.
+built-in general-purpose scalar types, built-in range/multirange types,
+enumerated/composite type declarations, and domain declarations.
 
 `PgParser` extends the Core parser and installs `PgDataTypeParser`. `PgLexer`
 uses standard-conforming string quote escaping. PostgreSQL-specific type AST
@@ -32,8 +32,18 @@ supported. Type existence and dependency resolution remain deferred.
 `Parser.ParseCreate` is protected and virtual. Provider overrides narrow its
 dispatch while reusing the shared modifier prefix and Core parsing methods.
 MySQL/MariaDB and SQL Server reject PostgreSQL type/domain declarations;
-PostgreSQL and SQL Server omit the MySQL event branch. `CREATE DOMAIN` grammar
-is not implemented yet.
+PostgreSQL and SQL Server omit the MySQL event branch.
+
+`CREATE DOMAIN name [AS] data_type` is also parsed by Core's `DdlParser`,
+producing a `CreateDomain` statement. It supports optional collation, a default
+expression, and ordered named or unnamed `NULL`, `NOT NULL`, and `CHECK`
+constraints. Optional `AS` and constraint names are preserved. PostgreSQL uses
+its own type and identifier parsers for the base type, collation, and names.
+Unquoted `VALUE` within a domain check becomes a distinct `DomainValue`
+expression with no column dependency; quoted identifiers and expressions
+outside domain checks retain their normal interpretation. Domain checks and
+defaults are parsed, not evaluated or semantically validated. Domain base-type
+resolution and definition construction remain deferred.
 
 Parsed columns, casts, routine parameters, and function return declarations use
 Core's `DataTypeReference`: `BuiltIn` wraps a concrete `DataType`, while `Named`
@@ -66,7 +76,7 @@ syntax expectation errors. Zero-length strings remain supported by Core and the
 MySQL/MariaDB parser, but are rejected by PostgreSQL and SQL Server.
 
 This is not yet a complete PostgreSQL grammar. Arrays, custom type modifiers,
-domain declarations, range/base/shell type declarations, catalog/internal and routine
+range/base/shell type declarations, catalog/internal and routine
 pseudo-types, PostgreSQL-specific casts (`::`), dollar-quoted strings, and routine
 bodies are not implemented. Existing Core statement parsing is reused without
 claiming full PostgreSQL syntax validation. Definition construction, database

@@ -79,6 +79,7 @@ public class ExpressionParser
             Word { Keyword: Keyword.INTERVAL } => ParseInterval(state),
             Word { Keyword: Keyword.CONVERT } => ParseConvert(state),
             Word { Keyword: Keyword.CAST } => ParseCast(state),
+            Word { Keyword: Keyword.VALUE } when state.IsDomainCheck => ParseDomainValue(state),
             Minus or Plus => ParseUnaryExpr(state),
             NumericLiteral
                 or StringLiteral
@@ -700,5 +701,21 @@ public class ExpressionParser
         Word initialAsWord = (Word)state.Next(); // Only enter this function if state.Next() yields POSITION
 
         return ParseFunction(state, new ObjectName([new Identifier(initialAsWord.Value)]));
+    }
+
+    public Expression ParseDomainCheckExpr(ParserState state)
+    {
+        using ParserState.DomainCheckScope scope = state.EnterDomainCheck();
+        state.ExpectLeftParen();
+        Expression expression = ParseExpr(state);
+        state.ExpectRightParen();
+        return expression;
+    }
+
+
+    private static DomainValue ParseDomainValue(ParserState state)
+    {
+        state.Next();
+        return new DomainValue();
     }
 }

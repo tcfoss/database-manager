@@ -17,6 +17,8 @@ public class ParserState
 
     public int SourceId { get; }
 
+    internal bool IsDomainCheck { get; private set; }
+
     public ParserState(Token[] tokens, int sourceId = 0)
     {
         _tokens = tokens;
@@ -457,6 +459,29 @@ public class ParserState
         }
 
         return null;
+    }
+
+    public DomainCheckScope EnterDomainCheck()
+    {
+        return new DomainCheckScope(this);
+    }
+
+    public readonly struct DomainCheckScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly bool _previousIsDomainCheck;
+
+        internal DomainCheckScope(ParserState state)
+        {
+            _state = state;
+            _previousIsDomainCheck = state.IsDomainCheck;
+            state.IsDomainCheck = true;
+        }
+
+        public void Dispose()
+        {
+            _state.IsDomainCheck = _previousIsDomainCheck;
+        }
     }
 
     public ParseException ExpectedException(string expected)

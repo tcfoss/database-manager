@@ -227,6 +227,7 @@ public enum Keyword
     DISTRIBUTE,
     DIV,
     DO,
+    DOMAIN,
     DOUBLE,
     DOW,
     DOY,

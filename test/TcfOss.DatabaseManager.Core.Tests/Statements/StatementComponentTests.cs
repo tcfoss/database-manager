@@ -341,6 +341,23 @@ public class StatementComponentTests
         Assert.Equal("""CREATE TYPE "app"."address" AS ("street" TEXT COLLATE "app"."collation", "postal" "app"."postal_code")""", FormatComponent(composite));
     }
 
+    [Theory]
+    [InlineData("CREATE DOMAIN label AS TEXT", "CREATE DOMAIN \"label\" AS TEXT")]
+    [InlineData("CREATE DOMAIN label TEXT NULL", "CREATE DOMAIN \"label\" TEXT NULL")]
+    [InlineData("CREATE DOMAIN label AS TEXT NOT NULL", "CREATE DOMAIN \"label\" AS TEXT NOT NULL")]
+    [InlineData("CREATE DOMAIN label AS TEXT CHECK (VALUE IS NOT NULL)", "CREATE DOMAIN \"label\" AS TEXT CHECK (VALUE IS NOT NULL)")]
+    [InlineData("CREATE DOMAIN label AS TEXT CONSTRAINT optional NULL", "CREATE DOMAIN \"label\" AS TEXT CONSTRAINT \"optional\" NULL")]
+    [InlineData("CREATE DOMAIN app.label AS app.base_type COLLATE app.collation DEFAULT 'a' CONSTRAINT required NOT NULL CONSTRAINT valid CHECK (VALUE <> '')", "CREATE DOMAIN \"app\".\"label\" AS \"app\".\"base_type\" COLLATE \"app\".\"collation\" DEFAULT 'a' CONSTRAINT \"required\" NOT NULL CONSTRAINT \"valid\" CHECK (VALUE <> '')")]
+    public void CreateDomain_FormatsNamesDefaultsAndConstraints(string sql, string expected)
+    {
+        var parser = new Core.Parsing.Parser();
+        var lexer = new Core.Lexing.GenericLexer();
+        Statement statement = Assert.Single(parser.Parse(new Core.Parsing.ParserState([.. lexer.Tokenize(sql)]), null));
+
+        Assert.Equal(expected, FormatComponent(statement));
+        Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new Core.Parsing.ParserState([.. lexer.Tokenize(expected)]), null)));
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();

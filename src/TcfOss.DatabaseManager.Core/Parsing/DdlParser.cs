@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
@@ -757,6 +758,92 @@ public class DdlParser
             return new CreateType.Enumerated(name, state.ParseParenthesizedCommaSeparated(ParseEnumLabel, allowEmpty: true));
         }
         return new CreateType.Composite(name, state.ParseParenthesizedCommaSeparated(ParseCompositeTypeField, allowEmpty: true));
+    }
+
+    public CreateDomain ParseCreateDomain(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.DOMAIN);
+
+        ObjectName name = _p.ComponentParser.ParseObjectName(state, "domain_name");
+
+        bool printAs = state.ParseKeyword(Keyword.AS);
+
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+
+        ObjectName? collation = null;
+        Expression? defaultExpression = null;
+        SqlValueList<StatementDomainConstraint> constraints = [];
+
+        while (true)
+        {
+            Location currentLocation = state.Peek().Location;
+            if (state.ParseKeyword(Keyword.COLLATE))
+            {
+                if (collation != null)
+                {
+                    throw new ParseException.Duplicate("collation", currentLocation);
+                }
+                collation = _p.ComponentParser.ParseObjectName(state, "collation_name");
+            }
+            else if (state.ParseKeyword(Keyword.DEFAULT))
+            {
+                if (defaultExpression != null)
+                {
+                    throw new ParseException.Duplicate("default", currentLocation);
+                }
+                defaultExpression = _p.ExpressionParser.ParseExpr(state);
+            }
+            else
+            {
+                StatementDomainConstraint? constraint = ParseNextDomainConstraint(state);
+                if (constraint != null)
+                {
+                    constraints.Add(constraint);
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        return new CreateDomain(name, dataType)
+        {
+            PrintAs = printAs,
+            Collation = collation,
+            Default = defaultExpression,
+            Constraints = constraints
+        };
+    }
+
+    private StatementDomainConstraint? ParseNextDomainConstraint(ParserState state)
+    {
+        Identifier? name = null;
+        if (state.ParseKeyword(Keyword.CONSTRAINT))
+        {
+            name = _p.ComponentParser.ParseIdentifier(state, "constraint_name");
+        }
+
+        if (state.ParseKeyword(Keyword.CHECK))
+        {
+            return new StatementDomainConstraint.Check(_p.ExpressionParser.ParseDomainCheckExpr(state), name);
+        }
+        else if (state.ParseKeyword(Keyword.NOT))
+        {
+            state.ExpectKeyword(Keyword.NULL);
+            return new StatementDomainConstraint.Nullability(true, name);
+        }
+        else if (state.ParseKeyword(Keyword.NULL))
+        {
+            return new StatementDomainConstraint.Nullability(false, name);
+        }
+
+        if (name != null)
+        {
+            throw state.ExpectedCategoryException("domain_constraint");
+        }
+
+        return null;
     }
 
     private static string ParseEnumLabel(ParserState state)

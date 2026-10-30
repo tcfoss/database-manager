@@ -28,7 +28,7 @@ public class PgParser : Parser
         {
             CreateOrLabel = createOrLabel,
             Temporary = temporary,
-            AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE"]
+            AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
         };
     }
 
@@ -58,6 +58,7 @@ public class PgParser : Parser
 
         return objectTypeToken.Keyword switch
         {
+            Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
             Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
             Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel),
