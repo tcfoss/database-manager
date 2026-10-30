@@ -39,7 +39,7 @@ public record MyStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParame
 
     public override CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
-        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), Parameters, ReturnType, Body)
+        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), [.. Parameters.Select(parameter => parameter.ToStatementParameter())], ReturnType, Body)
         {
             Definer = Definer,
             MyCharacteristic = new MyRoutineCharacteristic()

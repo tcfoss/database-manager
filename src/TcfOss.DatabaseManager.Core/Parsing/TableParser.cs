@@ -100,7 +100,7 @@ public class TableParser
             return computedColumn;
         }
 
-        DataType dataType = _p.DataTypeParser.ParseDataType(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
 
         SqlValueList<StatementColumnOption> options = ParseColumnOptions(state);
         return new StatementColumn.Typed(name, dataType, options);

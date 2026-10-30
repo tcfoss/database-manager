@@ -1,4 +1,3 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -14,7 +13,7 @@ public abstract record StatementColumn(Identifier Name, SqlValueList<StatementCo
     public abstract void FormatSqlBody(SqlTextWriter writer, FormatManager manager);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
 
-    public record Typed(Identifier Name, DataType DataType, SqlValueList<StatementColumnOption> Options)
+    public record Typed(Identifier Name, DataTypeReference DataType, SqlValueList<StatementColumnOption> Options)
         : StatementColumn(Name, Options)
     {
         public override void ToSql(SqlTextWriter writer)
@@ -29,7 +28,8 @@ public abstract record StatementColumn(Identifier Name, SqlValueList<StatementCo
         public override void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
         {
             Name.FormatSql(writer, manager);
-            writer.WriteSql($" {DataType}");
+            writer.Write(" ");
+            DataType.FormatSql(writer, manager);
             if (Options.Any())
             {
                 foreach (StatementColumnOption option in Options)

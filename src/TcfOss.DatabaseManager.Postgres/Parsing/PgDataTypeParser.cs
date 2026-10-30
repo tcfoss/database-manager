@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -7,7 +8,7 @@ using static TcfOss.DatabaseManager.Postgres.BuiltIn.PgDataType;
 
 namespace TcfOss.DatabaseManager.Postgres.Parsing;
 
-public class PgDataTypeParser : DataTypeParser
+public class PgDataTypeParser(Parser parser) : DataTypeParser
 {
     public override bool IsDataTypeKeyword(Keyword? keyword) => keyword is
         Keyword.BOOL or Keyword.BOOLEAN or Keyword.INT or Keyword.INTEGER or Keyword.INT4 or
@@ -94,6 +95,25 @@ public class PgDataTypeParser : DataTypeParser
             Keyword.INTERVAL => ParseIntervalType(state),
             _ => throw ParserState.ExpectedCategoryException("data_type", token),
         };
+    }
+
+    public override DataTypeReference ParseDataTypeReference(ParserState state)
+    {
+        if (state.Peek() is not Word word)
+        {
+            throw ParserState.ExpectedCategoryException("data_type", state.Peek());
+        }
+        if (word.QuoteStyle == QuoteStyle.None && !state.PeekNthIs<Dot>(1) && IsDataTypeKeyword(word.Keyword))
+        {
+            return base.ParseDataTypeReference(state);
+        }
+
+        return new DataTypeReference.Named(parser.ComponentParser.ParseObjectName(state, "data_type"));
+    }
+
+    public override DataTypeReference ParseDataTypeReferenceForConvert(ParserState state)
+    {
+        return ParseDataTypeReference(state);
     }
 
     protected override DataType ParseChar(ParserState state) => new PgChar(ParseOptionalLength(state, min: 1));

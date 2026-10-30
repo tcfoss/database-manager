@@ -21,7 +21,7 @@ public class ComponentParser(Parser parser)
     }
 
 
-    public Identifier ParseIdentifier(ParserState state, string expectedLabel)
+    public virtual Identifier ParseIdentifier(ParserState state, string expectedLabel)
     {
         Token token = state.Next();
         return token switch
@@ -45,10 +45,15 @@ public class ComponentParser(Parser parser)
 
     public ObjectName ParseObjectName(ParserState state)
     {
+        return ParseObjectName(state, "identifier");
+    }
+
+    public ObjectName ParseObjectName(ParserState state, string expectedLabel)
+    {
         var idents = new SqlValueList<Identifier>();
         while (true)
         {
-            Identifier ident = ParseIdentifier(state);
+            Identifier ident = ParseIdentifier(state, expectedLabel);
             idents.Add(ident);
 
             if (!state.ConsumeTokenIs<Dot>())

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -191,6 +192,11 @@ public class DataTypeParser
         };
     }
 
+    public virtual DataTypeReference ParseDataTypeReference(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataType(state));
+    }
+
     // Returns true for any keyword that can open a typed-string expression (TYPE 'literal').
     public virtual bool IsDataTypeKeyword(Keyword? keyword) => keyword is
         Keyword.BOOLEAN or Keyword.BOOL or
@@ -206,5 +212,10 @@ public class DataTypeParser
     public virtual DataType ParseDataTypeForConvert(ParserState state)
     {
         return ParseDataType(state);
+    }
+
+    public virtual DataTypeReference ParseDataTypeReferenceForConvert(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataTypeForConvert(state));
     }
 }

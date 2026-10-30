@@ -126,6 +126,18 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("*")]
+    [InlineData("app.*")]
+    [InlineData("app.")]
+    [InlineData("app..name")]
+    public void ParseObjectName_UsesExpectedLabelForEveryPart(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new Parser().ComponentParser.ParseObjectName(GetState(sql), "data_type"));
+
+        Assert.Contains("data_type", exception.Message);
+    }
+
+    [Theory]
     [InlineData("(`aardvark`)")]
     [InlineData("(`aardvark`, \"bobcat\")")]
     [InlineData("(`aardvark`, \"bobcat\", [cat])")]

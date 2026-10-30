@@ -119,7 +119,8 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             defaultValue = null;
         }
 
-        var myColumn = new MyColumn(name, GetNormalizedDataType(typedColumn.DataType))
+        DataTypeReference.BuiltIn dataType = (DataTypeReference.BuiltIn)typedColumn.DataType;
+        var myColumn = new MyColumn(name, GetNormalizedDataType(dataType.DataType))
         {
             Unique = unique,
             Nullability = nullability,

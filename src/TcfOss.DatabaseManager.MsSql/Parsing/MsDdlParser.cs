@@ -2,7 +2,6 @@ using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -19,14 +18,14 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     /// <summary>
     /// Parses a T-SQL routine parameter: <c>@name TYPE [= default] [OUT|OUTPUT]</c>.
     /// </summary>
-    protected override RoutineParameter ParseRoutineParameter(ParserState state)
+    protected override StatementRoutineParameter ParseRoutineParameter(ParserState state)
     {
         Identifier name = _p.ComponentParser.ParseIdentifier(state);
         if (name.Sigil != SigilKind.Variable)
         {
             throw state.ExpectedException("parameter name (@name)");
         }
-        DataType dataType = _p.DataTypeParser.ParseDataType(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
 
         Value? defaultValue = null;
         if (state.ConsumeTokenIs<Equal>())
@@ -44,7 +43,7 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
             output = OutputKeyword.Out;
         }
 
-        return new RoutineParameter.Undirected(name, dataType)
+        return new StatementRoutineParameter.Undirected(name, dataType)
         {
             DefaultValue = defaultValue,
             Output = output,
@@ -56,7 +55,7 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     /// empty). The bare form is detected by an <c>@</c>-prefixed identifier
     /// in the lookahead position.
     /// </summary>
-    protected override SqlValueList<RoutineParameter> ParseRoutineParameterList(ParserState state)
+    protected override SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state)
     {
         if (state.PeekIs<ParenOpen>())
         {

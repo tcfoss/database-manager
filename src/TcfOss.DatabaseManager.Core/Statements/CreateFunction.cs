@@ -1,15 +1,15 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateFunction(ObjectName Name, SqlValueList<RoutineParameter> Parameters, DataType ReturnType, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
+public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParameter> Parameters, DataTypeReference ReturnType, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool IfNotExists { get; init; }

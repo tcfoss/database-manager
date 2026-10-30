@@ -6,6 +6,13 @@ public class PgParser : Parser
 {
     public PgParser()
     {
-        DataTypeParser = new PgDataTypeParser();
+        ComponentParser = new PgComponentParser(this);
+        DataTypeParser = new PgDataTypeParser(this);
+        ExpressionParser = new ExpressionParser(this);
+        SelectParser = new SelectParser(this);
+        DmlParser = new DmlParser(this);
+        DdlParser = new DdlParser(this);
+        TableParser = new TableParser(this);
+        ControlFlowParser = new ControlFlowParser(this);
     }
 }

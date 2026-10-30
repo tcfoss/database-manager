@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
@@ -23,7 +24,7 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE sample (value {sql})")));
         var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns));
 
-        Assert.Equal(expectedClass, column.DataType.Class);
+        Assert.Equal(expectedClass, Assert.IsType<DataTypeReference.BuiltIn>(column.DataType).DataType.Class);
     }
 
     [Theory]
@@ -125,7 +126,7 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(expectedClass, dataType.Class);
         Assert.Equal(canonical, dataType.ToSql());
         Assert.Equal(dataType, ParseColumnType(dataType.ToSql()));
-        Assert.True(new PgDataTypeParser().IsDataTypeStart(Assert.IsType<Word>(GetTokens(sql)[0])));
+        Assert.True(new PgParser().DataTypeParser.IsDataTypeStart(Assert.IsType<Word>(GetTokens(sql)[0])));
     }
 
     [Theory]
@@ -194,12 +195,10 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("TINYINT")]
     [InlineData("NVARCHAR(20)")]
     [InlineData("VARCHAR(MAX)")]
     [InlineData("ENUM('a')")]
     [InlineData("SET('a')")]
-    [InlineData("DATETIME")]
     [InlineData("DOUBLE")]
     [InlineData("DOUBLE(10,2)")]
     [InlineData("FLOAT(10,2)")]
@@ -223,12 +222,19 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("INTERVAL DAY TO")]
     [InlineData("INTERVAL DAY(2)")]
     [InlineData("INTERVAL(7)")]
-    [InlineData("unknown_type")]
-    [InlineData("\"integer\"")]
     [InlineData("!")]
     public void InvalidOrUnsupportedTypes_Throw(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseColumnType(sql));
+    }
+
+    [Theory]
+    [InlineData("SELECT")]
+    [InlineData("!")]
+    public void DirectParseDataType_NotDataType_Throws(string sql)
+    {
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => new PgParser().DataTypeParser.ParseDataType(GetState(sql)));
+        Assert.Contains("data_type", ex.Message);
     }
 
     [Theory]
@@ -246,7 +252,7 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("INTERVAL(7)", "precision", "7", 0, 6, 9)]
     public void InvalidModifiers_ReportRangeAndLocation(string sql, string label, string value, long minimum, long maximum, int position)
     {
-        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => new PgDataTypeParser().ParseDataType(GetState(sql)));
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => new PgParser().DataTypeParser.ParseDataType(GetState(sql)));
 
         Assert.Equal(label, exception.Label);
         Assert.Equal(value, exception.Value);
@@ -300,7 +306,7 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     public void TypedLiterals_UsePostgresTypes(string sql)
     {
         var state = GetState(sql);
-        var expression = Assert.IsType<TypedString>(new PgParser().ExpressionParser.ParseExpr(state));
+        var expression = Assert.IsType<TypedString>(ParseExpression(state));
 
         Assert.Equal(sql, expression.ToSql());
         Assert.IsType<Eof>(state.Peek());
@@ -312,7 +318,7 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CAST('2026-10-29' AS TIMESTAMP WITH TIME ZONE)")]
     public void Casts_UsePostgresTypes(string sql)
     {
-        var expression = new PgParser().ExpressionParser.ParseExpr(GetState(sql));
+        var expression = ParseExpression(sql);
 
         Assert.Equal(sql, expression.ToSql());
     }
@@ -330,13 +336,13 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("unknown_type", false)]
     public void TypeStart_RecognizesOnlySupportedNames(string sql, bool expected)
     {
-        Assert.Equal(expected, new PgDataTypeParser().IsDataTypeStart(GetTokens(sql)[0]));
+        Assert.Equal(expected, new PgParser().DataTypeParser.IsDataTypeStart(GetTokens(sql)[0]));
     }
 
     [Fact]
     public void TypeKeywords_AgreeWithTypeStart()
     {
-        var parser = new PgDataTypeParser();
+        var parser = new PgParser().DataTypeParser;
         foreach (Keyword keyword in Enum.GetValues<Keyword>())
         {
             Assert.Equal(parser.IsDataTypeStart(new Word(keyword.ToString()) { Location = default }), parser.IsDataTypeKeyword(keyword));
@@ -344,9 +350,99 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         Assert.False(parser.IsDataTypeKeyword(null));
     }
 
+    [Theory]
+    [InlineData("mood", 1, "mood", QuoteStyle.None)]
+    [InlineData("Mood", 1, "Mood", QuoteStyle.None)]
+    [InlineData("app.mood", 2, "mood", QuoteStyle.None)]
+    [InlineData("\"Mood\"", 1, "Mood", QuoteStyle.Ansi)]
+    [InlineData("\"App\".\"Mood\"", 2, "Mood", QuoteStyle.Ansi)]
+    [InlineData("app.\"Mood\"", 2, "Mood", QuoteStyle.Ansi)]
+    [InlineData("\"integer\"", 1, "integer", QuoteStyle.Ansi)]
+    [InlineData("app.integer", 2, "integer", QuoteStyle.None)]
+    [InlineData("pg_catalog.int4", 2, "int4", QuoteStyle.None)]
+    [InlineData("tinyint", 1, "tinyint", QuoteStyle.None)]
+    public void NamedTypes_ParseWithoutResolution(string sql, int partCount, string lastName, QuoteStyle lastQuoteStyle)
+    {
+        var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE sample (value {sql})")));
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns));
+        var reference = Assert.IsType<DataTypeReference.Named>(column.DataType);
+
+        Assert.Equal(partCount, reference.Name.Values.Count);
+        Assert.Equal(lastName, reference.Name.Values[^1].Name);
+        Assert.Equal(lastQuoteStyle, reference.Name.Values[^1].QuoteStyle);
+        Assert.NotNull(reference.Name.Source);
+        Assert.All(reference.Name.Values, identifier => Assert.NotNull(identifier.Source));
+        Assert.Equal(sql, reference.ToSql());
+        Assert.Equal($"value {sql}", column.ToSql());
+    }
+
+    [Fact]
+    public void NamedColumnTypes_PreserveColumnOptions()
+    {
+        var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements("CREATE TABLE sample (value app.mood NOT NULL DEFAULT 'happy')")));
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns));
+
+        Assert.IsType<DataTypeReference.Named>(column.DataType);
+        Assert.Equal(2, column.Options.Count);
+        Assert.Equal("value app.mood NOT NULL DEFAULT 'happy'", column.ToSql());
+    }
+
+    [Theory]
+    [InlineData("mood")]
+    [InlineData("app.mood")]
+    [InlineData("\"Mood\"")]
+    [InlineData("app.integer")]
+    public void NamedCastTypes_ParseAndRoundTrip(string typeName)
+    {
+        string sql = $"CAST('happy' AS {typeName})";
+        var state = GetState(sql);
+        var cast = Assert.IsType<Cast>(ParseExpression(state));
+
+        Assert.Equal(typeName, Assert.IsType<DataTypeReference.Named>(cast.DataType).ToSql());
+        Assert.Equal(sql, cast.ToSql());
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Theory]
+    [InlineData("mood")]
+    [InlineData("app.mood")]
+    [InlineData("\"Mood\"")]
+    public void FunctionSignatures_PreserveNamedReferences(string typeName)
+    {
+        string sql = $"CREATE FUNCTION echo (value {typeName}) RETURNS {typeName} RETURN value";
+        var function = Assert.IsType<CreateFunction>(Assert.Single(ParseStatements(sql)));
+
+        Assert.Equal(typeName, Assert.IsType<DataTypeReference.Named>(Assert.Single(function.Parameters).DataType).ToSql());
+        Assert.Equal(typeName, Assert.IsType<DataTypeReference.Named>(function.ReturnType).ToSql());
+        Assert.Equal(sql, function.ToSql());
+    }
+
+    [Theory]
+    [InlineData("app.")]
+    [InlineData("app..mood")]
+    [InlineData("app.'mood'")]
+    [InlineData("'mood'")]
+    [InlineData("[mood]")]
+    [InlineData("`mood`")]
+    [InlineData("app.123")]
+    public void InvalidNamedTypes_Throw(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE sample (value {sql})"));
+    }
+
+    [Theory]
+    [InlineData("VARCHAR(MAX)")]
+    [InlineData("NUMERIC(10,)")]
+    [InlineData("DOUBLE")]
+    [InlineData("TIME(7)")]
+    public void InvalidBuiltInTypes_DoNotFallBackToNamedReferences(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql)));
+    }
+
     private static DataType ParseColumnType(string sql)
     {
         var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE sample (value {sql})")));
-        return Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns)).DataType;
+        return Assert.IsType<DataTypeReference.BuiltIn>(Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns)).DataType).DataType;
     }
 }

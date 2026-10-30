@@ -1,4 +1,5 @@
 ﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
@@ -151,7 +152,7 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
     [Fact]
     public void TestIsDataTypeKeyword()
     {
-        // Avoid cluttering the text explorer: only assert on failure.
+        // Avoid cluttering the test explorer: only assert on failure.
         foreach (var row in new IsDataTypeKeywordTests())
         {
             var expectedIsKeyword = row.Data.Item2;
@@ -249,6 +250,17 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(sql, exception.Value);
         Assert.Equal(1, exception.Minimum);
         Assert.Equal(1000, exception.Maximum);
+    }
+
+    [Fact]
+    public void DataTypeReferences_PreserveBuiltInAndNamedTypes()
+    {
+        DataTypeReference builtIn = new DataType.Int();
+        Assert.IsType<DataType.Int>(Assert.IsType<DataTypeReference.BuiltIn>(builtIn).DataType);
+        Assert.Equal("INT", builtIn.ToSql());
+
+        var named = new DataTypeReference.Named(new ObjectName([new Identifier("app"), new Identifier("mood")]));
+        Assert.Equal("app.mood", named.ToSql());
     }
 
     private static DataType GetDataType(string sql)

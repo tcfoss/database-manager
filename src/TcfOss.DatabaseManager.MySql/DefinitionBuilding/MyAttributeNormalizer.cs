@@ -1,8 +1,8 @@
-
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.MySql.Configuration;
 
 namespace TcfOss.DatabaseManager.MySql.DefinitionBuilding;
@@ -27,12 +27,12 @@ public class MyAttributeNormalizer(MyConfig config, INormalizeComponents compone
         };
     }
 
-    public RoutineParameter NormalizeRoutineParameter(RoutineParameter parameter, bool isFunction)
+    public RoutineParameter NormalizeRoutineParameter(StatementRoutineParameter parameter, bool isFunction)
     {
-        RoutineParameterDirection? direction = parameter is RoutineParameter.Directed d ? d.Direction : null;
+        RoutineParameterDirection? direction = parameter is StatementRoutineParameter.Directed d ? d.Direction : null;
         return new RoutineParameter.Directed(
             _componentNormalizer.NormalizeSingleIdentifier(parameter.Name),
-            _dataTypeNormalizer.NormalizeDataType(parameter.DataType),
+            _dataTypeNormalizer.NormalizeDataType(((DataTypeReference.BuiltIn)parameter.DataType).DataType),
             direction ?? (isFunction ? _config.AttributeDefaults.FunctionParameterDirection : _config.AttributeDefaults.ProcedureParameterDirection)
         );
     }

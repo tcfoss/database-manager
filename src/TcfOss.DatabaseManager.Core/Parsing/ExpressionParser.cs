@@ -466,7 +466,7 @@ public class ExpressionParser
 
         state.ExpectKeyword(Keyword.AS);
 
-        DataType dataType = _p.DataTypeParser.ParseDataTypeForConvert(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReferenceForConvert(state);
 
         state.ExpectRightParen();
 

@@ -4,11 +4,12 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateProcedure(ObjectName Name, SqlValueList<RoutineParameter> Parameters, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
+public record CreateProcedure(ObjectName Name, SqlValueList<StatementRoutineParameter> Parameters, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool IfNotExists { get; init; }

@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
@@ -17,7 +18,7 @@ public class MyNormalizer(MyConfig config, MyComponentNormalizer componentNormal
 
     protected override Expression NormalizeCast(Cast cast, bool inSelect = false, bool flatten = false)
     {
-        DataType dataType = cast.DataType;
+        DataType dataType = ((DataTypeReference.BuiltIn)cast.DataType).DataType;
         if (dataType is MyDataType.MyVarcharOptionalLength varcharType && Config.NormalizationSettings.CastConvertVarcharToChar)
         {
             dataType = new MyDataType.MyCharOptionalLength(varcharType.Length)

@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -73,7 +74,7 @@ public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
         var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
         var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(createTable.Columns));
 
-        Assert.Equal(expectedClass, column.DataType.Class);
+        Assert.Equal(expectedClass, Assert.IsType<DataTypeReference.BuiltIn>(column.DataType).DataType.Class);
     }
 
     [Fact]
@@ -85,7 +86,7 @@ public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
         var createTable = Assert.IsType<CreateTable>(Assert.Single(statements));
         var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(createTable.Columns));
 
-        Assert.IsType<MsDataType.MsRowVersion>(column.DataType);
+        Assert.IsType<MsDataType.MsRowVersion>(Assert.IsType<DataTypeReference.BuiltIn>(column.DataType).DataType);
     }
 
     [Fact]

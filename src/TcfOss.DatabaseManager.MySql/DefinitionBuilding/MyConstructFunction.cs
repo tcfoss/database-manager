@@ -19,7 +19,8 @@ public class MyConstructFunction(MyConfig config, MyAttributeNormalizer normaliz
         Definer definer = createFunctionStatement.Definer ?? new Definer(new Account.CurrentUser());
         definer = new Definer(_normalizer.NormalizeAccount(definer.Account, accountQuoteStyle));
         IEnumerable<RoutineParameter> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
-        return new MyStoredFunction(name, [.. parameters], createFunctionStatement.ReturnType, createFunctionStatement.Body)
+        DataTypeReference.BuiltIn returnType = (DataTypeReference.BuiltIn)createFunctionStatement.ReturnType;
+        return new MyStoredFunction(name, [.. parameters], returnType.DataType, createFunctionStatement.Body)
         {
             Definer = definer,
             Aggregate = createFunctionStatement.Aggregate,

@@ -13,7 +13,7 @@ public record TestStoredProcedure(ObjectIdentifier Name, SqlValueList<RoutinePar
 {
     public override CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
-        return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1), Parameters, Body)
+        return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1), [.. Parameters.Select(parameter => parameter.ToStatementParameter())], Body)
         {
             Meta = new MetaData { RawText = RawBodyText }
         };

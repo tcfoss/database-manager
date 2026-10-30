@@ -74,15 +74,6 @@ public class DdlParser
         return state.ParseCommaSeparated(ParseTriggerEvent);
     }
 
-    /// <summary>
-    /// Parses a routine parameter list. Core requires parentheses; dialects
-    /// (notably T-SQL) may override to allow a bare comma-separated form.
-    /// </summary>
-    protected virtual SqlValueList<RoutineParameter> ParseRoutineParameterList(ParserState state)
-    {
-        return state.ParseParenthesizedCommaSeparated(ParseRoutineParameter, allowEmpty: true);
-    }
-
 
     /// <summary>
     /// Parses an optional T-SQL <c>WITH</c> options block for views
@@ -279,15 +270,6 @@ public class DdlParser
         return direction;
     }
 
-    protected virtual RoutineParameter ParseRoutineParameter(ParserState state)
-    {
-        RoutineParameterDirection? direction = ParseRoutineParameterDirection(state);
-        Identifier name = _parseIdentifier(state);
-        DataType dataType = _p.DataTypeParser.ParseDataType(state);
-
-        return new RoutineParameter.Directed(name, dataType, direction);
-    }
-
     public static SecurityContext? ParseSecurityContext(ParserState state)
     {
         SecurityContext? securityContext = null;
@@ -339,6 +321,20 @@ public class DdlParser
             state.ExpectKeywordsAll(Keyword.CHECK, Keyword.OPTION);
         }
         return option;
+    }
+
+    protected virtual SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state)
+    {
+        return state.ParseParenthesizedCommaSeparated(ParseRoutineParameter, allowEmpty: true);
+    }
+
+    protected virtual StatementRoutineParameter ParseRoutineParameter(ParserState state)
+    {
+        RoutineParameterDirection? direction = ParseRoutineParameterDirection(state);
+        Identifier name = _parseIdentifier(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+
+        return new StatementRoutineParameter.Directed(name, dataType, direction);
     }
 
     private static MyRoutineCharacteristic? ParseOptionalRoutineCharacteristic(ParserState state)
@@ -484,10 +480,10 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<RoutineParameter> parameters = ParseRoutineParameterList(state);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state);
 
         state.ExpectKeyword(Keyword.RETURNS);
-        DataType returnType = _p.DataTypeParser.ParseDataType(state);
+        DataTypeReference returnType = _p.DataTypeParser.ParseDataTypeReference(state);
         MyRoutineCharacteristic? characteristic = ParseOptionalRoutineCharacteristic(state);
 
         MsRoutineWithOptions? msOptions = ParseOptionalRoutineWithOptions(state);
@@ -524,7 +520,7 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<RoutineParameter> parameters = ParseRoutineParameterList(state);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state);
 
         MyRoutineCharacteristic? characteristic = ParseOptionalRoutineCharacteristic(state);
 
