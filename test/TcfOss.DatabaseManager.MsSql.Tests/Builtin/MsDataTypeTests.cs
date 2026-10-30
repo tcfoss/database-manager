@@ -65,6 +65,13 @@ public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Contains("data_type", ex.Message);
     }
 
+    [Theory]
+    [ClassData(typeof(IsDataTypeKeywordTests))]
+    public void TestIsDataTypeKeyword(Keyword keyword, bool expected)
+    {
+        var actual = new MsParser().DataTypeParser.IsDataTypeKeyword(keyword);
+        Assert.Equal(expected, actual);
+    }
 
     public class IsDataTypeKeywordTests : ExhaustiveKeywordTestData<bool>
     {
@@ -84,10 +91,18 @@ public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
     }
 
     [Theory]
-    [ClassData(typeof(IsDataTypeKeywordTests))]
-    public void TestIsDataTypeKeyword(Keyword keyword, bool expected)
+    [InlineData("CHAR(0)")]
+    [InlineData("VARCHAR(0)")]
+    [InlineData("NVARCHAR(0)")]
+    [InlineData("NCHAR(0)")]
+    [InlineData("BINARY(0)")]
+    [InlineData("VARBINARY(0)")]
+    public void ZeroStringLengths_ReportValidationError(string sql)
     {
-        var actual = new MsParser().DataTypeParser.IsDataTypeKeyword(keyword);
-        Assert.Equal(expected, actual);
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ParseStatements($"CREATE TABLE sample (value {sql})"));
+
+        Assert.Equal("length", exception.Label);
+        Assert.Equal("0", exception.Value);
+        Assert.Equal(1, exception.Minimum);
     }
 }

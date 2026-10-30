@@ -53,7 +53,7 @@ public class ExpressionParser
 
     protected virtual Expression ParsePrefix(ParserState state)
     {
-        if (state.Peek() is Word { Keyword: var kw } && _p.DataTypeParser.IsDataTypeKeyword(kw)
+        if (_p.DataTypeParser.IsDataTypeStart(state.Peek())
             && state.TryParse((s) =>
         {
             DataType dataType = _p.DataTypeParser.ParseDataType(s);

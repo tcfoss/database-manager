@@ -103,6 +103,8 @@ public class MyDataTypeTests
 
     [Theory]
     [InlineData("char(4)", typeof(MyDataType.MyChar), null, null, "CHAR(4)", Label = "char")]
+    [InlineData("char(0)", typeof(MyDataType.MyChar), null, null, "CHAR(0)", Label = "zero-length char")]
+    [InlineData("varchar(0)", typeof(MyDataType.MyVarchar), null, null, "VARCHAR(0)", Label = "zero-length varchar")]
     [InlineData("char(10) character set utf8 collate utf8_general_ci", typeof(MyDataType.MyChar), "utf8", "utf8_general_ci", "CHAR(10) CHARACTER SET utf8 COLLATE utf8_general_ci", Label = "char charset and collation")]
     [InlineData("Char(3) Character Set utf8", typeof(MyDataType.MyChar), "utf8", null, "CHAR(3) CHARACTER SET utf8", Label = "char charset")]
     [InlineData("CHAR(5) COLLATE utf8mb4_unicode_ci", typeof(MyDataType.MyChar), null, "utf8mb4_unicode_ci", "CHAR(5) COLLATE utf8mb4_unicode_ci", Label = "char collation")]

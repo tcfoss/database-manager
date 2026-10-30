@@ -7,6 +7,8 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsDataTypeParser : DataTypeParser
 {
+    protected override uint MinimumStringLength => 1;
+
     public override bool IsDataTypeKeyword(Keyword? keyword) => keyword is
         Keyword.SMALLINT or Keyword.BIT or Keyword.MONEY or Keyword.SMALLMONEY or
         Keyword.DATE or Keyword.TIME or Keyword.DATETIME or Keyword.SMALLDATETIME or
@@ -70,17 +72,17 @@ public class MsDataTypeParser : DataTypeParser
             case Keyword.NCHAR:
                 state.Next();
                 return new MsDataType.MsNChar(
-                    ParseOptionalCharLength(state)
+                    ParseOptionalCharLength(state, min: 1)
                     ?? throw state.ExpectedCategoryException("data_type_length"));
             case Keyword.BINARY:
                 state.Next();
                 return new MsDataType.MsBinary(
-                    ParseOptionalCharLength(state)
+                    ParseOptionalCharLength(state, min: 1)
                     ?? throw state.ExpectedCategoryException("data_type_length"));
             case Keyword.VARBINARY:
                 state.Next();
                 return new MsDataType.MsVarBinary(
-                    ParseOptionalCharLength(state)
+                    ParseOptionalCharLength(state, min: 1)
                     ?? throw state.ExpectedCategoryException("data_type_length"));
             default:
                 return base.ParseDataType(state);

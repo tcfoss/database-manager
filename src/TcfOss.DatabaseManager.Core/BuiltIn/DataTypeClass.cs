@@ -18,4 +18,12 @@ public enum DataTypeClass
     Enum,
     Geometry,
     Guid,
+    Interval,
+    Json,
+    Xml,
+    Network,
+    TextSearch,
+    Range,
+    Multirange,
+    System,
 }

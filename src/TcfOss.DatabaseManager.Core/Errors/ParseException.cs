@@ -44,6 +44,26 @@ public abstract class ParseException(string message, Location? location, Excepti
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Parse_ExpectedOneOfButFound);
     }
 
+    public class ValueOutOfRange(string label, string value, long minimum, long maximum, Location? location = null)
+        : ParseException(s_compositeFormat.Apply(label, value, minimum, maximum), location)
+    {
+        public string Label { get; } = label;
+        public string Value { get; } = value;
+        public long Minimum { get; } = minimum;
+        public long Maximum { get; } = maximum;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Parse_ValueOutOfRange);
+    }
+
+    public class InvalidIntervalFieldRange(string startField, string endField, Location? location = null)
+        : ParseException(s_compositeFormat.Apply(startField, endField), location)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Parse_InvalidIntervalFieldRange);
+    }
+
+    public class IntervalPrecisionRequiresSecond(Location? location = null)
+        : ParseException(ErrorMessages.Err_Parse_IntervalPrecisionRequiresSecond, location);
+
     public class WithText(ParseException originalException, string? filename, string? text) : ParseException(GetMessage(originalException, filename, text), originalException.Location, originalException)
     {
         private static string GetMessage(ParseException originalException, string? filename, string? text)

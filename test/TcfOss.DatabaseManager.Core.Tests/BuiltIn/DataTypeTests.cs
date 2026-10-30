@@ -23,6 +23,10 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DECIMAL(3)", "DECIMAL(3)")]
     [InlineData("NUMERIC(10,2)", "DECIMAL(10,2)")]
     [InlineData("char(4)", "CHAR(4)")]
+    [InlineData("char(0)", "CHAR(0)")]
+    [InlineData("varchar(0)", "VARCHAR(0)")]
+    [InlineData("character(4)", "CHAR(4)")]
+    [InlineData("character varying(4)", "VARCHAR(4)")]
     [InlineData("VarChar(3)", "VARCHAR(3)")]
     [InlineData("NVarchar(12)", "NVARCHAR(12)")]
     [InlineData("text", "TEXT")]
@@ -176,10 +180,99 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         protected override bool GetDefaultValue() => false;
     }
 
+    [Theory]
+    [InlineData("1", 1, 10, 1)]
+    [InlineData("10", 1, 10, 10)]
+    [InlineData("-10", -10, 10, -10)]
+    [InlineData("+10", -10, 10, 10)]
+    [InlineData("0", 0, uint.MaxValue, 0)]
+    [InlineData("4294967295", 0, uint.MaxValue, uint.MaxValue)]
+    [InlineData("-9223372036854775808", long.MinValue, long.MaxValue, long.MinValue)]
+    [InlineData("9223372036854775807", long.MinValue, long.MaxValue, long.MaxValue)]
+    public void BoundedModifiers_AcceptInclusiveBounds(string sql, long minimum, long maximum, long expected)
+    {
+        Assert.Equal(expected, ModifierParser.Parse(GetState(sql), minimum, maximum));
+    }
+
+    [Theory]
+    [InlineData("0", 1, 10)]
+    [InlineData("11", 1, 10)]
+    [InlineData("-11", -10, 10)]
+    [InlineData("4294967296", 0, uint.MaxValue)]
+    [InlineData("999999999999999999999999", 0, uint.MaxValue)]
+    public void BoundedModifiers_RejectOutOfRangeValues(string sql, long minimum, long maximum)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ModifierParser.Parse(GetState(sql), minimum, maximum));
+
+        Assert.Equal(sql, exception.Value);
+        Assert.Equal("length", exception.Label);
+        Assert.Equal(minimum, exception.Minimum);
+        Assert.Equal(maximum, exception.Maximum);
+        Assert.Contains("^", new ParseException.WithText(exception, null, sql).Message);
+    }
+
+    [Theory]
+    [InlineData("1.5")]
+    [InlineData("MAX")]
+    [InlineData("-")]
+    public void BoundedModifiers_RejectInvalidSyntax(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ModifierParser.Parse(GetState(sql), 0, 10));
+    }
+
+    [Fact]
+    public void TypedBoundedModifiers_ReturnRequestedTypes()
+    {
+        int signed = ModifierParser.ParseInt(GetState("-2147483648"), int.MinValue, int.MaxValue);
+        uint unsigned = ModifierParser.ParseUInt(GetState("4294967295"), uint.MinValue, uint.MaxValue);
+
+        Assert.Equal(int.MinValue, signed);
+        Assert.Equal(uint.MaxValue, unsigned);
+    }
+
+    [Theory]
+    [InlineData("2147483648")]
+    [InlineData("-2147483649")]
+    public void BoundedInt_OverflowPreservesModifierContext(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ModifierParser.ParseInt(GetState(sql), -1000, 1000));
+
+        Assert.Equal("scale", exception.Label);
+        Assert.Equal(sql, exception.Value);
+        Assert.Equal(-1000, exception.Minimum);
+        Assert.Equal(1000, exception.Maximum);
+    }
+
+    [Theory]
+    [InlineData("4294967296")]
+    public void BoundedUInt_OverflowPreservesModifierContext(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ModifierParser.ParseUInt(GetState(sql), 1, 1000));
+
+        Assert.Equal("length", exception.Label);
+        Assert.Equal(sql, exception.Value);
+        Assert.Equal(1, exception.Minimum);
+        Assert.Equal(1000, exception.Maximum);
+    }
+
     private static DataType GetDataType(string sql)
     {
         var parser = new Parser();
         var state = GetState(sql);
         return parser.DataTypeParser.ParseDataType(state);
     }
+
+    private sealed class ModifierParser : DataTypeParser
+    {
+        public static long Parse(ParserState state, long minimum, long maximum)
+            => ParseBoundedLong(state, minimum, maximum, "length");
+
+        public static int ParseInt(ParserState state, int minimum, int maximum)
+            => ParseBoundedInt(state, minimum, maximum, "scale");
+
+        public static uint ParseUInt(ParserState state, uint minimum, uint maximum)
+            => ParseBoundedUInt(state, minimum, maximum, "length");
+    }
+
+
 }
