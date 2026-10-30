@@ -240,7 +240,7 @@ public class ComponentParser(Parser parser)
         return new Assignment(target, value);
     }
 
-    public static CreateOrLabel? ParseCreateOrLabel(ParserState state)
+    public virtual CreateOrLabel? ParseCreateOrLabel(ParserState state)
     {
         if (state.ParseKeywordsAll(Keyword.OR, Keyword.REPLACE))
         {

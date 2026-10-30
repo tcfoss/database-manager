@@ -27,7 +27,7 @@ public class MsParser : Parser
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MsFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MsDataTypeParser(this);
-        ComponentParser = new ComponentParser(this);
+        ComponentParser = new MsComponentParser(this);
         ExpressionParser = new ExpressionParser(this);
         SelectParser = new MsSelectParser(this);
         DmlParser = new MsDmlParser(this);
@@ -36,18 +36,45 @@ public class MsParser : Parser
         ControlFlowParser = new MsControlFlowParser(this);
     }
 
+    protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
+    {
+        CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);
+        return new CreateObjectOptions
+        {
+            CreateOrLabel = createOrLabel,
+            AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX"]
+        };
+    }
+
+    protected override void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
+    {
+        Keyword kw = objectTypeToken.Keyword;
+        if (options.CreateOrLabel != null && kw is not (Keyword.TRIGGER or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.VIEW))
+        {
+            throw state.ExpectedException("TRIGGER", "FUNCTION", "PROCEDURE", "VIEW");
+        }
+    }
+
     protected override Statement ParseCreate(ParserState state)
     {
-        var (createOrLabel, viewAlgorithm, definer, securityContext, aggregate, temporary) = ParseCreatePrefix(state);
-        return state.Peek() switch
+        state.ExpectKeyword(Keyword.CREATE);
+
+        CreateObjectOptions options = ParseCreateObjectOptions(state);
+        if (state.Peek() is not Word objectTypeWord)
         {
-            Word { Keyword: Keyword.TABLE } => TableParser.ParseCreate(state, createOrLabel == CreateOrLabel.OrReplace, temporary),
-            Word { Keyword: Keyword.TRIGGER } => DdlParser.ParseCreateTrigger(state, createOrLabel, definer),
-            Word { Keyword: Keyword.FUNCTION } => DdlParser.ParseCreateFunction(state, aggregate, createOrLabel, definer),
-            Word { Keyword: Keyword.PROCEDURE or Keyword.PROC } => DdlParser.ParseCreateProcedure(state, createOrLabel, definer),
-            Word { Keyword: Keyword.VIEW } => DdlParser.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext),
-            Word { Keyword: Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED } => DdlParser.ParseCreateIndex(state, createOrLabel),
-            _ => throw state.ExpectedException("TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX"),
+            throw state.ExpectedException(options.AllSupportedTypes);
+        }
+        GuardCreateOptions(state, objectTypeWord, options);
+
+        return objectTypeWord.Keyword switch
+        {
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrAlter, options.Temporary),
+            Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
+            Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
+            Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
+            _ => throw state.ExpectedException(options.AllSupportedTypes),
         };
     }
 

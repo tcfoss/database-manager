@@ -314,7 +314,7 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         var state = GetState(sql);
 
-        var actual = ComponentParser.ParseCreateOrLabel(state);
+        var actual = new Parser().ComponentParser.ParseCreateOrLabel(state);
         Assert.Equal(expected, actual);
     }
 

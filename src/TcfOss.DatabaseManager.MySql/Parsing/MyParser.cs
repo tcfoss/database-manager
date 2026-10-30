@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
@@ -34,19 +35,48 @@ public class MyParser : Parser
         ControlFlowParser = new MyControlFlowParser(this);
     }
 
+    protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
+    {
+        CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);
+        ViewAlgorithm? viewAlgorithm = DdlParser.ParseViewAlgorithm(state);
+        Definer? definer = ComponentParser.ParseOptionalDefiner(state);
+        SecurityContext? securityContext = DdlParser.ParseSecurityContext(state);
+        bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
+        bool temporary = state.ParseKeywordsAny(Keyword.TEMPORARY, Keyword.TEMP) != Keyword.undefined;
+
+        return new CreateObjectOptions
+        {
+            CreateOrLabel = createOrLabel,
+            ViewAlgorithm = viewAlgorithm,
+            Definer = definer,
+            SecurityContext = securityContext,
+            Aggregate = aggregate,
+            Temporary = temporary,
+            AllSupportedTypes = ["TABLE", "TRIGGER", "FUNCTION", "PROCEDURE", "VIEW", "EVENT", "INDEX"]
+        };
+    }
+
     protected override Statement ParseCreate(ParserState state)
     {
-        var (createOrLabel, viewAlgorithm, definer, securityContext, aggregate, temporary) = ParseCreatePrefix(state);
-        return state.Peek() switch
+        state.ExpectKeyword(Keyword.CREATE);
+        CreateObjectOptions options = ParseCreateObjectOptions(state);
+
+        if (state.Peek() is not Word objectTypeWord)
         {
-            Word { Keyword: Keyword.TABLE } => TableParser.ParseCreate(state, createOrLabel == CreateOrLabel.OrReplace, temporary),
-            Word { Keyword: Keyword.TRIGGER } => DdlParser.ParseCreateTrigger(state, createOrLabel, definer),
-            Word { Keyword: Keyword.FUNCTION } => DdlParser.ParseCreateFunction(state, aggregate, createOrLabel, definer),
-            Word { Keyword: Keyword.PROCEDURE or Keyword.PROC } => DdlParser.ParseCreateProcedure(state, createOrLabel, definer),
-            Word { Keyword: Keyword.VIEW } => DdlParser.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext),
-            Word { Keyword: Keyword.EVENT } => DdlParser.ParseCreateEvent(state, createOrLabel, definer),
-            Word { Keyword: Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED } => DdlParser.ParseCreateIndex(state, createOrLabel),
-            _ => throw state.ExpectedException("TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX"),
+            throw state.ExpectedException(options.AllSupportedTypes);
+        }
+        GuardCreateOptions(state, objectTypeWord, options);
+
+        return objectTypeWord.Keyword switch
+        {
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
+            Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
+            Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
+            Keyword.PROCEDURE => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.EVENT => DdlParser.ParseCreateEvent(state, options.CreateOrLabel, options.Definer),
+            Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
+            _ => throw state.ExpectedException(options.AllSupportedTypes),
         };
     }
 
