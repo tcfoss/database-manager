@@ -327,6 +327,20 @@ public class StatementComponentTests
         Assert.Equal(FormatComponent(parameter), FormatComponent(statement));
     }
 
+    [Fact]
+    public void CreateType_FormatsNamesFieldsAndCollations()
+    {
+        var enumerated = new CreateType.Enumerated(new ObjectName([new Identifier("app"), new Identifier("mood")]), ["sad", "happy"]);
+        Assert.Equal("""CREATE TYPE "app"."mood" AS ENUM ('sad', 'happy')""", FormatComponent(enumerated));
+
+        var composite = new CreateType.Composite(new ObjectName([new Identifier("app"), new Identifier("address")]),
+        [
+            new CompositeTypeField(new Identifier("street"), new DataType.Text(), new ObjectName([new Identifier("app"), new Identifier("collation")])),
+            new CompositeTypeField(new Identifier("postal"), new DataTypeReference.Named(new ObjectName([new Identifier("app"), new Identifier("postal_code")]))),
+        ]);
+        Assert.Equal("""CREATE TYPE "app"."address" AS ("street" TEXT COLLATE "app"."collation", "postal" "app"."postal_code")""", FormatComponent(composite));
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();

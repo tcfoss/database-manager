@@ -1,5 +1,8 @@
 ﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Lexing;
@@ -221,6 +224,29 @@ public class MyDataTypeTests
         Assert.Equal(DataTypeClass.Geometry, dt.Class);
         Assert.Equal(expectedText, dt.ToSql());
     }
+
+    [Theory]
+    [InlineData("mood")]
+    [InlineData("app.mood")]
+    [InlineData("\"mood\"")]
+    [InlineData("`mood`")]
+    public void TypeReferences_RejectNamedTypes(string sql)
+    {
+        var parser = new MyParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(new ParserState([.. new MyLexer().Tokenize(sql)])));
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState([.. new MyLexer().Tokenize(sql)])));
+    }
+
+    [Fact]
+    public void ConversionReferences_PreserveMySqlTypeGrammar()
+    {
+        var parser = new MyParser();
+        var reference = Assert.IsType<DataTypeReference.BuiltIn>(parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState([.. new MyLexer().Tokenize("CHAR")])));
+
+        Assert.IsType<MyDataType.MyCharOptionalLength>(reference.DataType);
+    }
+
 
     private static DataType GetDataType(string text)
     {

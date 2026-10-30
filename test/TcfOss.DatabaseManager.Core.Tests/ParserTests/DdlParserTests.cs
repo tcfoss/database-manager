@@ -1,4 +1,7 @@
-﻿using TcfOss.DatabaseManager.Core.Errors;
+﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -330,5 +333,77 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Contains("PROCEDURE", exception.Message);
         Assert.Contains("PROC", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE sample (value app.mood)")]
+    [InlineData("CREATE FUNCTION echo (value app.mood) RETURNS app.mood RETURN value")]
+    [InlineData("SELECT CAST('happy' AS app.mood)")]
+    public void CoreStatements_AcceptNamedTypeReferences(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('sad', 'happy')")]
+    [InlineData("CREATE TYPE app.mood AS ENUM ()")]
+    [InlineData("CREATE TYPE mood AS ENUM ('', 'it''s fine')")]
+    [InlineData("CREATE TYPE address AS (street TEXT, postcode app.postal_code)")]
+    [InlineData("CREATE TYPE empty AS ()")]
+    [InlineData("CREATE TYPE address AS (street TEXT COLLATE app.collation)")]
+    public void CreateType_CoreParserRoundTrips(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Fact]
+    public void CreateType_EnumeratedPreservesLabelsAndSource()
+    {
+        var statement = Assert.IsType<CreateType.Enumerated>(Assert.Single(ParseStatements("CREATE TYPE app.mood AS ENUM ('sad', 'happy', '')")));
+
+        Assert.Equal("app.mood", statement.Name.ToSql());
+        Assert.Equal(new[] { "sad", "happy", "" }, statement.Labels);
+        Assert.NotNull(statement.Name.Source);
+        Assert.NotNull(statement.Meta.Start);
+        Assert.NotNull(statement.Meta.End);
+    }
+
+    [Fact]
+    public void CreateType_CompositePreservesReferencesAndCollation()
+    {
+        var statement = Assert.IsType<CreateType.Composite>(Assert.Single(ParseStatements("CREATE TYPE app.address AS (street TEXT COLLATE app.collation, postcode app.postal_code)")));
+
+        Assert.Equal(2, statement.Attributes.Count);
+        CompositeTypeField street = statement.Attributes[0];
+        Assert.Equal("street", street.Name.Name);
+        Assert.IsType<DataType.Text>(Assert.IsType<DataTypeReference.BuiltIn>(street.DataType).DataType);
+        Assert.Equal("app.collation", street.Collation?.ToSql());
+        CompositeTypeField postcode = statement.Attributes[1];
+        Assert.Equal("app.postal_code", Assert.IsType<DataTypeReference.Named>(postcode.DataType).Name.ToSql());
+        Assert.NotNull(postcode.Name.Source);
+        Assert.Null(postcode.Collation);
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE")]
+    [InlineData("CREATE TYPE mood")]
+    [InlineData("CREATE TYPE mood ENUM ('happy')")]
+    [InlineData("CREATE TYPE mood AS ENUM (happy)")]
+    [InlineData("CREATE TYPE mood AS ENUM (1)")]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy',)")]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy'")]
+    [InlineData("CREATE TYPE address AS (street)")]
+    [InlineData("CREATE TYPE address AS (street TEXT,)")]
+    [InlineData("CREATE TYPE address AS (street TEXT COLLATE)")]
+    [InlineData("CREATE TYPE address AS (postcode app.)")]
+    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
+    [InlineData("CREATE OR REPLACE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE OR ALTER TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TEMPORARY TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE AGGREGATE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE DEFINER = 'user'@'host' TYPE mood AS ENUM ('happy')")]
+    public void CreateType_MalformedOrUnsupportedFormsThrow(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

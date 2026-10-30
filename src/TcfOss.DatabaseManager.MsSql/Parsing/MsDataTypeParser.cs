@@ -1,11 +1,12 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MsSql.BuiltIn;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
-public class MsDataTypeParser : DataTypeParser
+public class MsDataTypeParser(Parser parser) : DataTypeParser(parser)
 {
     protected static MsCharLength? ParseOptionalCharLength(ParserState state, uint min = 0, uint max = uint.MaxValue)
     {
@@ -140,5 +141,10 @@ public class MsDataTypeParser : DataTypeParser
             default:
                 return base.ParseDataType(state);
         }
+    }
+
+    public override DataTypeReference ParseDataTypeReference(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataType(state));
     }
 }

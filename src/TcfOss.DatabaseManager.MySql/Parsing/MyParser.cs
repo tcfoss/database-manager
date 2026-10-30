@@ -11,6 +11,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
+using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 using SetDelimiter = TcfOss.DatabaseManager.MySql.Lexing.Tokens.SetDelimiter;
 
@@ -23,7 +24,7 @@ public class MyParser : Parser
         PrecedenceManager = new PrecedenceManager();
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MyFunctionNameProvider().IsBuiltInFunction;
-        DataTypeParser = new MyDataTypeParser();
+        DataTypeParser = new MyDataTypeParser(this);
         ComponentParser = new ComponentParser(this);
         ExpressionParser = new MyExpressionParser(this);
         SelectParser = new MySelectParser(this);
@@ -31,6 +32,22 @@ public class MyParser : Parser
         DdlParser = new MyDdlParser(this);
         TableParser = new MyTableParser(this);
         ControlFlowParser = new MyControlFlowParser(this);
+    }
+
+    protected override Statement ParseCreate(ParserState state)
+    {
+        var (createOrLabel, viewAlgorithm, definer, securityContext, aggregate, temporary) = ParseCreatePrefix(state);
+        return state.Peek() switch
+        {
+            Word { Keyword: Keyword.TABLE } => TableParser.ParseCreate(state, createOrLabel == CreateOrLabel.OrReplace, temporary),
+            Word { Keyword: Keyword.TRIGGER } => DdlParser.ParseCreateTrigger(state, createOrLabel, definer),
+            Word { Keyword: Keyword.FUNCTION } => DdlParser.ParseCreateFunction(state, aggregate, createOrLabel, definer),
+            Word { Keyword: Keyword.PROCEDURE or Keyword.PROC } => DdlParser.ParseCreateProcedure(state, createOrLabel, definer),
+            Word { Keyword: Keyword.VIEW } => DdlParser.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext),
+            Word { Keyword: Keyword.EVENT } => DdlParser.ParseCreateEvent(state, createOrLabel, definer),
+            Word { Keyword: Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED } => DdlParser.ParseCreateIndex(state, createOrLabel),
+            _ => throw state.ExpectedException("TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX"),
+        };
     }
 
     public override SqlValueList<Statement> Parse(ParserState state, EndSubstatements? endChecker)

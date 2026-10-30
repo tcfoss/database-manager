@@ -137,6 +137,20 @@ public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Equal(1, exception.Minimum);
     }
 
+    [Theory]
+    [InlineData("mood")]
+    [InlineData("app.mood")]
+    [InlineData("\"mood\"")]
+    [InlineData("[mood]")]
+    public void TypeReferences_RejectNamedTypes(string sql)
+    {
+        var parser = new MsParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(GetState(sql)));
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReferenceForConvert(GetState(sql)));
+    }
+
+
     private static DataType GetDataType(string sql)
     {
         var parser = new MsParser();

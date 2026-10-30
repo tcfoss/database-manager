@@ -440,6 +440,39 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql)));
     }
 
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('sad', 'happy')")]
+    [InlineData("CREATE TYPE app.mood AS ENUM ()")]
+    [InlineData("CREATE TYPE address AS (street TEXT, postcode app.postal_code)")]
+    [InlineData("CREATE TYPE \"Address\" AS (\"Street\" TEXT COLLATE \"C\")")]
+    public void CreateType_UsesCoreGrammar(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Fact]
+    public void CompositeTypes_UsePostgresBuiltInAndNamedReferences()
+    {
+        var statement = Assert.IsType<CreateType.Composite>(Assert.Single(ParseStatements("CREATE TYPE details AS (created TIMESTAMPTZ, mood app.mood)")));
+
+        Assert.IsType<PgDataType.PgTimestamp>(Assert.IsType<DataTypeReference.BuiltIn>(statement.Attributes[0].DataType).DataType);
+        Assert.Equal("app.mood", Assert.IsType<DataTypeReference.Named>(statement.Attributes[1].DataType).Name.ToSql());
+        Assert.Equal("CREATE TYPE details AS (created TIMESTAMP WITH TIME ZONE, mood app.mood)", statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
+    [InlineData("CREATE DEFINER = 'user'@'host' EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
+    [InlineData("CREATE OR REPLACE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TEMPORARY TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TYPE mood")]
+    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
+    [InlineData("CREATE TYPE mood (INPUT = input_function, OUTPUT = output_function)")]
+    public void UnsupportedCreateForms_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     private static DataType ParseColumnType(string sql)
     {
         var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE sample (value {sql})")));

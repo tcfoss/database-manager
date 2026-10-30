@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
-public class DataTypeParser
+public class DataTypeParser(Parser parser)
 {
     protected static int ParseBoundedInt(ParserState state, int min = 0, int max = int.MaxValue, string label = "precision")
         => ParseBoundedInteger(state, ValueParser.ParseLiteralInt, min, max, label);
@@ -194,7 +194,12 @@ public class DataTypeParser
 
     public virtual DataTypeReference ParseDataTypeReference(ParserState state)
     {
-        return new DataTypeReference.BuiltIn(ParseDataType(state));
+        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None } word
+            && !state.PeekNthIs<Dot>(1) && IsDataTypeKeyword(word.Keyword))
+        {
+            return new DataTypeReference.BuiltIn(ParseDataType(state));
+        }
+        return new DataTypeReference.Named(parser.ComponentParser.ParseObjectName(state, "data_type"));
     }
 
     // Returns true for any keyword that can open a typed-string expression (TYPE 'literal').
@@ -216,6 +221,6 @@ public class DataTypeParser
 
     public virtual DataTypeReference ParseDataTypeReferenceForConvert(ParserState state)
     {
-        return new DataTypeReference.BuiltIn(ParseDataTypeForConvert(state));
+        return ParseDataTypeReference(state);
     }
 }

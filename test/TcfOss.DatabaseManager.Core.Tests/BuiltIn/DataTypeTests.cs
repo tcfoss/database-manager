@@ -270,7 +270,37 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         return parser.DataTypeParser.ParseDataType(state);
     }
 
-    private sealed class ModifierParser : DataTypeParser
+
+    [Theory]
+    [InlineData("mood")]
+    [InlineData("app.mood")]
+    [InlineData("\"Mood\"")]
+    [InlineData("app.integer")]
+    [InlineData("\"integer\"")]
+    public void CoreTypeReferences_AcceptNamedTypes(string sql)
+    {
+        var parser = new Parser();
+        var reference = Assert.IsType<DataTypeReference.Named>(parser.DataTypeParser.ParseDataTypeReference(GetState(sql)));
+        var converted = Assert.IsType<DataTypeReference.Named>(parser.DataTypeParser.ParseDataTypeReferenceForConvert(GetState(sql)));
+
+        Assert.Equal(sql, reference.Name.ToSql());
+        Assert.Equal(sql, converted.Name.ToSql());
+        Assert.NotNull(reference.Name.Source);
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataType(GetState(sql)));
+    }
+
+    [Theory]
+    [InlineData("VARCHAR(MAX)")]
+    [InlineData("NUMERIC(10,)")]
+    public void InvalidBuiltInReferences_DoNotFallBackToNamed(string sql)
+    {
+        var parser = new Parser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(GetState(sql)));
+    }
+
+
+    private sealed class ModifierParser() : DataTypeParser(new Parser())
     {
         public static long Parse(ParserState state, long minimum, long maximum)
             => ParseBoundedLong(state, minimum, maximum, "length");

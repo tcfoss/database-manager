@@ -747,6 +747,34 @@ public class DdlParser
         };
     }
 
+    public CreateType ParseCreateType(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.TYPE);
+        ObjectName name = _p.ComponentParser.ParseObjectName(state, "type_name");
+        state.ExpectKeyword(Keyword.AS);
+        if (state.ParseKeyword(Keyword.ENUM))
+        {
+            return new CreateType.Enumerated(name, state.ParseParenthesizedCommaSeparated(ParseEnumLabel, allowEmpty: true));
+        }
+        return new CreateType.Composite(name, state.ParseParenthesizedCommaSeparated(ParseCompositeTypeField, allowEmpty: true));
+    }
+
+    private static string ParseEnumLabel(ParserState state)
+    {
+        Token token = state.Next();
+        return token is StringLiteral literal ? literal.Value : throw ParserState.ExpectedCategoryException("literal_string", token);
+    }
+
+    private CompositeTypeField ParseCompositeTypeField(ParserState state)
+    {
+        Identifier name = _p.ComponentParser.ParseIdentifier(state, "attribute_name");
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        ObjectName? collation = state.ParseKeyword(Keyword.COLLATE)
+            ? _p.ComponentParser.ParseObjectName(state, "collation_name")
+            : null;
+        return new CompositeTypeField(name, dataType, collation);
+    }
+
     public DropObject ParseDropObject(ParserState state)
     {
         state.ExpectKeyword(Keyword.DROP);

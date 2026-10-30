@@ -400,4 +400,13 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 1"));
         Assert.Contains("end of statement", ex.Message);
     }
+
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TYPE address AS (street TEXT)")]
+    [InlineData("CREATE DOMAIN postcode AS TEXT")]
+    public void CreateTypeAndDomain_AreNotSupported(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

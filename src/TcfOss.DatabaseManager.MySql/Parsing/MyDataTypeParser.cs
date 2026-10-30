@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -6,7 +7,7 @@ using TcfOss.DatabaseManager.MySql.BuiltIn;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MyDataTypeParser : DataTypeParser
+public class MyDataTypeParser(Parser parser) : DataTypeParser(parser)
 {
     private static MySqlNumericAttribute? ParseOptionalNumericAttribute(ParserState state)
     {
@@ -382,6 +383,11 @@ public class MyDataTypeParser : DataTypeParser
         return base.ParseDataType(state);
     }
 
+    public override DataTypeReference ParseDataTypeReference(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataType(state));
+    }
+
     public override DataType ParseDataTypeForConvert(ParserState state)
     {
         Keyword? keyword = (state.Peek() as Word)?.Keyword;
@@ -404,5 +410,10 @@ public class MyDataTypeParser : DataTypeParser
         }
 
         return ParseDataType(state);
+    }
+
+    public override DataTypeReference ParseDataTypeReferenceForConvert(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataTypeForConvert(state));
     }
 }

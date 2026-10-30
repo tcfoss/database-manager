@@ -185,4 +185,14 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 2"));
         Assert.Contains("end of statement", ex.Message);
     }
+
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TYPE address AS (street TEXT)")]
+    [InlineData("CREATE DOMAIN postcode AS TEXT")]
+    [InlineData("CREATE EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
+    public void UnsupportedCreateDeclarations_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

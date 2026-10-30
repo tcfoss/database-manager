@@ -34,7 +34,7 @@ public class Parser : IParser
         IsBuiltInFunction = new FunctionNameProvider().IsBuiltInFunction;
         AllowsFunctionCallWithoutParentheses = FunctionNameProvider.AllowsFunctionCallWithoutParentheses;
         ValueParser = new ValueParser();
-        DataTypeParser = new DataTypeParser();
+        DataTypeParser = new DataTypeParser(this);
         ComponentParser = new ComponentParser(this);
         ExpressionParser = new ExpressionParser(this);
         SelectParser = new SelectParser(this);
@@ -259,7 +259,7 @@ public class Parser : IParser
         return statement;
     }
 
-    private Statement ParseCreate(ParserState state)
+    protected static (CreateOrLabel? CreateOrLabel, ViewAlgorithm? ViewAlgorithm, Definer? Definer, SecurityContext? SecurityContext, bool Aggregate, bool Temporary) ParseCreatePrefix(ParserState state)
     {
         state.ExpectKeyword(Keyword.CREATE);
 
@@ -271,8 +271,16 @@ public class Parser : IParser
         bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
         bool temporary = state.ParseKeywordsAny(Keyword.TEMPORARY, Keyword.TEMP) != Keyword.undefined;
 
+        return (createOrLabel, viewAlgorithm, definer, securityContext, aggregate, temporary);
+    }
+
+    protected virtual Statement ParseCreate(ParserState state)
+    {
+        var (createOrLabel, viewAlgorithm, definer, securityContext, aggregate, temporary) = ParseCreatePrefix(state);
+
         return state.Peek() switch
         {
+            Word { Keyword: Keyword.TYPE } when createOrLabel == null && viewAlgorithm == null && definer == null && securityContext == null && !aggregate && !temporary => DdlParser.ParseCreateType(state),
             Word { Keyword: Keyword.TABLE } => TableParser.ParseCreate(state, createOrLabel == CreateOrLabel.OrReplace, temporary),
             Word { Keyword: Keyword.TRIGGER } => DdlParser.ParseCreateTrigger(state, createOrLabel, definer),
             Word { Keyword: Keyword.FUNCTION } => DdlParser.ParseCreateFunction(state, aggregate, createOrLabel, definer),
@@ -280,7 +288,7 @@ public class Parser : IParser
             Word { Keyword: Keyword.VIEW } => DdlParser.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext),
             Word { Keyword: Keyword.EVENT } => DdlParser.ParseCreateEvent(state, createOrLabel, definer),
             Word { Keyword: Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED } => DdlParser.ParseCreateIndex(state, createOrLabel),
-            _ => throw state.ExpectedException("TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX")
+            _ => throw state.ExpectedException("TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX", "TYPE")
         };
     }
 
