@@ -235,7 +235,7 @@ public class MyDataTypeParser : DataTypeParser
         };
     }
 
-    protected static MyDataType.MyNationalChar ParseNationalChar(ParserState state)
+    protected override MyDataType.MyNationalChar ParseNationalChar(ParserState state)
     {
         uint length = ParseLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);

@@ -16,6 +16,7 @@ public static class DataTypeKeywords
         Keyword.NUMERIC,
         Keyword.CHAR,
         Keyword.CHARACTER,
+        Keyword.NCHAR,
         Keyword.VARCHAR,
         Keyword.NVARCHAR,
         Keyword.TEXT,

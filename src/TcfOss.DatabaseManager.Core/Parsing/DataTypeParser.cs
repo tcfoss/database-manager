@@ -9,8 +9,6 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class DataTypeParser
 {
-    protected virtual uint MinimumStringLength => 0;
-
     protected static int ParseBoundedInt(ParserState state, int min = 0, int max = int.MaxValue, string label = "precision")
         => ParseBoundedInteger(state, ValueParser.ParseLiteralInt, min, max, label);
 
@@ -21,7 +19,7 @@ public class DataTypeParser
         => ParseBoundedInteger(state, ValueParser.ParseLiteralLong, min, max, label);
 
     private static T ParseBoundedInteger<T>(ParserState state, Func<ParserState, T> parse, T min, T max, string label)
-        where T : IBinaryInteger<T>
+        where T : struct, IBinaryInteger<T>
     {
         Token first = state.Peek();
         T value;
@@ -85,24 +83,6 @@ public class DataTypeParser
         return new NumericLength.PrecisionScale(precision, scale);
     }
 
-    protected static CharLength? ParseOptionalCharLength(ParserState state, uint min = 0, uint max = uint.MaxValue)
-    {
-        if (!state.ConsumeTokenIs<ParenOpen>())
-        {
-            return null;
-        }
-        if (state.ParseKeyword(Keyword.MAX))
-        {
-            var charLength = new CharLength.Max();
-            state.ExpectRightParen();
-            return charLength;
-        }
-
-        uint length = ParseBoundedUInt(state, min, max, "length");
-        state.ExpectRightParen();
-        return new CharLength.Specified(length);
-    }
-
     protected virtual DataType ParseBoolean()
     {
         return new DataType.Boolean();
@@ -141,26 +121,32 @@ public class DataTypeParser
         return new DataType.Double(numLength);
     }
 
-    protected virtual DataType ParseChar(ParserState state)
-    {
-        CharLength length = ParseOptionalCharLength(state, MinimumStringLength) ?? throw state.ExpectedCategoryException("data_type_length");
-        return new DataType.Char(length);
-    }
-
     protected virtual DataType ParseCharacter(ParserState state)
     {
         return state.ParseKeyword(Keyword.VARYING) ? ParseVarchar(state) : ParseChar(state);
     }
 
+    protected virtual DataType ParseChar(ParserState state)
+    {
+        uint? length = ParseOptionalLength(state);
+        return new DataType.Char(length);
+    }
+
     protected virtual DataType ParseVarchar(ParserState state)
     {
-        CharLength length = ParseOptionalCharLength(state, MinimumStringLength) ?? throw state.ExpectedCategoryException("data_type_length");
+        uint? length = ParseOptionalLength(state);
         return new DataType.Varchar(length);
+    }
+
+    protected virtual DataType ParseNationalChar(ParserState state)
+    {
+        uint? length = ParseOptionalLength(state);
+        return new DataType.NationalChar(length);
     }
 
     protected virtual DataType ParseNationalVarchar(ParserState state)
     {
-        CharLength length = ParseOptionalCharLength(state, MinimumStringLength) ?? throw state.ExpectedCategoryException("data_type_length");
+        uint? length = ParseOptionalLength(state);
         return new DataType.NationalVarchar(length);
     }
 
@@ -192,6 +178,7 @@ public class DataTypeParser
             Keyword.BIGINT => ParseBigInt(state),
             Keyword.DECIMAL or Keyword.NUMERIC => ParseDecimal(state),
             Keyword.CHAR => ParseChar(state),
+            Keyword.NCHAR => ParseNationalChar(state),
             Keyword.CHARACTER => ParseCharacter(state),
             Keyword.VARCHAR => ParseVarchar(state),
             Keyword.NVARCHAR => ParseNationalVarchar(state),
@@ -210,7 +197,7 @@ public class DataTypeParser
         Keyword.INT or Keyword.INTEGER or
         Keyword.TINYINT or Keyword.BIGINT or
         Keyword.DECIMAL or Keyword.NUMERIC or
-        Keyword.CHAR or Keyword.CHARACTER or Keyword.VARCHAR or Keyword.NVARCHAR or
+        Keyword.CHAR or Keyword.CHARACTER or Keyword.NCHAR or Keyword.VARCHAR or Keyword.NVARCHAR or
         Keyword.TEXT or Keyword.DOUBLE or Keyword.FLOAT or
         Keyword.ENUM or Keyword.SET;
 

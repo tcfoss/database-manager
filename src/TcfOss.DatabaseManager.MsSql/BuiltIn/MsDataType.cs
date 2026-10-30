@@ -119,28 +119,54 @@ public abstract record MsDataType() : DataType
         public override void ToSql(SqlTextWriter writer) => writer.Write("NTEXT");
     }
 
-    /// <summary>
-    /// T-SQL <c>NCHAR(n)</c>.
-    /// </summary>
-    public record MsNChar(CharLength CharLength) : CharLengthDataType(CharLength)
+    public abstract record CharLengthDataType(MsCharLength CharLength) : DataType;
+
+    public record MsChar(MsCharLength CharLength) : CharLengthDataType(CharLength)
     {
         public override DataTypeClass Class => DataTypeClass.String;
-        public override void ToSql(SqlTextWriter writer) => writer.WriteSql($"NCHAR{CharLength}");
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"CHAR{CharLength}");
+        }
     }
 
-    /// <summary>
-    /// T-SQL <c>BINARY(n)</c>.
-    /// </summary>
-    public record MsBinary(CharLength CharLength) : CharLengthDataType(CharLength)
+    public record MsVarchar(MsCharLength CharLength) : CharLengthDataType(CharLength)
+    {
+        public override DataTypeClass Class => DataTypeClass.String;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"VARCHAR{CharLength}");
+        }
+    }
+
+    public record MsNChar(MsCharLength CharLength) : CharLengthDataType(CharLength)
+    {
+        public override DataTypeClass Class => DataTypeClass.String;
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"NCHAR{CharLength}");
+        }
+    }
+
+    public record MsNVarchar(MsCharLength CharLength) : CharLengthDataType(CharLength)
+    {
+        public override DataTypeClass Class => DataTypeClass.String;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"NVARCHAR{CharLength}");
+        }
+    }
+
+    public record MsBinary(MsCharLength CharLength) : CharLengthDataType(CharLength)
     {
         public override DataTypeClass Class => DataTypeClass.Binary;
         public override void ToSql(SqlTextWriter writer) => writer.WriteSql($"BINARY{CharLength}");
     }
 
-    /// <summary>
-    /// T-SQL <c>VARBINARY(n|MAX)</c>.
-    /// </summary>
-    public record MsVarBinary(CharLength CharLength) : CharLengthDataType(CharLength)
+    public record MsVarBinary(MsCharLength CharLength) : CharLengthDataType(CharLength)
     {
         public override DataTypeClass Class => DataTypeClass.Binary;
         public override void ToSql(SqlTextWriter writer) => writer.WriteSql($"VARBINARY{CharLength}");

@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests;
@@ -13,6 +14,35 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.Builtin;
 
 public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
 {
+    [Theory]
+    [InlineData("Char(4)", "CHAR(4)")]
+    [InlineData("CHAR(MAX)", "CHAR(MAX)")]
+    [InlineData("Varchar(3)", "VARCHAR(3)")]
+    [InlineData("varchar(MAX)", "VARCHAR(MAX)")]
+    [InlineData("NVarchar(12)", "NVARCHAR(12)")]
+    [InlineData("NVARCHAR(MAX)", "NVARCHAR(MAX)")]
+    [InlineData("Text", "TEXT")]
+    public void TestStringTypes(string givenText, string expectedSql)
+    {
+        var dt = GetDataType(givenText);
+
+        Assert.NotNull(dt);
+        Assert.Equal(DataTypeClass.String, dt.Class);
+        Assert.Equal(expectedSql, dt.ToSql());
+    }
+
+    [Theory]
+    [InlineData("Char")]
+    [InlineData("Varchar")]
+    [InlineData("NVarchar")]
+    public void TestMissingStringLengthThrows(string givenText)
+    {
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => GetDataType(givenText));
+        var messageTemplate = "Expected {0}. Found {1}.";
+        var expected = string.Format(messageTemplate, "data_type_length".Italic(), "end of input".Italic());
+        Assert.EndsWith(expected, ex.Message);
+    }
+
     [Theory]
     [InlineData("INT", DataTypeClass.Integral)]
     [InlineData("SMALLINT", DataTypeClass.Integral)]
@@ -104,5 +134,12 @@ public class MsDataTypeTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Equal("length", exception.Label);
         Assert.Equal("0", exception.Value);
         Assert.Equal(1, exception.Minimum);
+    }
+
+    private static DataType GetDataType(string sql)
+    {
+        var parser = new MsParser();
+        var state = GetState(sql);
+        return parser.DataTypeParser.ParseDataType(state);
     }
 }

@@ -7,7 +7,60 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsDataTypeParser : DataTypeParser
 {
-    protected override uint MinimumStringLength => 1;
+    protected static MsCharLength? ParseOptionalCharLength(ParserState state, uint min = 0, uint max = uint.MaxValue)
+    {
+        if (!state.ConsumeTokenIs<ParenOpen>())
+        {
+            return null;
+        }
+        if (state.ParseKeyword(Keyword.MAX))
+        {
+            var charLength = new MsCharLength.Max();
+            state.ExpectRightParen();
+            return charLength;
+        }
+
+        uint length = ParseBoundedUInt(state, min, max, "length");
+        state.ExpectRightParen();
+        return new MsCharLength.Specified(length);
+    }
+
+    protected static MsCharLength ParseCharLength(ParserState state)
+    {
+        if (!state.ConsumeTokenIs<ParenOpen>())
+        {
+            throw state.ExpectedCategoryException("data_type_length");
+        }
+
+        if (state.ParseKeyword(Keyword.MAX))
+        {
+            var charLength = new MsCharLength.Max();
+            state.ExpectRightParen();
+            return charLength;
+        }
+
+        uint length = ParseBoundedUInt(state, 1, uint.MaxValue, "length");
+        state.ExpectRightParen();
+        return new MsCharLength.Specified(length);
+    }
+
+    protected override DataType ParseChar(ParserState state)
+    {
+        MsCharLength length = ParseCharLength(state);
+        return new MsDataType.MsChar(length);
+    }
+
+    protected override DataType ParseVarchar(ParserState state)
+    {
+        MsCharLength length = ParseCharLength(state);
+        return new MsDataType.MsVarchar(length);
+    }
+
+    protected override DataType ParseNationalVarchar(ParserState state)
+    {
+        MsCharLength length = ParseCharLength(state);
+        return new MsDataType.MsNVarchar(length);
+    }
 
     public override bool IsDataTypeKeyword(Keyword? keyword) => keyword is
         Keyword.SMALLINT or Keyword.BIT or Keyword.MONEY or Keyword.SMALLMONEY or

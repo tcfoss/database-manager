@@ -132,11 +132,12 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("Char(4)", "CHAR(4)")]
-    [InlineData("CHAR(MAX)", "CHAR(MAX)")]
+    [InlineData("nchar(4)", "NCHAR(4)")]
+    [InlineData("nchar", "NCHAR")]
     [InlineData("Varchar(3)", "VARCHAR(3)")]
-    [InlineData("varchar(MAX)", "VARCHAR(MAX)")]
+    [InlineData("varchar", "VARCHAR")]
     [InlineData("NVarchar(12)", "NVARCHAR(12)")]
-    [InlineData("NVARCHAR(MAX)", "NVARCHAR(MAX)")]
+    [InlineData("nVaRcHaR", "NVARCHAR")]
     [InlineData("Text", "TEXT")]
     public void TestStringTypes(string givenText, string expectedSql)
     {
@@ -147,24 +148,19 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expectedSql, dt.ToSql());
     }
 
-    [Theory]
-    [InlineData("Char")]
-    [InlineData("Varchar")]
-    [InlineData("NVarchar")]
-    public void TestMissingStringLengthThrows(string givenText)
+    [Fact]
+    public void TestIsDataTypeKeyword()
     {
-        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => GetDataType(givenText));
-        var messageTemplate = "Expected {0}. Found {1}.";
-        var expected = string.Format(messageTemplate, "data_type_length".Italic(), "end of input".Italic());
-        Assert.EndsWith(expected, ex.Message);
-    }
-
-    [Theory]
-    [ClassData(typeof(IsDataTypeKeywordTests))]
-    public void TestIsDataTypeKeyword(Keyword keyword, bool expected)
-    {
-        var actual = new Parser().DataTypeParser.IsDataTypeKeyword(keyword);
-        Assert.Equal(expected, actual);
+        // Avoid cluttering the text explorer: only assert on failure.
+        foreach (var row in new IsDataTypeKeywordTests())
+        {
+            var expectedIsKeyword = row.Data.Item2;
+            var actual = new Parser().DataTypeParser.IsDataTypeKeyword(row.Data.Item1);
+            if (actual != expectedIsKeyword)
+            {
+                Assert.Equal(expectedIsKeyword, actual);
+            }
+        }
     }
 
     public class IsDataTypeKeywordTests : ExhaustiveKeywordTestData<bool>
