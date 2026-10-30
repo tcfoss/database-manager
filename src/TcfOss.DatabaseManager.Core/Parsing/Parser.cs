@@ -291,9 +291,9 @@ public class Parser : IParser
         {
             throw state.ExpectedException("VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT");
         }
-        if (options.SecurityContext != null && kw is not (Keyword.VIEW or Keyword.PROCEDURE or Keyword.FUNCTION or Keyword.TRIGGER or Keyword.EVENT))
+        if (options.SecurityContext != null && kw is not (Keyword.VIEW or Keyword.PROCEDURE or Keyword.FUNCTION))
         {
-            throw state.ExpectedException("VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT");
+            throw state.ExpectedException("VIEW", "PROCEDURE", "FUNCTION");
         }
         if (options.Aggregate && kw is not Keyword.FUNCTION)
         {
