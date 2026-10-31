@@ -147,6 +147,12 @@
     <data name="Err_Syntax_UnknownIdentifier" xml:space="preserve">
         <value>The identifier '{0}' could be found.</value>
     </data>
+    <data name="Err_Syntax_TypeNotFound" xml:space="preserve">
+        <value>The type '{0}' could not be resolved. Searched schemas: [{1}].</value>
+    </data>
+    <data name="Err_Syntax_CyclicTypeDependency" xml:space="preserve">
+        <value>Cyclic type dependency: {0}.</value>
+    </data>
     <data name="Err_Syntax_UnknownTable" xml:space="preserve">
         <value>The table or view '{0}' could be found.</value>
     </data>

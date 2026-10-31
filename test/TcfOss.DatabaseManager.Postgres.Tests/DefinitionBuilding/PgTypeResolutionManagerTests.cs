@@ -2,6 +2,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Configuration;
@@ -56,7 +57,10 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
         var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
         DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState("missing"));
 
-        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+        Assert.Equal("missing", exception.TypeName.Values[0].Name);
+        Assert.Equal(new[] { "app", "public" }, exception.SearchedSchemas.Select(schema => schema.Name));
+        Assert.Equal("Syntax Error: The type 'missing' could not be resolved. Searched schemas: [catalog.app, catalog.public].", exception.Message);
     }
 
     [Theory]
@@ -74,7 +78,7 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
         var manager = new PgTypeResolutionManager(config, names);
         DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql));
 
-        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+        Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
     }
 
     [Fact]
@@ -120,7 +124,29 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
         var manager = new PgTypeResolutionManager(config, names);
         DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState("mood"));
 
-        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+        Assert.Empty(exception.SearchedSchemas);
+        Assert.Contains("Searched schemas: []", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("app.missing", "catalog", "app")]
+    [InlineData("\"App\".\"Missing\"", "catalog", "App")]
+    [InlineData("other_catalog.other.missing", "other_catalog", "other")]
+    public void Resolve_QualifiedMissingTypeReportsOnlyTheExplicitSchema(string sql, string catalog, string schema)
+    {
+        var config = CreateConfig();
+        var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
+        DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql));
+
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+
+        Assert.Equal(sql, exception.TypeName.ToSql());
+        SchemaIdentifier searched = Assert.Single(exception.SearchedSchemas);
+        Assert.Equal(catalog, searched.Catalog.Name);
+        Assert.Equal(schema, searched.Name);
+        Assert.Equal(0, exception.ObjectSourceRef?.Start);
+        Assert.Equal(sql.Length, exception.ObjectSourceRef?.End);
     }
 
     private static PgConfig CreateConfig()

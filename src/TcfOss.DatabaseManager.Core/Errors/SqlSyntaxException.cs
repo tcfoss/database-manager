@@ -2,6 +2,7 @@ using System.Text;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Extensions;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Resources;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
@@ -54,6 +55,23 @@ public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
             : this(parts.ToIdentifier(), sourceRef) { }
 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_UnknownIdentifier);
+    }
+
+    public class TypeNotFound(ObjectName typeName, IReadOnlyList<SchemaIdentifier> searchedSchemas, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(typeName.ToSql(), string.Join(", ", searchedSchemas)), sourceRef)
+    {
+        public ObjectName TypeName { get; } = typeName;
+        public IReadOnlyList<SchemaIdentifier> SearchedSchemas { get; } = searchedSchemas;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_TypeNotFound);
+    }
+
+    public class CyclicTypeDependency(IReadOnlyList<ObjectIdentifier> cycle, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(string.Join(" -> ", cycle)), sourceRef)
+    {
+        public IReadOnlyList<ObjectIdentifier> Cycle { get; } = cycle;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_CyclicTypeDependency);
     }
 
     public class SelectIdentifierNotUnique(string identifier, SourceRef? sourceRef = null)

@@ -165,11 +165,16 @@ supports forward references and long acyclic chains. Repeated finalization is
 safe, and a missing declaration can be added before retrying. No partially
 resolved definition is returned on failure.
 
-Missing references reuse `SqlSyntaxException.SelectIdentifierNotFound` with the
-type reference's source span. Cycle diagnostics currently use
-`InvalidOperationException`, with the cycle path in the message and a `SourceRef`
-in `Exception.Data`. Dedicated localized type/cycle diagnostics need approval;
-no new error resource was introduced for this stage.
+Missing references raise `SqlSyntaxException.TypeNotFound`, carrying the requested
+`TypeName`, the actual `SearchedSchemas`, and the type reference's source span.
+Unqualified references report the ordered search path, including an explicit
+empty list when applicable; qualified references report only the specified
+schema/catalog. Cycles raise `SqlSyntaxException.CyclicTypeDependency`, carrying
+the closed `Cycle` of resolved identifiers and the repeated type's declaration
+source. Quoted identities are retained, and acyclic dependents are excluded from
+the reported cycle. Both diagnostics use Core error resources and standard
+`ObjectSourceRef` metadata, so they participate in normal sourced-error reporting
+without an ad hoc `Exception.Data` payload.
 
 The path is a static, explicit list of schema identifiers. SQL session changes
 (`SET search_path`), `$user` expansion, automatic temporary schemas, live catalog

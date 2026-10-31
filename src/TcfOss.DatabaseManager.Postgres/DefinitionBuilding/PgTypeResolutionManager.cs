@@ -2,7 +2,6 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
-using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
@@ -70,7 +69,10 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
         {
             location = location.Value with { SourceId = sourceRef.Value.SourceId };
         }
-        throw new SqlSyntaxException.SelectIdentifierNotFound(named.Name.ToSql(), location ?? sourceRef);
+        SchemaIdentifier[] searchedSchemas = named.Name.Values.Count > 1
+            ? [SchemaIdentifier.FromObjectName(new ObjectName([.. named.Name.Values[..^1]]), activeSchema.Catalog, null)]
+            : [.. _searchPath.Select(schema => new SchemaIdentifier(schema.Name, activeSchema.Catalog, schema.QuoteStyle))];
+        throw new SqlSyntaxException.TypeNotFound(named.Name, searchedSchemas, location ?? sourceRef);
     }
 
     public void ValidateDependencies(PgDefinition definition, SourceManager sources)
@@ -127,10 +129,8 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
             path.Add(current);
             current = dependencies[current].First(remaining.ContainsKey);
         }
-        IEnumerable<ObjectHandle> cycle = path.Skip(positions[current]).Append(current);
-        var exception = new InvalidOperationException($"Cyclic PostgreSQL type dependency: {string.Join(" -> ", cycle)}.");
-        exception.Data[nameof(SourceRef)] = sources.GetSourceRef(current);
-        throw exception;
+        ObjectIdentifier[] cycle = [.. path.Skip(positions[current]).Append(current).Select(handle => _names[handle])];
+        throw new SqlSyntaxException.CyclicTypeDependency(cycle, sources.GetSourceRef(current));
 
         void AddDependencies(ObjectHandle owner, IEnumerable<DataType> references)
         {

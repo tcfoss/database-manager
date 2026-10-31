@@ -137,11 +137,13 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 9);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(() => builder.ToDefinition());
 
-        Assert.Contains("Cyclic PostgreSQL type dependency", exception.Message);
+        Assert.Contains("Cyclic type dependency", exception.Message);
         Assert.Contains(" -> ", exception.Message);
-        Assert.Equal(9, Assert.IsType<SourceRef>(exception.Data[nameof(SourceRef)]).SourceId);
+        Assert.Equal(9, exception.ObjectSourceRef?.SourceId);
+        Assert.Equal(exception.Cycle[0], exception.Cycle[^1]);
+        Assert.True(exception.Cycle.Count >= 2);
     }
 
     [Theory]
@@ -153,9 +155,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 8);
 
-        var exception = Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => builder.ToDefinition());
 
         Assert.Contains("missing", exception.Message);
+        Assert.Equal("missing", exception.TypeName.ToSql());
+        Assert.Equal("public", Assert.Single(exception.SearchedSchemas).Name);
         Assert.Equal(8, exception.ObjectSourceRef?.SourceId);
         Assert.Equal(sql.IndexOf("missing", StringComparison.Ordinal), exception.ObjectSourceRef?.Start);
     }
@@ -296,7 +300,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.TypeNotFound>(() => builder.ToDefinition());
     }
 
     [Fact]
@@ -424,7 +428,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TABLE items (label label)"), GetSchema(), 0);
-        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.TypeNotFound>(() => builder.ToDefinition());
         builder.ProcessStatements(ParseStatements("CREATE DOMAIN label AS TEXT"), GetSchema(), 1);
 
         PgDefinition first = builder.ToDefinition();
@@ -469,11 +473,29 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE DOMAIN blocked AS first; CREATE DOMAIN first AS second; CREATE DOMAIN second AS first"), GetSchema(), 0);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(() => builder.ToDefinition());
 
         Assert.DoesNotContain("blocked", exception.Message);
         Assert.Contains("first", exception.Message);
         Assert.Contains("second", exception.Message);
+        Assert.DoesNotContain(exception.Cycle, name => name.Name == "blocked");
+    }
+
+    [Fact]
+    public void ToDefinition_CycleDiagnosticPreservesQuotedIdentityAndSourcedErrorContract()
+    {
+        const string sql = "CREATE DOMAIN \"Loop\" AS \"Loop\"";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 6);
+
+        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(() => builder.ToDefinition());
+
+        Assert.Equal("Loop", exception.Cycle[0].Name);
+        Assert.Equal(QuoteStyle.Ansi, exception.Cycle[0].QuoteStyle);
+        Assert.Equal(exception.Cycle[0], exception.Cycle[^1]);
+        Assert.Contains("\"Loop\"", exception.Message);
+        Assert.Equal(6, exception.ObjectSourceRef?.SourceId);
+        Assert.Empty(exception.Data);
     }
 
     [Theory]
