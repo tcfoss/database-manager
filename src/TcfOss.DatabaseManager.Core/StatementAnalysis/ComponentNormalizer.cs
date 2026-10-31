@@ -6,12 +6,18 @@ using TcfOss.DatabaseManager.Core.Expressions;
 
 namespace TcfOss.DatabaseManager.Core.StatementAnalysis;
 
-public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNameProvider functionNameProvider) : INormalizeComponents
+public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNameProvider functionNameProvider, NameHandling nameHandling) : INormalizeComponents
 {
     private const string StandardIdentifierPattern = "\\A[A-Za-z_][A-Za-z0-9_]*\\z";
     private static readonly Regex s_standardIdentifierRegex = GetStandardIdentifierRegex();
     private readonly QuoteStyle _quoteStyle = quoteStyle;
     private readonly IFunctionNameProvider _functionNameProvider = functionNameProvider;
+    private readonly NameHandling _nameHandling = nameHandling;
+
+    public ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNameProvider functionNameProvider)
+        : this(quoteStyle, functionNameProvider, NameHandling.None)
+    {
+    }
 
     public Identifier NormalizeSingleIdentifier(Identifier identifier)
     {
@@ -20,9 +26,10 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
             // Sigil-bearing identifiers (e.g. variables) are never quoted.
             return identifier;
         }
+        identifier = NormalizeCase(identifier);
         return identifier with
         {
-            QuoteStyle = _quoteStyle,
+            QuoteStyle = GetQuoteStyle(identifier),
             OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
         };
     }
@@ -34,11 +41,12 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
             // Sigil-bearing identifiers (e.g. variables) are never quoted.
             return identifier;
         }
+        identifier = NormalizeCase(identifier);
         if (quotationHandling == IdentifierQuotationHandling.Always)
         {
             return identifier with
             {
-                QuoteStyle = _quoteStyle,
+                QuoteStyle = GetQuoteStyle(identifier),
                 OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
             };
         }
@@ -49,7 +57,7 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
             {
                 return identifier with
                 {
-                    QuoteStyle = _quoteStyle,
+                    QuoteStyle = GetQuoteStyle(identifier),
                     OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
                 };
             }
@@ -58,11 +66,11 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
 
         if (quotationHandling == IdentifierQuotationHandling.OnlyIfSpecial)
         {
-            if (!s_standardIdentifierRegex.IsMatch(identifier.Name) || _functionNameProvider.IsReservedKeyword(identifier.Name))
+            if (!s_standardIdentifierRegex.IsMatch(identifier.Name) || _functionNameProvider.IsReservedKeyword(identifier.Name) || Handle.RequiresQuotingForCase(identifier, _nameHandling))
             {
                 return identifier with
                 {
-                    QuoteStyle = _quoteStyle,
+                    QuoteStyle = GetQuoteStyle(identifier),
                     OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
                 };
             }
@@ -79,7 +87,7 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
             {
                 return identifier with
                 {
-                    QuoteStyle = _quoteStyle,
+                    QuoteStyle = GetQuoteStyle(identifier),
                     OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
                 };
             }
@@ -88,11 +96,11 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
 
         if (quotationHandling == IdentifierQuotationHandling.OnlyIfSpecialOrFunction)
         {
-            if (!s_standardIdentifierRegex.IsMatch(identifier.Name) || _functionNameProvider.IsReservedKeyword(identifier.Name) || _functionNameProvider.IsBuiltInFunction(identifier.Name))
+            if (!s_standardIdentifierRegex.IsMatch(identifier.Name) || _functionNameProvider.IsReservedKeyword(identifier.Name) || _functionNameProvider.IsBuiltInFunction(identifier.Name) || Handle.RequiresQuotingForCase(identifier, _nameHandling))
             {
                 return identifier with
                 {
-                    QuoteStyle = _quoteStyle,
+                    QuoteStyle = GetQuoteStyle(identifier),
                     OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
                 };
             }
@@ -105,6 +113,50 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
 
         // LeaveOriginal
         return identifier;
+    }
+
+    public CatalogIdentifier NormalizeCatalogIdentifier(CatalogIdentifier identifier)
+    {
+        return (CatalogIdentifier)NormalizeSingleIdentifier(identifier);
+    }
+
+    public SchemaIdentifier NormalizeSchemaIdentifier(SchemaIdentifier identifier)
+    {
+        CatalogIdentifier catalog = identifier.Catalog;
+        if (catalog.OriginalIdentifiers == null && identifier.OriginalIdentifiers is { Count: 2 } originals)
+        {
+            catalog = catalog with { OriginalIdentifiers = [originals[0]] };
+        }
+        return (SchemaIdentifier)NormalizeSingleIdentifier(identifier) with
+        {
+            Catalog = NormalizeCatalogIdentifier(catalog)
+        };
+    }
+
+    public ObjectIdentifier NormalizeObjectIdentifier(ObjectIdentifier identifier)
+    {
+        SchemaIdentifier schema = identifier.Schema;
+        if (schema.OriginalIdentifiers == null && identifier.OriginalIdentifiers is { Count: >= 2 } originals)
+        {
+            schema = schema with { OriginalIdentifiers = [.. originals[..^1]] };
+        }
+        return (ObjectIdentifier)NormalizeSingleIdentifier(identifier) with
+        {
+            Schema = NormalizeSchemaIdentifier(schema)
+        };
+    }
+
+    public ColumnIdentifier NormalizeColumnIdentifier(ColumnIdentifier identifier)
+    {
+        ObjectIdentifier table = identifier.Table;
+        if (table.OriginalIdentifiers == null && identifier.OriginalIdentifiers is { Count: >= 2 } originals)
+        {
+            table = table with { OriginalIdentifiers = [.. originals[..^1]] };
+        }
+        return (ColumnIdentifier)NormalizeSingleIdentifier(identifier) with
+        {
+            Table = NormalizeObjectIdentifier(table)
+        };
     }
 
     public Identifier? NormalizeSingleIdentifierNullable(Identifier? identifier)
@@ -135,6 +187,35 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
     public virtual Value NormalizeValue(Value value)
     {
         return value;
+    }
+
+    private Identifier NormalizeCase(Identifier identifier)
+    {
+        if (_nameHandling == NameHandling.None)
+        {
+            return identifier;
+        }
+        Identifier original = identifier.OriginalIdentifiers?.LastOrDefault() ?? identifier;
+        string name = Handle.GetNamePart(identifier.Name, original.QuoteStyle, _nameHandling);
+        if (name == identifier.Name)
+        {
+            return identifier;
+        }
+        return identifier with
+        {
+            Name = name,
+            OriginalIdentifiers = identifier.OriginalIdentifiers ?? [identifier]
+        };
+    }
+
+    private QuoteStyle GetQuoteStyle(Identifier identifier)
+    {
+        if (_quoteStyle != QuoteStyle.None || !Handle.RequiresQuotingForCase(identifier, _nameHandling))
+        {
+            return _quoteStyle;
+        }
+        QuoteStyle original = (identifier.OriginalIdentifiers?.LastOrDefault() ?? identifier).QuoteStyle;
+        return original != QuoteStyle.None ? original : QuoteStyle.Ansi;
     }
 
     [GeneratedRegex(StandardIdentifierPattern, RegexOptions.Compiled)]

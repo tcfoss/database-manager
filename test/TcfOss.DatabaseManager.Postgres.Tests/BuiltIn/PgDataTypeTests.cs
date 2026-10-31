@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
@@ -471,6 +472,29 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     public void UnsupportedCreateForms_AreRejected(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("app", "mood", QuoteStyle.None, "app.mood")]
+    [InlineData("App", "Mood", QuoteStyle.Ansi, "\"App\".\"Mood\"")]
+    public void CustomTypes_PrintQualifiedNamesAndUseCustomClassification(string schema, string name, QuoteStyle quoteStyle, string expected)
+    {
+        DataType dataType = new PgDataType.Custom(ObjectIdentifier.FromStrings("catalog", schema, name, quoteStyle));
+
+        Assert.Equal(DataTypeClass.Custom, dataType.Class);
+        Assert.Equal(expected, dataType.ToSql());
+    }
+
+    [Fact]
+    public void CustomTypes_AreCompatibleWithCoreRoutineParameters()
+    {
+        DataType dataType = new PgDataType.Custom(ObjectIdentifier.FromStrings("catalog", "app", "mood", QuoteStyle.Ansi));
+        var parameter = new RoutineParameter.Directed(new Identifier("value"), dataType, null);
+
+        StatementRoutineParameter.Directed statement = parameter.ToStatementParameter();
+
+        Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
+        Assert.Equal("value \"app\".\"mood\"", statement.ToSql());
     }
 
     private static DataType ParseColumnType(string sql)

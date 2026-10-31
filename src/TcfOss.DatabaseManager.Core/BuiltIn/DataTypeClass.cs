@@ -26,4 +26,5 @@ public enum DataTypeClass
     Range,
     Multirange,
     System,
+    Custom,
 }

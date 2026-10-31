@@ -13,6 +13,10 @@ public interface INormalizeComponents
     Identifier NormalizeSingleIdentifier(Identifier identifier, IdentifierQuotationHandling quotationHandling);
     Identifier? NormalizeSingleIdentifierNullable(Identifier? identifier);
     ObjectName NormalizeObjectName(ObjectName name);
+    CatalogIdentifier NormalizeCatalogIdentifier(CatalogIdentifier identifier);
+    SchemaIdentifier NormalizeSchemaIdentifier(SchemaIdentifier identifier);
+    ObjectIdentifier NormalizeObjectIdentifier(ObjectIdentifier identifier);
+    ColumnIdentifier NormalizeColumnIdentifier(ColumnIdentifier identifier);
     CompoundIdentifier NormalizeIdentifier(CompoundIdentifier identifier);
     SingleIdentifier NormalizeIdentifier(SingleIdentifier identifier);
     Value NormalizeValue(Value value);

@@ -2,6 +2,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.Tests.StatementAnalysis;
 
@@ -245,6 +246,158 @@ public class ComponentNormalizerTests
         var normalizedValue = normalizer.NormalizeValue(value);
 
         Assert.Same(value, normalizedValue);
+    }
+
+    [Theory]
+    [MemberData(nameof(CaseNormalizationCases))]
+    public void NormalizeSingleIdentifier_CanonicalizesCaseWithoutChangingIdentity(NameHandling nameHandling,
+        QuoteStyle inputQuote, QuoteStyle outputQuote, IdentifierQuotationHandling policy, string expectedName)
+    {
+        var identifier = new Identifier("MiXeD", inputQuote) { Source = new SourceRef(3, 4, 9) };
+        var normalizer = new ComponentNormalizer(outputQuote, new FunctionNameProvider(), nameHandling);
+
+        Identifier normalized = normalizer.NormalizeSingleIdentifier(identifier, policy);
+        Identifier repeated = normalizer.NormalizeSingleIdentifier(normalized, policy);
+
+        Assert.Equal(expectedName, normalized.Name);
+        Assert.Equal(expectedName, Handle.GetNamePart(normalized, nameHandling));
+        Assert.Equal(identifier.Source, normalized.Source);
+        Assert.Equal(normalized, repeated);
+        Assert.Same(normalized.OriginalIdentifiers, repeated.OriginalIdentifiers);
+    }
+
+    public static TheoryData<NameHandling, QuoteStyle, QuoteStyle, IdentifierQuotationHandling, string> CaseNormalizationCases
+    {
+        get
+        {
+            var cases = new TheoryData<NameHandling, QuoteStyle, QuoteStyle, IdentifierQuotationHandling, string>();
+            foreach (NameHandling handling in Enum.GetValues<NameHandling>())
+            {
+                foreach (QuoteStyle input in Enum.GetValues<QuoteStyle>())
+                {
+                    string expected = handling switch
+                    {
+                        NameHandling.Lowercase => "mixed",
+                        NameHandling.Uppercase => "MIXED",
+                        NameHandling.LowercaseUnlessQuoted when input == QuoteStyle.None => "mixed",
+                        NameHandling.UppercaseUnlessQuoted when input == QuoteStyle.None => "MIXED",
+                        _ => "MiXeD"
+                    };
+                    foreach (QuoteStyle output in Enum.GetValues<QuoteStyle>())
+                    {
+                        foreach (IdentifierQuotationHandling policy in Enum.GetValues<IdentifierQuotationHandling>())
+                        {
+                            cases.Add(handling, input, output, policy, expected);
+                        }
+                    }
+                }
+            }
+            return cases;
+        }
+    }
+
+    [Theory]
+    [InlineData(NameHandling.Lowercase)]
+    [InlineData(NameHandling.LowercaseUnlessQuoted)]
+    [InlineData(NameHandling.Uppercase)]
+    [InlineData(NameHandling.UppercaseUnlessQuoted)]
+    public void CaseNormalization_LeavesSigilIdentifiersUntouched(NameHandling handling)
+    {
+        var identifier = new Identifier("MiXeD", QuoteStyle.None, SigilKind.Variable);
+        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), handling);
+
+        Assert.Same(identifier, normalizer.NormalizeSingleIdentifier(identifier));
+        Assert.Same(identifier, normalizer.NormalizeSingleIdentifier(identifier, IdentifierQuotationHandling.OnlyIfSpecial));
+    }
+
+    [Fact]
+    public void NormalizeObjectIdentifier_UsesOriginalQuotingForEveryScope()
+    {
+        var raw = new ObjectName([new Identifier("Catalog"), new Identifier("Schema"), new Identifier("Object", QuoteStyle.Ansi)]);
+        var activeSchema = new SchemaIdentifier("public", new CatalogIdentifier("catalog"));
+        ObjectIdentifier identifier = ObjectIdentifier.FromObjectName(raw, activeSchema, QuoteStyle.Ansi) with { Source = new SourceRef(1, 2, 3) };
+        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted);
+
+        ObjectIdentifier normalized = normalizer.NormalizeObjectIdentifier(identifier);
+
+        Assert.Equal(("catalog", "schema", "Object"), normalized.Strings);
+        Assert.Equal(identifier.Source, normalized.Source);
+        Assert.Same(identifier.OriginalIdentifiers, normalized.OriginalIdentifiers);
+        ObjectIdentifier repeated = normalizer.NormalizeObjectIdentifier(normalized);
+        Assert.Equal(normalized, repeated);
+        Assert.Same(normalized.Schema.OriginalIdentifiers, repeated.Schema.OriginalIdentifiers);
+        Assert.Same(normalized.Schema.Catalog.OriginalIdentifiers, repeated.Schema.Catalog.OriginalIdentifiers);
+    }
+
+    [Fact]
+    public void NormalizeColumnIdentifier_PreservesQuotedScopesAndCanonicalizesUnquotedScopes()
+    {
+        var raw = new ObjectName([new Identifier("Catalog", QuoteStyle.Ansi), new Identifier("Schema"), new Identifier("Table"), new Identifier("Column", QuoteStyle.Ansi)]);
+        ObjectIdentifier table = ObjectIdentifier.FromStrings("catalog", "public", "table");
+        ColumnIdentifier identifier = ColumnIdentifier.FromObjectName(raw, table, QuoteStyle.Ansi);
+        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted);
+
+        ColumnIdentifier normalized = normalizer.NormalizeColumnIdentifier(identifier);
+
+        Assert.Equal("Column", normalized.Name);
+        Assert.Equal(("Catalog", "schema", "table"), normalized.Table.Strings);
+        ColumnIdentifier repeated = normalizer.NormalizeColumnIdentifier(normalized);
+        Assert.Equal(normalized, repeated);
+        Assert.Same(normalized.Table.OriginalIdentifiers, repeated.Table.OriginalIdentifiers);
+        Assert.Same(normalized.Table.Schema.OriginalIdentifiers, repeated.Table.Schema.OriginalIdentifiers);
+    }
+
+    [Theory]
+    [InlineData(NameHandling.LowercaseUnlessQuoted, IdentifierQuotationHandling.Always)]
+    [InlineData(NameHandling.LowercaseUnlessQuoted, IdentifierQuotationHandling.OnlyIfSpecial)]
+    [InlineData(NameHandling.LowercaseUnlessQuoted, IdentifierQuotationHandling.OnlyIfSpecialOrFunction)]
+    [InlineData(NameHandling.UppercaseUnlessQuoted, IdentifierQuotationHandling.Always)]
+    [InlineData(NameHandling.UppercaseUnlessQuoted, IdentifierQuotationHandling.OnlyIfSpecial)]
+    [InlineData(NameHandling.UppercaseUnlessQuoted, IdentifierQuotationHandling.OnlyIfSpecialOrFunction)]
+    public void CaseNormalization_RestoresQuotingWhenOriginalIdentityRequiresIt(NameHandling nameHandling,
+        IdentifierQuotationHandling policy)
+    {
+        var functions = new FunctionNameProvider();
+        var original = new Identifier("MiXeD", QuoteStyle.Ansi) { Source = new SourceRef(3, 4, 9) };
+        var strippingNormalizer = new ComponentNormalizer(QuoteStyle.None, functions);
+        Identifier stripped = strippingNormalizer.NormalizeSingleIdentifier(original, IdentifierQuotationHandling.OnlyIfSpecial);
+        Assert.Equal(QuoteStyle.None, stripped.QuoteStyle);
+        Assert.Same(original, Assert.Single(stripped.OriginalIdentifiers!));
+        var normalizer = new ComponentNormalizer(QuoteStyle.None, functions, nameHandling);
+
+        Identifier normalized = normalizer.NormalizeSingleIdentifier(stripped, policy);
+        Identifier normalizedWithDefaults = normalizer.NormalizeSingleIdentifier(stripped);
+        Identifier repeated = normalizer.NormalizeSingleIdentifier(normalized, policy);
+
+        Assert.Equal("MiXeD", normalized.Name);
+        Assert.Equal(QuoteStyle.Ansi, normalized.QuoteStyle);
+        Assert.Equal("MiXeD", Handle.GetNamePart(normalized, nameHandling));
+        Assert.Equal(original.Source, normalized.Source);
+        Assert.Same(stripped.OriginalIdentifiers, normalized.OriginalIdentifiers);
+        Assert.Equal(normalized, normalizedWithDefaults);
+        Assert.Equal(normalized, repeated);
+        Assert.Same(normalized.OriginalIdentifiers, repeated.OriginalIdentifiers);
+    }
+
+    [Theory]
+    [InlineData(NameHandling.LowercaseUnlessQuoted, "after")]
+    [InlineData(NameHandling.UppercaseUnlessQuoted, "AFTER")]
+    public void CaseNormalization_UsesCurrentNameAndOriginalQuoting(NameHandling nameHandling, string expected)
+    {
+        var original = new Identifier("Before", QuoteStyle.None);
+        var identifier = new Identifier("AfTeR", QuoteStyle.Ansi)
+        {
+            OriginalIdentifiers = [original],
+            Source = new SourceRef(3, 4, 9)
+        };
+        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), nameHandling);
+
+        Identifier normalized = normalizer.NormalizeSingleIdentifier(identifier);
+
+        Assert.Equal(expected, normalized.Name);
+        Assert.Equal(identifier.Source, normalized.Source);
+        Assert.Same(identifier.OriginalIdentifiers, normalized.OriginalIdentifiers);
+        Assert.Equal(normalized, normalizer.NormalizeSingleIdentifier(normalized));
     }
 
     private enum QuotationAction

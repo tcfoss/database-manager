@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.Postgres.BuiltIn;
@@ -131,6 +132,16 @@ public abstract record PgDataType : DataType
                 }
             }
             ((IHaveOptionalPrecision)this).WritePrecision(writer);
+        }
+    }
+
+    public record Custom(ObjectIdentifier Name) : DataType
+    {
+        public override DataTypeClass Class => DataTypeClass.Custom;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Name.ToObjectName(2).ToSql(writer);
         }
     }
 }

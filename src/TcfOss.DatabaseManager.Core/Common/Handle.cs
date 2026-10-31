@@ -63,13 +63,32 @@ public readonly record struct Handle
 
     public static string GetNamePart(Identifier part, NameHandling nameHandling)
     {
+        return GetNamePart(part.Name, part.QuoteStyle, nameHandling);
+    }
+
+    public static string GetNamePart(string name, QuoteStyle quoteStyle, NameHandling nameHandling)
+    {
         return nameHandling switch
         {
-            NameHandling.None => part.Name,
-            NameHandling.Lowercase => part.Name.ToLowerInvariant(),
-            NameHandling.LowercaseUnlessQuoted => part.QuoteStyle != QuoteStyle.None ? part.Name : part.Name.ToLowerInvariant(),
-            NameHandling.Uppercase => part.Name.ToUpperInvariant(),
-            NameHandling.UppercaseUnlessQuoted => part.QuoteStyle != QuoteStyle.None ? part.Name : part.Name.ToUpperInvariant(),
+            NameHandling.None => name,
+            NameHandling.Lowercase => name.ToLowerInvariant(),
+            NameHandling.LowercaseUnlessQuoted => quoteStyle != QuoteStyle.None ? name : name.ToLowerInvariant(),
+            NameHandling.Uppercase => name.ToUpperInvariant(),
+            NameHandling.UppercaseUnlessQuoted => quoteStyle != QuoteStyle.None ? name : name.ToUpperInvariant(),
+            _ => throw new ArgumentOutOfRangeException(nameof(nameHandling), nameHandling, null)
+        };
+    }
+
+#pragma warning disable CA1862 // Use the 'StringComparison' method overloads to perform case-insensitive string comparisons
+    public static bool RequiresQuotingForCase(Identifier part, NameHandling nameHandling)
+    {
+        return nameHandling switch
+        {
+            NameHandling.None => false,
+            NameHandling.Lowercase => false,
+            NameHandling.LowercaseUnlessQuoted => part.Name != part.Name.ToLowerInvariant(),
+            NameHandling.Uppercase => false,
+            NameHandling.UppercaseUnlessQuoted => part.Name != part.Name.ToUpperInvariant(),
             _ => throw new ArgumentOutOfRangeException(nameof(nameHandling), nameHandling, null)
         };
     }

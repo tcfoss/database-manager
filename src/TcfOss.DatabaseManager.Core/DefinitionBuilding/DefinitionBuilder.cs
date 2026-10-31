@@ -35,8 +35,7 @@ public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TC
     protected ObjectNameAndHandle GetAndValidateName<T>(T statement, SchemaIdentifier activeSchemaId, SourceRef? sourceRef) where T : ICreateStatement
     {
         ObjectIdentifier objectId = ObjectIdentifier.FromObjectName(statement.Name, activeSchemaId, QuoteStyle);
-
-        ObjectHandle handle = ObjectHandle.Create(objectId, _nameHandling);
+        ObjectHandle handle = ObjectHandle.Create(statement.Name, activeSchemaId, _nameHandling);
 
         if (!ObjectHandles.Add(handle))
         {

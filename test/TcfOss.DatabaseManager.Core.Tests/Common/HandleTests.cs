@@ -14,6 +14,8 @@ public class HandleTests
     // === GetNamePart with various NameHandling values ===
 
     [Theory]
+    [InlineData(NameHandling.None, QuoteStyle.None, "Hello")]
+    [InlineData(NameHandling.None, QuoteStyle.Ansi, "Hello")]
     [InlineData(NameHandling.Uppercase, QuoteStyle.None, "HELLO")]
     [InlineData(NameHandling.Uppercase, QuoteStyle.Backticks, "HELLO")]
     [InlineData(NameHandling.UppercaseUnlessQuoted, QuoteStyle.None, "HELLO")]
@@ -31,6 +33,7 @@ public class HandleTests
         string result = Handle.GetNamePart(identifier, handling);
 
         Assert.Equal(expected, result);
+        Assert.Equal(expected, Handle.GetNamePart(identifier.Name, identifier.QuoteStyle, handling));
     }
 
     [Fact]
@@ -38,6 +41,7 @@ public class HandleTests
     {
         var identifier = new Identifier("Hello");
         Assert.Throws<ArgumentOutOfRangeException>(() => Handle.GetNamePart(identifier, (NameHandling)999));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Handle.GetNamePart(identifier.Name, identifier.QuoteStyle, (NameHandling)999));
     }
 
     // === Comparison operators ===
