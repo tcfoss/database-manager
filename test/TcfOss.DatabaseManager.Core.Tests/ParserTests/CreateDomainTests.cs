@@ -20,6 +20,8 @@ public class CreateDomainTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE DOMAIN positive AS INT DEFAULT 1")]
     [InlineData("CREATE DOMAIN positive AS INT NOT NULL")]
     [InlineData("CREATE DOMAIN positive AS INT NULL")]
+    [InlineData("CREATE DOMAIN positive AS INT NULL NULL")]
+    [InlineData("CREATE DOMAIN positive AS INT CONSTRAINT optional NULL NULL")]
     [InlineData("CREATE DOMAIN positive AS INT DEFAULT 1 NOT NULL CHECK (VALUE > 0)")]
     [InlineData("CREATE DOMAIN positive AS INT CONSTRAINT required NOT NULL CONSTRAINT positive_value CHECK (VALUE > 0)")]
     [InlineData("CREATE DOMAIN bounded AS INT CHECK (VALUE > 0 AND VALUE < 10) CHECK (VALUE <> 5)")]
@@ -79,6 +81,24 @@ public class CreateDomainTests : ParserTestsBase<GenericLexer, Parser>
         var exception = Assert.Throws<ParseException.Duplicate>(() => ParseStatements(sql));
 
         Assert.Contains(attribute, exception.Message);
+        var formatted = new ParseException.WithText(exception, "domain.sql", sql);
+        Assert.Contains("In file 'domain.sql' at line 2, column 3", formatted.Message);
+        Assert.Contains("\n  ^", formatted.Message);
+    }
+
+    [Theory]
+    [InlineData("NULL", "NOT NULL")]
+    [InlineData("NOT NULL", "NULL")]
+    [InlineData("NOT NULL", "NOT NULL")]
+    [InlineData("CONSTRAINT first NOT NULL", "CONSTRAINT second NULL")]
+    [InlineData("NULL DEFAULT 1 CHECK (VALUE > 0)", "NOT NULL")]
+    public void ConflictingNullability_ReportsSecondClause(string first, string second)
+    {
+        string sql = $"CREATE DOMAIN positive AS INT {first}\n  {second}";
+
+        var exception = Assert.Throws<ParseException.Duplicate>(() => ParseStatements(sql));
+
+        Assert.Contains("nullability", exception.Message);
         var formatted = new ParseException.WithText(exception, "domain.sql", sql);
         Assert.Contains("In file 'domain.sql' at line 2, column 3", formatted.Message);
         Assert.Contains("\n  ^", formatted.Message);

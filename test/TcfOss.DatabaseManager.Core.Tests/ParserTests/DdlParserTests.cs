@@ -348,9 +348,12 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TYPE mood AS ENUM ('sad', 'happy')")]
     [InlineData("CREATE TYPE app.mood AS ENUM ()")]
     [InlineData("CREATE TYPE mood AS ENUM ('', 'it''s fine')")]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy', 'Happy')")]
     [InlineData("CREATE TYPE address AS (street TEXT, postcode app.postal_code)")]
     [InlineData("CREATE TYPE empty AS ()")]
     [InlineData("CREATE TYPE address AS (street TEXT COLLATE app.collation)")]
+    [InlineData("CREATE TYPE address AS (Street TEXT, street TEXT)")]
+    [InlineData("CREATE TYPE address AS (\"MyAttribute\" TEXT, myattribute TEXT)")]
     public void CreateType_CoreParserRoundTrips(string sql)
     {
         Assert.Equal(sql, ParseStatement(sql).ToSql());
@@ -366,6 +369,38 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.NotNull(statement.Name.Source);
         Assert.NotNull(statement.Meta.Start);
         Assert.NotNull(statement.Meta.End);
+    }
+
+    [Theory]
+    [InlineData("'happy'")]
+    [InlineData("''")]
+    [InlineData("'it''s fine'")]
+    public void CreateType_EnumeratedRejectsDuplicateLabelsAtSecondLiteral(string label)
+    {
+        string sql = $"CREATE TYPE mood AS ENUM ({label},\n  {label})";
+
+        var exception = Assert.Throws<ParseException.Duplicate>(() => ParseStatements(sql));
+
+        Assert.Contains("enum label", exception.Message);
+        var formatted = new ParseException.WithText(exception, "types.sql", sql);
+        Assert.Contains("In file 'types.sql' at line 2, column 3", formatted.Message);
+        Assert.Contains("\n  ^", formatted.Message);
+    }
+
+    [Theory]
+    [InlineData("field", "field")]
+    [InlineData("field", "\"field\"")]
+    [InlineData("\"Field\"", "\"Field\"")]
+    public void CreateType_CompositeRejectsDuplicateAttributeAtSecondName(string first, string second)
+    {
+        string sql = $"CREATE TYPE details AS ({first} TEXT,\n  {second} INT)";
+
+        var exception = Assert.Throws<ParseException.Duplicate>(() => ParseStatements(sql));
+
+        Assert.Contains("composite attribute", exception.Message);
+        var formatted = new ParseException.WithText(exception, "types.sql", sql);
+        Assert.Contains("In file 'types.sql' at line 2, column 3", formatted.Message);
+        Assert.Contains("\n  ^", formatted.Message);
     }
 
     [Fact]

@@ -215,7 +215,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TYPE mood AS ENUM ('happy', 'happy')")]
     [InlineData("CREATE TYPE details AS (Label TEXT, label TEXT)")]
     public void ToDefinition_RejectsDuplicateTypeMembers(string sql)
     {
@@ -223,6 +222,64 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
         Assert.ThrowsAny<SqlSyntaxException>(() => builder.ToDefinition());
+    }
+
+    [Theory]
+    [InlineData("myattribute", QuoteStyle.None)]
+    [InlineData("MyAttribute", QuoteStyle.Ansi)]
+    public void ToDefinition_RejectsDuplicateCompositeAttributesInManuallyConstructedStatements(string name, QuoteStyle quoteStyle)
+    {
+        var builder = CreateBuilder();
+        var parsed = Assert.IsType<CreateType.Composite>(ParseStatement("CREATE TYPE details AS (valid TEXT)"));
+        var statement = parsed with
+        {
+            Attributes =
+            [
+                new Core.Statements.Components.CompositeTypeField(new Identifier(name, quoteStyle), new DataType.Text()),
+                new Core.Statements.Components.CompositeTypeField(new Identifier(name, quoteStyle), new DataType.Int())
+            ]
+        };
+        builder.ProcessStatements([statement], GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.DuplicateColumn>(() => builder.ToDefinition());
+    }
+
+    [Theory]
+    [InlineData("happy")]
+    [InlineData("")]
+    [InlineData("it's fine")]
+    public void ToDefinition_RejectsDuplicateEnumLabelsInManuallyConstructedStatements(string label)
+    {
+        var builder = CreateBuilder();
+        var parsed = Assert.IsType<CreateType.Enumerated>(ParseStatement("CREATE TYPE mood AS ENUM ('valid')"));
+        var statement = parsed with { Labels = [label, label] };
+        builder.ProcessStatements([statement], GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ToDefinition());
+    }
+
+    [Fact]
+    public void ToDefinition_PreservesCaseDistinctEnumLabels()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TYPE mood AS ENUM ('happy', 'Happy')"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        var enumerated = Assert.IsType<PgCustomType.Enumerated>(Assert.Single(definition.CustomTypes).Value);
+        Assert.Equal(new[] { "happy", "Happy" }, enumerated.Labels);
+    }
+
+    [Fact]
+    public void ToDefinition_PreservesDistinctQuotedCompositeAttributes()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TYPE details AS (\"MyAttribute\" TEXT, myattribute TEXT)"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        var composite = Assert.IsType<PgCustomType.Composite>(Assert.Single(definition.CustomTypes).Value);
+        Assert.Equal(new[] { "MyAttribute", "myattribute" }, composite.Attributes.Select(attribute => attribute.Name.Name));
     }
 
     [Fact]
@@ -309,14 +366,32 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE DOMAIN label AS TEXT NULL NOT NULL")]
-    [InlineData("CREATE DOMAIN label AS TEXT NOT NULL NULL")]
-    [InlineData("CREATE DOMAIN label AS TEXT NOT NULL NOT NULL")]
     [InlineData("CREATE DOMAIN label AS TEXT CONSTRAINT duplicate CHECK (VALUE <> '') CONSTRAINT Duplicate CHECK (VALUE <> 'x')")]
     public void ToDefinition_RejectsConflictingDomainConstraints(string sql)
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ToDefinition_RejectsInvalidNullabilityInManuallyConstructedStatements(bool first, bool second)
+    {
+        var builder = CreateBuilder();
+        var parsed = Assert.IsType<CreateDomain>(ParseStatement("CREATE DOMAIN label AS TEXT"));
+        var statement = parsed with
+        {
+            Constraints =
+            [
+                new Core.Statements.Components.StatementDomainConstraint.Nullability(first),
+                new Core.Statements.Components.StatementDomainConstraint.Nullability(second)
+            ]
+        };
+        builder.ProcessStatements([statement], GetSchema(), 0);
 
         Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
     }

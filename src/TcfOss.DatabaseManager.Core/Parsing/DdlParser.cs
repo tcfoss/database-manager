@@ -755,9 +755,58 @@ public class DdlParser
         state.ExpectKeyword(Keyword.AS);
         if (state.ParseKeyword(Keyword.ENUM))
         {
-            return new CreateType.Enumerated(name, state.ParseParenthesizedCommaSeparated(ParseEnumLabel, allowEmpty: true));
+            return ParseCreateTypeEnumeratedSub(state, name);
         }
-        return new CreateType.Composite(name, state.ParseParenthesizedCommaSeparated(ParseCompositeTypeField, allowEmpty: true));
+        var uniqueNames = new HashSet<string>(StringComparer.Ordinal);
+        return new CreateType.Composite(name, state.ParseParenthesizedCommaSeparated(
+            innerState => ParseCompositeTypeField(innerState, uniqueNames), allowEmpty: true));
+    }
+
+    private static CreateType.Enumerated ParseCreateTypeEnumeratedSub(ParserState state, ObjectName name)
+    {
+
+        state.ExpectLeftParen();
+        if (state.ConsumeTokenIs<ParenClose>())
+        {
+            return new CreateType.Enumerated(name, []);
+        }
+
+        SqlValueList<string> labels = [];
+        HashSet<string> uniqueLabels = [];
+
+        while (true)
+        {
+
+            string label = state.Peek() is StringLiteral literal ? literal.Value : throw state.ExpectedCategoryException("literal_string");
+            if (!uniqueLabels.Add(label))
+            {
+                throw new ParseException.Duplicate("enum label", state.Peek().Location);
+            }
+            labels.Add(label);
+            state.Next();
+            if (!state.ConsumeTokenIs<Comma>())
+            {
+                break;
+            }
+        }
+
+        state.ExpectToken<ParenClose>();
+        return new CreateType.Enumerated(name, labels);
+    }
+
+    private CompositeTypeField ParseCompositeTypeField(ParserState state, HashSet<string> uniqueNames)
+    {
+        Location location = state.Peek().Location;
+        Identifier name = _p.ComponentParser.ParseIdentifier(state, "attribute_name");
+        if (!uniqueNames.Add(name.Name))
+        {
+            throw new ParseException.Duplicate("composite attribute", location);
+        }
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        ObjectName? collation = state.ParseKeyword(Keyword.COLLATE)
+            ? _p.ComponentParser.ParseObjectName(state, "collation_name")
+            : null;
+        return new CompositeTypeField(name, dataType, collation);
     }
 
     public CreateDomain ParseCreateDomain(ParserState state)
@@ -773,6 +822,7 @@ public class DdlParser
         ObjectName? collation = null;
         Expression? defaultExpression = null;
         SqlValueList<StatementDomainConstraint> constraints = [];
+        bool? notNull = null;
 
         while (true)
         {
@@ -798,6 +848,14 @@ public class DdlParser
                 StatementDomainConstraint? constraint = ParseNextDomainConstraint(state);
                 if (constraint != null)
                 {
+                    if (constraint is StatementDomainConstraint.Nullability nullability)
+                    {
+                        if (notNull.HasValue && (notNull.Value || nullability.NotNull))
+                        {
+                            throw new ParseException.Duplicate("nullability", currentLocation);
+                        }
+                        notNull = nullability.NotNull;
+                    }
                     constraints.Add(constraint);
                 }
                 else
@@ -844,22 +902,6 @@ public class DdlParser
         }
 
         return null;
-    }
-
-    private static string ParseEnumLabel(ParserState state)
-    {
-        Token token = state.Next();
-        return token is StringLiteral literal ? literal.Value : throw ParserState.ExpectedCategoryException("literal_string", token);
-    }
-
-    private CompositeTypeField ParseCompositeTypeField(ParserState state)
-    {
-        Identifier name = _p.ComponentParser.ParseIdentifier(state, "attribute_name");
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
-        ObjectName? collation = state.ParseKeyword(Keyword.COLLATE)
-            ? _p.ComponentParser.ParseObjectName(state, "collation_name")
-            : null;
-        return new CompositeTypeField(name, dataType, collation);
     }
 
     public DropObject ParseDropObject(ParserState state)

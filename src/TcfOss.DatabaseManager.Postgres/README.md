@@ -29,6 +29,10 @@ without the PostgreSQL provider. Composite fields retain parsed type references
 and optional collations; enum labels retain their order. Empty definitions are
 supported. Parsing does not check type existence; definition construction resolves
 the references after all declarations have been collected.
+Enum labels and decoded composite attribute names are checked for ordinal,
+case-sensitive uniqueness during parsing. Definition construction retains these
+guards for manually assembled statements and applies configured name handling
+to detect additional composite-name collisions.
 
 `Parser.ParseCreate` is protected and virtual. Provider overrides narrow its
 dispatch while reusing the shared modifier prefix and Core parsing methods.
@@ -45,6 +49,9 @@ expression with no column dependency; quoted identifiers and expressions
 outside domain checks retain their normal interpretation. Domain checks and
 defaults are parsed, not evaluated. Definition construction resolves domain base
 types and validates constraint names and nullability conflicts.
+Parsing also rejects redundant `NOT NULL` and conflicting `NULL`/`NOT NULL`
+clauses, pointing to the offending clause; repeated `NULL` remains allowed.
+Builder validation remains in place for manually constructed statements.
 
 Parsed columns, casts, routine parameters, and function return declarations use
 Core's `DataTypeReference`: `BuiltIn` wraps a concrete `DataType`, while `Named`
