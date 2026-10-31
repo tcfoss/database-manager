@@ -144,4 +144,15 @@ public abstract record PgDataType : DataType
             Name.ToObjectName(2).ToSql(writer);
         }
     }
+
+    public record Array(DataType ElementType) : DataType
+    {
+        public override DataTypeClass Class => DataTypeClass.Array;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            ElementType.ToSql(writer);
+            writer.Write("[]");
+        }
+    }
 }

@@ -497,6 +497,97 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("value \"app\".\"mood\"", statement.ToSql());
     }
 
+    [Fact]
+    public void ArrayBrackets_ArePunctuationInPostgres()
+    {
+        var tokens = new PgLexer().Tokenize("[][3]");
+
+        Assert.Collection(tokens,
+            token => Assert.IsType<BracketOpen>(token),
+            token => Assert.IsType<BracketClose>(token),
+            token => Assert.IsType<BracketOpen>(token),
+            token => Assert.IsType<NumericLiteral>(token),
+            token => Assert.IsType<BracketClose>(token));
+    }
+
+    [Fact]
+    public void GenericLexer_RetainsBracketQuotedIdentifiers()
+    {
+        var token = Assert.IsType<Word>(Assert.Single(new Core.Lexing.GenericLexer().Tokenize("[name]")));
+
+        Assert.Equal(QuoteStyle.Brackets, token.QuoteStyle);
+        Assert.Equal("name", token.Value);
+    }
+
+    [Theory]
+    [InlineData("INT[]")]
+    [InlineData("TEXT[][]")]
+    [InlineData("INT[3][4]")]
+    [InlineData("INT[0]")]
+    [InlineData("INT[2147483647]")]
+    [InlineData("INT ARRAY")]
+    [InlineData("INT ARRAY[4]")]
+    [InlineData("NUMERIC(10,2)[]")]
+    [InlineData("app.mood[]")]
+    [InlineData("\"App\".\"Mood\"[3][]")]
+    public void ArrayReferences_PreserveDeclaredSyntax(string sql)
+    {
+        var reference = Assert.IsType<DataTypeReference.Array>(new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql)));
+
+        Assert.Equal(sql, reference.ToSql());
+        var table = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE sample (values {sql})"));
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns));
+        Assert.Equal(sql, Assert.IsType<DataTypeReference.Array>(column.DataType).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INT[")]
+    [InlineData("INT[3")]
+    [InlineData("INT[-1]")]
+    [InlineData("INT[+3]")]
+    [InlineData("INT[2147483648]")]
+    [InlineData("INT[1.5]")]
+    [InlineData("INT[foo]")]
+    [InlineData("INT[1,2]")]
+    [InlineData("INT ARRAY[]")]
+    [InlineData("INT ARRAY[3][4]")]
+    public void InvalidArrayDeclarations_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE sample (values {sql})"));
+    }
+
+    [Fact]
+    public void ArrayReferences_AreSupportedInCastTargets()
+    {
+        var cast = Assert.IsType<Cast>(ParseExpression("CAST('{1,2}' AS INT[])"));
+
+        Assert.IsType<DataTypeReference.Array>(cast.DataType);
+        Assert.Equal("CAST('{1,2}' AS INT[])", cast.ToSql());
+    }
+
+    [Fact]
+    public void ArrayReferences_RetainEachDeclaredDimension()
+    {
+        var reference = Assert.IsType<DataTypeReference.Array>(new PgParser().DataTypeParser.ParseDataTypeReference(GetState("TEXT[][3][]")));
+
+        Assert.False(reference.UseArrayKeyword);
+        Assert.Equal(new uint?[] { null, 3, null }, reference.Dimensions.Select(dimension => dimension.Length));
+    }
+
+    [Fact]
+    public void ArrayBoundOutOfRange_ReportsBoundLocation()
+    {
+        const string sql = "INT[2147483648]";
+
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql)));
+
+        Assert.Equal("array_length", exception.Label);
+        Assert.Equal(0, exception.Minimum);
+        Assert.Equal(int.MaxValue, exception.Maximum);
+        var formatted = new ParseException.WithText(exception, "types.sql", sql);
+        Assert.Contains("line 1, column 5", formatted.Message);
+    }
+
     private static DataType ParseColumnType(string sql)
     {
         var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE sample (value {sql})")));

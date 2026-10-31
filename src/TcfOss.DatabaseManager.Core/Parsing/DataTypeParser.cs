@@ -194,12 +194,44 @@ public class DataTypeParser(Parser parser)
 
     public virtual DataTypeReference ParseDataTypeReference(ParserState state)
     {
+        DataTypeReference reference;
         if (state.Peek() is Word { QuoteStyle: QuoteStyle.None } word
             && !state.PeekNthIs<Dot>(1) && IsDataTypeKeyword(word.Keyword))
         {
-            return new DataTypeReference.BuiltIn(ParseDataType(state));
+            reference = new DataTypeReference.BuiltIn(ParseDataType(state));
         }
-        return new DataTypeReference.Named(parser.ComponentParser.ParseObjectName(state, "data_type"));
+        else
+        {
+            reference = new DataTypeReference.Named(parser.ComponentParser.ParseObjectName(state, "data_type"));
+        }
+        return ParseArraySuffix(state, reference);
+    }
+
+    private static DataTypeReference ParseArraySuffix(ParserState state, DataTypeReference elementType)
+    {
+        bool useArrayKeyword = state.ParseKeyword(Keyword.ARRAY);
+        if (!useArrayKeyword && !state.PeekIs<BracketOpen>())
+        {
+            return elementType;
+        }
+        SqlValueList<DataTypeReference.Array.Dimension> dimensions = [];
+        if (useArrayKeyword)
+        {
+            if (state.ConsumeTokenIs<BracketOpen>())
+            {
+                dimensions.Add(new DataTypeReference.Array.Dimension(ParseBoundedUInt(state, max: int.MaxValue, label: "array_length")));
+                state.ExpectToken<BracketClose>();
+            }
+        }
+        else
+        {
+            while (state.ConsumeTokenIs<BracketOpen>())
+            {
+                dimensions.Add(new DataTypeReference.Array.Dimension(state.PeekIs<BracketClose>() ? null : ParseBoundedUInt(state, max: int.MaxValue, label: "array_length")));
+                state.ExpectToken<BracketClose>();
+            }
+        }
+        return new DataTypeReference.Array(elementType, dimensions) { UseArrayKeyword = useArrayKeyword };
     }
 
     // Returns true for any keyword that can open a typed-string expression (TYPE 'literal').

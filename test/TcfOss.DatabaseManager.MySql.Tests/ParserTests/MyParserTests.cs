@@ -418,6 +418,15 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("INT[]")]
+    [InlineData("INT ARRAY")]
+    [InlineData("TEXT ARRAY[3]")]
+    public void ArrayTypeDeclarations_AreNotSupported(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE sample (value {sql})"));
+    }
+
+    [Theory]
     [InlineData("CREATE *")]
     [InlineData("CREATE unsupported_object")]
     public void InvalidCreateTargets_AreRejected(string sql)

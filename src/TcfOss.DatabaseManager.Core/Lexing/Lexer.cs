@@ -13,6 +13,7 @@ public class Lexer<TRunState> : ILexer
 {
     private const int StackAllocationThreshold = 256;
     protected virtual bool SupportBackslashQuoteEscape => true;
+    protected virtual bool SupportBracketQuotedIdentifiers => true;
 
     public virtual List<Token> Tokenize(string sql) => Tokenize(sql.AsSpan());
 
@@ -76,7 +77,9 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.NewLine => TokenizeSingleCharacter(ref state, new NonSql(NonSqlType.Newline) { Location = state.Location }),
             CharSymbols.CarriageReturn => TokenizeCarriageReturn(ref state),
 
-            CharSymbols.SquareBracketOpen => TokenizeQuotedIdentifier(ref state),
+            CharSymbols.SquareBracketOpen when SupportBracketQuotedIdentifiers => TokenizeQuotedIdentifier(ref state),
+            CharSymbols.SquareBracketOpen => TokenizeSingleCharacter(ref state, new BracketOpen() { Location = state.Location }),
+            CharSymbols.SquareBracketClose when !SupportBracketQuotedIdentifiers => TokenizeSingleCharacter(ref state, new BracketClose() { Location = state.Location }),
             CharSymbols.DoubleQuote => TokenizeQuotedIdentifier(ref state),
             CharSymbols.Backtick => TokenizeQuotedIdentifier(ref state),
 

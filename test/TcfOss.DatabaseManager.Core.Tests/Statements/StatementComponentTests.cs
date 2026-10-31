@@ -358,6 +358,33 @@ public class StatementComponentTests
         Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new Core.Parsing.ParserState([.. lexer.Tokenize(expected)]), null)));
     }
 
+    [Fact]
+    public void ArrayReferences_FormatElementNamesAndPreserveDeclaredBounds()
+    {
+        var array = new DataTypeReference.Array(new DataTypeReference.Named(new ObjectName([new Identifier("app"), new Identifier("mood")])),
+        [
+            new DataTypeReference.Array.Dimension(null),
+            new DataTypeReference.Array.Dimension(3)
+        ]);
+
+        Assert.Equal("\"app\".\"mood\"[][3]", FormatComponent(array));
+        var standard = new DataTypeReference.Array(new DataTypeReference.BuiltIn(new DataType.Int()),
+            [new DataTypeReference.Array.Dimension(4)]) { UseArrayKeyword = true };
+        Assert.Equal("INT ARRAY[4]", FormatComponent(standard));
+    }
+
+    [Fact]
+    public void CoreParser_AcceptsStandardArrayTypeSyntax()
+    {
+        var parser = new Parsing.Parser();
+        var lexer = new Lexing.GenericLexer();
+        Statement statement = Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize("CREATE TYPE wrapper AS (values TEXT ARRAY)")]), null));
+
+        var composite = Assert.IsType<CreateType.Composite>(statement);
+        Assert.IsType<DataTypeReference.Array>(Assert.Single(composite.Attributes).DataType);
+        Assert.Equal("CREATE TYPE wrapper AS (values TEXT ARRAY)", statement.ToSql());
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();

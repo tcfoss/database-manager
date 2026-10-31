@@ -149,6 +149,42 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(sql.Length, exception.ObjectSourceRef?.End);
     }
 
+    [Theory]
+    [InlineData("INT[]")]
+    [InlineData("INT[][]")]
+    [InlineData("INT[3][4]")]
+    [InlineData("INT ARRAY")]
+    [InlineData("INT ARRAY[4]")]
+    public void Resolve_ArraysIgnoreDeclaredSizesAndDimensions(string sql)
+    {
+        var config = CreateConfig();
+        var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
+        DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState(sql));
+
+        var resolved = Assert.IsType<PgDataType.Array>(manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+
+        Assert.IsType<DataType.Int>(resolved.ElementType);
+        Assert.Equal(DataTypeClass.Array, resolved.Class);
+        Assert.Equal("INT[]", resolved.ToSql());
+        Assert.Equal(new PgDataType.Array(new DataType.Int()), resolved);
+    }
+
+    [Fact]
+    public void Resolve_ArrayElementsUseTheConfiguredSearchPath()
+    {
+        var config = CreateConfig();
+        var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>
+        {
+            [new ObjectHandle("catalog", "app", "mood")] = ObjectIdentifier.FromStrings("catalog", "app", "mood")
+        });
+        DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState("mood[][]"));
+
+        var resolved = Assert.IsType<PgDataType.Array>(manager.Resolve(reference, new SchemaIdentifier("public", config.Catalog)));
+
+        Assert.Equal("app", Assert.IsType<PgDataType.Custom>(resolved.ElementType).Name.Schema.Name);
+        Assert.Equal("\"app\".\"mood\"[]", resolved.ToSql());
+    }
+
     private static PgConfig CreateConfig()
     {
         return new PgConfig

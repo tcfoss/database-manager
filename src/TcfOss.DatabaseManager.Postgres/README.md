@@ -54,8 +54,9 @@ clauses, pointing to the offending clause; repeated `NULL` remains allowed.
 Builder validation remains in place for manually constructed statements.
 
 Parsed columns, casts, routine parameters, and function return declarations use
-Core's `DataTypeReference`: `BuiltIn` wraps a concrete `DataType`, while `Named`
-retains an unresolved `ObjectName`. `ParseDataTypeReference` accepts unqualified,
+Core's `DataTypeReference`: `BuiltIn` wraps a concrete `DataType`, `Named`
+retains an unresolved `ObjectName`, and `Array` wraps an element reference with
+declared dimensions. `ParseDataTypeReference` accepts unqualified,
 qualified, and double-quoted names, preserving spelling, quoting, and source
 locations. `ParseDataType` remains the built-in-only entry point. Invalid
 built-in syntax is not retried as a named reference.
@@ -83,13 +84,43 @@ values produce sourced `ParseException.ValueOutOfRange` diagnostics rather than
 syntax expectation errors. Zero-length strings remain supported by Core and the
 MySQL/MariaDB parser, but are rejected by PostgreSQL and SQL Server.
 
-This is not yet a complete PostgreSQL grammar. Arrays, custom type modifiers,
+This is not yet a complete PostgreSQL grammar. Custom type modifiers,
 range/base/shell type declarations, catalog/internal and routine
 pseudo-types, PostgreSQL-specific casts (`::`), dollar-quoted strings, and routine
 bodies are not implemented. Existing Core statement parsing is reused without
 claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
+
+## Array Types
+
+Array type declarations are supported in columns, composite attributes, domain
+base types, routine parameters/returns, and `CAST` targets. Shared Core reference
+parsing handles suffixes such as `INT[]`, `TEXT[][]`, `INT[3][4]`, `mood[]`, and
+the SQL-standard one-dimensional forms `INT ARRAY` and `INT ARRAY[4]`.
+PostgreSQL uses bracket punctuation tokens; other lexers retain their existing
+bracket-quoted identifier behavior. MySQL/MariaDB and SQL Server narrow type
+reference parsing and do not accept these array declarations.
+
+`DataTypeReference.Array` retains bracket count, optional declared lengths, and
+whether the `ARRAY` keyword was used, for syntax-preserving writing/formatting.
+Declared bounds are nonnegative integers up to `int.MaxValue`; malformed or
+out-of-range bounds raise sourced parse errors. SQL-standard `ARRAY` supports
+at most one explicitly sized bracket pair.
+
+Resolved arrays are `PgDataType.Array(ElementType)` with `DataTypeClass.Array`.
+Their canonical SQL spelling is `element_type[]`. PostgreSQL does not enforce
+declared lengths or dimensionality, and these do not distinguish canonical
+types; the resolver therefore discards them. Named elements use the same
+search-path and quoting rules as other references. Arrays of domains and domains
+over arrays retain distinct identities. Dependency checks follow array elements
+to detect missing types and cycles, including implicit table row types.
+
+SQL round-trip tests cover array-bearing definitions and routine signatures,
+including forward references. Array values are still represented as ordinary
+SQL string literals where applicable; array constructors, indexing, slices,
+array operators, and validation of array value contents are not implemented.
+No migration comparison or integration-test work was added for this stage.
 
 ## Definition Construction
 

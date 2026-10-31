@@ -132,6 +132,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE DOMAIN first AS second; CREATE TYPE second AS (child first)")]
     [InlineData("CREATE TABLE loop (child loop)")]
     [InlineData("CREATE TABLE first (child second); CREATE TYPE second AS (child first)")]
+    [InlineData("CREATE DOMAIN loop AS loop[]")]
+    [InlineData("CREATE TYPE loop AS (child loop[])")]
+    [InlineData("CREATE TABLE loop (child loop[])")]
+    [InlineData("CREATE DOMAIN first AS second[]; CREATE TYPE second AS (child first[])")]
     public void ToDefinition_RejectsCyclicTypeDependencies(string sql)
     {
         var builder = CreateBuilder();
@@ -150,6 +154,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE DOMAIN label AS missing")]
     [InlineData("CREATE TYPE details AS (label missing)")]
     [InlineData("CREATE TABLE items (label missing)")]
+    [InlineData("CREATE DOMAIN label AS missing[]")]
+    [InlineData("CREATE TYPE details AS (label missing[])")]
+    [InlineData("CREATE TABLE items (label missing[])")]
     public void ToDefinition_RejectsMissingTypesWithSource(string sql)
     {
         var builder = CreateBuilder();
@@ -295,6 +302,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE FUNCTION echo(value missing) RETURNS TEXT RETURN value")]
     [InlineData("CREATE FUNCTION echo(value TEXT) RETURNS missing RETURN value")]
     [InlineData("CREATE PROCEDURE save(value missing) SELECT value")]
+    [InlineData("CREATE FUNCTION echo(value missing[]) RETURNS TEXT RETURN value")]
+    [InlineData("CREATE FUNCTION echo(value TEXT) RETURNS missing[] RETURN value")]
+    [InlineData("CREATE PROCEDURE save(value missing[]) SELECT value")]
     public void ToDefinition_RejectsMissingRoutineSignatureTypes(string sql)
     {
         var builder = CreateBuilder();
@@ -555,6 +565,39 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
 
         Assert.Throws<DefinitionException.CreateTableAsSelect>(() => builder.ProcessStatements(ParseStatements("CREATE TABLE items AS SELECT 1"), GetSchema(), 0));
+    }
+
+    [Fact]
+    public void Arrays_RoundTripWithoutFlatteningDomainOrElementIdentity()
+    {
+        const string sql = "CREATE TYPE mood AS ENUM ('happy'); "
+            + "CREATE DOMAIN labels AS TEXT[3][4]; CREATE DOMAIN label AS TEXT; "
+            + "CREATE TYPE details AS (values label[], moods mood ARRAY[3]); "
+            + "CREATE TABLE items (payload details[], first labels, second label[][], numbers INT ARRAY[4] DEFAULT '{1,2}'); "
+            + "CREATE FUNCTION echo(values label[]) RETURNS labels[] RETURN values; "
+            + "CREATE PROCEDURE save(IN values mood[]) SELECT values";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        var domain = Assert.IsType<PgCustomType.Domain>(definition.CustomTypes[new ObjectHandle("catalog", "public", "labels")]);
+        Assert.IsType<DataType.Text>(Assert.IsType<PgDataType.Array>(domain.BaseType).ElementType);
+        PgTable table = Assert.Single(definition.Tables).Value;
+        Assert.Equal("labels", Assert.IsType<PgDataType.Custom>(table.Columns[1].DataType).Name.Name);
+        Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(table.Columns[2].DataType).ElementType).Name.Name);
+        PgStoredFunction function = Assert.Single(definition.Functions).Value;
+        Assert.Equal("labels", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(function.ReturnType).ElementType).Name.Name);
+        var statements = new List<Statement> { table.ToCreateStatement(true), function.ToCreateStatement(true), Assert.Single(definition.Procedures).Value.ToCreateStatement(true) };
+        statements.AddRange(definition.CustomTypes.Values.Select(type => type.ToCreateStatement(true)));
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 1);
+        PgDefinition result = rebuilt.ToDefinition();
+        Assert.Equal(definition.Tables, result.Tables);
+        Assert.Equal(definition.CustomTypes, result.CustomTypes);
+        Assert.Equal(function.Parameters, Assert.Single(result.Functions).Value.Parameters);
+        Assert.Equal(function.ReturnType, Assert.Single(result.Functions).Value.ReturnType);
+        Assert.Equal(Assert.Single(definition.Procedures).Value.Parameters, Assert.Single(result.Procedures).Value.Parameters);
     }
 
     private static SchemaIdentifier GetSchema()

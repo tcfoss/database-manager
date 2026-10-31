@@ -24,4 +24,35 @@ public abstract record DataTypeReference : IWriteSql
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager) => Name.FormatSql(writer, manager);
     }
+
+    public record Array(DataTypeReference ElementType, SqlValueList<Array.Dimension> Dimensions) : DataTypeReference
+    {
+        public readonly record struct Dimension(uint? Length);
+
+        public bool UseArrayKeyword { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            ElementType.ToSql(writer);
+            WriteSuffix(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            ElementType.FormatSql(writer, manager);
+            WriteSuffix(writer);
+        }
+
+        private void WriteSuffix(SqlTextWriter writer)
+        {
+            if (UseArrayKeyword)
+            {
+                writer.Write(" ARRAY");
+            }
+            foreach (Dimension dimension in Dimensions)
+            {
+                writer.WriteSql($"[{dimension.Length}]");
+            }
+        }
+    }
 }

@@ -37,6 +37,10 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
 
     public DataType Resolve(DataTypeReference reference, SchemaIdentifier activeSchema, SourceRef? sourceRef = null)
     {
+        if (reference is DataTypeReference.Array array)
+        {
+            return new PgDataType.Array(Resolve(array.ElementType, activeSchema, sourceRef));
+        }
         if (reference is DataTypeReference.BuiltIn builtIn)
         {
             return builtIn.DataType;
@@ -134,9 +138,17 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
 
         void AddDependencies(ObjectHandle owner, IEnumerable<DataType> references)
         {
-            foreach (PgDataType.Custom reference in references.OfType<PgDataType.Custom>())
+            foreach (DataType reference in references)
             {
-                dependencies[owner].Add(ObjectHandle.Create(reference.Name, _config.NameHandling));
+                DataType elementType = reference;
+                while (elementType is PgDataType.Array array)
+                {
+                    elementType = array.ElementType;
+                }
+                if (elementType is PgDataType.Custom custom)
+                {
+                    dependencies[owner].Add(ObjectHandle.Create(custom.Name, _config.NameHandling));
+                }
             }
         }
     }
