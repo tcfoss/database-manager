@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -168,7 +169,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             Declaration<CreateFunction> item = declaration.Value;
             functions.Add(declaration.Key, new PgStoredFunction(_componentNormalizer.NormalizeObjectIdentifier(item.Name),
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager),
-                manager.Resolve(item.Statement.ReturnType, item.Name.Schema, item.SourceRef), item.Statement.Body));
+                manager.Resolve(item.Statement.ReturnType, item.Name.Schema, item.SourceRef), item.Statement.Body)
+            {
+                RawBodyText = SourceManager.GetText(item.SourceRef, item.Statement.Body.Meta)
+            });
         }
 
         var procedures = new DatabaseObjectDict<PgStoredProcedure>(Config.NameHandling);
@@ -176,7 +180,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             Declaration<CreateProcedure> item = declaration.Value;
             procedures.Add(declaration.Key, new PgStoredProcedure(_componentNormalizer.NormalizeObjectIdentifier(item.Name),
-                ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body));
+                ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
+            {
+                RawBodyText = SourceManager.GetText(item.SourceRef, item.Statement.Body.Meta)
+            });
         }
 
         var definition = new PgDefinition
@@ -197,11 +204,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return definition;
     }
 
-    private SqlValueList<PgRoutineParameter> ResolveParameters(SqlValueList<StatementRoutineParameter> parameters,
+    private SqlValueList<RoutineParameter> ResolveParameters(SqlValueList<StatementRoutineParameter> parameters,
         ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
     {
         var names = new HashSet<string>();
-        SqlValueList<PgRoutineParameter> result = [];
+        SqlValueList<RoutineParameter> result = [];
         foreach (StatementRoutineParameter parameter in parameters)
         {
             Identifier name = _componentNormalizer.NormalizeSingleIdentifier(parameter.Name);
@@ -212,8 +219,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             DataType dataType = manager.Resolve(parameter.DataType, routine.Schema, sourceRef);
             result.Add(parameter switch
             {
-                StatementRoutineParameter.Directed directed => new PgRoutineParameter(name, dataType) { Direction = directed.Direction },
-                StatementRoutineParameter.Undirected undirected => new PgRoutineParameter(name, dataType)
+                StatementRoutineParameter.Directed directed => new RoutineParameter.Directed(name, dataType, directed.Direction),
+                StatementRoutineParameter.Undirected undirected => new RoutineParameter.Undirected(name, dataType)
                 {
                     DefaultValue = undirected.DefaultValue,
                     Output = undirected.Output

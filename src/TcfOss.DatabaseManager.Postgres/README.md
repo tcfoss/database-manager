@@ -120,10 +120,11 @@ and constraint-name normalization. PostgreSQL's expression hooks currently
 return their inputs unchanged; expression defaults use the same expression for
 both SQL representation and normalized equality. Provider-specific expression
 normalization rules remain deferred.
-`PgRoutineParameter` also uses `DataType` for routine signatures. Custom types
-can be used with Core's routine parameter and return-type contracts; migrating
-the PostgreSQL routine models to Core's abstract routine models remains a later
-step.
+Routine signatures use Core's `RoutineParameter` directly. `PgStoredFunction`
+and `PgStoredProcedure` derive from Core's abstract routine models, using resolved
+`DataType` values for parameters and function return types. Core's raw-body text
+contract is retained: raw text is copied into generated statement metadata and
+excluded from routine equality and hashing.
 
 `PgDefinitionBuilder.ProcessStatements` collects table, enum, composite, and
 domain declarations, plus the currently supported Core routine forms, across
@@ -180,11 +181,39 @@ Routine overloads and PostgreSQL's separate routine namespaces are not modeled;
 declaration uniqueness still follows the existing shared builder contract.
 Routine bodies and default/check expressions are retained as parsed ASTs, not
 evaluated or recursively type-resolved. Full expression normalization, collation
-lookup, broader PostgreSQL routine syntax, and SQL generation remain deferred.
+lookup, broader PostgreSQL routine syntax, and migration comparison remain deferred.
 Table options, indexes/constraints, and unsupported column options explicitly
 throw `NotImplementedException`; `CREATE TABLE AS SELECT` is rejected rather
 than silently dropping the query. Temporary-table construction is rejected with
 `NotSupportedException` until temporary-schema semantics can be represented.
+
+## Statement Generation
+
+Tables implement `IDatabaseObject<CreateTable>`, and custom types implement
+`IDatabaseObject<Statement>` with the broad `ObjectType.Type` classification.
+Enum, composite, and domain variants return their corresponding concrete create
+statements. Routine models implement their Core statement contracts through
+`StoredFunction` and `StoredProcedure`. Call `ToCreateStatement(includeSchema)`
+on a model, then write the resulting statement with `ToSql()` or the formatter.
+
+Generation retains custom-type identities, quote styles, enum-label order and
+escaping, composite collations, domain defaults/constraints, and column
+nullability/default variants and names. Creation modifiers such as `OR REPLACE`,
+`IF NOT EXISTS`, and optional body separators belong to statement ASTs, not
+canonical routine objects. Routine generation emits canonical CREATE statements
+rather than reproducing those input choices. This is not a claim of full
+PostgreSQL routine syntax validation.
+
+`includeSchema` controls qualification of the declared object's name. Custom-type
+references remain qualified to preserve resolved identity. When omitting the
+declared schema, callers must supply the matching active schema during parsing
+or construction. Tests cover definition-to-statement-to-SQL-to-definition round
+trips with schema inclusion both enabled and disabled.
+
+This generates individual statements, not an ordered deployment script. The
+offline definition collector accepts forward references; execution ordering,
+dependency-aware migration planning, and live PostgreSQL validation remain
+deferred. No new integration tests were added for this stage.
 
 Run the unit tests with:
 

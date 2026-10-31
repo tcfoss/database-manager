@@ -8,4 +8,5 @@ public enum ObjectType
     Procedure,
     Trigger,
     Event,
+    Type,
 }

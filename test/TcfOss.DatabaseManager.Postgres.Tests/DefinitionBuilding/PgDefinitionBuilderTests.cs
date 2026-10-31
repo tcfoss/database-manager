@@ -2,6 +2,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.DatabaseObjects;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
@@ -172,8 +174,117 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(function.ReturnType).Name.Name);
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.Single(function.Parameters).DataType).Name.Name);
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.Single(procedure.Parameters).DataType).Name.Name);
-        Assert.NotNull(Assert.Single(procedure.Parameters).Direction);
+        Assert.NotNull(Assert.IsType<RoutineParameter.Directed>(Assert.Single(procedure.Parameters)).Direction);
         Assert.IsType<PgCustomType.Domain>(Assert.Single(definition.CustomTypes).Value);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Routines_UseCoreContractsAndRoundTripResolvedSignatures(bool includeSchema)
+    {
+        const string types = "CREATE DOMAIN app.label AS TEXT; CREATE TYPE app.mood AS ENUM ('happy')";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"{types}; CREATE FUNCTION Echo(value app.label) RETURNS app.mood RETURN 'happy'; CREATE PROCEDURE save(IN value app.label) SELECT value"), GetSchema(), 0);
+        PgDefinition original = builder.ToDefinition();
+        StoredFunction function = Assert.Single(original.Functions).Value;
+        StoredProcedure procedure = Assert.Single(original.Procedures).Value;
+
+        CreateFunction functionStatement = function.ToCreateStatement(includeSchema);
+        CreateProcedure procedureStatement = procedure.ToCreateStatement(includeSchema);
+
+        Assert.Equal(includeSchema ? 2 : 1, functionStatement.Name.Values.Count);
+        Assert.Equal(includeSchema ? 2 : 1, procedureStatement.Name.Values.Count);
+        Assert.Equal(ObjectType.Function, function.ObjectType);
+        Assert.Equal(ObjectType.Procedure, procedure.ObjectType);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements($"{types}; {functionStatement.ToSql()}; {procedureStatement.ToSql()}"), GetSchema(), 1);
+        PgDefinition result = rebuilt.ToDefinition();
+        StoredFunction rebuiltFunction = Assert.Single(result.Functions).Value;
+        StoredProcedure rebuiltProcedure = Assert.Single(result.Procedures).Value;
+        Assert.Equal(function.Name, rebuiltFunction.Name);
+        Assert.Equal(function.Parameters, rebuiltFunction.Parameters);
+        Assert.Equal(function.ReturnType, rebuiltFunction.ReturnType);
+        Assert.Equal(function.Body.ToSql(), rebuiltFunction.Body.ToSql());
+        Assert.Equal(procedure.Name, rebuiltProcedure.Name);
+        Assert.Equal(procedure.Parameters, rebuiltProcedure.Parameters);
+        Assert.Equal(procedure.Body.ToSql(), rebuiltProcedure.Body.ToSql());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TablesAndCustomTypes_RoundTripThroughCoreStatementContracts(bool includeSchema)
+    {
+        const string sql = "CREATE TYPE \"Mood\" AS ENUM ('happy', 'it''s fine'); "
+            + "CREATE DOMAIN label AS TEXT COLLATE \"C\" DEFAULT 'x' CONSTRAINT required NOT NULL CONSTRAINT valid CHECK (VALUE <> ''); "
+            + "CREATE TYPE details AS (name label COLLATE \"C\", mood \"Mood\"); "
+            + "CREATE TABLE items (payload details, id INT CONSTRAINT required_id NOT NULL CONSTRAINT default_id DEFAULT 1, note label DEFAULT NULL, calculated INT DEFAULT (1 + 2), nullable TEXT NULL)";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+        PgDefinition original = builder.ToDefinition();
+        PgTable table = Assert.Single(original.Tables).Value;
+        IDatabaseObject<CreateTable> tableContract = table;
+        CreateTable tableStatement = tableContract.ToCreateStatement(includeSchema, null!);
+        Assert.Equal(ObjectType.Table, tableContract.ObjectType);
+        Assert.Equal(includeSchema ? 2 : 1, tableStatement.Name.Values.Count);
+        var statements = new List<Statement> { tableStatement };
+        foreach (PgCustomType type in original.CustomTypes.Values)
+        {
+            IDatabaseObject<Statement> typeContract = type;
+            Statement statement = typeContract.ToCreateStatement(includeSchema, null!);
+            Assert.Equal(ObjectType.Type, typeContract.ObjectType);
+            Assert.Equal(includeSchema ? 2 : 1, Assert.IsType<ICreateStatement>(statement, exactMatch: false).Name.Values.Count);
+            statements.Add(statement);
+        }
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 1);
+
+        PgDefinition result = rebuilt.ToDefinition();
+
+        Assert.Equal(original.Tables, result.Tables);
+        Assert.Equal(original.CustomTypes, result.CustomTypes);
+        Assert.Equal(table.ToCreateStatement(includeSchema).ToSql(), Assert.Single(result.Tables).Value.ToCreateStatement(includeSchema).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE OR REPLACE FUNCTION Echo() RETURNS INT AS RETURN 1; CREATE OR REPLACE PROCEDURE save() AS SELECT 1")]
+    [InlineData("CREATE FUNCTION IF NOT EXISTS Echo() RETURNS INT AS RETURN 1; CREATE PROCEDURE IF NOT EXISTS save() AS SELECT 1")]
+    public void Routines_DiscardCreationSyntaxAndPreserveCoreRawBodyContract(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+        PgDefinition definition = builder.ToDefinition();
+        PgStoredFunction function = Assert.Single(definition.Functions).Value;
+        PgStoredProcedure procedure = Assert.Single(definition.Procedures).Value;
+
+        CreateFunction functionStatement = function.ToCreateStatement(true);
+        CreateProcedure procedureStatement = procedure.ToCreateStatement(true);
+
+        Assert.Null(functionStatement.CreateOrLabel);
+        Assert.Null(procedureStatement.CreateOrLabel);
+        Assert.False(functionStatement.IfNotExists);
+        Assert.False(procedureStatement.IfNotExists);
+        Assert.False(functionStatement.UseAsBeforeBody);
+        Assert.False(procedureStatement.UseAsBeforeBody);
+        var plainBuilder = CreateBuilder();
+        plainBuilder.ProcessStatements(ParseStatements("CREATE FUNCTION Echo() RETURNS INT RETURN 1; CREATE PROCEDURE save() SELECT 1"), GetSchema(), 0);
+        PgDefinition plain = plainBuilder.ToDefinition();
+        Assert.Equal(Assert.Single(plain.Functions).Value.ToCreateStatement(true).ToSql(), functionStatement.ToSql());
+        Assert.Equal(Assert.Single(plain.Procedures).Value.ToCreateStatement(true).ToSql(), procedureStatement.ToSql());
+        var functionWithRawBody = function with { RawBodyText = "RETURN 1 /* raw body */" };
+        var procedureWithRawBody = procedure with { RawBodyText = "SELECT 1 /* raw body */" };
+        Assert.Equal(function, functionWithRawBody);
+        Assert.Equal(function.GetHashCode(), functionWithRawBody.GetHashCode());
+        Assert.Equal(procedure, procedureWithRawBody);
+        Assert.Equal(procedure.GetHashCode(), procedureWithRawBody.GetHashCode());
+        Assert.Equal(functionWithRawBody.RawBodyText, functionWithRawBody.ToCreateStatement(true).Meta.RawText);
+        Assert.Equal(procedureWithRawBody.RawBodyText, procedureWithRawBody.ToCreateStatement(true).Meta.RawText);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements($"{functionStatement.ToSql()}; {procedureStatement.ToSql()}"), GetSchema(), 1);
+        PgDefinition result = rebuilt.ToDefinition();
+        Assert.Equal(functionStatement.ToSql(), Assert.Single(result.Functions).Value.ToCreateStatement(true).ToSql());
+        Assert.Equal(procedureStatement.ToSql(), Assert.Single(result.Procedures).Value.ToCreateStatement(true).ToSql());
     }
 
     [Theory]
