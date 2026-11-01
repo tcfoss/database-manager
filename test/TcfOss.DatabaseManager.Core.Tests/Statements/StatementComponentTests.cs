@@ -369,7 +369,10 @@ public class StatementComponentTests
 
         Assert.Equal("\"app\".\"mood\"[][3]", FormatComponent(array));
         var standard = new DataTypeReference.Array(new DataTypeReference.BuiltIn(new DataType.Int()),
-            [new DataTypeReference.Array.Dimension(4)]) { UseArrayKeyword = true };
+            [new DataTypeReference.Array.Dimension(4)])
+        {
+            UseArrayKeyword = true
+        };
         Assert.Equal("INT ARRAY[4]", FormatComponent(standard));
     }
 

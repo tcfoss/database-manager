@@ -144,6 +144,9 @@
     <data name="Err_Syntax_ConstraintNameNotAllowedDialect" xml:space="preserve">
         <value>The constraint name '{0}' is not allowed for {1} constraints on {2} {3} in {4}.</value>
     </data>
+    <data name="Err_Syntax_UnsupportedDialectClause" xml:space="preserve">
+        <value>Dialect '{0}' does not support the clause '{1}'.</value>
+    </data>
     <data name="Err_Syntax_UnknownIdentifier" xml:space="preserve">
         <value>The identifier '{0}' could be found.</value>
     </data>

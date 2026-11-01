@@ -32,7 +32,6 @@ public partial class MyDefinitionBuilder
     private readonly List<(CreateIndex Statement, SchemaIdentifier Schema, SourceRef? SourceRef)> _pendingIndexes = [];
 
     private readonly ExtendedQuoteStyle _accountQuoteStyle;
-    private readonly MyComponentNormalizer _componentNormalizer;
     private readonly MyNormalizer _expressionNormalizer;
     private readonly ValidationHelper _validationHelper;
 
@@ -40,11 +39,10 @@ public partial class MyDefinitionBuilder
 
 
     public MyDefinitionBuilder(MyConfig config, SourceManager sourceManager, IFunctionNameProvider functionNameProvider, ILogger<MyDefinitionBuilder> logger)
-        : base(config, sourceManager, logger)
+        : base(config, sourceManager, logger, new MyComponentNormalizer(config.QuoteStyle, functionNameProvider))
     {
         _accountQuoteStyle = config.NormalizationSettings.AccountQuoteStyle;
-        _componentNormalizer = new MyComponentNormalizer(config.QuoteStyle, functionNameProvider);
-        _expressionNormalizer = new MyNormalizer(config, _componentNormalizer);
+        _expressionNormalizer = new MyNormalizer(config, ComponentNormalizer);
         _validationHelper = new ValidationHelper(logger);
 
         _procedures = new DatabaseObjectDict<MyStoredProcedure>(config.NameHandling);
@@ -55,7 +53,7 @@ public partial class MyDefinitionBuilder
         foreach (MySchemaMapping schemaMapping in config.Schemas.Values)
         {
             var dtNormalizer = new MyDataTypeNormalizer(config, schemaMapping.SchemaDefaults.CharacterSet, schemaMapping.SchemaDefaults.Collation);
-            var attrNormalizer = new MyAttributeNormalizer(config, _componentNormalizer, dtNormalizer);
+            var attrNormalizer = new MyAttributeNormalizer(config, ComponentNormalizer, dtNormalizer);
             _helpers[schemaMapping.SchemaName] = new BuilderHelpers
             {
                 ProcedureConstructor = new MyConstructProcedure(config, attrNormalizer, sourceManager),
@@ -176,7 +174,7 @@ public partial class MyDefinitionBuilder
 
     private MyTableBuilder ConstructTableBuilder(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef? sourceRef)
     {
-        var builder = new MyTableBuilder(tableId, Config, Config.Schemas[tableId.Schema].SchemaDefaults, _componentNormalizer, _expressionNormalizer, sourceRef);
+        var builder = new MyTableBuilder(tableId, Config, Config.Schemas[tableId.Schema].SchemaDefaults, ComponentNormalizer, _expressionNormalizer, sourceRef);
         ValidateCreateTable(createTableStatement, tableId, sourceRef);
         builder.ApplyCreateTable(createTableStatement);
         return builder;
@@ -353,7 +351,7 @@ public partial class MyDefinitionBuilder
 
     private DatabaseObjectDict<MyView> GetViews(List<PseudoTable> pseudoTables)
     {
-        Normalizer normalizer = new MyNormalizer(Config, _componentNormalizer);
+        Normalizer normalizer = new MyNormalizer(Config, ComponentNormalizer);
         var views = new DatabaseObjectDict<MyView>();
         foreach ((ObjectHandle preViewKey, MyPreView preView) in _preViews)
         {

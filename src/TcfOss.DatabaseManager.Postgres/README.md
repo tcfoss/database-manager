@@ -130,7 +130,19 @@ Callers currently supply `QuoteStyle.Ansi` and
 `NameHandling.LowercaseUnlessQuoted` when creating a PostgreSQL configuration.
 
 `PgDefinition` contains tables, custom types, functions, and procedures.
-`PgTable` contains columns;
+`PgTable` contains columns, an optional primary key, and name-keyed dictionaries
+for check constraints (`Constraints`), foreign keys (`ForeignKeys`), unique
+constraints (`UniqueConstraints`), and standalone indexes (`Indexes`). UNIQUE
+constraints retain their constraint identity rather than becoming standalone
+unique indexes. The two forms share key/INCLUDE normalization and Core components.
+Constraint names are validated across all constraint kinds,
+even though their dictionaries are separate. Column-level primary keys, unique
+constraints, and checks use the same construction paths as table-level forms.
+UNIQUE constraints and standalone indexes support INCLUDE payload columns;
+these are normalized and validated separately from index key columns and do not
+participate in uniqueness or foreign-key backing checks. Generated CREATE TABLE
+includes primary keys, unique constraints, checks, and foreign keys; standalone
+indexes are emitted separately.
 `PgCustomType` distinguishes enums, composites, and domains. Definition-level
 columns, composite fields, and domain base types use Core's `DataType` directly.
 Built-ins retain their ordinary datatype records; resolved custom types use
@@ -162,11 +174,24 @@ domain declarations, plus the currently supported Core routine forms, across
 sources, retaining their original statements and
 source references in private, strongly typed per-kind dictionaries. A private
 `Declaration<TStatement>` groups type statements with their qualified names and
-source references. The shared `GetAndValidateName` helper computes handles from
-original statement names, independently of output quoting. A table and a custom type
-cannot claim the same handle. `PgTableBuilder` retains typed column declarations,
-including their parsed options and unresolved type references, and exposes a
-column-only pseudo-table. Forward references are retained without lookup.
+source references. The shared `DefinitionBuilder` owns the component normalizer
+supplied by its provider. `GetAndValidateName` returns a fully normalized object
+identifier while computing handles from original statement names, independently
+of output quoting. A table and a custom type cannot claim the same handle.
+`PgTableBuilder` receives that normalized identifier directly; finalization uses
+the same identifier rather than reconstructing it through the registry.
+`PgTableBuilder.AddColumn` stores `PreColumn` records with normalized full column
+identifiers, defaults, nullability, and explicit `NotNull` state. Built-in array
+types are canonicalized immediately; custom type references remain pending.
+Duplicate and unsupported column options are checked at add time. Primary keys
+update pending column nullability regardless of declaration order. Nullable
+columns can still be valid FK targets when backed by an eligible unique key.
+Constraints and indexes are normalized and structurally validated when added,
+without retaining their original mutable statement lists. Only custom type and
+FK-table lookup and referenced-column existence checks are deferred to
+`ToTable(manager)`. It also checks the existence of local columns referenced by
+check/index expressions; unsupported expression scopes are rejected at add time.
+The builder exposes a column-only pseudo-table from its normalized columns.
 
 `ToDefinition()` builds a complete type-name registry before constructing any
 resolved objects. `PgTypeResolutionManager` resolves named references using
@@ -218,10 +243,63 @@ declaration uniqueness still follows the existing shared builder contract.
 Routine bodies and default/check expressions are retained as parsed ASTs, not
 evaluated or recursively type-resolved. Full expression normalization, collation
 lookup, broader PostgreSQL routine syntax, and migration comparison remain deferred.
-Table options, indexes/constraints, and unsupported column options explicitly
+Table options and unsupported column options explicitly
 throw `NotImplementedException`; `CREATE TABLE AS SELECT` is rejected rather
 than silently dropping the query. Temporary-table construction is rejected with
 `NotSupportedException` until temporary-schema semantics can be represented.
+
+## Table Constraints And Indexes
+
+`PgPrimaryKey` represents the optional primary key. `PgTableConstraint` represents
+named unique constraints, foreign keys, and checks, each stored in a typed
+dictionary. Column-level primary/unique/check declarations are
+canonicalized into table constraints. Names and column references use configured
+case/quoting rules; duplicate named constraints, duplicate primary keys, repeated
+key columns, and missing key columns are rejected. Primary-key columns become
+canonically `NOT NULL`. Simple key constraints support plain column lists;
+advanced index decorations and column prefix lengths are rejected explicitly.
+
+Foreign-dialect clauses such as inline COMMENT, CLUSTERED/NONCLUSTERED,
+SQL Server index options, and ON filegroup/partition-scheme placement raise
+the resource-backed `SqlSyntaxException.UnsupportedDialectClause`, carrying
+the dialect, offending clause, and statement source. Constraint and standalone
+index validation share these checks. PostgreSQL FILLFACTOR is valid syntax but
+its construction support is deferred, so it raises `NotImplementedException`
+rather than a dialect syntax error. Options validation remains separate so
+individual supported PostgreSQL options can be implemented later.
+
+Foreign keys resolve referenced tables after all declarations have been collected,
+including forward references. Final validation checks referenced tables/columns,
+matching column counts, and a primary key, unique constraint, or eligible unique
+index on the referenced column set. PostgreSQL does not require an index on the
+referencing columns, and none is synthesized. Partial or expression unique
+indexes do not serve as backing keys. Referential actions are retained. The
+current grammar requires explicit referenced-column lists; omitted target lists,
+column-level `REFERENCES`, deferrability, and `MATCH` clauses remain deferred.
+Cross-type/operator compatibility is not validated without catalog information.
+
+Standalone `CREATE INDEX` and `CREATE UNIQUE INDEX` statements are queued so they
+can precede their tables. `PgIndex` preserves names, key parts, unique behavior,
+access method, optional predicates, and INCLUDE payload columns. Missing tables/columns and relation-name
+collisions are rejected, including names occupied by explicit primary/unique
+backing indexes. Constraints and indexes require names, except that a primary key
+may be unnamed; its generated backing-index name is not predicted. Unique indexes currently require B-tree; explicit
+key ordering requires B-tree. Basic expression indexes and local-column predicates
+are supported without expression normalization. INCLUDE columns are validated
+separately and do not participate in uniqueness or FK backing checks. Operator classes,
+storage options, concurrent creation, and anonymous index declarations are not
+implemented.
+
+CHECK/index expressions validate simple column references and references qualified
+by their own table/schema/catalog. Composite-field or external-table references
+are explicitly unimplemented. Full expression type/operator, subquery, and function
+volatility validation remain deferred. Existing sourced definition/syntax errors
+report structural failures; no new error resources were added for this stage.
+
+Shared Core DDL parsing recognizes `USING` before ON and PostgreSQL's placement
+after the table name. The parsed `IndexMethodAfterTableName` flag preserves the
+syntax choice; MySQL/MariaDB and SQL Server narrow the PostgreSQL placement.
+Canonical PostgreSQL indexes always emit `CREATE INDEX ... ON table USING method`.
 
 ## Statement Generation
 
@@ -231,6 +309,8 @@ Enum, composite, and domain variants return their corresponding concrete create
 statements. Routine models implement their Core statement contracts through
 `StoredFunction` and `StoredProcedure`. Call `ToCreateStatement(includeSchema)`
 on a model, then write the resulting statement with `ToSql()` or the formatter.
+`PgTable.ToCreateStatement` includes its constraints but not standalone indexes;
+use `ToCreateIndexStatements(includeSchema)` to generate those separately.
 
 Generation retains custom-type identities, quote styles, enum-label order and
 escaping, composite collations, domain defaults/constraints, and column

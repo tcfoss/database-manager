@@ -4,16 +4,15 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
-using TcfOss.DatabaseManager.MySql.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 
-public class MyNormalizer(MyConfig config, MyComponentNormalizer componentNormalizer)
+public class MyNormalizer(MyConfig config, ComponentNormalizer componentNormalizer)
     : Normalizer(config, componentNormalizer)
 {
     protected override INormalizeSql ConstructNewNormalizer()
     {
-        return new MyNormalizer((MyConfig)Config, (MyComponentNormalizer)ComponentNormalizer);
+        return new MyNormalizer((MyConfig)Config, ComponentNormalizer);
     }
 
     protected override Expression NormalizeCast(Cast cast, bool inSelect = false, bool flatten = false)

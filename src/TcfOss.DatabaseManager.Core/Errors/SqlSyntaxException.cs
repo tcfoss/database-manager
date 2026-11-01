@@ -11,6 +11,15 @@ namespace TcfOss.DatabaseManager.Core.Errors;
 public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         : SourcedException(GetMessage(message), sourceRef)
 {
+    public class UnsupportedDialectClause(string dialect, string clause, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(dialect, clause), sourceRef)
+    {
+        public string Dialect { get; } = dialect;
+        public string Clause { get; } = clause;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_UnsupportedDialectClause);
+    }
+
     public class DuplicateObject(string objectName, SourceRef? sourceRef = null)
         : SqlSyntaxException(s_compositeFormat.Apply(objectName), sourceRef)
     {

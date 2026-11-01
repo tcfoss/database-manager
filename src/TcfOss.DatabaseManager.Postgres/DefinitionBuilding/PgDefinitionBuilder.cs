@@ -9,6 +9,7 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
+using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Configuration;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
@@ -16,7 +17,8 @@ using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 namespace TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 
 public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, ILogger<PgDefinitionBuilder> logger)
-    : DefinitionBuilder<PgDefinition, PgConfig, PgSchemaMapping>(config, sourceManager, logger)
+    : DefinitionBuilder<PgDefinition, PgConfig, PgSchemaMapping>(config, sourceManager, logger,
+        new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider(), config.NameHandling))
 {
     private readonly Dictionary<ObjectHandle, Declaration<CreateType.Enumerated>> _enumeratedTypes = [];
     private readonly Dictionary<ObjectHandle, Declaration<CreateType.Composite>> _compositeTypes = [];
@@ -24,7 +26,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     private readonly Dictionary<ObjectHandle, Declaration<CreateFunction>> _functions = [];
     private readonly Dictionary<ObjectHandle, Declaration<CreateProcedure>> _procedures = [];
     private readonly Dictionary<ObjectHandle, PgTableBuilder> _tableBuilders = [];
-    private readonly ComponentNormalizer _componentNormalizer = new(config.QuoteStyle, new FunctionNameProvider(), config.NameHandling);
+    private readonly List<(CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingIndexes = [];
+    private int _appliedIndexCount;
 
     public override void ProcessStatements(IEnumerable<Statement> statements, SchemaIdentifier activeSchemaId, int sourceId)
     {
@@ -51,7 +54,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                         throw new DefinitionException.CreateTableAsSelect(table.Name.ToString(), sourceRef);
                     }
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
-                    var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, _componentNormalizer, sourceRef);
+                    var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, sourceRef);
                     tableBuilder.ApplyCreateTable(table);
                     _tableBuilders.Add(nameAndHandle.Key, tableBuilder);
                     SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);
@@ -70,6 +73,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     break;
                 case CreateProcedure procedure:
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
+                    break;
+                case CreateIndex index:
+                    _pendingIndexes.Add((index, activeSchemaId, sourceRef));
                     break;
                 default:
                     throw new DefinitionException($"{statement.GetType().Name} statement", sourceRef);
@@ -101,54 +107,55 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             names.Add(declaration.Key, declaration.Value.Name);
         }
-        return new PgTypeResolutionManager(Config, names, _componentNormalizer);
+        return new PgTypeResolutionManager(Config, names, ComponentNormalizer);
     }
 
     private DatabaseObjectDict<PgCustomType> GetCustomTypes(PgTypeResolutionManager manager)
     {
         var types = new DatabaseObjectDict<PgCustomType>(Config.NameHandling);
 
-        foreach (KeyValuePair<ObjectHandle, Declaration<CreateType.Enumerated>> declaration in _enumeratedTypes)
+        foreach ((ObjectHandle handle, Declaration<CreateType.Enumerated> declaration) in _enumeratedTypes)
         {
-            if (declaration.Value.Statement.Labels.Distinct(StringComparer.Ordinal).Count() != declaration.Value.Statement.Labels.Count)
+            if (declaration.Statement.Labels.Distinct(StringComparer.Ordinal).Count() != declaration.Statement.Labels.Count)
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce("enum label", "type", declaration.Value.Name, declaration.Value.SourceRef);
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce("enum label", "type", declaration.Name, declaration.SourceRef);
             }
-            types.Add(declaration.Key, new PgCustomType.Enumerated(manager.GetName(declaration.Key), [.. declaration.Value.Statement.Labels]));
+            types.Add(handle, new PgCustomType.Enumerated(manager.GetName(handle), [.. declaration.Statement.Labels]));
         }
-        foreach (KeyValuePair<ObjectHandle, Declaration<CreateType.Composite>> declaration in _compositeTypes)
+
+        foreach ((ObjectHandle handle, Declaration<CreateType.Composite> declaration) in _compositeTypes)
         {
-            Declaration<CreateType.Composite> item = declaration.Value;
-            SqlValueList<PgCompositeTypeField> fields = [.. item.Statement.Attributes.Select(field => new PgCompositeTypeField(
-                _componentNormalizer.NormalizeSingleIdentifier(field.Name), manager.Resolve(field.DataType, item.Name.Schema, item.SourceRef), field.Collation))];
+            SqlValueList<PgCompositeTypeField> fields = [.. declaration.Statement.Attributes.Select(field => new PgCompositeTypeField(
+                ComponentNormalizer.NormalizeSingleIdentifier(field.Name), manager.Resolve(field.DataType, declaration.Name.Schema, declaration.SourceRef), field.Collation))];
             var fieldNames = new HashSet<string>();
             foreach (PgCompositeTypeField field in fields)
             {
                 if (!fieldNames.Add(field.Name.Name))
                 {
-                    throw new SqlSyntaxException.DuplicateColumn(field.Name.Name, item.Name, item.SourceRef);
+                    throw new SqlSyntaxException.DuplicateColumn(field.Name.Name, declaration.Name, declaration.SourceRef);
                 }
             }
-            types.Add(declaration.Key, new PgCustomType.Composite(manager.GetName(declaration.Key), fields));
+            types.Add(handle, new PgCustomType.Composite(manager.GetName(handle), fields));
         }
-        foreach (KeyValuePair<ObjectHandle, Declaration<CreateDomain>> declaration in _domains)
+
+        foreach ((ObjectHandle handle, Declaration<CreateDomain> declaration) in _domains)
         {
-            Declaration<CreateDomain> item = declaration.Value;
-            SqlValueList<PgDomainConstraint> constraints = [.. item.Statement.Constraints.Select(constraint => constraint switch
+            SqlValueList<PgDomainConstraint> constraints = [.. declaration.Statement.Constraints.Select<StatementDomainConstraint, PgDomainConstraint>(constraint => constraint switch
             {
-                StatementDomainConstraint.Nullability nullability => (PgDomainConstraint)new PgDomainConstraint.Nullability(nullability.NotNull,
-                    _componentNormalizer.NormalizeSingleIdentifierNullable(nullability.Name)),
+                StatementDomainConstraint.Nullability nullability => new PgDomainConstraint.Nullability(nullability.NotNull,
+                    ComponentNormalizer.NormalizeSingleIdentifierNullable(nullability.Name)),
                 StatementDomainConstraint.Check check => new PgDomainConstraint.Check(check.Expression,
-                    _componentNormalizer.NormalizeSingleIdentifierNullable(check.Name)),
+                    ComponentNormalizer.NormalizeSingleIdentifierNullable(check.Name)),
                 _ => throw new NotImplementedException()
             })];
-            types.Add(declaration.Key, new PgCustomType.Domain(manager.GetName(declaration.Key), manager.Resolve(item.Statement.DataType, item.Name.Schema, item.SourceRef))
+            types.Add(handle, new PgCustomType.Domain(manager.GetName(handle), manager.Resolve(declaration.Statement.DataType, declaration.Name.Schema, declaration.SourceRef))
             {
-                Collation = item.Statement.Collation,
-                Default = item.Statement.Default,
+                Collation = declaration.Statement.Collation,
+                Default = declaration.Statement.Default,
                 Constraints = constraints
             });
         }
+
         return types;
     }
 
@@ -156,18 +163,20 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     {
         PgTypeResolutionManager manager = GetTypeResolutionManager();
         DatabaseObjectDict<PgCustomType> types = GetCustomTypes(manager);
+        ApplyIndexes(manager);
 
         var tables = new DatabaseObjectDict<PgTable>(Config.NameHandling);
         foreach (KeyValuePair<ObjectHandle, PgTableBuilder> table in _tableBuilders)
         {
             tables.Add(table.Key, table.Value.ToTable(manager));
         }
+        ValidateRelationNames(tables);
 
         var functions = new DatabaseObjectDict<PgStoredFunction>(Config.NameHandling);
         foreach (KeyValuePair<ObjectHandle, Declaration<CreateFunction>> declaration in _functions)
         {
             Declaration<CreateFunction> item = declaration.Value;
-            functions.Add(declaration.Key, new PgStoredFunction(_componentNormalizer.NormalizeObjectIdentifier(item.Name),
+            functions.Add(declaration.Key, new PgStoredFunction(item.Name,
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager),
                 manager.Resolve(item.Statement.ReturnType, item.Name.Schema, item.SourceRef), item.Statement.Body)
             {
@@ -179,7 +188,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         foreach (KeyValuePair<ObjectHandle, Declaration<CreateProcedure>> declaration in _procedures)
         {
             Declaration<CreateProcedure> item = declaration.Value;
-            procedures.Add(declaration.Key, new PgStoredProcedure(_componentNormalizer.NormalizeObjectIdentifier(item.Name),
+            procedures.Add(declaration.Key, new PgStoredProcedure(item.Name,
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
             {
                 RawBodyText = SourceManager.GetText(item.SourceRef, item.Statement.Body.Meta)
@@ -204,6 +213,59 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return definition;
     }
 
+    private void ApplyIndexes(PgTypeResolutionManager manager)
+    {
+        while (_appliedIndexCount < _pendingIndexes.Count)
+        {
+            (CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source) pending = _pendingIndexes[_appliedIndexCount];
+            CreateIndex statement = pending.Statement;
+            ObjectIdentifier tableName;
+            try
+            {
+                tableName = ((PgDataType.Custom)manager.Resolve(new DataTypeReference.Named(statement.TableName), pending.Schema, pending.Source)).Name;
+            }
+            catch (SqlSyntaxException.TypeNotFound)
+            {
+                throw new SqlSyntaxException.CreateIndexUnknownTable(ObjectIdentifier.FromObjectName(statement.TableName, pending.Schema, null), pending.Source);
+            }
+            ObjectHandle tableHandle = ObjectHandle.Create(tableName, Config.NameHandling);
+            if (!_tableBuilders.TryGetValue(tableHandle, out PgTableBuilder? tableBuilder))
+            {
+                throw new SqlSyntaxException.CreateIndexUnknownTable(tableName, pending.Source);
+            }
+            tableBuilder.AddIndex(statement, pending.Source);
+            _appliedIndexCount++;
+        }
+    }
+
+    private void ValidateRelationNames(DatabaseObjectDict<PgTable> tables)
+    {
+        var names = tables.Keys.ToHashSet();
+        foreach (KeyValuePair<ObjectHandle, PgTable> table in tables)
+        {
+            IEnumerable<Identifier> relationNames = table.Value.Indexes.Values.Select(index => index.Name)
+                .Concat(table.Value.UniqueConstraints.Values.Select(unique => unique.Name!));
+            if (table.Value.PrimaryKey?.Name is Identifier primaryKeyName)
+            {
+                relationNames = relationNames.Append(primaryKeyName);
+            }
+            foreach (Identifier relationName in relationNames)
+            {
+                ObjectHandle handle = ObjectHandle.Create(
+                    new ObjectIdentifier(relationName.Name, table.Value.Name.Schema, relationName.QuoteStyle), Config.NameHandling);
+                SourceRef? source = SourceManager.GetSourceRef(handle) ?? SourceManager.GetSourceRef(table.Key);
+                if (!names.Add(handle))
+                {
+                    throw new SqlSyntaxException.DuplicateObject(relationName, source);
+                }
+                if (SourceManager.GetSourceRef(handle) == null)
+                {
+                    SourceManager.RegisterObject(handle, source ?? throw new InvalidOperationException("Table source metadata is missing."));
+                }
+            }
+        }
+    }
+
     private SqlValueList<RoutineParameter> ResolveParameters(SqlValueList<StatementRoutineParameter> parameters,
         ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
     {
@@ -211,7 +273,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         SqlValueList<RoutineParameter> result = [];
         foreach (StatementRoutineParameter parameter in parameters)
         {
-            Identifier name = _componentNormalizer.NormalizeSingleIdentifier(parameter.Name);
+            Identifier name = ComponentNormalizer.NormalizeSingleIdentifier(parameter.Name);
             if (!names.Add(name.Name))
             {
                 throw new SqlSyntaxException.SpecifiedMoreThanOnce(name.Name, "routine", routine, sourceRef);
@@ -234,6 +296,54 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     protected override List<SourcedException> ValidateDefinition(PgDefinition definition)
     {
         var errors = new List<SourcedException>();
+        foreach (KeyValuePair<ObjectHandle, PgTable> entry in definition.Tables)
+        {
+            PgTable table = entry.Value;
+            foreach (PgTableConstraint.ForeignKey foreignKey in table.ForeignKeys.Values)
+            {
+                string keyName = foreignKey.Name?.Name ?? "foreign key";
+                SourceRef? source = SourceManager.GetSourceRef(entry.Key);
+                if (!definition.Tables.TryGetValue(foreignKey.ReferencedTable, out PgTable? referencedTable))
+                {
+                    errors.Add(new SqlSyntaxException.ForeignKeyReferencedTableNotFound(keyName, table.Name, foreignKey.ReferencedTable, source));
+                    continue;
+                }
+                if (foreignKey.Columns.Count != foreignKey.ReferencedColumns.Count)
+                {
+                    errors.Add(new SqlSyntaxException.ForeignKeyColumnCountMismatch(keyName, table.Name,
+                        foreignKey.Columns.Count, foreignKey.ReferencedColumns.Count, source));
+                    continue;
+                }
+                var referencedNames = referencedTable.Columns.Select(column => column.Name.Name).ToHashSet();
+                bool missing = false;
+                foreach (Identifier column in foreignKey.ReferencedColumns)
+                {
+                    if (!referencedNames.Contains(column.Name))
+                    {
+                        errors.Add(new SqlSyntaxException.ForeignKeyReferencedColumnNotFound(keyName, table.Name, referencedTable.Name, column.Name, source));
+                        missing = true;
+                    }
+                }
+                if (missing)
+                {
+                    continue;
+                }
+                var referencedColumns = foreignKey.ReferencedColumns.Select(column => column.Name).ToHashSet();
+                bool backed = referencedTable.PrimaryKey is PgPrimaryKey primaryKey
+                    && primaryKey.Columns.Count == foreignKey.ReferencedColumns.Count
+                    && referencedColumns.SetEquals(primaryKey.Columns.Select(column => column.Name));
+                backed |= referencedTable.UniqueConstraints.Values.Any(unique => unique.Columns.Count == foreignKey.ReferencedColumns.Count
+                    && referencedColumns.SetEquals(unique.Columns.Select(column => column.Name)));
+                backed |= referencedTable.Indexes.Values.Any(index => index.Unique && index.Predicate == null
+                    && index.Columns.Count == foreignKey.ReferencedColumns.Count
+                    && index.Columns.All(part => part is KeyPart.Column)
+                    && referencedColumns.SetEquals(index.Columns.Cast<KeyPart.Column>().Select(column => column.Name.Name)));
+                if (!backed)
+                {
+                    errors.Add(new DefinitionException.ForeignKeyNoReferencedBackingIndex(keyName, table.Name, referencedTable.Name, source));
+                }
+            }
+        }
         foreach (KeyValuePair<ObjectHandle, PgCustomType> entry in definition.CustomTypes)
         {
             if (entry.Value is not PgCustomType.Domain domain)

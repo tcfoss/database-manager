@@ -420,6 +420,15 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("CREATE INDEX ix ON items USING BTREE (id)")]
+    [InlineData("CREATE UNIQUE INDEX ix ON items USING BTREE (id)")]
+    [InlineData("CREATE INDEX ix USING BTREE ON items (id)")]
+    public void CreateIndex_PreservesDialectMethodPlacement(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
     [InlineData("CREATE TYPE")]
     [InlineData("CREATE TYPE mood")]
     [InlineData("CREATE TYPE mood ENUM ('happy')")]

@@ -3,12 +3,14 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
@@ -235,16 +237,14 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
         PgDefinition original = builder.ToDefinition();
         PgTable table = Assert.Single(original.Tables).Value;
-        IDatabaseObject<CreateTable> tableContract = table;
-        CreateTable tableStatement = tableContract.ToCreateStatement(includeSchema, null!);
-        Assert.Equal(ObjectType.Table, tableContract.ObjectType);
+        CreateTable tableStatement = table.ToCreateStatement(includeSchema, null!);
+        Assert.Equal(ObjectType.Table, table.ObjectType);
         Assert.Equal(includeSchema ? 2 : 1, tableStatement.Name.Values.Count);
         var statements = new List<Statement> { tableStatement };
         foreach (PgCustomType type in original.CustomTypes.Values)
         {
-            IDatabaseObject<Statement> typeContract = type;
-            Statement statement = typeContract.ToCreateStatement(includeSchema, null!);
-            Assert.Equal(ObjectType.Type, typeContract.ObjectType);
+            Statement statement = type.ToCreateStatement(includeSchema, null!);
+            Assert.Equal(ObjectType.Type, type.ObjectType);
             Assert.Equal(includeSchema ? 2 : 1, Assert.IsType<ICreateStatement>(statement, exactMatch: false).Name.Values.Count);
             statements.Add(statement);
         }
@@ -600,6 +600,483 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(Assert.Single(definition.Procedures).Value.Parameters, Assert.Single(result.Procedures).Value.Parameters);
     }
 
+    [Fact]
+    public void TableConstraints_ConstructNamedAndColumnLevelForms()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (Id INT PRIMARY KEY, label TEXT CONSTRAINT uq_label UNIQUE, amount INT CONSTRAINT ck_positive CHECK (amount > 0), CONSTRAINT uq_pair UNIQUE (label, amount), CONSTRAINT ck_amount CHECK (amount < 100))"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgTable table = Assert.Single(definition.Tables).Value;
+        Assert.Equal(2, table.Checks.Count);
+        Assert.Equal(2, table.UniqueConstraints.Count);
+        Assert.Empty(table.Indexes);
+        Assert.IsType<ColumnOption.Nullability.NotNull>(table.Columns[0].Nullability);
+        Assert.Equal("id", Assert.Single(table.PrimaryKey!.Columns).Name);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", new[] { table.ToCreateStatement(true).ToSql() }
+            .Concat(table.ToCreateIndexStatements(true).Select(statement => statement.ToSql())))), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (missing))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq_missing UNIQUE (missing))")]
+    public void TableConstraints_RejectUnknownColumns(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.IndexColumnNotFound>(() => builder.ToDefinition());
+    }
+
+    [Fact]
+    public void ForeignKeys_ResolveForwardTablesAndPreserveReferentialActions()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE child (id INT, parent_id INT, CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id) ON DELETE CASCADE ON UPDATE RESTRICT); CREATE TABLE parent (id INT PRIMARY KEY)"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgTable child = definition.Tables[new ObjectHandle("catalog", "public", "child")];
+        Assert.Empty(child.Checks);
+        PgTableConstraint.ForeignKey foreignKey = Assert.Single(child.ForeignKeys.Values);
+        Assert.Equal("parent", foreignKey.ReferencedTable.Name);
+        Assert.Equal(ReferentialAction.Cascade, foreignKey.OnDelete);
+        Assert.Equal(ReferentialAction.Restrict, foreignKey.OnUpdate);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", definition.Tables.Values.Select(table => table.ToCreateStatement(true).ToSql()))), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Fact]
+    public void Indexes_QueueForwardTablesAndEmitPostgresUsingPlacement()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE UNIQUE INDEX uq_parent ON parent USING BTREE (id); CREATE INDEX ix_child ON child (parent_id DESC) WHERE parent_id > 0; CREATE TABLE child (parent_id INT, CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id)); CREATE TABLE parent (id INT)"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgTable parent = definition.Tables[new ObjectHandle("catalog", "public", "parent")];
+        Assert.True(Assert.Single(parent.Indexes.Values).Unique);
+        Assert.Contains("ON \"public\".\"parent\" USING BTREE", Assert.Single(parent.ToCreateIndexStatements(true)).ToSql());
+        var statements = new List<Statement>();
+        foreach (PgTable table in definition.Tables.Values)
+        {
+            statements.AddRange(table.ToCreateIndexStatements(true));
+            statements.Add(table.ToCreateStatement(true));
+        }
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+        Assert.Equal(definition.Tables, builder.ToDefinition().Tables);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT PRIMARY KEY, PRIMARY KEY (id))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT key_name UNIQUE (id), CONSTRAINT Key_Name CHECK (id > 0))")]
+    public void TableConstraints_RejectDuplicateKeysAndConstraintNames(string sql)
+    {
+        var builder = CreateBuilder();
+
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id))")]
+    [InlineData("CREATE TABLE items (id INT, FOREIGN KEY (id) REFERENCES items(id))")]
+    [InlineData("CREATE TABLE items (id INT, CHECK (id > 0))")]
+    public void TableConstraints_RequireNamesExceptPrimaryKey(string sql)
+    {
+        var builder = CreateBuilder();
+
+        Assert.Throws<DefinitionException.TableConstraintNameRequired>(() =>
+            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ck_missing CHECK (missing > 0))")]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items ((missing + 1))")]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WHERE missing > 0")]
+    public void ConstraintAndIndexExpressions_RejectUnknownColumns(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToDefinition());
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE parent (id INT); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))")]
+    [InlineData("CREATE TABLE parent (id INT); CREATE UNIQUE INDEX uq ON parent (id) WHERE id > 0; CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))")]
+    public void ForeignKeys_RejectMissingOrPartialBackingKeys(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        var exception = Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+        Assert.Contains(exception.Exceptions, error => error is DefinitionException.ForeignKeyNoReferencedBackingIndex);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE parent (id INT PRIMARY KEY); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(missing))", typeof(SqlSyntaxException.ForeignKeyReferencedColumnNotFound))]
+    [InlineData("CREATE TABLE parent (id INT PRIMARY KEY); CREATE TABLE child (first INT, second INT, CONSTRAINT fk_parent FOREIGN KEY (first, second) REFERENCES parent(id))", typeof(SqlSyntaxException.ForeignKeyColumnCountMismatch))]
+    public void ForeignKeys_ValidateReferencedColumnsAndCounts(string sql, Type expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        var exception = Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+        Assert.Contains(exception.Exceptions, error => error.GetType() == expected);
+    }
+
+    [Fact]
+    public void ForeignKeys_RejectMissingReferencedTables()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE child (id INT, CONSTRAINT fk_missing FOREIGN KEY (id) REFERENCES missing(id))"), GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.ForeignKeyReferencedTableNotFound>(() => builder.ToDefinition());
+    }
+
+    [Fact]
+    public void Indexes_PreserveExpressionKeysAndQuotedColumns()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (\"Label\" TEXT, id INT, CONSTRAINT ck_id CHECK (items.id > 0)); CREATE INDEX ix ON items ((lower(\"Label\"))) WHERE id > 0"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgTable table = Assert.Single(definition.Tables).Value;
+        Assert.IsType<KeyPart.IndexExpression>(Assert.Single(Assert.Single(table.Indexes.Values).Columns));
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id); CREATE INDEX IX ON items (id)")]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX items ON items (id)")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ix UNIQUE (id)); CREATE INDEX ix ON items (id)")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT items UNIQUE (id))")]
+    [InlineData("CREATE TABLE first (id INT, CONSTRAINT uq UNIQUE (id)); CREATE TABLE second (id INT, CONSTRAINT UQ UNIQUE (id))")]
+    [InlineData("CREATE TABLE first (id INT, CONSTRAINT uq UNIQUE (id)); CREATE TABLE second (id INT); CREATE UNIQUE INDEX uq ON second (id)")]
+    public void Indexes_RejectRelationNamespaceCollisions(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.DuplicateObject>(() => builder.ToDefinition());
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON missing (id)", typeof(SqlSyntaxException.CreateIndexUnknownTable))]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (missing)", typeof(SqlSyntaxException.IndexColumnNotFound))]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items USING HASH (id DESC)", typeof(SqlSyntaxException.IndexDirectionNotSupported))]
+    public void Indexes_RejectInvalidTablesColumnsAndOrdering(string sql, Type expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        Exception exception = Assert.ThrowsAny<SqlSyntaxException>(() => builder.ToDefinition());
+        Assert.Equal(expected, exception.GetType());
+    }
+
+    [Fact]
+    public void Indexes_SupportBasicHashIndexes()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE INDEX ix ON items USING HASH (id)"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgTable table = Assert.Single(definition.Tables).Value;
+        Assert.Equal(IndexMethod.Hash, Assert.Single(table.Indexes.Values).Method);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Fact]
+    public void ForeignKeys_AreStoredSeparatelyFromChecksAndRoundTrip()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT PRIMARY KEY, CONSTRAINT ck_id CHECK (id > 0), CONSTRAINT fk_self FOREIGN KEY (id) REFERENCES items(id))"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+        PgTable table = Assert.Single(definition.Tables).Value;
+        Assert.Equal("ck_id", Assert.Single(table.Checks.Values).Name!.Name);
+        Assert.Equal("fk_self", Assert.Single(table.ForeignKeys.Values).Name!.Name);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Theory]
+    [InlineData("CONSTRAINT same CHECK (id > 0), CONSTRAINT SAME FOREIGN KEY (id) REFERENCES items(id)")]
+    [InlineData("CONSTRAINT same FOREIGN KEY (id) REFERENCES items(id), CONSTRAINT SAME CHECK (id > 0)")]
+    public void ForeignKeys_ShareConstraintNameValidationWithChecks(string constraints)
+    {
+        var builder = CreateBuilder();
+
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ProcessStatements(
+            ParseStatements($"CREATE TABLE items (id INT PRIMARY KEY, {constraints})"), GetSchema(), 0));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (Id INT CONSTRAINT uq UNIQUE, \"Payload\" TEXT)", false)]
+    [InlineData("CREATE TABLE items (Id INT, \"Payload\" TEXT, CONSTRAINT uq UNIQUE (Id))", false)]
+    [InlineData("CREATE TABLE items (Id INT, \"Payload\" TEXT, CONSTRAINT uq UNIQUE (Id) INCLUDE (\"Payload\"))", true)]
+    public void UniqueConstraints_PreserveIdentityAndRoundTrip(string sql, bool includesPayload)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+        PgTable table = Assert.Single(definition.Tables).Value;
+        PgTableConstraint.Unique unique = Assert.Single(table.UniqueConstraints.Values);
+        Assert.Equal("uq", unique.Name!.Name);
+        Assert.Equal("id", Assert.Single(unique.Columns).Name);
+        Assert.Empty(table.Indexes);
+        Assert.Empty(table.ToCreateIndexStatements(true));
+        CreateTable statement = table.ToCreateStatement(true);
+        Assert.IsType<StatementTableConstraint.UniqueConstraint>(Assert.Single(statement.Constraints));
+        if (includesPayload)
+        {
+            Assert.Equal("Payload", Assert.Single(unique.IncludedColumns!.Columns).Name);
+            Assert.Contains("INCLUDE (\"Payload\")", statement.ToSql());
+        }
+        else
+        {
+            Assert.Null(unique.IncludedColumns);
+        }
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(statement.ToSql()), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Fact]
+    public void UniqueConstraints_AreDistinctFromEquivalentStandaloneIndexes()
+    {
+        var constraintBuilder = CreateBuilder();
+        constraintBuilder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id))"), GetSchema(), 0);
+        var indexBuilder = CreateBuilder();
+        indexBuilder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE UNIQUE INDEX uq ON items (id)"), GetSchema(), 0);
+
+        PgTable constraintTable = Assert.Single(constraintBuilder.ToDefinition().Tables).Value;
+        PgTable indexTable = Assert.Single(indexBuilder.ToDefinition().Tables).Value;
+        Assert.NotEqual(constraintTable, indexTable);
+        Assert.Single(constraintTable.UniqueConstraints);
+        Assert.Empty(constraintTable.Indexes);
+        Assert.Empty(indexTable.UniqueConstraints);
+        Assert.True(Assert.Single(indexTable.Indexes.Values).Unique);
+    }
+
+    [Fact]
+    public void UniqueConstraints_RejectRepeatedKeyColumns()
+    {
+        var builder = CreateBuilder();
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ProcessStatements(
+            ParseStatements("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id, ID))"), GetSchema(), 0));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, \"Payload\" TEXT); CREATE UNIQUE INDEX ix ON items (id) INCLUDE (\"Payload\")", true)]
+    [InlineData("CREATE TABLE items (id INT, \"Payload\" TEXT); CREATE INDEX ix ON items (id) INCLUDE (\"Payload\")", false)]
+    public void Indexes_PreserveIncludedColumnsAndRoundTrip(string sql, bool unique)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+        PgTable table = Assert.Single(definition.Tables).Value;
+        PgIndex index = Assert.Single(table.Indexes.Values);
+        Assert.Equal(unique, index.Unique);
+        Assert.Equal("id", Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns)).Name.Name);
+        Assert.Equal("Payload", Assert.Single(index.IncludedColumns!.Columns).Name);
+        Assert.Contains("INCLUDE (\"Payload\")", Assert.Single(table.ToCreateIndexStatements(true)).ToSql());
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
+        Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
+    }
+
+    [Theory]
+    [InlineData("CONSTRAINT ix UNIQUE (id) INCLUDE (missing)", typeof(SqlSyntaxException.IndexColumnNotFound))]
+    [InlineData("CONSTRAINT ix UNIQUE (id) INCLUDE (payload, PAYLOAD)", typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
+    [InlineData("CONSTRAINT ix UNIQUE (id) INCLUDE (id)", typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
+    public void Indexes_ValidateIncludedColumns(string constraint, Type expected)
+    {
+        var builder = CreateBuilder();
+        Exception exception = Assert.ThrowsAny<SqlSyntaxException>(() =>
+        {
+            builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, payload TEXT, {constraint})"), GetSchema(), 0);
+            builder.ToDefinition();
+        });
+        Assert.Equal(expected, exception.GetType());
+    }
+
+    [Fact]
+    public void Indexes_RejectIncludeOnHashIndexes()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT, payload TEXT); CREATE INDEX ix ON items USING HASH (id) INCLUDE (payload)"), GetSchema(), 0);
+
+        var exception = Assert.Throws<NotSupportedException>(() => builder.ToDefinition());
+        Assert.Contains("HASH indexes do not support INCLUDE", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("id", true, true)]
+    [InlineData("payload", false, true)]
+    [InlineData("id", true, false)]
+    [InlineData("payload", false, false)]
+    public void ForeignKeys_UseOnlyKeyColumnsOfCoveringUniqueKeys(string referencedColumn, bool backed, bool constraint)
+    {
+        var builder = CreateBuilder();
+        string parentSql = constraint
+            ? "CREATE TABLE parent (id INT, payload INT, CONSTRAINT uq UNIQUE (id) INCLUDE (payload))"
+            : "CREATE TABLE parent (id INT, payload INT); CREATE UNIQUE INDEX uq ON parent (id) INCLUDE (payload)";
+        builder.ProcessStatements(ParseStatements($"{parentSql}; CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent({referencedColumn}))"), GetSchema(), 0);
+
+        if (backed)
+        {
+            Assert.Single(builder.ToDefinition().Tables[new ObjectHandle("catalog", "public", "child")].ForeignKeys);
+        }
+        else
+        {
+            var exception = Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+            Assert.Contains(exception.Exceptions, error => error is DefinitionException.ForeignKeyNoReferencedBackingIndex);
+        }
+    }
+
+    [Theory]
+    [InlineData("method", "USING HASH")]
+    [InlineData("organization", "CLUSTERED")]
+    [InlineData("options", "PAD_INDEX")]
+    [InlineData("storage", "ON filegroup")]
+    [InlineData("comment", "inline COMMENT")]
+    public void PrimaryKeys_ReportSpecificUnsupportedIndexFeatures(string feature, string message)
+    {
+        var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements("CREATE TABLE items (id INT, PRIMARY KEY (id))")));
+        var primaryKey = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints));
+        StatementTableConstraint.PrimaryKey invalid = feature switch
+        {
+            "method" => primaryKey with { IndexMethod = IndexMethod.Hash },
+            "organization" => primaryKey with { IndexOrganization = IndexOrganization.Clustered },
+            "options" => primaryKey with { Options = [new StatementIndexOption.PadIndex(true)] },
+            "storage" => primaryKey with { StorageLocation = new IndexStorageLocation.Filegroup(new Identifier("filegroup")) },
+            "comment" => primaryKey with { Comment = new Comment("comment") },
+            _ => throw new InvalidOperationException()
+        };
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ProcessStatements(
+            [table with { Constraints = [invalid] }], GetSchema(), 0));
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Equal(new SourceRef(0, table.Meta.Start!.Value, table.Meta.End!.Value), exception.ObjectSourceRef);
+        Assert.Contains(message, exception.Clause);
+        Assert.Contains(message, exception.Message);
+    }
+
+    [Fact]
+    public void UniqueConstraints_RejectSeparateIndexNamesSpecifically()
+    {
+        var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id))")));
+        var unique = Assert.IsType<StatementTableConstraint.UniqueConstraint>(Assert.Single(table.Constraints));
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ProcessStatements(
+            [table with { Constraints = [unique with { IndexName = new Identifier("ix") }] }], GetSchema(), 0));
+        Assert.Equal("separate UNIQUE index name", exception.Clause);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (FILLFACTOR = 70))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (FILLFACTOR = 70))")]
+    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH (FILLFACTOR = 70)")]
+    [InlineData("CREATE TABLE items (id INT); CREATE UNIQUE INDEX ix ON items (id) WITH (FILLFACTOR = 70)")]
+    public void IndexOptions_ClassifyFillFactorAsNotImplemented(string sql)
+    {
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<NotImplementedException>(() =>
+        {
+            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+            builder.ToDefinition();
+        });
+        Assert.Contains("FILLFACTOR", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("PAD_INDEX")]
+    [InlineData("IGNORE_DUP_KEY")]
+    [InlineData("STATISTICS_NORECOMPUTE")]
+    [InlineData("STATISTICS_INCREMENTAL")]
+    [InlineData("ALLOW_ROW_LOCKS")]
+    [InlineData("ALLOW_PAGE_LOCKS")]
+    [InlineData("OPTIMIZE_FOR_SEQUENTIAL_KEY")]
+    public void IndexOptions_RejectForeignOptionsWithDialectSyntaxError(string option)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH ({option} = ON)"), GetSchema(), 7);
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ToDefinition());
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Equal($"{option} = ON", exception.Clause);
+        Assert.NotNull(exception.ObjectSourceRef);
+        Assert.Contains("does not support the clause", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("CONSTRAINT uq UNIQUE (id)")]
+    [InlineData("CONSTRAINT fk FOREIGN KEY (id) REFERENCES items(id)")]
+    [InlineData("CONSTRAINT ck CHECK (id > 0)")]
+    public void TableConstraints_RejectInlineCommentsWithDialectSyntaxError(string constraint)
+    {
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ProcessStatements(
+            ParseStatements($"CREATE TABLE items (id INT, {constraint} COMMENT 'description')"), GetSchema(), 0));
+        Assert.Equal("inline COMMENT", exception.Clause);
+        Assert.NotNull(exception.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("Mixed.Items", "mixed", "items")]
+    [InlineData("\"Mixed\".\"Items\"", "Mixed", "Items")]
+    public void GetAndValidateName_ReturnsCanonicalIdentifierAndOriginalHandle(string sqlName, string schemaName, string objectName)
+    {
+        var statement = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE {sqlName} (id INT)")));
+        var builder = new NameInspectingBuilder(CreateConfig());
+
+        ObjectNameAndHandle result = builder.GetName(statement, GetSchema());
+
+        Assert.Equal(schemaName, result.Id.Schema.Name);
+        Assert.Equal(objectName, result.Id.Name);
+        Assert.Equal(QuoteStyle.Ansi, result.Id.QuoteStyle);
+        Assert.Equal(QuoteStyle.Ansi, result.Id.Schema.QuoteStyle);
+        Assert.Equal(QuoteStyle.Ansi, result.Id.Schema.Catalog.QuoteStyle);
+        Assert.Equal(statement.Name.Values, result.Id.OriginalIdentifiers);
+        Assert.Equal(ObjectHandle.Create(statement.Name, GetSchema(), NameHandling.LowercaseUnlessQuoted), result.Key);
+        Assert.Throws<SqlSyntaxException.DuplicateObject>(() => builder.GetName(statement, GetSchema()));
+    }
+
+    [Fact]
+    public void GetAndValidateName_PreservesUnquotedAndQuotedCaseDistinctHandles()
+    {
+        var builder = new NameInspectingBuilder(CreateConfig());
+        var statements = ParseStatements("CREATE TABLE Items (id INT); CREATE TABLE \"Items\" (id INT)");
+
+        ObjectNameAndHandle unquoted = builder.GetName(Assert.IsType<CreateTable>(statements[0]), GetSchema());
+        ObjectNameAndHandle quoted = builder.GetName(Assert.IsType<CreateTable>(statements[1]), GetSchema());
+
+        Assert.Equal("items", unquoted.Id.Name);
+        Assert.Equal("Items", quoted.Id.Name);
+        Assert.NotEqual(unquoted.Key, quoted.Key);
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));
@@ -607,7 +1084,12 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private static PgDefinitionBuilder CreateBuilder(SourceManager? sourceManager = null)
     {
-        var config = new PgConfig
+        return new PgDefinitionBuilder(CreateConfig(), sourceManager ?? new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+    }
+
+    private static PgConfig CreateConfig()
+    {
+        return new PgConfig
         {
             ProjectDirectory = ".",
             Catalog = new CatalogIdentifier("catalog"),
@@ -616,6 +1098,14 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             QuoteStyle = QuoteStyle.Ansi,
             NameHandling = NameHandling.LowercaseUnlessQuoted,
         };
-        return new PgDefinitionBuilder(config, sourceManager ?? new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+    }
+
+    private sealed class NameInspectingBuilder(PgConfig config)
+        : PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance)
+    {
+        public ObjectNameAndHandle GetName(CreateTable table, SchemaIdentifier schema)
+        {
+            return GetAndValidateName(table, schema, null);
+        }
     }
 }

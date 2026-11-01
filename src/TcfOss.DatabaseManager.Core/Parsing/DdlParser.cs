@@ -17,6 +17,8 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class DdlParser
 {
+    protected virtual bool SupportsIndexMethodAfterTableName => true;
+
     private readonly Parser _p;
     private readonly Func<ParserState, ObjectName> _parseObjectName;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
@@ -671,6 +673,21 @@ public class DdlParser
 
         state.ExpectKeyword(Keyword.ON);
         ObjectName tableName = _parseObjectName(state);
+        bool? indexMethodAfterTableName = null;
+        if (allowIndexMethod && state.PeekKeyword(Keyword.USING))
+        {
+            if (!SupportsIndexMethodAfterTableName)
+            {
+                throw state.ExpectedException("(");
+            }
+            state.Next();
+            if (method != null)
+            {
+                throw new ParseException.Duplicate("index_method".Italic(), state.Peek().Location);
+            }
+            method = _p.TableParser.ParseIndexMethod(state);
+            indexMethodAfterTableName = true;
+        }
 
         SqlValueList<KeyPart> columns = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
 
@@ -711,6 +728,7 @@ public class DdlParser
         {
             Keyword.UNIQUE => new CreateIndex.Unique(columns, indexName, tableName)
             {
+                IndexMethodAfterTableName = indexMethodAfterTableName,
                 IndexMethod = method,
                 IndexOrganization = indexOrganization,
                 IncludedColumns = includedColumns,
@@ -735,6 +753,7 @@ public class DdlParser
             },
             _ => new CreateIndex.Standard(columns, indexName, tableName)
             {
+                IndexMethodAfterTableName = indexMethodAfterTableName,
                 IndexMethod = method,
                 IndexOrganization = indexOrganization,
                 IncludedColumns = includedColumns,

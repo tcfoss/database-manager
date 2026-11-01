@@ -206,6 +206,14 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     }
 
     [Theory]
+    [InlineData("CREATE INDEX ix ON items USING BTREE (id)")]
+    [InlineData("CREATE UNIQUE INDEX ix ON items USING BTREE (id)")]
+    public void PostgresIndexMethodPlacement_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("CREATE *")]
     [InlineData("CREATE unsupported_object")]
     public void InvalidCreateTargets_AreRejected(string sql)

@@ -7,6 +7,8 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyDdlParser(MyParser parser) : DdlParser(parser)
 {
+    protected override bool SupportsIndexMethodAfterTableName => false;
+
     protected override ObjectName? ParseOptionalTriggerOnTableBeforeTime(ParserState state)
     {
         return null;

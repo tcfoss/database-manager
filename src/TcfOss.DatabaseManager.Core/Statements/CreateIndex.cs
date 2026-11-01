@@ -15,6 +15,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
 {
     public bool IfNotExists { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
+    public bool? IndexMethodAfterTableName { get; init; }
 
     private void WritePrefix(SqlTextWriter writer, string? kindKeyword, IndexOrganization? indexOrganization)
     {
@@ -64,11 +65,16 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         {
             WritePrefix(writer, null, IndexOrganization);
             writer.WriteSql($" {Name}");
-            if (IndexMethod != null)
+            if (IndexMethod != null && IndexMethodAfterTableName != true)
             {
                 writer.WriteSql($" USING {IndexMethod}");
             }
-            writer.WriteSql($" ON {TableName} ({Columns})");
+            writer.WriteSql($" ON {TableName}");
+            if (IndexMethod != null && IndexMethodAfterTableName == true)
+            {
+                writer.WriteSql($" USING {IndexMethod}");
+            }
+            writer.WriteSql($" ({Columns})");
             if (IncludedColumns != null)
             {
                 writer.WriteSql($" {IncludedColumns}");
@@ -122,11 +128,16 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         {
             WritePrefix(writer, "UNIQUE", IndexOrganization);
             writer.WriteSql($" {Name}");
-            if (IndexMethod != null)
+            if (IndexMethod != null && IndexMethodAfterTableName != true)
             {
                 writer.WriteSql($" USING {IndexMethod}");
             }
-            writer.WriteSql($" ON {TableName} ({Columns})");
+            writer.WriteSql($" ON {TableName}");
+            if (IndexMethod != null && IndexMethodAfterTableName == true)
+            {
+                writer.WriteSql($" USING {IndexMethod}");
+            }
+            writer.WriteSql($" ({Columns})");
             if (IncludedColumns != null)
             {
                 writer.WriteSql($" {IncludedColumns}");

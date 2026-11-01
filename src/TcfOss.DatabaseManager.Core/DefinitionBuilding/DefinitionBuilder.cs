@@ -3,12 +3,14 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.DefinitionBuilding;
 
-public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TConfig config, SourceManager sourceManager, ILogger logger)
+public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TConfig config, SourceManager sourceManager,
+    ILogger logger, ComponentNormalizer componentNormalizer)
     where TConfig : ConfigWithSchemaMapsBase<TSchemaMapping>
     where TSchemaMapping : ISchemaMapping
 {
@@ -16,6 +18,7 @@ public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TC
     protected QuoteStyle QuoteStyle { get; } = config.QuoteStyle;
     protected SourceManager SourceManager { get; } = sourceManager;
     protected ILogger Logger { get; } = logger;
+    protected ComponentNormalizer ComponentNormalizer { get; } = componentNormalizer;
     private readonly NameHandling _nameHandling = config.NameHandling;
 
     private HashSet<ObjectHandle> ObjectHandles { get; } = [];
@@ -34,7 +37,8 @@ public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TC
 
     protected ObjectNameAndHandle GetAndValidateName<T>(T statement, SchemaIdentifier activeSchemaId, SourceRef? sourceRef) where T : ICreateStatement
     {
-        ObjectIdentifier objectId = ObjectIdentifier.FromObjectName(statement.Name, activeSchemaId, QuoteStyle);
+        ObjectIdentifier objectId = ComponentNormalizer.NormalizeObjectIdentifier(
+            ObjectIdentifier.FromObjectName(statement.Name, activeSchemaId, QuoteStyle));
         ObjectHandle handle = ObjectHandle.Create(statement.Name, activeSchemaId, _nameHandling);
 
         if (!ObjectHandles.Add(handle))

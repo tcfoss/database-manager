@@ -11,6 +11,8 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsDdlParser(MsParser parser) : DdlParser(parser)
 {
+    protected override bool SupportsIndexMethodAfterTableName => false;
+
     private readonly MsParser _p = parser;
 
     /// <summary>
