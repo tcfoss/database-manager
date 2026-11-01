@@ -350,12 +350,12 @@ public class StatementComponentTests
     [InlineData("CREATE DOMAIN app.label AS app.base_type COLLATE app.collation DEFAULT 'a' CONSTRAINT required NOT NULL CONSTRAINT valid CHECK (VALUE <> '')", "CREATE DOMAIN \"app\".\"label\" AS \"app\".\"base_type\" COLLATE \"app\".\"collation\" DEFAULT 'a' CONSTRAINT \"required\" NOT NULL CONSTRAINT \"valid\" CHECK (VALUE <> '')")]
     public void CreateDomain_FormatsNamesDefaultsAndConstraints(string sql, string expected)
     {
-        var parser = new Core.Parsing.Parser();
-        var lexer = new Core.Lexing.GenericLexer();
-        Statement statement = Assert.Single(parser.Parse(new Core.Parsing.ParserState([.. lexer.Tokenize(sql)]), null));
+        var parser = new Parsing.Parser();
+        var lexer = new Lexing.GenericLexer();
+        Statement statement = Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize(sql)]), null));
 
         Assert.Equal(expected, FormatComponent(statement));
-        Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new Core.Parsing.ParserState([.. lexer.Tokenize(expected)]), null)));
+        Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize(expected)]), null)));
     }
 
     [Fact]

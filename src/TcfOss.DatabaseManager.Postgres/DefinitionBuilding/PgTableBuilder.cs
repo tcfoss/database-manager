@@ -221,6 +221,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         }
     }
 
+    // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
     private static void ValidateConstraintIndexOptions(Comment? comment, SourceRef? sourceRef,
         IndexMethod? method = null, IndexOrganization? organization = null,
         SqlValueList<StatementIndexOption>? options = null, IndexStorageLocation? storageLocation = null)
@@ -552,7 +553,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     {
         foreach (SqlValueList<Identifier> identifiers in GetExpressionColumnReferences(expression))
         {
-            if (identifiers.Count > 1)
+            if (identifiers.Count <= 1)
             {
                 bool ownTable = identifiers.Count <= 4
                     && Handle.GetNamePart(identifiers[^2], NameHandling) == Name.Name

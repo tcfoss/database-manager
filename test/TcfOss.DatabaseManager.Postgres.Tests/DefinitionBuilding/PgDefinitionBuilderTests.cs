@@ -143,7 +143,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 9);
 
-        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(builder.ToDefinition);
 
         Assert.Contains("Cyclic type dependency", exception.Message);
         Assert.Contains(" -> ", exception.Message);
@@ -164,7 +164,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 8);
 
-        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(builder.ToDefinition);
 
         Assert.Contains("missing", exception.Message);
         Assert.Equal("missing", exception.TypeName.ToSql());
@@ -310,7 +310,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.TypeNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.TypeNotFound>(builder.ToDefinition);
     }
 
     [Fact]
@@ -346,7 +346,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.ThrowsAny<SqlSyntaxException>(() => builder.ToDefinition());
+        Assert.ThrowsAny<SqlSyntaxException>(builder.ToDefinition);
     }
 
     [Theory]
@@ -360,13 +360,13 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         {
             Attributes =
             [
-                new Core.Statements.Components.CompositeTypeField(new Identifier(name, quoteStyle), new DataType.Text()),
-                new Core.Statements.Components.CompositeTypeField(new Identifier(name, quoteStyle), new DataType.Int())
+                new CompositeTypeField(new Identifier(name, quoteStyle), new DataType.Text()),
+                new CompositeTypeField(new Identifier(name, quoteStyle), new DataType.Int())
             ]
         };
         builder.ProcessStatements([statement], GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.DuplicateColumn>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.DuplicateColumn>(builder.ToDefinition);
     }
 
     [Theory]
@@ -380,7 +380,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var statement = parsed with { Labels = [label, label] };
         builder.ProcessStatements([statement], GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(builder.ToDefinition);
     }
 
     [Fact]
@@ -438,7 +438,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TABLE items (label label)"), GetSchema(), 0);
-        Assert.Throws<SqlSyntaxException.TypeNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.TypeNotFound>(builder.ToDefinition);
         builder.ProcessStatements(ParseStatements("CREATE DOMAIN label AS TEXT"), GetSchema(), 1);
 
         PgDefinition first = builder.ToDefinition();
@@ -483,7 +483,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE DOMAIN blocked AS first; CREATE DOMAIN first AS second; CREATE DOMAIN second AS first"), GetSchema(), 0);
 
-        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(builder.ToDefinition);
 
         Assert.DoesNotContain("blocked", exception.Message);
         Assert.Contains("first", exception.Message);
@@ -498,7 +498,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 6);
 
-        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.CyclicTypeDependency>(builder.ToDefinition);
 
         Assert.Equal("Loop", exception.Cycle[0].Name);
         Assert.Equal(QuoteStyle.Ansi, exception.Cycle[0].QuoteStyle);
@@ -515,7 +515,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+        Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
     }
 
     [Theory]
@@ -530,13 +530,13 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         {
             Constraints =
             [
-                new Core.Statements.Components.StatementDomainConstraint.Nullability(first),
-                new Core.Statements.Components.StatementDomainConstraint.Nullability(second)
+                new StatementDomainConstraint.Nullability(first),
+                new StatementDomainConstraint.Nullability(second)
             ]
         };
         builder.ProcessStatements([statement], GetSchema(), 0);
 
-        Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+        Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
     }
 
     [Fact]
@@ -628,7 +628,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.IndexColumnNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.IndexColumnNotFound>(builder.ToDefinition);
     }
 
     [Fact]
@@ -704,7 +704,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(builder.ToDefinition);
     }
 
     [Theory]
@@ -715,7 +715,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        var exception = Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+        var exception = Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
         Assert.Contains(exception.Exceptions, error => error is DefinitionException.ForeignKeyNoReferencedBackingIndex);
     }
 
@@ -727,7 +727,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        var exception = Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+        var exception = Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
         Assert.Contains(exception.Exceptions, error => error.GetType() == expected);
     }
 
@@ -737,7 +737,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TABLE child (id INT, CONSTRAINT fk_missing FOREIGN KEY (id) REFERENCES missing(id))"), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.ForeignKeyReferencedTableNotFound>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.ForeignKeyReferencedTableNotFound>(builder.ToDefinition);
     }
 
     [Fact]
@@ -767,7 +767,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.DuplicateObject>(() => builder.ToDefinition());
+        Assert.Throws<SqlSyntaxException.DuplicateObject>(builder.ToDefinition);
     }
 
     [Theory]
@@ -779,7 +779,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Exception exception = Assert.ThrowsAny<SqlSyntaxException>(() => builder.ToDefinition());
+        Exception exception = Assert.ThrowsAny<SqlSyntaxException>(builder.ToDefinition);
         Assert.Equal(expected, exception.GetType());
     }
 
@@ -922,7 +922,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT, payload TEXT); CREATE INDEX ix ON items USING HASH (id) INCLUDE (payload)"), GetSchema(), 0);
 
-        var exception = Assert.Throws<NotSupportedException>(() => builder.ToDefinition());
+        var exception = Assert.Throws<NotSupportedException>(builder.ToDefinition);
         Assert.Contains("HASH indexes do not support INCLUDE", exception.Message);
     }
 
@@ -945,7 +945,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         }
         else
         {
-            var exception = Assert.Throws<ValidationExceptionSet>(() => builder.ToDefinition());
+            var exception = Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
             Assert.Contains(exception.Exceptions, error => error is DefinitionException.ForeignKeyNoReferencedBackingIndex);
         }
     }
@@ -1021,7 +1021,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH ({option} = ON)"), GetSchema(), 7);
 
-        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ToDefinition());
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
         Assert.Equal("PostgreSQL", exception.Dialect);
         Assert.Equal($"{option} = ON", exception.Clause);
         Assert.NotNull(exception.ObjectSourceRef);

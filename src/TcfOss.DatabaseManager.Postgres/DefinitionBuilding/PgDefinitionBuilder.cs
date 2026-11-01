@@ -245,7 +245,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             IEnumerable<Identifier> relationNames = table.Value.Indexes.Values.Select(index => index.Name)
                 .Concat(table.Value.UniqueConstraints.Values.Select(unique => unique.Name!));
-            if (table.Value.PrimaryKey?.Name is Identifier primaryKeyName)
+            if (table.Value.PrimaryKey?.Name is { } primaryKeyName)
             {
                 relationNames = relationNames.Append(primaryKeyName);
             }
@@ -329,15 +329,15 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     continue;
                 }
                 var referencedColumns = foreignKey.ReferencedColumns.Select(column => column.Name).ToHashSet();
-                bool backed = referencedTable.PrimaryKey is PgPrimaryKey primaryKey
+                bool backed = referencedTable.PrimaryKey is { } primaryKey
                     && primaryKey.Columns.Count == foreignKey.ReferencedColumns.Count
                     && referencedColumns.SetEquals(primaryKey.Columns.Select(column => column.Name));
                 backed |= referencedTable.UniqueConstraints.Values.Any(unique => unique.Columns.Count == foreignKey.ReferencedColumns.Count
                     && referencedColumns.SetEquals(unique.Columns.Select(column => column.Name)));
-                backed |= referencedTable.Indexes.Values.Any(index => index.Unique && index.Predicate == null
-                    && index.Columns.Count == foreignKey.ReferencedColumns.Count
-                    && index.Columns.All(part => part is KeyPart.Column)
-                    && referencedColumns.SetEquals(index.Columns.Cast<KeyPart.Column>().Select(column => column.Name.Name)));
+                backed |= referencedTable.Indexes.Values.Any(index => index is { Unique: true, Predicate: null }
+                                                                      && index.Columns.Count == foreignKey.ReferencedColumns.Count
+                                                                      && index.Columns.All(part => part is KeyPart.Column)
+                                                                      && referencedColumns.SetEquals(index.Columns.Cast<KeyPart.Column>().Select(column => column.Name.Name)));
                 if (!backed)
                 {
                     errors.Add(new DefinitionException.ForeignKeyNoReferencedBackingIndex(keyName, table.Name, referencedTable.Name, source));
