@@ -15,7 +15,7 @@ public class PgParser : Parser
         ExpressionParser = new ExpressionParser(this);
         SelectParser = new SelectParser(this);
         DmlParser = new DmlParser(this);
-        DdlParser = new DdlParser(this);
+        DdlParser = new PgDdlParser(this);
         TableParser = new TableParser(this);
         ControlFlowParser = new ControlFlowParser(this);
     }

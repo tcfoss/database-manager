@@ -12,11 +12,15 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 public record PgStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters,
     DataType ReturnType, Statement Body) : StoredFunction(Name, Parameters, ReturnType, Body)
 {
+    public PgRoutineOptions? Options { get; init; }
+
     public override CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
         return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1),
             [.. Parameters.Select(parameter => parameter.ToStatementParameter())], ReturnType, Body)
         {
+            PgOptions = Options,
+            UseAsBeforeBody = Body is RoutineBodyLiteral,
             Meta = new MetaData { RawText = RawBodyText }
         };
     }

@@ -14,6 +14,7 @@ public class Lexer<TRunState> : ILexer
     private const int StackAllocationThreshold = 256;
     protected virtual bool SupportBackslashQuoteEscape => true;
     protected virtual bool SupportBracketQuotedIdentifiers => true;
+    protected virtual bool SupportDollarQuotedStrings => false;
 
     public virtual List<Token> Tokenize(string sql) => Tokenize(sql.AsSpan());
 
@@ -101,6 +102,7 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.Slash => TokenizeSlash(ref state),
             CharSymbols.Asterisk => TokenizeSingleCharacter(ref state, new Asterisk() { Location = state.Location }),
             CharSymbols.Percent => TokenizeSingleCharacter(ref state, new Modulo() { Location = state.Location }),
+            CharSymbols.Dollar => TokenizeDollar(ref state),
 
             CharSymbols.GreaterThan => TokenizeGreaterThan(ref state),
             CharSymbols.LessThan => TokenizeLessThan(ref state),
@@ -328,6 +330,43 @@ public class Lexer<TRunState> : ILexer
         return new LessThan() { Location = initialLocation };
     }
 
+    private DollarQuotedStringLiteral TokenizeDollar(ref LexerState state)
+    {
+        if (SupportDollarQuotedStrings)
+        {
+            if (MaybeTokenizeDollarQuotedString(ref state) is { } token)
+            {
+                return token;
+            }
+        }
+
+        throw new LexException.UnexpectedCharacter(CharSymbols.Dollar, state.Location);
+    }
+
+    private DollarQuotedStringLiteral? MaybeTokenizeDollarQuotedString(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        LexerState candidate = state.Clone();
+        candidate.Next();
+        int tagStart = candidate.Position;
+        if (IsStrictIdentifierStart(candidate.Peek()))
+        {
+            candidate.Next();
+            candidate.TakeWhile(IsIdentifierPart);
+        }
+        if (candidate.Peek() != CharSymbols.Dollar)
+        {
+            return null;
+        }
+        int tagEnd = candidate.Position;
+        string tag = new(candidate.SpanFrom(tagStart, tagEnd));
+        string delimiter = $"${tag}$";
+        candidate = state.Clone();
+        string value = ExtractStringCustomQuotes(ref candidate, delimiter);
+        state = candidate;
+        return new DollarQuotedStringLiteral(tag, value) { Location = initialLocation };
+    }
+
     private static Token TokenizeNumber(ref LexerState state)
     {
         Location initialLocation = state.Location;
@@ -403,6 +442,18 @@ public class Lexer<TRunState> : ILexer
         return new StringLiteral(contents) { Location = initialLocation };
     }
 
+    private Token TokenizeNationalStringLiteral(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+
+        state.Next();
+        return state.Peek() switch
+        {
+            CharSymbols.SingleQuote => new NationalStringLiteral(new string(ExtractString(ref state))) { Location = initialLocation },
+            _ => new Word(new string(ExtractWordTrustNoNewLines(ref state))) { Location = initialLocation }
+        };
+    }
+
     private Token TokenizeHex(ref LexerState state)
     {
         Location initialLocation = state.Location;
@@ -415,18 +466,6 @@ public class Lexer<TRunState> : ILexer
 
         string hex = ExtractString(ref state);
         return new HexStringLiteral(hex) { Location = initialLocation };
-    }
-
-    private Token TokenizeNationalStringLiteral(ref LexerState state)
-    {
-        Location initialLocation = state.Location;
-
-        state.Next();
-        return state.Peek() switch
-        {
-            CharSymbols.SingleQuote => new NationalStringLiteral(new string(ExtractString(ref state))) { Location = initialLocation },
-            _ => new Word(new string(ExtractWordTrustNoNewLines(ref state))) { Location = initialLocation }
-        };
     }
 
     private static Token TokenizeSlash(ref LexerState state)
@@ -680,6 +719,27 @@ public class Lexer<TRunState> : ILexer
         }
     }
 
+    private static string ExtractStringCustomQuotes(ref LexerState state, string delimiter)
+    {
+        Location startLocation = state.Location;
+        if (!state.TakeIfSequence(delimiter))
+        {
+            throw new LexException.ExpectedSymbolSequence(startLocation);
+        }
+
+        int bodyStart = state.Position;
+        while (state.Peek() != CharSymbols.EndOfFile)
+        {
+            if (state.TakeIfSequence(delimiter))
+            {
+                return new string(state.SpanFrom(bodyStart, state.Position - delimiter.Length));
+            }
+            state.Next();
+        }
+
+        throw new LexException.UnterminatedString(startLocation);
+    }
+
     private string ExtractWordTrustNoNewLines(ref LexerState state)
     {
         int start = state.Position - 1;
@@ -696,5 +756,10 @@ public class Lexer<TRunState> : ILexer
     protected bool IsIdentifierPart(char character)
     {
         return char.IsLetter(character) || char.IsDigit(character) || character is CharSymbols.Underscore;
+    }
+
+    protected bool IsStrictIdentifierStart(char character)
+    {
+        return char.IsLetter(character) || character is CharSymbols.Underscore;
     }
 }

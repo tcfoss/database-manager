@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -38,6 +39,32 @@ public class ControlFlowParser
     public virtual Statement ParseIf(ParserState state)
     {
         throw new ParseException.DialectRequired("IF syntax", state.Peek().Location);
+    }
+
+    public virtual BeginAtomic ParseBeginAtomic(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC);
+        Token? closing = null;
+        var ender = new EndSubstatements
+        {
+            RequireTerminatorBeforeEnd = true,
+            GetFinished = innerState =>
+            {
+                if (!innerState.PeekKeyword(Keyword.END))
+                {
+                    return false;
+                }
+                closing = innerState.Next();
+                return true;
+            },
+            GetEofException = innerState => innerState.ExpectedException("END")
+        };
+        SqlValueList<Statement> statements = _p.Parse(state, ender);
+        if (closing?.PreNonSql.SafeAny() == true)
+        {
+            statements.Add(closing.PreNonSql.ToInertOnly());
+        }
+        return new BeginAtomic(statements);
     }
 
     public DeclareConditionHandler ParseDeclareConditionHandler(ParserState state)

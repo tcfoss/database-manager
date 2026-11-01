@@ -56,6 +56,27 @@ public abstract record Value() : IWriteSql
         }
     }
 
+    public record DollarQuotedString(string Value) : StringBasedValue(Value)
+    {
+        public string Tag { get; init; } = "";
+
+        public virtual bool Equals(DollarQuotedString? other)
+        {
+            // Tag is excluded from equality contract
+            return other != null && base.Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"${Tag}${Value}${Tag}$");
+        }
+    }
+
     public record NationalStringLiteral(string Value) : StringBasedValue(Value)
     {
         public override void ToSql(SqlTextWriter writer)

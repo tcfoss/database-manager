@@ -24,6 +24,7 @@ public class ValueParser
             },
             NumericLiteral n => new Value.Number(n.Value, n.IsLong),
             StringLiteral sl => new Value.SingleQuotedString(sl.Value),
+            DollarQuotedStringLiteral sl => new Value.DollarQuotedString(sl.Value) { Tag = sl.Tag },
             NationalStringLiteral nsl => new Value.NationalStringLiteral(nsl.Value),
             HexStringLiteral hsl => new Value.HexString(hsl.Value),
             _ => throw ParserState.ExpectedCategoryException("literal_value", token),
@@ -38,6 +39,7 @@ public class ValueParser
         {
             Word { Keyword: Keyword.undefined } word => word.Value,
             StringLiteral s => s.Value,
+            DollarQuotedStringLiteral s => s.Value,
             _ => throw ParserState.ExpectedCategoryException("literal_string", token)
         };
     }

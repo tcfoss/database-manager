@@ -6,4 +6,5 @@ public class PgLexer : Lexer<RunState>
 {
     protected override bool SupportBackslashQuoteEscape => false;
     protected override bool SupportBracketQuotedIdentifiers => false;
+    protected override bool SupportDollarQuotedStrings => true;
 }

@@ -9,6 +9,8 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
 {
     protected override bool SupportsIndexMethodAfterTableName => false;
 
+    protected override bool UseSqlRoutineTail(ParserState state) => false;
+
     protected override ObjectName? ParseOptionalTriggerOnTableBeforeTime(ParserState state)
     {
         return null;

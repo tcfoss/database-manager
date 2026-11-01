@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
@@ -16,6 +17,13 @@ public record CreateProcedure(ObjectName Name, SqlValueList<StatementRoutinePara
     public Definer? Definer { get; init; }
     public MyRoutineCharacteristic? MyCharacteristic { get; init; }
     public MsRoutineWithOptions? MsOptions { get; init; }
+    public PgRoutineOptions? PgOptions { get; init; }
+
+    /// <summary>
+    /// PostgreSQL can have additional keywords after the statement body, pushing the real
+    /// end of the statement to a later point.
+    /// </summary>
+    public MetaData RoutineTailMeta { get; init; } = new();
 
     /// <summary>If true, emit <c>AS</c> between the routine header and body
     /// (T-SQL syntax). MySQL/MariaDB use no separator and leave this false.</summary>
@@ -61,15 +69,18 @@ public record CreateProcedure(ObjectName Name, SqlValueList<StatementRoutinePara
         }
         else
         {
-            writer.Write(UseAsBeforeBody ? " AS " : " ");
-            writer.WriteSql($"{Body}");
+            if (PgOptions != null)
+            {
+                writer.WriteSql($" {PgOptions}");
+            }
+            RoutineFormatter.WriteBody(writer, Body, UseAsBeforeBody);
         }
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
-        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, "PROCEDURE", Name, Parameters, IfNotExists, null, MyCharacteristic, MsOptions);
+        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, "PROCEDURE", Name, Parameters, IfNotExists, null, MyCharacteristic, MsOptions, PgOptions);
         RoutineFormatter.FormatBody(writer, manager, Body, UseAsBeforeBody);
         Meta.FormatPostNonSql(writer, manager);
     }

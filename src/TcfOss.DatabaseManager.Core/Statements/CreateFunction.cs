@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
@@ -17,6 +18,13 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
     public bool Aggregate { get; init; }
     public MyRoutineCharacteristic? MyCharacteristic { get; init; }
     public MsRoutineWithOptions? MsOptions { get; init; }
+    public PgRoutineOptions? PgOptions { get; init; }
+
+    /// <summary>
+    /// PostgreSQL can have additional keywords after the statement body, pushing the real
+    /// end of the statement to a later point.
+    /// </summary>
+    public MetaData RoutineTailMeta { get; init; } = new();
 
     /// <summary>If true, emit <c>AS</c> between the function header and body
     /// (T-SQL syntax). MySQL/MariaDB use no separator and leave this false.</summary>
@@ -68,8 +76,11 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
         }
         else
         {
-            writer.Write(UseAsBeforeBody ? " AS " : " ");
-            writer.WriteSql($"{Body}");
+            if (PgOptions != null)
+            {
+                writer.WriteSql($" {PgOptions}");
+            }
+            RoutineFormatter.WriteBody(writer, Body, UseAsBeforeBody);
         }
     }
 
@@ -77,7 +88,7 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
     {
         Meta.FormatPreNonSql(writer, manager);
         string routineKeyword = Aggregate ? "AGGREGATE FUNCTION" : "FUNCTION";
-        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, routineKeyword, Name, Parameters, IfNotExists, ReturnType, MyCharacteristic, MsOptions);
+        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, routineKeyword, Name, Parameters, IfNotExists, ReturnType, MyCharacteristic, MsOptions, PgOptions);
         RoutineFormatter.FormatBody(writer, manager, Body, UseAsBeforeBody);
         Meta.FormatPostNonSql(writer, manager);
     }

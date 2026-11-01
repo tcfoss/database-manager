@@ -18,6 +18,8 @@ public class ParserState
     public int SourceId { get; }
 
     internal bool IsDomainCheck { get; private set; }
+    public bool AllowStringLiteralAsStatement { get; private set; }
+    internal bool AllowBeginAtomic { get; private set; }
 
     public ParserState(Token[] tokens, int sourceId = 0)
     {
@@ -464,6 +466,52 @@ public class ParserState
     public DomainCheckScope EnterDomainCheck()
     {
         return new DomainCheckScope(this);
+    }
+
+    public StringLiteralAsStatementScope EnterStringLiteralAsStatement()
+    {
+        return new StringLiteralAsStatementScope(this);
+    }
+
+    internal BeginAtomicScope EnterBeginAtomic(bool allow = true)
+    {
+        return new BeginAtomicScope(this, allow);
+    }
+
+    internal readonly struct BeginAtomicScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly bool _previousValue;
+
+        internal BeginAtomicScope(ParserState state, bool allow)
+        {
+            _state = state;
+            _previousValue = state.AllowBeginAtomic;
+            state.AllowBeginAtomic = allow;
+        }
+
+        public void Dispose()
+        {
+            _state.AllowBeginAtomic = _previousValue;
+        }
+    }
+
+    public readonly struct StringLiteralAsStatementScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly bool _previousValue;
+
+        internal StringLiteralAsStatementScope(ParserState state)
+        {
+            _state = state;
+            _previousValue = state.AllowStringLiteralAsStatement;
+            state.AllowStringLiteralAsStatement = true;
+        }
+
+        public void Dispose()
+        {
+            _state.AllowStringLiteralAsStatement = _previousValue;
+        }
     }
 
     public readonly struct DomainCheckScope : IDisposable

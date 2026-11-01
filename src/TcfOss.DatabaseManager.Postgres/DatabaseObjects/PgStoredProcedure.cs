@@ -11,11 +11,15 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 public record PgStoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters,
     Statement Body) : StoredProcedure(Name, Parameters, Body)
 {
+    public PgRoutineOptions? Options { get; init; }
+
     public override CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
         return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1),
             [.. Parameters.Select(parameter => parameter.ToStatementParameter())], Body)
         {
+            PgOptions = Options,
+            UseAsBeforeBody = Body is RoutineBodyLiteral,
             Meta = new MetaData { RawText = RawBodyText }
         };
     }

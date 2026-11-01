@@ -159,6 +159,19 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return types;
     }
 
+    private PgRoutineOptions? NormalizeRoutineOptions(PgRoutineOptions? options, Statement body)
+    {
+        if (options == null && body is BeginAtomic or Return)
+        {
+            options = new PgRoutineOptions(new Identifier("sql", QuoteStyle.None));
+        }
+        if (options == null)
+        {
+            return null;
+        }
+        return new PgRoutineOptions(ComponentNormalizer.NormalizeSingleIdentifier(options.Language));
+    }
+
     public override PgDefinition ToDefinition()
     {
         PgTypeResolutionManager manager = GetTypeResolutionManager();
@@ -180,7 +193,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager),
                 manager.Resolve(item.Statement.ReturnType, item.Name.Schema, item.SourceRef), item.Statement.Body)
             {
-                RawBodyText = SourceManager.GetText(item.SourceRef, item.Statement.Body.Meta)
+                Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
+                RawBodyText = SourceManager.GetText(item.SourceRef,
+                    item.Statement.RoutineTailMeta.Start != null ? item.Statement.RoutineTailMeta : item.Statement.Body.Meta)
             });
         }
 
@@ -191,7 +206,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             procedures.Add(declaration.Key, new PgStoredProcedure(item.Name,
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
             {
-                RawBodyText = SourceManager.GetText(item.SourceRef, item.Statement.Body.Meta)
+                Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
+                RawBodyText = SourceManager.GetText(item.SourceRef,
+                    item.Statement.RoutineTailMeta.Start != null ? item.Statement.RoutineTailMeta : item.Statement.Body.Meta)
             });
         }
 

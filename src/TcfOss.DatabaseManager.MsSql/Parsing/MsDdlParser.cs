@@ -13,6 +13,8 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
 {
     protected override bool SupportsIndexMethodAfterTableName => false;
 
+    protected override bool UseSqlRoutineTail(ParserState state) => false;
+
     private readonly MsParser _p = parser;
 
     /// <summary>

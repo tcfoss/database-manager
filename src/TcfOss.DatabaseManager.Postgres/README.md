@@ -86,8 +86,8 @@ MySQL/MariaDB parser, but are rejected by PostgreSQL and SQL Server.
 
 This is not yet a complete PostgreSQL grammar. Custom type modifiers,
 range/base/shell type declarations, catalog/internal and routine
-pseudo-types, PostgreSQL-specific casts (`::`), dollar-quoted strings, and routine
-bodies are not implemented. Existing Core statement parsing is reused without
+pseudo-types and PostgreSQL-specific casts (`::`) are not implemented.
+Routine support is limited to the body forms described below. Existing Core statement parsing is reused without
 claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
@@ -168,6 +168,35 @@ and `PgStoredProcedure` derive from Core's abstract routine models, using resolv
 `DataType` values for parameters and function return types. Core's raw-body text
 contract is retained: raw text is copied into generated statement metadata and
 excluded from routine equality and hashing.
+
+PostgreSQL routine parsing currently recognizes three body shapes: quoted string
+definitions (`AS '...'` or `AS $tag$...$tag$`) with a `LANGUAGE` clause before
+or after the literal; SQL `RETURN` bodies; and structured `BEGIN ATOMIC` blocks
+with semicolon-terminated statements. Structured bodies default to SQL language
+and reject an explicitly non-SQL language; a standalone `RETURN` body is allowed
+only for functions. Bare Core bodies such as `AS RETURN` or a procedure's
+unwrapped `SELECT` are not PostgreSQL routine syntax and are rejected.
+
+Core owns routine-tail parsing and the `BeginAtomic` parser; PostgreSQL selects
+the SQL routine-tail grammar while MySQL/MariaDB and SQL Server retain their
+existing grammar. Atomic blocks are dispatched only at a routine-body boundary,
+use the shared statement-list parser, and require inner statement terminators.
+Their contained statement references remain visible. Quoted language bodies use
+one opaque `RoutineBodyLiteral`, retaining decoded content and optional dollar
+tag for reconstruction. Quoting does not affect literal-body equality and no
+references are inferred from opaque text.
+
+`PgRoutineOptions` is a nullable Core component on create statements and is
+retained independently of the body in PostgreSQL routine definitions. Language
+is normalized during definition construction, including the implicit SQL
+language of structured bodies. The header formatter emits options; bodies do
+not contain language clauses or duplicate `AS` flags. `RoutineTailMeta` preserves
+the tail's source range for raw-text generation without expanding `Body.Meta`.
+Dollar-quoted tokens retain tag and content and also work as SQL values in
+expressions and column defaults. Other PostgreSQL routine attributes, full
+option ordering, overload identity, and broader PL/pgSQL grammar remain deferred.
+These source changes await review before new routine tests are written; existing
+tests using permissive Core routine syntax require updates to PostgreSQL forms.
 
 `PgDefinitionBuilder.ProcessStatements` collects table, enum, composite, and
 domain declarations, plus the currently supported Core routine forms, across

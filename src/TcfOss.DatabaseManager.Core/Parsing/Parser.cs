@@ -76,6 +76,11 @@ public class Parser : IParser
                 break;
             }
 
+            if (expectingTerminator && endChecker is { RequireTerminatorBeforeEnd: true })
+            {
+                throw ParserState.ExpectedException("end of statement", next);
+            }
+
             if (endChecker?.GetFinished(state) ?? false)
             {
                 break;
@@ -154,12 +159,21 @@ public class Parser : IParser
 
     protected virtual Statement ParseNormalStatement(ParserState state, Token token, Label? label)
     {
-        return token switch
+        switch (token)
         {
-            Word word => ParseKeywordStatement(state, word, label),
-            ParenOpen => SelectParser.ParseSelect(state, null),
-            _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
-        };
+            case Word word:
+                return ParseKeywordStatement(state, word, label);
+            case ParenOpen:
+                return SelectParser.ParseSelect(state, null);
+            case StringLiteral literal when state.AllowStringLiteralAsStatement:
+                state.Next();
+                return new RoutineBodyLiteral(literal.Value.Replace("''", "'", StringComparison.Ordinal));
+            case DollarQuotedStringLiteral literal when state.AllowStringLiteralAsStatement:
+                state.Next();
+                return new RoutineBodyLiteral(literal.Value) { DollarQuoteTag = literal.Tag };
+            default:
+                throw ParserState.ExpectedException("SQL statement".Italic(), token);
+        }
     }
 
     protected virtual Statement ParseKeywordStatement(ParserState state, Word first, Label? label)
@@ -349,6 +363,17 @@ public class Parser : IParser
 
     protected virtual Statement ParseBegin(ParserState state)
     {
+        if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
+        {
+            if (!state.AllowBeginAtomic)
+            {
+                throw state.ExpectedException("SQL statement");
+            }
+            using (state.EnterBeginAtomic(allow: false))
+            {
+                return ControlFlowParser.ParseBeginAtomic(state);
+            }
+        }
         return ControlFlowParser.ParseBeginEnd(state);
     }
 
