@@ -10,10 +10,12 @@ public static class PrecedenceManagerTests
     [InlineData(Precedence.AtTimezone, Precedence.MultiplyDivide, Label = "'AT TZ' > '*/'")]
     [InlineData(Precedence.MultiplyDivide, Precedence.AddSubtract, Label = "'*/' > '+-'")]
     [InlineData(Precedence.AddSubtract, Precedence.Xor, Label = "'+-' > 'XOR'")]
+    [InlineData(Precedence.AddSubtract, Precedence.PgConcat, Label = "'+-' > '||'")]
     [InlineData(Precedence.Xor, Precedence.Ampersand, Label = "'XOR' > '&'")]
     [InlineData(Precedence.Ampersand, Precedence.Caret, Label = "'&' > '^'")]
     [InlineData(Precedence.Caret, Precedence.Pipe, Label = "'^' > '|'")]
     [InlineData(Precedence.Pipe, Precedence.Between, Label = "'|' > 'BETWEEN'")]
+    [InlineData(Precedence.PgConcat, Precedence.Between, Label = "'||' > 'BETWEEN'")]
     [InlineData(Precedence.Between, Precedence.Like, Label = "'BETWEEN' > 'LIKE'")]
     [InlineData(Precedence.Like, Precedence.Is, Label = "'LIKE' > 'IS'")]
     [InlineData(Precedence.Is, Precedence.UnaryNot, Label = "'IS' > 'NOT'")]
@@ -50,7 +52,8 @@ public static class PrecedenceManagerTests
     [InlineData("ilike", Precedence.Like, null, Label = "ILIKE")]
     [InlineData("regexp", Precedence.Like, null, Label = "REGEXP")]
     [InlineData("rlike", Precedence.Like, null, Label = "RLIKE")]
-    [InlineData("similar", Precedence.Like, null, Label = "SIMILAR")]
+    [InlineData("similar", Precedence.Or, 0, Label = "SIMILAR without TO")]
+    [InlineData("similar to", Precedence.Like, null, Label = "SIMILAR TO")]
     [InlineData("div", Precedence.MultiplyDivide, null, Label = "DIV")]
     [InlineData("=", Precedence.Between, null, Label = "=")]
     [InlineData("<>", Precedence.Between, null, Label = "<>")]
@@ -63,6 +66,15 @@ public static class PrecedenceManagerTests
     [InlineData("*", Precedence.MultiplyDivide, null, Label = "*")]
     [InlineData("/", Precedence.MultiplyDivide, null, Label = "/")]
     [InlineData("%", Precedence.MultiplyDivide, null, Label = "%")]
+    [InlineData("::", Precedence.DoubleColon, null, Label = "::")]
+    [InlineData("||", Precedence.PgConcat, null, Label = "||")]
+    [InlineData("|", Precedence.Pipe, null, Label = "|")]
+    [InlineData("^", Precedence.Caret, null, Label = "^")]
+    [InlineData("&", Precedence.Ampersand, null, Label = "&")]
+    [InlineData("~", Precedence.PgConcat, null, Label = "~")]
+    [InlineData("~*", Precedence.PgConcat, null, Label = "~*")]
+    [InlineData("!~", Precedence.PgConcat, null, Label = "!~")]
+    [InlineData("!~*", Precedence.PgConcat, null, Label = "!~*")]
     public static void Next_Precedence_By_Keyword_String(string keyword, Precedence expectedPrecedence, int? overrideExpected)
     {
         var state = new ParserState([.. new GenericLexer().Tokenize(keyword)]);
@@ -73,6 +85,17 @@ public static class PrecedenceManagerTests
         short expected = (short?)overrideExpected ?? pm.GetPrecedence(expectedPrecedence);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(false, Precedence.PgConcat)]
+    [InlineData(true, Precedence.Or)]
+    public static void DoublePipe_Precedence_By_Flag(bool treatDoublePipeAsOr, Precedence expectedPrecedence)
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize("||")]);
+        var pm = new PrecedenceManager(treatDoublePipeAsOr);
+
+        Assert.Equal(pm.GetPrecedence(expectedPrecedence), pm.GetNextPrecedence(state));
     }
 
     [Fact]

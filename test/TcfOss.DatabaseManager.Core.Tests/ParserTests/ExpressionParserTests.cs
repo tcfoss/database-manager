@@ -1,7 +1,10 @@
-﻿using TcfOss.DatabaseManager.Core.Errors;
+﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
+
 using BinaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.BinaryOperator;
 using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
 
@@ -152,6 +155,9 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("+3 > 0", Label = "unary plus comparison")]
     [InlineData("-3 < 0", Label = "unary minus comparison")]
     [InlineData("x % 2 = 0", Label = "modulo comparison")]
+    [InlineData("a || b", Label = "string concatenation")]
+    [InlineData("a | b ^ c & d", Label = "bitwise precedence")]
+    [InlineData("a || b | c", Label = "bitwise binds tighter than postgres concatenation")]
     [InlineData("a AND b", Label = "and")]
     [InlineData("a OR b", Label = "or")]
     [InlineData("a XOR b", Label = "xor")]
@@ -161,6 +167,50 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, sql);
 
         Assert.Equal(realExpected ?? expected, actual);
+    }
+
+    [Fact]
+    public void ParseExpr_SymbolicOperatorPrecedence()
+    {
+        var bitwise = Assert.IsType<BinaryOperatorExp>(ParseExpression("a | b ^ c & d"));
+        Assert.Equal(BinaryOperatorOp.BitwiseOr, bitwise.Operator);
+        var xor = Assert.IsType<BinaryOperatorExp>(bitwise.Right);
+        Assert.Equal(BinaryOperatorOp.BitwiseXor, xor.Operator);
+        var and = Assert.IsType<BinaryOperatorExp>(xor.Right);
+        Assert.Equal(BinaryOperatorOp.BitwiseAnd, and.Operator);
+
+        var concat = Assert.IsType<BinaryOperatorExp>(ParseExpression("a || b | c"));
+        Assert.Equal(BinaryOperatorOp.StringConcat, concat.Operator);
+        Assert.Equal(BinaryOperatorOp.BitwiseOr, Assert.IsType<BinaryOperatorExp>(concat.Right).Operator);
+    }
+
+    [Theory]
+    [InlineData("a ~ 'pattern'", "~")]
+    [InlineData("a ~* 'pattern'", "~*")]
+    [InlineData("a !~ 'pattern'", "!~")]
+    [InlineData("a !~* 'pattern'", "!~*")]
+    public void ParseExpr_TildeRegexOperators(string sql, string symbolOperator)
+    {
+        var expression = Assert.IsType<BinaryOperatorExp>(ParseExpression(sql));
+
+        Assert.Equal(symbolOperator, expression.Operator.ToString());
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("~")]
+    [InlineData("~*")]
+    [InlineData("!~")]
+    [InlineData("!~*")]
+    public void ParseExpr_TildeRegexOperatorPrecedence(string symbolOperator)
+    {
+        var logical = Assert.IsType<BinaryOperatorExp>(ParseExpression($"a {symbolOperator} b || c AND d"));
+        Assert.Equal(BinaryOperatorOp.And, logical.Operator);
+        var concat = Assert.IsType<BinaryOperatorExp>(logical.Left);
+        Assert.Equal(BinaryOperatorOp.StringConcat, concat.Operator);
+        var regex = Assert.IsType<BinaryOperatorExp>(concat.Left);
+        Assert.Equal(symbolOperator, regex.Operator.ToString());
     }
 
     /* INTERVAL expressions */
@@ -283,23 +333,47 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Fact]
-    public void Similar_MissingTo_Throws()
+    public void Similar_WithoutTo_IsNotTreatedAsAnOperator()
     {
         var parser = new Parser();
         var state = GetState("x SIMILAR");
-
-        var x = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseExpr(state));
-        Assert.Contains("TO", x.Message);
+        Assert.Equal("x", parser.ExpressionParser.ParseExpr(state).ToSql());
+        Assert.True(state.PeekKeyword(Keyword.SIMILAR));
     }
 
     [Theory]
-    [InlineData("x ILIKE 'pattern'")]
-    [InlineData("x SIMILAR TO 'pattern'")]
-    public void NotYetImplemented_Throws(string sql)
+    [InlineData("x ILIKE 'pattern'", false, false, null)]
+    [InlineData("x NOT ILIKE 'pattern' ESCAPE '!'", true, false, "!")]
+    [InlineData("x ILIKE ANY ('one', 'two')", false, true, null)]
+    public void ParseExpr_ILike(string sql, bool negated, bool any, string? escapeChar)
+    {
+        ILike expression = Assert.IsType<ILike>(ParseExpression(sql));
+
+        Assert.Equal(negated, expression.Negated);
+        Assert.Equal(any, expression.Any);
+        Assert.Equal(escapeChar, expression.EscapeChar);
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+    [Theory]
+    [InlineData("x SIMILAR TO 'pattern'", false, false, null)]
+    [InlineData("x NOT SIMILAR TO 'pattern' ESCAPE '!'", true, false, "!")]
+    [InlineData("x SIMILAR TO ANY ('one', 'two')", false, true, null)]
+    public void ParseExpr_SimilarTo(string sql, bool negated, bool any, string? escapeChar)
+    {
+        SimilarTo expression = Assert.IsType<SimilarTo>(ParseExpression(sql));
+
+        Assert.Equal(negated, expression.Negated);
+        Assert.Equal(any, expression.Any);
+        Assert.Equal(escapeChar, expression.EscapeChar);
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+    [Fact]
+    public void CoreParser_DefaultsToPostgresSyntaxSupport()
     {
         var parser = new Parser();
-        var state = GetState(sql);
-
-        Assert.Throws<NotImplementedException>(() => parser.ExpressionParser.ParseExpr(state));
+        Assert.True(parser.SupportsPostgresCastSyntax);
+        Assert.True(parser.SupportsPostgresRegexOperators);
     }
 }

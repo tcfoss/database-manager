@@ -6,8 +6,15 @@ namespace TcfOss.DatabaseManager.Core.Expressions;
 
 public record Cast(Expression Expression, DataTypeReference DataType) : Expression
 {
+    public bool UsePostgresCastSyntax { get; init; }
+
     public override void ToSql(SqlTextWriter writer)
     {
+        if (UsePostgresCastSyntax)
+        {
+            writer.WriteSql($"{Expression}::{DataType}");
+            return;
+        }
         writer.WriteSql($"CAST({Expression} AS {DataType})");
     }
 

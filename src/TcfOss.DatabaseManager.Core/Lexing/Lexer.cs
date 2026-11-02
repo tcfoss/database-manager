@@ -116,6 +116,10 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.Semicolon => TokenizeSingleCharacter(ref state, new Semicolon() { Location = state.Location }),
             CharSymbols.Colon => TokenizeColon(ref state),
+            CharSymbols.Pipe => TokenizePipe(ref state),
+            CharSymbols.Ampersand => TokenizeSingleCharacter(ref state, new Ampersand() { Location = state.Location }),
+            CharSymbols.Caret => TokenizeSingleCharacter(ref state, new Caret() { Location = state.Location }),
+            CharSymbols.Tilde => TokenizeTilde(ref state),
 
             CharSymbols.Backslash => TokenizeSingleCharacter(ref state, new Backslash() { Location = state.Location }),
 
@@ -280,6 +284,16 @@ public class Lexer<TRunState> : ILexer
             state.Next();
             return new NotEqual() { Location = initialLocation };
         }
+        if (state.Peek() == CharSymbols.Tilde)
+        {
+            state.Next();
+            if (state.Peek() == CharSymbols.Asterisk)
+            {
+                state.Next();
+                return new NotTildeAsterisk() { Location = initialLocation };
+            }
+            return new NotTilde() { Location = initialLocation };
+        }
         return new Exclamation() { Location = initialLocation };
     }
 
@@ -292,7 +306,36 @@ public class Lexer<TRunState> : ILexer
             state.Next();
             return new Walrus() { Location = initialLocation };
         }
+        if (state.Peek() == CharSymbols.Colon)
+        {
+            state.Next();
+            return new DoubleColon() { Location = initialLocation };
+        }
         return new Colon() { Location = initialLocation };
+    }
+
+    private static Token TokenizePipe(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        if (state.Peek() == CharSymbols.Pipe)
+        {
+            state.Next();
+            return new DoublePipe() { Location = initialLocation };
+        }
+        return new Pipe() { Location = initialLocation };
+    }
+
+    private static Token TokenizeTilde(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        if (state.Peek() == CharSymbols.Asterisk)
+        {
+            state.Next();
+            return new TildeAsterisk() { Location = initialLocation };
+        }
+        return new Tilde() { Location = initialLocation };
     }
 
     private static Token TokenizeGreaterThan(ref LexerState state)

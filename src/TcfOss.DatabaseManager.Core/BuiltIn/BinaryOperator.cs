@@ -20,4 +20,8 @@ namespace TcfOss.DatabaseManager.Core.BuiltIn;
 [StringEnum("&", "BitwiseAnd")]
 [StringEnum("|", "BitwiseOr")]
 [StringEnum("^", "BitwiseXor")]
+[StringEnum("~", "RegexMatch")]
+[StringEnum("~*", "RegexMatchCaseInsensitive")]
+[StringEnum("!~", "RegexNotMatch")]
+[StringEnum("!~*", "RegexNotMatchCaseInsensitive")]
 public sealed partial class BinaryOperator;

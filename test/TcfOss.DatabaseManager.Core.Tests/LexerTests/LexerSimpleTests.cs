@@ -466,9 +466,19 @@ public class LexerSimpleTests : LexerTestBase
     [InlineData("!", typeof(Exclamation))]
     [InlineData("=>", typeof(FatArrow))]
     [InlineData(":=", typeof(Walrus))]
+    [InlineData("::", typeof(DoubleColon))]
+    [InlineData("||", typeof(DoublePipe))]
+    [InlineData("|", typeof(Pipe))]
+    [InlineData("&", typeof(Ampersand))]
+    [InlineData("^", typeof(Caret))]
+    [InlineData("~", typeof(Tilde))]
+    [InlineData("~*", typeof(TildeAsterisk))]
+    [InlineData("!~", typeof(NotTilde))]
+    [InlineData("!~*", typeof(NotTildeAsterisk))]
     public void SymbolOperatorsTokenize(string opVal, Type type)
     {
         var actual = new GenericLexer().Tokenize(opVal);
+        Assert.IsType(type, Assert.Single(actual));
         Assert.True(typeof(ITypeSymbol).IsAssignableFrom(type));
         var prop = type.GetProperty("TypeSymbol", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) as string;
         Assert.Equal(prop, actual[0].ToString());

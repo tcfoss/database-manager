@@ -20,9 +20,12 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyParser : Parser
 {
+    public override bool SupportsPostgresCastSyntax => false;
+    public override bool SupportsPostgresRegexOperators => false;
+
     public MyParser()
     {
-        PrecedenceManager = new PrecedenceManager();
+        PrecedenceManager = new PrecedenceManager(treatDoublePipeAsOr: true);
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MyFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MyDataTypeParser(this);

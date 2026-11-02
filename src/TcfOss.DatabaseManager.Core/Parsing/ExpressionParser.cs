@@ -97,20 +97,30 @@ public class ExpressionParser
     private Expression ParseInfix(ParserState state, Expression left, short precedence)
     {
         Token token = state.Next();
-        var op = token.ToBinaryOperator();
+        if (token is DoubleColon)
+        {
+            if (!_p.SupportsPostgresCastSyntax)
+            {
+                throw ParserState.ExpectedException("expression operator", token);
+            }
+            return new Cast(left, _p.DataTypeParser.ParseDataTypeReference(state))
+            {
+                UsePostgresCastSyntax = true
+            };
+        }
 
+        BinaryOperatorOp? op = GetBinaryOperator(token);
         if (op != null)
         {
             return ParseInfixBinaryOperator(state, token, op, left, precedence);
         }
 
-        if (token is Word w)
+        if (token is Word word)
         {
-            return ParseInfixWord(state, w, left, precedence);
+            return ParseInfixWord(state, word, left, precedence);
         }
 
-        // TODO : (token is DoubleColon), (token is LeftBracket), ...
-        throw new NotImplementedException();
+        throw ParserState.ExpectedException("expression operator", token);
     }
 
     private Expression ParseInfixBinaryOperator(ParserState state, Token token, BinaryOperatorOp op, Expression left, short precedence)
@@ -201,14 +211,16 @@ public class ExpressionParser
         {
             return ParseLike(state, left, negated);
         }
+        if (state.ParseKeyword(Keyword.ILIKE))
+        {
+            (Expression pattern, string? escapeChar, bool any) = ParsePatternMatch(state);
+            return new ILike(left, negated, pattern, escapeChar, any);
+        }
         if (state.ParseKeyword(Keyword.SIMILAR))
         {
             state.ExpectKeyword(Keyword.TO);
-            throw new NotImplementedException("SIMILAR TO is not implemented yet.");
-        }
-        if (state.ParseKeyword(Keyword.ILIKE))
-        {
-            throw new NotImplementedException("ILIKE is not implemented yet.");
+            (Expression pattern, string? escapeChar, bool any) = ParsePatternMatch(state);
+            return new SimilarTo(left, negated, pattern, escapeChar, any);
         }
 
         throw new DefensiveGuardException("infix keyword", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
@@ -542,11 +554,17 @@ public class ExpressionParser
 
     private Like ParseLike(ParserState state, Expression expr, bool negated)
     {
+        (Expression pattern, string? escapeChar, bool any) = ParsePatternMatch(state);
+        return new Like(expr, negated, pattern, escapeChar, any);
+    }
+
+    private (Expression Pattern, string? EscapeChar, bool Any) ParsePatternMatch(ParserState state)
+    {
         bool any = state.ParseKeyword(Keyword.ANY);
-        Expression sub = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
+        Expression pattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
         string? escapeChar = ParseOptionalEscapeChar(state);
 
-        return new Like(expr, negated, sub, escapeChar, any);
+        return (pattern, escapeChar, any);
     }
 
     private static string? ParseOptionalEscapeChar(ParserState state)
@@ -713,10 +731,45 @@ public class ExpressionParser
         return expression;
     }
 
-
     private static DomainValue ParseDomainValue(ParserState state)
     {
         state.Next();
         return new DomainValue();
+    }
+
+    protected virtual BinaryOperatorOp? GetBinaryOperator(Token token)
+    {
+        if (token is Tilde or TildeAsterisk or NotTilde or NotTildeAsterisk
+            && !_p.SupportsPostgresRegexOperators)
+        {
+            return null;
+        }
+
+        return token switch
+        {
+            Equal => BinaryOperatorOp.Equal,
+            NotEqual => BinaryOperatorOp.NotEqual,
+            GreaterThan => BinaryOperatorOp.GreaterThan,
+            GreaterThanOrEqual => BinaryOperatorOp.GreaterThanOrEqual,
+            LessThan => BinaryOperatorOp.LessThan,
+            LessThanOrEqual => BinaryOperatorOp.LessThanOrEqual,
+            Plus => BinaryOperatorOp.Add,
+            Minus => BinaryOperatorOp.Subtract,
+            Asterisk => BinaryOperatorOp.Multiply,
+            Slash => BinaryOperatorOp.Divide,
+            Modulo => BinaryOperatorOp.Modulo,
+            Word { Keyword: Keyword.AND } => BinaryOperatorOp.And,
+            Word { Keyword: Keyword.OR } => BinaryOperatorOp.Or,
+            Word { Keyword: Keyword.XOR } => BinaryOperatorOp.Xor,
+            DoublePipe => BinaryOperatorOp.StringConcat,
+            Pipe => BinaryOperatorOp.BitwiseOr,
+            Caret => BinaryOperatorOp.BitwiseXor,
+            Ampersand => BinaryOperatorOp.BitwiseAnd,
+            Tilde => BinaryOperatorOp.RegexMatch,
+            TildeAsterisk => BinaryOperatorOp.RegexMatchCaseInsensitive,
+            NotTilde => BinaryOperatorOp.RegexNotMatch,
+            NotTildeAsterisk => BinaryOperatorOp.RegexNotMatchCaseInsensitive,
+            _ => null
+        };
     }
 }

@@ -58,4 +58,9 @@ public static class StringSymbols
     public const string NotEqual = "<>";
     public const string Assignment = ":=";
     public const string FatArrow = "=>";
+    public const string DoubleColon = "::";
+    public const string DoublePipe = "||";
+    public const string TildeAsterisk = "~*";
+    public const string NotTilde = "!~";
+    public const string NotTildeAsterisk = "!~*";
 }

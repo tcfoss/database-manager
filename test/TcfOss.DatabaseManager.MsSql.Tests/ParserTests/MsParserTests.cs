@@ -220,4 +220,14 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void PostgresOperators_AreNarrowed()
+    {
+        var parser = new MsParser();
+        Assert.False(parser.SupportsPostgresCastSyntax);
+        Assert.False(parser.SupportsPostgresRegexOperators);
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
+    }
 }

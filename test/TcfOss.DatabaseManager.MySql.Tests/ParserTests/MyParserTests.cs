@@ -450,4 +450,14 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Fact]
+    public void PostgresOperators_AreNarrowedAndDoublePipeRemainsLogicalOr()
+    {
+        var parser = new MyParser();
+        Assert.False(parser.SupportsPostgresCastSyntax);
+        Assert.False(parser.SupportsPostgresRegexOperators);
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
+        Assert.Equal("a OR b", ParseExpression("a || b").ToSql());
+    }
 }

@@ -5,7 +5,7 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 #pragma warning disable CA1822 // Mark members as static
 
-public class PrecedenceManager
+public class PrecedenceManager(bool treatDoublePipeAsOr = false)
 {
     public short GetPrecedence(Precedence precedence)
     {
@@ -19,9 +19,10 @@ public class PrecedenceManager
             Precedence.Ampersand => 23,
             Precedence.Caret => 22,
             Precedence.Pipe => 21,
-            Precedence.Between => 20,
-            Precedence.Equals => 20,
-            Precedence.Like => 19,
+            Precedence.PgConcat => 20,
+            Precedence.Between => 19,
+            Precedence.Equals => 19,
+            Precedence.Like => 18,
             Precedence.Is => 17,
             Precedence.UnaryNot => 15,
             Precedence.And => 10,
@@ -43,8 +44,15 @@ public class PrecedenceManager
             Word { Keyword: Keyword.NOT } => GetNotPrecedence(state),
             Word { Keyword: Keyword.IS } => GetPrecedence(Precedence.Is),
             Word { Keyword: Keyword.IN or Keyword.BETWEEN or Keyword.OPERATOR } => GetPrecedence(Precedence.Between),
-            Word { Keyword: Keyword.LIKE or Keyword.ILIKE or Keyword.SIMILAR or Keyword.REGEXP or Keyword.RLIKE } => GetPrecedence(Precedence.Like),
+            Word { Keyword: Keyword.LIKE or Keyword.ILIKE or Keyword.REGEXP or Keyword.RLIKE } => GetPrecedence(Precedence.Like),
+            Word { Keyword: Keyword.SIMILAR } when state.PeekNth(1) is Word { Keyword: Keyword.TO } => GetPrecedence(Precedence.Like),
             Word { Keyword: Keyword.DIV } => GetPrecedence(Precedence.MultiplyDivide),
+            DoubleColon => GetPrecedence(Precedence.DoubleColon),
+            DoublePipe => GetPrecedence(treatDoublePipeAsOr ? Precedence.Or : Precedence.PgConcat),
+            Pipe => GetPrecedence(Precedence.Pipe),
+            Caret => GetPrecedence(Precedence.Caret),
+            Ampersand => GetPrecedence(Precedence.Ampersand),
+            Tilde or TildeAsterisk or NotTilde or NotTildeAsterisk => GetPrecedence(Precedence.PgConcat),
             Equal
                 or LessThan
                 or LessThanOrEqual
@@ -72,7 +80,8 @@ public class PrecedenceManager
         return state.PeekNth(1) switch
         {
             Word { Keyword: Keyword.IN or Keyword.BETWEEN } => GetPrecedence(Precedence.Between),
-            Word { Keyword: Keyword.LIKE or Keyword.ILIKE or Keyword.SIMILAR or Keyword.REGEXP or Keyword.RLIKE } => GetPrecedence(Precedence.Like),
+            Word { Keyword: Keyword.LIKE or Keyword.ILIKE or Keyword.REGEXP or Keyword.RLIKE } => GetPrecedence(Precedence.Like),
+            Word { Keyword: Keyword.SIMILAR } when state.PeekNth(2) is Word { Keyword: Keyword.TO } => GetPrecedence(Precedence.Like),
             _ => 0
         };
     }

@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Expressions.Attributes;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
@@ -58,5 +59,10 @@ public class MyExpressionParser(MyParser parser)
         state.ExpectRightParen();
 
         return new MatchAgainst(columns, matchValue, modifier);
+    }
+
+    protected override BinaryOperatorOp? GetBinaryOperator(Token token)
+    {
+        return token is DoublePipe ? BinaryOperatorOp.Or : base.GetBinaryOperator(token);
     }
 }
