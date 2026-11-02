@@ -14,7 +14,7 @@ public class PgCreateDispatchTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE FUNCTION f(x INT) RETURNS INT RETURN x", typeof(CreateFunction))]
     [InlineData("CREATE OR REPLACE FUNCTION f() RETURNS INT RETURN 1", typeof(CreateFunction))]
-    [InlineData("CREATE PROCEDURE p() SELECT 1", typeof(CreateProcedure))]
+    [InlineData("CREATE PROCEDURE p() BEGIN ATOMIC SELECT 1; END", typeof(CreateProcedure))]
     [InlineData("CREATE VIEW v AS SELECT 1", typeof(CreateView))]
     [InlineData("CREATE OR REPLACE VIEW v AS SELECT 1", typeof(CreateView))]
     [InlineData("CREATE INDEX ix ON t (id)", typeof(CreateIndex.Standard))]

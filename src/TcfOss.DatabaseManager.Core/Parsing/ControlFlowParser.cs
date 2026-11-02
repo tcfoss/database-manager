@@ -44,7 +44,7 @@ public class ControlFlowParser
     public virtual BeginAtomic ParseBeginAtomic(ParserState state)
     {
         state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC);
-        Token? closing = null;
+        Token closing = state.Peek();
         var ender = new EndSubstatements
         {
             RequireTerminatorBeforeEnd = true,
@@ -60,7 +60,7 @@ public class ControlFlowParser
             GetEofException = innerState => innerState.ExpectedException("END")
         };
         SqlValueList<Statement> statements = _p.Parse(state, ender);
-        if (closing?.PreNonSql.SafeAny() == true)
+        if (closing.PreNonSql.SafeAny())
         {
             statements.Add(closing.PreNonSql.ToInertOnly());
         }

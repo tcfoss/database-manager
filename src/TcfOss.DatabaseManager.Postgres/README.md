@@ -195,8 +195,9 @@ the tail's source range for raw-text generation without expanding `Body.Meta`.
 Dollar-quoted tokens retain tag and content and also work as SQL values in
 expressions and column defaults. Other PostgreSQL routine attributes, full
 option ordering, overload identity, and broader PL/pgSQL grammar remain deferred.
-These source changes await review before new routine tests are written; existing
-tests using permissive Core routine syntax require updates to PostgreSQL forms.
+Unit tests cover dollar-string lexing and values, routine body validation,
+scope restoration, formatting, source ranges, and definition round-trips.
+Routine fixtures use PostgreSQL body forms rather than permissive Core syntax.
 
 `PgDefinitionBuilder.ProcessStatements` collects table, enum, composite, and
 domain declarations, plus the currently supported Core routine forms, across

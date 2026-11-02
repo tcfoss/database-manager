@@ -722,10 +722,7 @@ public class Lexer<TRunState> : ILexer
     private static string ExtractStringCustomQuotes(ref LexerState state, string delimiter)
     {
         Location startLocation = state.Location;
-        if (!state.TakeIfSequence(delimiter))
-        {
-            throw new LexException.ExpectedSymbolSequence(startLocation);
-        }
+        state.TakeIfSequence(delimiter);
 
         int bodyStart = state.Position;
         while (state.Peek() != CharSymbols.EndOfFile)

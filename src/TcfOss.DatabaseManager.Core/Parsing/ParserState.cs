@@ -42,7 +42,7 @@ public class ParserState
         {
             Token lastTok = _tokens[^1];
             Location lastLoc = lastTok.Location;
-            _finalEof = new Eof() { Location = new Location() { Column = lastLoc.Column + lastTok.Length, Line = lastLoc.Line, Position = lastLoc.Position + lastTok.Length - 1 } };
+            _finalEof = new Eof() { Location = new Location() { Column = lastLoc.Column + lastTok.Length, Line = lastLoc.Line, Position = lastLoc.Position + lastTok.Length } };
         }
     }
 

@@ -177,7 +177,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void ToDefinition_ResolvesRoutineSignaturesWithoutFlatteningDomains()
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE FUNCTION Echo(value label) RETURNS label RETURN value; CREATE PROCEDURE save(IN value label) SELECT value; CREATE DOMAIN label AS TEXT"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements("CREATE FUNCTION Echo(value label) RETURNS label RETURN value; CREATE PROCEDURE save(IN value label) BEGIN ATOMIC SELECT value; END; CREATE DOMAIN label AS TEXT"), GetSchema(), 0);
 
         PgDefinition definition = builder.ToDefinition();
 
@@ -198,7 +198,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         const string types = "CREATE DOMAIN app.label AS TEXT; CREATE TYPE app.mood AS ENUM ('happy')";
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements($"{types}; CREATE FUNCTION Echo(value app.label) RETURNS app.mood RETURN 'happy'; CREATE PROCEDURE save(IN value app.label) SELECT value"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements($"{types}; CREATE FUNCTION Echo(value app.label) RETURNS app.mood RETURN 'happy'; CREATE PROCEDURE save(IN value app.label) BEGIN ATOMIC SELECT value; END"), GetSchema(), 0);
         PgDefinition original = builder.ToDefinition();
         StoredFunction function = Assert.Single(original.Functions).Value;
         StoredProcedure procedure = Assert.Single(original.Procedures).Value;
@@ -259,8 +259,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE OR REPLACE FUNCTION Echo() RETURNS INT AS RETURN 1; CREATE OR REPLACE PROCEDURE save() AS SELECT 1")]
-    [InlineData("CREATE FUNCTION IF NOT EXISTS Echo() RETURNS INT AS RETURN 1; CREATE PROCEDURE IF NOT EXISTS save() AS SELECT 1")]
+    [InlineData("CREATE OR REPLACE FUNCTION Echo() RETURNS INT RETURN 1; CREATE OR REPLACE PROCEDURE save() BEGIN ATOMIC SELECT 1; END")]
+    [InlineData("CREATE FUNCTION IF NOT EXISTS Echo() RETURNS INT RETURN 1; CREATE PROCEDURE IF NOT EXISTS save() BEGIN ATOMIC SELECT 1; END")]
     public void Routines_DiscardCreationSyntaxAndPreserveCoreRawBodyContract(string sql)
     {
         var builder = CreateBuilder();
@@ -279,7 +279,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.False(functionStatement.UseAsBeforeBody);
         Assert.False(procedureStatement.UseAsBeforeBody);
         var plainBuilder = CreateBuilder();
-        plainBuilder.ProcessStatements(ParseStatements("CREATE FUNCTION Echo() RETURNS INT RETURN 1; CREATE PROCEDURE save() SELECT 1"), GetSchema(), 0);
+        plainBuilder.ProcessStatements(ParseStatements("CREATE FUNCTION Echo() RETURNS INT RETURN 1; CREATE PROCEDURE save() BEGIN ATOMIC SELECT 1; END"), GetSchema(), 0);
         PgDefinition plain = plainBuilder.ToDefinition();
         Assert.Equal(Assert.Single(plain.Functions).Value.ToCreateStatement(true).ToSql(), functionStatement.ToSql());
         Assert.Equal(Assert.Single(plain.Procedures).Value.ToCreateStatement(true).ToSql(), procedureStatement.ToSql());
@@ -301,16 +301,108 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE FUNCTION echo(value missing) RETURNS TEXT RETURN value")]
     [InlineData("CREATE FUNCTION echo(value TEXT) RETURNS missing RETURN value")]
-    [InlineData("CREATE PROCEDURE save(value missing) SELECT value")]
+    [InlineData("CREATE PROCEDURE save(value missing) BEGIN ATOMIC SELECT value; END")]
     [InlineData("CREATE FUNCTION echo(value missing[]) RETURNS TEXT RETURN value")]
     [InlineData("CREATE FUNCTION echo(value TEXT) RETURNS missing[] RETURN value")]
-    [InlineData("CREATE PROCEDURE save(value missing[]) SELECT value")]
+    [InlineData("CREATE PROCEDURE save(value missing[]) BEGIN ATOMIC SELECT value; END")]
     public void ToDefinition_RejectsMissingRoutineSignatureTypes(string sql)
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
         Assert.Throws<SqlSyntaxException.TypeNotFound>(builder.ToDefinition);
+    }
+
+    [Theory]
+    [InlineData("RETURN 1", "sql")]
+    [InlineData("LANGUAGE SQL RETURN 1", "sql")]
+    [InlineData("LANGUAGE PLPGSQL AS $$opaque body$$", "plpgsql")]
+    [InlineData("AS 'opaque body' LANGUAGE plpgsql", "plpgsql")]
+    public void RoutineOptions_AreNormalizedAndPreservedInGeneratedStatements(string tail, string language)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE FUNCTION f() RETURNS INT " + tail), GetSchema(), 0);
+        PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
+        Assert.Equal(language, function.Options?.Language.Name);
+        CreateFunction generated = function.ToCreateStatement(true);
+        Assert.Same(function.Options, generated.PgOptions);
+        Assert.Equal(function.Body is RoutineBodyLiteral, generated.UseAsBeforeBody);
+
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(generated.ToSql()), GetSchema(), 0);
+        PgStoredFunction roundTrip = Assert.Single(rebuilt.ToDefinition().Functions).Value;
+        Assert.Equal(function, roundTrip);
+        Assert.Equal(function.GetHashCode(), roundTrip.GetHashCode());
+        Assert.NotEqual(function, function with { Options = new PgRoutineOptions(new Identifier("other")) });
+    }
+
+    [Theory]
+    [InlineData("AS $$opaque body$$ LANGUAGE plpgsql")]
+    [InlineData("LANGUAGE SQL BEGIN ATOMIC SELECT 1; END")]
+    public void ProcedureOptions_AndRawTail_ArePreservedWithoutDuplicateHeaders(string tail)
+    {
+        string sql = "CREATE PROCEDURE p() " + tail;
+        var parsed = Assert.IsType<CreateProcedure>(ParseStatement(sql));
+        var builder = CreateBuilder();
+        builder.ProcessStatements([parsed], GetSchema(), 0);
+        PgStoredProcedure procedure = Assert.Single(builder.ToDefinition().Procedures).Value;
+        Assert.NotNull(procedure.Options);
+        CreateProcedure generated = procedure.ToCreateStatement(true);
+        Assert.Same(procedure.Options, generated.PgOptions);
+        Assert.Equal(procedure.Body is RoutineBodyLiteral, generated.UseAsBeforeBody);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(generated.ToSql()), GetSchema(), 0);
+        Assert.Equal(procedure, Assert.Single(rebuilt.ToDefinition().Procedures).Value);
+        Assert.NotEqual(procedure, procedure with { Options = new PgRoutineOptions(new Identifier("other")) });
+
+        string rawTail = SourceManager.GetText(sql, parsed.RoutineTailMeta)!;
+        var withRaw = procedure with { RawBodyText = rawTail };
+        string rawSql = withRaw.ToCreateStatement(true).ToSql(new WriteOptions { PreferRawText = true });
+        Assert.EndsWith(tail, rawSql);
+        Assert.Equal(1, rawSql.Split("LANGUAGE", StringSplitOptions.None).Length - 1);
+        Assert.Equal(generated.ToSql(), withRaw.ToCreateStatement(true).ToSql(new WriteOptions { PreferRawText = false }));
+    }
+
+    [Theory]
+    [InlineData("LANGUAGE sql AS 'SELECT 1'")]
+    [InlineData("AS $$SELECT 1$$ LANGUAGE sql")]
+    public void FunctionRawTail_ReplacesOptionsAndBodyTogether(string tail)
+    {
+        string sql = "CREATE FUNCTION f() RETURNS INT " + tail;
+        var parsed = Assert.IsType<CreateFunction>(ParseStatement(sql));
+        string rawTail = SourceManager.GetText(sql, parsed.RoutineTailMeta)!;
+        parsed.Meta.RawText = rawTail;
+        string rawSql = parsed.ToSql(new WriteOptions { PreferRawText = true });
+        Assert.EndsWith(tail, rawSql);
+        Assert.Equal(1, rawSql.Split("LANGUAGE", StringSplitOptions.None).Length - 1);
+        Assert.Equal(parsed, ParseStatement(rawSql));
+    }
+
+    [Fact]
+    public void ManuallyConstructedRoutine_WithoutOptions_RetainsBodyFallback()
+    {
+        var parsed = Assert.IsType<CreateProcedure>(ParseStatement("CREATE PROCEDURE p() BEGIN ATOMIC SELECT 1; END"));
+        var statement = parsed with
+        {
+            Body = Assert.IsAssignableFrom<Statement>(ParseStatement("SELECT 1")),
+            RoutineTailMeta = new MetaData()
+        };
+        var builder = CreateBuilder();
+        builder.ProcessStatements([statement], GetSchema(), 0);
+        PgStoredProcedure procedure = Assert.Single(builder.ToDefinition().Procedures).Value;
+        Assert.Null(procedure.Options);
+        Assert.Same(statement.Body, procedure.Body);
+
+        var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1")) with
+        {
+            Body = statement.Body,
+            RoutineTailMeta = new MetaData()
+        };
+        var functionBuilder = CreateBuilder();
+        functionBuilder.ProcessStatements([function], GetSchema(), 0);
+        PgStoredFunction definition = Assert.Single(functionBuilder.ToDefinition().Functions).Value;
+        Assert.Null(definition.Options);
+        Assert.Same(function.Body, definition.Body);
     }
 
     [Fact]
@@ -575,7 +667,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             + "CREATE TYPE details AS (values label[], moods mood ARRAY[3]); "
             + "CREATE TABLE items (payload details[], first labels, second label[][], numbers INT ARRAY[4] DEFAULT '{1,2}'); "
             + "CREATE FUNCTION echo(values label[]) RETURNS labels[] RETURN values; "
-            + "CREATE PROCEDURE save(IN values mood[]) SELECT values";
+            + "CREATE PROCEDURE save(IN values mood[]) BEGIN ATOMIC SELECT values; END";
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
