@@ -1,7 +1,7 @@
 # Parser Benchmarks
 
 MySQL benchmarks against the actual provider projects. Each operation processes
-all SQL files in the corpus once. File reading and parser/lexer construction are
+all SQL inputs in the corpus once. File reading and parser/lexer construction are
 outside the measured operation.
 
 - `EndToEnd`: tokenize, convert the token list to an array, and parse.
@@ -40,6 +40,27 @@ runtime, benchmark configuration, and machine conditions unchanged.
 `LoadLinuxTestData` recursively reads all `*.sql` files in the Library Initial and
 Sakila directories in deterministic path order. Files are parsed independently,
 with no preprocessing or exclusions; unsupported syntax fails the run.
+
+`LoadQuotedIdentifierTestData` adds six targeted inputs covering all three quote
+styles accepted by the lexer, doubled and trailing escaped closing delimiters,
+empty identifiers, LF/CRLF inside identifiers, Unicode, 64-character names, and
+quoted routine labels. These are lexer/parser edge cases, not server-validated
+MySQL scripts. Unterminated and embedded-NUL cases belong in unit tests rather
+than this successful-parsing workload.
+
+`LoadEscapedStringTestData` adds eight targeted inputs containing ordinary and
+national strings, doubled-quote runs, trailing doubled quotes, backslash-escaped
+quotes, consecutive backslashes, empty/Unicode/multiline content, lengths around
+the 256-character stack-buffer boundary, and cases that exercise initial pool
+rental and repeated buffer growth. Escapes remain verbatim in lexer token values;
+these inputs pin down existing behavior rather than normalize SQL escaping.
+It also includes 1,024- and 4,096-character plain strings and long LF/CRLF
+strings to measure bulk scanning separately from escape handling. Malformed
+strings and hex-literal edge cases are covered by unit tests instead.
+
+Setup logs token-based quoted-identifier and string coverage outside measured operations.
+Use the same expanded corpus for both baseline and candidate runs; results from
+before these targeted inputs were added are not directly comparable.
 
 To switch machines or corpora, add a function returning `List<string>` and change
 the `_sql = LoadLinuxTestData();` line in `Setup`. Also change the artifact root
