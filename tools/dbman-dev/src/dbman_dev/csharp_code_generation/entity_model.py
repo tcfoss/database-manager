@@ -1,6 +1,7 @@
 """Models for C# code generation."""
 
 import datetime
+import json
 import attrs
 
 _CONFIG_LINE_SEP = "\n            "
@@ -34,7 +35,9 @@ class EntityModel:
             f'{_CONFIG_LINE_SEP}.HasColumnName("{self.column_name}")'
         )
         if self.sql_type:
-            result += f'{_CONFIG_LINE_SEP}.HasColumnType("{self.sql_type}")'
+            result += (
+                f"{_CONFIG_LINE_SEP}.HasColumnType({json.dumps(self.sql_type, ensure_ascii=True)})"
+            )
         return result + ";"
 
     def get_value(self, given_value) -> str:

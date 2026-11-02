@@ -1,9 +1,12 @@
 """Generate data for testing."""
 
 from pathlib import Path
+from typing import Callable
 from attrs import define as _define, field as _field
 from dbman_dev.containers import db_container
+from dbman_dev.containers.db_container import DbContainer
 from dbman_dev.csharp_code_generation.model_config import ModelConfig as _ModelConfig
+from dbman_dev.csharp_code_generation.entity_model import EntityModel
 from dbman_dev.db.get_show_fields_results import get_show_fields_results
 from dbman_dev.db import defaults as db_defaults
 from dbman_dev.utilities import linq, text_conversion
@@ -29,6 +32,10 @@ public static class {dialect}ContextTestData
 {functions}
 }}
 """
+
+
+def _quote_sql_values(values: list[str]) -> str:
+    return ",".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
 @_define
@@ -83,19 +90,26 @@ class TestDataGenerator:
         image: str,
         tables: list[_ModelConfig],
         environment: dict[str, str],
+        container_factory: Callable[..., DbContainer] = db_container.MySqlContainer,
+        column_loader: Callable[
+            [DbContainer, str, str], list[EntityModel]
+        ] = get_show_fields_results,
+        container_port: int = 3309,
+        metadata_schema: str = "information_schema",
     ):
 
-        self.container = db_container.MySqlContainer(
+        self.container = container_factory(
             image=image,
-            port=3309,
+            port=container_port,
             environment=environment,
         )
-
         self.tables = tables
+        self.column_loader = column_loader
+        self.metadata_schema = metadata_schema
 
     @staticmethod
     def _exec_checked(
-        container: db_container.MySqlContainer,
+        container: DbContainer,
         project: ProjectConfig,
         command: list[str],
         workdir: str | None = None,
@@ -111,16 +125,20 @@ class TestDataGenerator:
 
     def __construct_columns_and_data_query(
         self,
-        container: db_container.MySqlContainer,
+        container: DbContainer,
         model_config: _ModelConfig,
         schemas: list[str],
     ):
         """Return SQL to query an information_schema table."""
-        columns = get_show_fields_results(container, "information_schema", model_config.table_name)
-
+        columns = self.column_loader(container, self.metadata_schema, model_config.table_name)
         ignored_columns = set(model_config.ignored_columns or [])
 
         columns = [x for x in columns if x.column_name not in ignored_columns]
+
+        if model_config.data_query_template:
+            schema_list = _quote_sql_values(schemas)
+            query = model_config.data_query_template.replace("{schemas}", schema_list)
+            return (columns, query)
 
         schema_column = linq.first_or_default(
             columns,
@@ -135,9 +153,7 @@ class TestDataGenerator:
 
         return (columns, query)
 
-    def _initialize_project(
-        self, container: db_container.MySqlContainer, project: ProjectConfig
-    ) -> None:
+    def _initialize_project(self, container: DbContainer, project: ProjectConfig) -> None:
         """Stage and initialize one project without discarding database state."""
         print(f"Initializing project: {project.name}")
         self._exec_checked(container, project, ["rm", "-rf", "/InitialSchemas"])
@@ -205,6 +221,10 @@ class ModelDataLoaderConfig:
     entity_namespace: str
     output_namespace: str
     environment: dict[str, str] = _field(factory=db_defaults.ENVIRONMENT.copy)
+    container_factory: Callable[..., DbContainer] = db_container.MySqlContainer
+    column_loader: Callable[[DbContainer, str, str], list[EntityModel]] = get_show_fields_results
+    container_port: int = 3309
+    metadata_schema: str = "information_schema"
 
 
 def run(args: ModelDataLoaderConfig) -> None:
@@ -214,6 +234,10 @@ def run(args: ModelDataLoaderConfig) -> None:
         image=args.image,
         environment=args.environment,
         tables=args.tables,
+        container_factory=args.container_factory,
+        column_loader=args.column_loader,
+        container_port=args.container_port,
+        metadata_schema=args.metadata_schema,
     )
 
     data_sets = generator.generate_data(args.projects)
@@ -230,5 +254,6 @@ def run(args: ModelDataLoaderConfig) -> None:
         functions="".join(function_strings),
     )
 
+    args.output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_path, "w", encoding="utf-8") as f:
         f.write(class_string)

@@ -11,10 +11,24 @@ from dbman_dev.csharp_code_generation.model_data_loader import (
 from dbman_dev.cliversion import add_version_argument
 from dbman_dev.db import defaults as db_defaults, info_schema
 from dbman_dev.csharp_code_generation import paths
+from dbman_dev.containers import db_container
+from dbman_dev.containers.db_container import PostgresContainer
+from dbman_dev.db.get_show_fields_results import get_show_fields_results
+from dbman_dev.db.postgres_catalog import POSTGRES_CONFIGS
+from dbman_dev.db.postgres_fields import get_postgres_entity_models
 
 
-def get_default_projects() -> list[ProjectConfig]:
+def get_default_projects(dialect: str = "MySql") -> list[ProjectConfig]:
     """Return fresh configurations for the supported schema projects."""
+    if dialect == "Postgres":
+        return [
+            ProjectConfig(
+                name="Library",
+                source_path=paths.POSTGRES_TEST_PROJECTS_DIR / "Library" / "Initial",
+                schemas=["library_catalog", "library_identity", "library_activity"],
+                initialization_scripts=["initialize_library.sh"],
+            )
+        ]
     return [
         ProjectConfig(
             name="Library",
@@ -60,6 +74,17 @@ def get_arguments(
             or "TcfOss.DatabaseManager.MariaDb.DatabaseComms.EntityFramework.Entities"
         )
         output_namespace = output_namespace or "TcfOss.DatabaseManager.MariaDb.Tests.DatabaseComms"
+    elif dialect == "Postgres":
+        image = image or db_defaults.POSTGRES_IMAGE
+        output_path = output_path or paths.POSTGRES_TEST_DATA
+        tables = tables or list(POSTGRES_CONFIGS.values())
+        entity_namespace = (
+            entity_namespace
+            or "TcfOss.DatabaseManager.Postgres.DatabaseComms.EntityFramework.Entities"
+        )
+        output_namespace = (
+            output_namespace or "TcfOss.DatabaseManager.Postgres.Tests.DatabaseComms"
+        )
     else:
         raise ValueError(f"Unsupported dialect: {dialect}")
 
@@ -67,23 +92,32 @@ def get_arguments(
         dialect=dialect,
         image=image,
         output_path=output_path,
-        projects=get_default_projects() if projects is None else projects,
+        projects=get_default_projects(dialect) if projects is None else projects,
         entity_namespace=entity_namespace,
         output_namespace=output_namespace,
         tables=tables,
+        environment=(
+            db_defaults.POSTGRES_ENVIRONMENT if dialect == "Postgres" else db_defaults.ENVIRONMENT
+        ),
+        container_factory=(
+            PostgresContainer if dialect == "Postgres" else db_container.MySqlContainer
+        ),
+        column_loader=(
+            get_postgres_entity_models if dialect == "Postgres" else get_show_fields_results
+        ),
+        container_port=5433 if dialect == "Postgres" else 3309,
+        metadata_schema="pg_catalog" if dialect == "Postgres" else "information_schema",
     )
 
 
 def run_cli() -> None:
     """Run the script from command line."""
 
-    project_configs = {project.name: project for project in get_default_projects()}
-    parser = argparse.ArgumentParser(
-        description="Generate C# entities for MySQL information_schema."
-    )
+    project_choices = ["Library", "ExtraTest"]
+    parser = argparse.ArgumentParser(description="Generate C# test data from database metadata.")
     add_version_argument(parser)
     parser.add_argument(
-        "dialect", choices=["MySql", "MariaDb"], help="Database dialect, e.g., MySql or MariaDb."
+        "dialect", choices=["MySql", "MariaDb", "Postgres"], help="Database dialect."
     )
     parser.add_argument("--output-path", help="Path to the output C# file.")
     parser.add_argument("--image", help="Docker image for MySQL.")
@@ -92,13 +126,20 @@ def run_cli() -> None:
     parser.add_argument(
         "--projects",
         nargs="+",
-        choices=list(project_configs),
-        default=list(project_configs),
-        help="Schema projects to initialize (default: all supported projects).",
+        choices=project_choices,
+        default=None,
+        help="Schema projects to initialize (default: all supported projects for the dialect).",
     )
 
     args = parser.parse_args()
-    if len(args.projects) != len(set(args.projects)):
+    project_configs = {project.name: project for project in get_default_projects(args.dialect)}
+    selected_projects = args.projects or list(project_configs)
+    unknown_projects = set(selected_projects) - project_configs.keys()
+    if unknown_projects:
+        parser.error(
+            f"projects are unsupported for {args.dialect}: {', '.join(sorted(unknown_projects))}"
+        )
+    if len(selected_projects) != len(set(selected_projects)):
         parser.error("--projects must not contain duplicate project names")
 
     config = get_arguments(
@@ -107,7 +148,7 @@ def run_cli() -> None:
         output_path=Path(args.output_path) if args.output_path else None,
         entity_namespace=args.entity_namespace,
         output_namespace=args.test_namespace,
-        projects=[project_configs[name] for name in args.projects],
+        projects=[project_configs[name] for name in selected_projects],
     )
 
     run(config)

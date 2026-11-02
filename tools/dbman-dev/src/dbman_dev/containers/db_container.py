@@ -9,6 +9,7 @@ import time
 import docker
 from docker.models.containers import Container
 import pymysql
+import psycopg
 
 _DOCKER_IP_ADDRESS = "172.17.0.1"  # Default Docker bridge IP address
 _DOCKER_TIMEOUT = 30  # Default timeout for waiting for the container to start
@@ -187,3 +188,71 @@ class MySqlContainer(DbContainer):
 
         self.cursor.execute(sql)
         return self.cursor.fetchall()
+
+
+class PostgresContainer(DbContainer):
+    """PostgreSQL container class."""
+
+    def __init__(
+        self,
+        name: str = "postgres_container",
+        image: str = "postgres:18",
+        port: int = 5433,
+        environment=None,
+    ):
+        self.database = (environment or {}).get("POSTGRES_DB", "postgres")
+        self.user = (environment or {}).get("POSTGRES_USER", "postgres")
+        self.password = (environment or {}).get("POSTGRES_PASSWORD", "password")
+        super().__init__(
+            name=name,
+            image=image,
+            port={"5432/tcp": port},
+            environment={
+                "POSTGRES_DB": self.database,
+                "POSTGRES_USER": self.user,
+                "POSTGRES_PASSWORD": self.password,
+            }
+            | (environment or {}),
+        )
+        self.connection: psycopg.Connection | None = None
+
+    def start(self):
+        """Start PostgreSQL and wait for an authenticated connection."""
+        super().start()
+
+        last_error: psycopg.OperationalError | None = None
+        for _ in range(_DB_TIMEOUT):
+            try:
+                self.connection = psycopg.connect(
+                    host=_DOCKER_IP_ADDRESS,
+                    port=self.port.get("5432/tcp", 5432),
+                    dbname=self.database,
+                    user=self.user,
+                    password=self.password,
+                    connect_timeout=3,
+                )
+                self.connection.autocommit = True
+                return
+            except psycopg.OperationalError as error:
+                last_error = error
+                time.sleep(1)
+
+        raise RuntimeError("PostgreSQL container did not start in time.") from last_error
+
+    def stop(self):
+        """Close the connection and stop PostgreSQL."""
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+        super().stop()
+
+    def query(self, sql: str, parameters: tuple | None = None):
+        """Run a SQL query against the PostgreSQL database."""
+        if not self.connection:
+            raise RuntimeError("PostgreSQL connection is not established.")
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql, parameters)
+            if cursor.description is None:
+                return ()
+            return cursor.fetchall()

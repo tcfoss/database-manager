@@ -56,6 +56,24 @@ MariaDB, and translates the clause to `DISABLE ON REPLICA` for MySQL.
 The supported images are configured in
 [defaults.py](src/dbman_dev/db/defaults.py).
 
+## PostgreSQL Catalog Fixtures
+
+The PostgreSQL catalog tools generate entity/configuration models and C# row
+fixtures for selected `pg_catalog` relations. Their Library project is under
+`test/Resources/TestSchemas/Postgres/Library/Initial`; the extraction filters
+catalog rows to the three Library schemas rather than copying all system rows.
+
+```bash
+poetry run dbman-dev-pg-catalog-entities --output-root /tmp/pg-catalog-entities
+poetry run dbman-dev-pg-catalog-test-data --output-path /tmp/PostgresContextTestData.cs
+```
+
+The default PostgreSQL image and credentials are configured in
+[defaults.py](src/dbman_dev/db/defaults.py). Docker must be available, with port
+5433 and container name `postgres_container` free. PostgreSQL has no direct
+equivalent to MySQL scheduled events, so the stale-user event is represented as
+a callable function in the fixture.
+
 ### Verification And Fixture Migration
 
 ```bash
