@@ -384,7 +384,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var parsed = Assert.IsType<CreateProcedure>(ParseStatement("CREATE PROCEDURE p() BEGIN ATOMIC SELECT 1; END"));
         var statement = parsed with
         {
-            Body = Assert.IsAssignableFrom<Statement>(ParseStatement("SELECT 1")),
+            Body = Assert.IsType<Statement>(ParseStatement("SELECT 1"), exactMatch: false),
             RoutineTailMeta = new MetaData()
         };
         var builder = CreateBuilder();

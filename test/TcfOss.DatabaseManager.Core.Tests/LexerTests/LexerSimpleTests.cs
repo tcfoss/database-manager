@@ -10,6 +10,39 @@ namespace TcfOss.DatabaseManager.Core.Tests.LexerTests;
 public class LexerSimpleTests : LexerTestBase
 {
     [Theory]
+    [InlineData("caf\u00e9")]
+    [InlineData("\u00e9clair")]
+    [InlineData("\u540d\u524d")]
+    [InlineData("a\u0661b")]
+    [InlineData("ascii_123")]
+    [InlineData("Nname")]
+    [InlineData("nname")]
+    public void Unquoted_Identifier_Preserves_Unicode_And_Following_Location(string identifier)
+    {
+        List<Token> tokens = new GenericLexer().Tokenize(identifier + ";");
+
+        var word = Assert.IsType<Word>(tokens[0]);
+        Assert.Equal(identifier, word.Value);
+        Assert.Equal(identifier.Length, word.Length);
+        Assert.Equal(0, word.Location.Position);
+        Assert.Equal(identifier.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(identifier.Length + 1, tokens[1].Location.Column);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("Xname")]
+    [InlineData("xname")]
+    public void Hex_Prefixed_Identifier_Preserves_Content_And_Following_Position(string identifier)
+    {
+        List<Token> tokens = new GenericLexer().Tokenize(identifier + ";");
+
+        Assert.Equal(identifier, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal(identifier.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
     [InlineData("1", "1", false)]
     [InlineData("1L", "1", true)]
     [InlineData("3.14", "3.14", false)]
@@ -140,6 +173,22 @@ public class LexerSimpleTests : LexerTestBase
         Assert.False(actual[1].Equals((object?)other));
     }
 
+    [Theory]
+    [InlineData("N''", "")]
+    [InlineData("n'caf\u00e9'", "caf\u00e9")]
+    [InlineData("N'it''s'", "it''s")]
+    [InlineData("n'a\\'b'", "a\\'b")]
+    public void National_String_Preserves_Content_And_Following_Position(string sql, string expected)
+    {
+        List<Token> tokens = new GenericLexer().Tokenize(sql + ";");
+
+        var literal = Assert.IsType<NationalStringLiteral>(tokens[0]);
+        Assert.Equal(expected, literal.Value);
+        Assert.Equal(0, literal.Location.Position);
+        Assert.Equal(sql.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
     [Fact]
     public void Select_String_With_Quote_Escapes()
     {
@@ -169,10 +218,160 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("N")]
+    [InlineData("n")]
+    [InlineData("X")]
+    [InlineData("x")]
+    public void EscapedString_Preserves_Raw_Content_Type_And_Locations(string prefix)
+    {
+        string[] contents =
+        [
+            "",
+            "plain",
+            "caf\u00e9",
+            "''",
+            "''''",
+            "''''''",
+            "before''after",
+            "trailing''",
+            "\\n",
+            "\\'",
+            "before\\'after",
+            new string('\\', 2) + "'tail",
+            new string('\\', 3) + "'tail",
+            new string('\\', 4) + "'tail",
+            "\\'''",
+            "line\nbreak",
+            "line\r\nbreak",
+            "line\rbreak",
+            "before''\nafter\\'tail",
+            new string('a', 224) + "''" + new string('b', 32),
+            new string('a', 225) + "\\'" + new string('b', 32),
+            new string('a', 300) + "''" + new string('b', 8192)
+        ];
+        foreach (string content in contents)
+        {
+            string sql = $"SELECT {prefix}'{content}';";
+            var lexer = new GenericLexer();
+            List<Token> tokens = lexer.Tokenize(sql);
+            string actual = prefix switch
+            {
+                "N" or "n" => Assert.IsType<NationalStringLiteral>(tokens[1]).Value,
+                "X" or "x" => Assert.IsType<HexStringLiteral>(tokens[1]).Value,
+                _ => Assert.IsType<StringLiteral>(tokens[1]).Value
+            };
+
+            Assert.Equal(content, actual);
+            Assert.Equal(new Location(1, 8, 7), tokens[1].Location);
+            int position = sql.Length - 1;
+            int line = 1 + sql.Count(character => character == '\n');
+            int column = position - sql.LastIndexOf('\n');
+            Assert.Equal(new Location(line, column, position), Assert.IsType<Semicolon>(tokens[2]).Location);
+            Assert.Equal(3, tokens.Count);
+            Compare(tokens.Take(2).ToArray(), lexer.Tokenize(sql[..^1]));
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("N")]
+    [InlineData("n")]
+    [InlineData("X")]
+    [InlineData("x")]
+    public void EscapedString_Malformed_Content_Throws_And_Lexer_Remains_Reusable(string prefix)
+    {
+        string[] literals =
+        [
+            "'",
+            "'plain",
+            "'''",
+            "'''''",
+            "'before''after",
+            "'before\\",
+            "'before\\'",
+            "'before\\\\'",
+            "'before\0after'",
+            "'before''\0after'",
+            "'before\\'\0after'",
+            "'before''\nafter"
+        ];
+        var lexer = new GenericLexer();
+        foreach (string literal in literals)
+        {
+            Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize("SELECT " + prefix + literal));
+            List<Token> valid = lexer.Tokenize("'valid'");
+            Assert.Equal("valid", Assert.IsType<StringLiteral>(Assert.Single(valid)).Value);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(15)]
+    [InlineData(16)]
+    [InlineData(17)]
+    [InlineData(31)]
+    [InlineData(32)]
+    [InlineData(33)]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(65)]
+    public void String_Content_Boundaries_Preserve_Text_And_Following_Location(int ordinaryLength)
+    {
+        string ordinary = new('a', ordinaryLength);
+        string[] contents =
+        [
+            ordinary,
+            ordinary + "\u540d",
+            ordinary + "\nrest",
+            ordinary + "\r\nrest",
+            ordinary + "''tail",
+            ordinary + "\\'tail",
+            ordinary + "\\\nrest",
+            ordinary + "\\\\'tail",
+            ordinary + "''\nrest",
+            "''" + ordinary,
+            "\\'" + ordinary
+        ];
+        foreach (string prefix in new[] { "", "N" })
+        {
+            foreach (string content in contents)
+            {
+                string sql = $"SELECT {prefix}'{content}';";
+                var lexer = new GenericLexer();
+                List<Token> tokens = lexer.Tokenize(sql);
+                string actual = prefix.Length == 0
+                    ? Assert.IsType<StringLiteral>(tokens[1]).Value
+                    : Assert.IsType<NationalStringLiteral>(tokens[1]).Value;
+
+                Assert.Equal(content, actual);
+                Assert.Equal(new Location(1, 8, 7), tokens[1].Location);
+                int position = sql.Length - 1;
+                int line = 1 + sql.Count(character => character == '\n');
+                int column = position - sql.LastIndexOf('\n');
+                Assert.Equal(new Location(line, column, position), Assert.IsType<Semicolon>(tokens[2]).Location);
+                Assert.Equal(3, tokens.Count);
+                Compare(tokens.Take(2).ToArray(), lexer.Tokenize(sql[..^1]));
+            }
+        }
+
+        foreach (string tail in new[] { "", "\0tail'", "\\", "''", "\r\n", "\\'" })
+        {
+            Assert.Throws<LexException.UnterminatedString>(() => new GenericLexer().Tokenize("SELECT '" + ordinary + tail));
+        }
+    }
+
+    [Theory]
     [InlineData(0, 0, false)]
+    [InlineData(0, 254, false)]
     [InlineData(0, 255, false)]
     [InlineData(0, 256, false)]
     [InlineData(0, 8192, false)]
+    [InlineData(224, 0, false)]
+    [InlineData(224, 8192, true)]
     [InlineData(225, 8192, false)]
     [InlineData(300, 8192, false)]
     [InlineData(0, 8192, true)]
@@ -285,6 +484,9 @@ public class LexerSimpleTests : LexerTestBase
     [InlineData("`do``g`", "do``g", QuoteStyle.Backticks)]
     [InlineData("[do]]g]", "do]]g", QuoteStyle.Brackets)]
     [InlineData("\"\"\"\"", "\"\"", QuoteStyle.Ansi)]
+    [InlineData("\"\"", "", QuoteStyle.Ansi)]
+    [InlineData("``", "", QuoteStyle.Backticks)]
+    [InlineData("[]", "", QuoteStyle.Brackets)]
     public void Select_Quoted_Identifiers(string value, string unquoted, QuoteStyle quoteStyle)
     {
         var expected = new Token[]
@@ -294,6 +496,45 @@ public class LexerSimpleTests : LexerTestBase
         };
         var actual = new GenericLexer().Tokenize($"SELECT {value}");
         Compare(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("\"", "\"", QuoteStyle.Ansi)]
+    [InlineData("`", "`", QuoteStyle.Backticks)]
+    [InlineData("[", "]", QuoteStyle.Brackets)]
+    public void Quoted_Identifiers_Preserve_Content_And_Following_Location(string open, string close, QuoteStyle quoteStyle)
+    {
+        string[] values =
+        [
+            "",
+            "plain",
+            $"escaped{close}{close}name",
+            $"trailing{close}{close}",
+            $"{close}{close}",
+            "line\nbreak",
+            "line\r\nbreak",
+            "caf\u00e9",
+            new string('a', 16),
+            new string('a', 17),
+            new string('a', 64),
+            new string('a', 1024)
+        ];
+        foreach (string value in values)
+        {
+            string sql = $"{open}{value}{close};";
+            List<Token> tokens = new GenericLexer().Tokenize(sql);
+
+            var word = Assert.IsType<Word>(tokens[0]);
+            Assert.Equal(value, word.Value);
+            Assert.Equal(quoteStyle, word.QuoteStyle);
+            Assert.Equal(value.Length + 2, word.Length);
+            Assert.Equal(new Location(1, 1, 0), word.Location);
+            int position = sql.Length - 1;
+            int line = 1 + sql.Count(character => character == '\n');
+            int column = position - sql.LastIndexOf('\n');
+            Assert.Equal(new Location(line, column, position), Assert.IsType<Semicolon>(tokens[1]).Location);
+            Assert.Equal(2, tokens.Count);
+        }
     }
 
     [Theory]
@@ -388,6 +629,9 @@ public class LexerSimpleTests : LexerTestBase
     [InlineData("my block /*nested stuff*/ comment", null)]
     [InlineData("my inline comment\n", "--")]
     [InlineData("my inline comment", "--")]
+    [InlineData("", "--")]
+    [InlineData("\n", "--")]
+    [InlineData("my inline comment\r\n", "--")]
     public void Comment(string body, string? prefix)
     {
         NonSqlType nonSqlType = prefix is null ? NonSqlType.BlockComment : NonSqlType.InlineComment;
@@ -407,9 +651,59 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Theory]
+    [InlineData("", 0)]
+    [InlineData("text", 4)]
+    [InlineData("\n", 0)]
+    [InlineData("text\nmore", 4)]
+    [InlineData("text\r\nmore", 5)]
+    [InlineData("\0more", 0)]
+    [InlineData("text\0more\n", 4)]
+    [InlineData("text\nmore\0", 4)]
+    public void AdvanceToEndOfLine_Preserves_Stop_Position_And_Location(string text, int stopPosition)
+    {
+        string input = "--" + text;
+        var state = new LexerState(input);
+        var expectedState = new LexerState(input);
+        state.Next();
+        state.Next();
+        expectedState.Next();
+        expectedState.Next();
+
+        state.AdvanceToEndOfLine();
+        expectedState.TakeWhile(character => character is not CharSymbols.NewLine and not CharSymbols.EndOfFile);
+
+        Assert.Equal(2 + stopPosition, state.Position);
+        Assert.Equal(expectedState.Location, state.Location);
+        Assert.Equal(expectedState.Peek(), state.Peek());
+        Assert.Equal(expectedState.Next(), state.Next());
+        Assert.Equal(expectedState.Location, state.Location);
+    }
+
+    [Fact]
+    public void Stray_Closing_Bracket_Throws_And_Lexer_Remains_Reusable()
+    {
+        var lexer = new GenericLexer();
+
+        Assert.Throws<LexException.UnexpectedCharacter>(() => lexer.Tokenize("]"));
+
+        Word word = Assert.IsType<Word>(Assert.Single(lexer.Tokenize("[valid]")));
+        Assert.Equal("valid", word.Value);
+        Assert.Equal(QuoteStyle.Brackets, word.QuoteStyle);
+    }
+
+    [Theory]
     [InlineData("SELECT \"unclosed_ansi", "\"")]
     [InlineData("SELECT `unclosed_mysql", "`")]
     [InlineData("SELECT [unclosed_mssql", "]")]
+    [InlineData("SELECT \"", "\"")]
+    [InlineData("SELECT `", "`")]
+    [InlineData("SELECT [", "]")]
+    [InlineData("SELECT \"escaped\"\"", "\"")]
+    [InlineData("SELECT `escaped``", "`")]
+    [InlineData("SELECT [escaped]]", "]")]
+    [InlineData("SELECT \"before\0after\"", "\"")]
+    [InlineData("SELECT `before\0after`", "`")]
+    [InlineData("SELECT [before\0after]", "]")]
     public void Unclosed_QuotedIdentifier_Throws(string sql, string expectedCloseChar)
     {
         var lexer = new GenericLexer();
@@ -492,6 +786,22 @@ public class LexerSimpleTests : LexerTestBase
         Assert.NotEqual(other, tokens[0]);
         Assert.False(tokens[0].Equals(other));
         Assert.False(tokens[0].Equals((object?)other));
+    }
+
+    [Theory]
+    [InlineData("\"", "\"", QuoteStyle.Ansi)]
+    [InlineData("`", "`", QuoteStyle.Backticks)]
+    [InlineData("[", "]", QuoteStyle.Brackets)]
+    public void Quoted_Label_Preserves_Escaped_Name(string open, string close, QuoteStyle quoteStyle)
+    {
+        string name = $"label{close}{close}name";
+        string quoted = $"{open}{name}{close}";
+        List<Token> tokens = new GenericLexer().Tokenize(quoted + ": ;");
+
+        var expected = new Label(new Identifier(name, quoteStyle)) { Location = new Location(1, 1, 0) };
+        Assert.Equal(expected, Assert.IsType<Label>(tokens[0]));
+        Assert.Equal(quoted.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
     }
 
     [Theory]
@@ -628,6 +938,73 @@ public class LexerSimpleTests : LexerTestBase
         }
 
         Assert.Equal(CharSymbols.EndOfFile, state.PeekNth(1));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("\n")]
+    [InlineData("a\n")]
+    [InlineData("a\nb")]
+    [InlineData("\0x")]
+    public void LexerState_Next_And_Clone_Preserve_Eof_Locations(string input)
+    {
+        var state = new LexerState(input) { IdentifierTerminator = "$!$" };
+        int line = 1;
+        int column = 1;
+        for (int index = 0; index < input.Length; index++)
+        {
+            LexerState clone = state.Clone();
+            Assert.Equal(state.Location, clone.Location);
+            Assert.Equal(state.IdentifierTerminator, clone.IdentifierTerminator);
+            Assert.Equal(input[index], clone.Next());
+            Assert.Equal(index, state.Position);
+            Assert.Equal(input[index], state.PeekNth(0));
+            Assert.Equal(input[index], state.Next());
+            if (index + 1 < input.Length)
+            {
+                if (input[index] == '\n')
+                {
+                    line++;
+                    column = 1;
+                }
+                else
+                {
+                    column++;
+                }
+            }
+            Assert.Equal(new Location(line, column, index + 1), state.Location);
+        }
+
+        for (int count = 0; count < 3; count++)
+        {
+            Assert.Equal(CharSymbols.EndOfFile, state.Peek());
+            Assert.Equal(CharSymbols.EndOfFile, state.PeekNth(0));
+            Assert.Equal(CharSymbols.EndOfFile, state.PeekNth(1));
+            LexerState clone = state.Clone();
+            Assert.Equal(state.Location, clone.Location);
+            Assert.Equal(state.IdentifierTerminator, clone.IdentifierTerminator);
+            Assert.Equal(CharSymbols.EndOfFile, clone.Next());
+            Assert.Equal(input.Length + count, state.Position);
+            Assert.Equal(CharSymbols.EndOfFile, state.Next());
+            Assert.Equal(new Location(line, column, input.Length + count + 1), state.Location);
+        }
+    }
+
+    [Fact]
+    public void LexerState_Bulk_Advance_To_End_Preserves_Eof_And_Clone()
+    {
+        var state = new LexerState("123");
+        Assert.Equal(3, state.AdvanceThroughDigits());
+        Assert.Equal(new Location(1, 4, 3), state.Location);
+        LexerState clone = state.Clone();
+        Assert.Equal(CharSymbols.EndOfFile, clone.Peek());
+        Assert.Equal(CharSymbols.EndOfFile, clone.Next());
+        Assert.Equal(new Location(1, 4, 4), clone.Location);
+        Assert.Equal(new Location(1, 4, 3), state.Location);
+        Assert.Equal(CharSymbols.EndOfFile, state.PeekNth(0));
+        Assert.Equal(CharSymbols.EndOfFile, state.Next());
+        Assert.Equal(clone.Location, state.Location);
     }
 
     [Fact]

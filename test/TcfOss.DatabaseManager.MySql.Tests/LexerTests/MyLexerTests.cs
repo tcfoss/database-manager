@@ -9,6 +9,41 @@ namespace TcfOss.DatabaseManager.MySql.Tests.LexerTests;
 
 public class MyLexerTests : LexerTestBase
 {
+    [Theory]
+    [InlineData("caf\u00e9")]
+    [InlineData("\u00e9clair")]
+    [InlineData("\u540d\u524d")]
+    [InlineData("\u00a9name")]
+    [InlineData("name\u0301tail")]
+    [InlineData("\u0661name")]
+    [InlineData("name\ufffftail")]
+    [InlineData("a$b")]
+    [InlineData("$name")]
+    public void Unquoted_Identifiers_Preserve_Dialect_Characters(string identifier)
+    {
+        List<Token> tokens = new MyLexer().Tokenize(identifier + ";");
+
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(identifier, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal(identifier.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(identifier.Length + 1, tokens[1].Location.Column);
+    }
+
+    [Theory]
+    [InlineData(0x10400, false)]
+    [InlineData(0x10400, true)]
+    [InlineData(0xd800, false)]
+    [InlineData(0xdc00, true)]
+    public void Unquoted_Identifiers_Reject_Surrogates(int codePoint, bool hasPrefix)
+    {
+        string identifier = codePoint <= char.MaxValue ? new string((char)codePoint, 1) : char.ConvertFromUtf32(codePoint);
+        if (hasPrefix)
+        {
+            identifier = "a" + identifier;
+        }
+        Assert.Throws<LexException.UnexpectedCharacter>(() => new MyLexer().Tokenize(identifier));
+    }
+
     [Fact]
     public void Select_String_With_Charset()
     {
@@ -97,11 +132,30 @@ public class MyLexerTests : LexerTestBase
         Assert.Equal(expectedMessage, exception.Message);
     }
 
+    [Theory]
+    [InlineData("$$")]
+    [InlineData("$!$")]
+    [InlineData("//")]
+    public void Delimiter_Immediately_After_Identifier(string delimiter)
+    {
+        List<Token> tokens = new MyLexer().Tokenize($"DELIMITER {delimiter}\nSELECT name{delimiter}");
+
+        Assert.Equal(4, tokens.Count);
+        Assert.IsType<SetDelimiter>(tokens[0]);
+        Assert.Equal("SELECT", Assert.IsType<Word>(tokens[1]).Value);
+        Assert.Equal("name", Assert.IsType<Word>(tokens[2]).Value);
+        Assert.Equal(delimiter, Assert.IsType<MyTerminator>(tokens[3]).Delimiter);
+    }
+
     [Fact]
-    public void Delimiter_Unmatched()
+    public void Delimiter_Nonmatching_Dollar_Sequence_Is_Identifier()
     {
         var lexer = new MyLexer();
-        Assert.Throws<LexException.UnexpectedCharacter>(() => lexer.Tokenize("DELIMITER $$ SELECT 1 $1"));
+        List<Token> tokens = lexer.Tokenize("DELIMITER $$ SELECT 1 $1");
+
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal("$1", Assert.IsType<Word>(tokens[3]).Value);
+        Assert.DoesNotContain(tokens, token => token is MyTerminator);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Buffers;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 
 namespace TcfOss.DatabaseManager.Core.Lexing;
@@ -7,9 +8,9 @@ public ref struct LexerState
     private readonly ReadOnlySpan<char> _characters;
     private int _line = 1;
     private int _column = 1;
-    private bool _finished = false;
 
     public int Position { get; private set; } = 0;
+    public string? IdentifierTerminator { get; set; }
 
     public readonly Location Location
     {
@@ -24,18 +25,17 @@ public ref struct LexerState
         _characters = characters;
     }
 
-    private LexerState(ReadOnlySpan<char> characters, int position, int line, int column, bool finished)
+    private LexerState(ReadOnlySpan<char> characters, int position, int line, int column)
     {
         _characters = characters;
         Position = position;
         _line = line;
         _column = column;
-        _finished = finished;
     }
 
     public readonly char Peek()
     {
-        if (_finished || Position >= _characters.Length)
+        if (Position >= _characters.Length)
         {
             return CharSymbols.EndOfFile;
         }
@@ -44,7 +44,7 @@ public ref struct LexerState
 
     public readonly char PeekNth(int n)
     {
-        if (_finished || Position + n >= _characters.Length)
+        if (Position + n >= _characters.Length)
         {
             return CharSymbols.EndOfFile;
         }
@@ -58,7 +58,6 @@ public ref struct LexerState
 
         if (Position >= _characters.Length)
         {
-            _finished = true;
             return next;
         }
 
@@ -102,6 +101,20 @@ public ref struct LexerState
         return Position - start;
     }
 
+    public void AdvanceToEndOfLine()
+    {
+        ReadOnlySpan<char> remaining = _characters[Position..];
+
+        int index = remaining.IndexOfAny(CharSymbols.NewLine, CharSymbols.EndOfFile);
+
+        if (index < 0)
+        {
+            index = remaining.Length;
+        }
+        Position += index;
+        _column += index;
+    }
+
     public ReadOnlySpan<char> TakeWhile(Func<char, bool> predicate)
     {
         int start = Position;
@@ -120,15 +133,61 @@ public ref struct LexerState
         return _characters[start..Position];
     }
 
-    public ReadOnlySpan<char> TakeWhileTrustNoNewLines(Func<char, bool> predicate)
+    public ReadOnlySpan<char> TakeWhileDigit()
     {
         int start = Position;
-        while (Position < _characters.Length && predicate(_characters[Position]))
+        while ((uint)Position < (uint)_characters.Length && char.IsDigit(_characters[Position]))
         {
             Position++;
         }
         _column += Position - start;
         return _characters[start..Position];
+    }
+
+    public ReadOnlySpan<char> TakeWhileHexDigit()
+    {
+        int start = Position;
+        while ((uint)Position < (uint)_characters.Length && char.IsAsciiHexDigit(_characters[Position]))
+        {
+            Position++;
+        }
+        _column += Position - start;
+        return _characters[start..Position];
+    }
+
+    public ReadOnlySpan<char> TakeWhileIdentifierPart(SearchValues<char> asciiCharacters, Func<char, bool> isIdentifierPart)
+    {
+        ReadOnlySpan<char> remaining = _characters[Position..];
+        int length = 0;
+        while (length < remaining.Length)
+        {
+            int index = remaining[length..].IndexOfAnyExcept(asciiCharacters);
+            if (index < 0)
+            {
+                length = remaining.Length;
+                break;
+            }
+            length += index;
+            char character = remaining[length];
+            if (char.IsAscii(character) || !isIdentifierPart(character))
+            {
+                break;
+            }
+            length++;
+        }
+        if (IdentifierTerminator is { Length: > 0 } terminator)
+        {
+            int searchLength = length + Math.Min(remaining.Length - length, terminator.Length - 1);
+            int terminatorIndex = remaining[..searchLength].IndexOf(terminator.AsSpan());
+            if (terminatorIndex >= 0)
+            {
+                length = terminatorIndex;
+            }
+        }
+        ReadOnlySpan<char> result = remaining[..length];
+        Position += length;
+        _column += length;
+        return result;
     }
 
     public bool TakeIfSequence(ReadOnlySpan<char> chars)
@@ -190,6 +249,12 @@ public ref struct LexerState
 
     public readonly LexerState Clone()
     {
-        return new LexerState(_characters, Position, _line, _column, _finished);
+        return new LexerState(_characters, Position, _line, _column)
+        {
+            IdentifierTerminator = IdentifierTerminator
+        };
     }
+
+    internal static readonly SearchValues<char> s_standardIdentifierCharacters =
+        SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
 }

@@ -52,7 +52,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE PROCEDURE p() BEGIN ATOMIC ;;; SELECT $$it''s fine$$; ; END")]
     public void StructuredBodies_RoundTripThroughWritingAndFormatting(string sql)
     {
-        var statement = Assert.IsAssignableFrom<Statement>(ParseStatement(sql));
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
         Assert.Equal(statement, ParseStatement(Format(statement)));
     }
@@ -175,7 +175,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     {
         foreach (string sql in new[] { "SELECT " + literal, "CREATE TABLE t (note TEXT DEFAULT " + literal + ")" })
         {
-            Statement statement = Assert.IsAssignableFrom<Statement>(ParseStatement(sql));
+            Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
             Assert.Equal(statement, ParseStatement(statement.ToSql()));
             Assert.Contains(literal, statement.ToSql());
         }
@@ -188,7 +188,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("statement")]
     public void LegacyRoutineWrappers_DelegateSqlFormattingAndReferences(string kind)
     {
-        Statement inner = Assert.IsAssignableFrom<Statement>(ParseStatement("SELECT id FROM items"));
+        Statement inner = Assert.IsType<Statement>(ParseStatement("SELECT id FROM items"), exactMatch: false);
         PgRoutineBody body = kind == "literal"
             ? new PgRoutineBody.Literal("'opaque'", new Identifier("sql"))
             : new PgRoutineBody.StatementBody(inner, null);

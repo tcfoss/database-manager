@@ -1,3 +1,4 @@
+using System.Buffers;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -9,6 +10,23 @@ namespace TcfOss.DatabaseManager.MySql.Lexing;
 
 public class MyLexer : Lexer<MyRunState>
 {
+    private static readonly SearchValues<char> s_identifierCharacters =
+        SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$");
+
+    protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
+
+    protected override bool IsIdentifierStart(char character)
+    {
+        return base.IsIdentifierStart(character) || character == CharSymbols.Dollar
+            || character >= '\u0080' && !char.IsSurrogate(character);
+    }
+
+    protected override bool IsIdentifierPart(char character)
+    {
+        return char.IsAsciiLetterOrDigit(character) || character is CharSymbols.Underscore or CharSymbols.Dollar
+            || character >= '\u0080' && !char.IsSurrogate(character);
+    }
+
     private static bool IsSymbolCharacter(char c)
     {
         return c is ';' or '!' or '@' or '#' or '/' or '$' or '%' or '&' or '*';
@@ -70,6 +88,7 @@ public class MyLexer : Lexer<MyRunState>
 
     protected override Token NextToken(ref LexerState state, ref MyRunState runState)
     {
+        state.IdentifierTerminator = runState.TerminatorString;
         char character = state.Peek();
         if (character == runState.TerminatorStringStart)
         {

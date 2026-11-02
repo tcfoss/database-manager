@@ -10,6 +10,38 @@ namespace TcfOss.DatabaseManager.MsSql.Tests.LexerTests;
 
 public class MsLexerTests : LexerTestBase
 {
+    [Theory]
+    [InlineData("caf\u00e9")]
+    [InlineData("\u00e9clair")]
+    [InlineData("\u540d\u524d")]
+    [InlineData("a\u0661b")]
+    [InlineData("name$tail")]
+    [InlineData("name@tail")]
+    [InlineData("name#tail")]
+    [InlineData("##temporary")]
+    [InlineData("GO$tail")]
+    [InlineData("GO#tail")]
+    [InlineData("GO@tail")]
+    [InlineData("GO\u00e9")]
+    public void Unquoted_Identifiers_Preserve_Dialect_Characters(string identifier)
+    {
+        List<Token> tokens = new MsLexer().Tokenize(identifier + ";");
+
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(identifier, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal(identifier.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(identifier.Length + 1, tokens[1].Location.Column);
+    }
+
+    [Fact]
+    public void Variable_Preserves_Dialect_Continuation_Characters()
+    {
+        var word = Assert.IsType<Word>(Assert.Single(new MsLexer().Tokenize("@name$#@\u00e9")));
+
+        Assert.Equal("name$#@\u00e9", word.Value);
+        Assert.Equal(SigilKind.Variable, word.Sigil);
+    }
+
     [Fact]
     public void BracketedIdentifier_Tokenized()
     {
@@ -119,6 +151,38 @@ public class MsLexerTests : LexerTestBase
         };
 
         Compare(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("\\")]
+    [InlineData("before\\''after")]
+    [InlineData("\\''")]
+    [InlineData("line\\\n''tail\\")]
+    public void Ordinary_Strings_Treat_Backslashes_As_Content(string contents)
+    {
+        string sql = $"'{contents}';";
+        var tokens = new MsLexer().Tokenize(sql);
+
+        Assert.Equal(contents, Assert.IsType<StringLiteral>(tokens[0]).Value);
+        Assert.Equal(sql.Length - 1, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(224)]
+    [InlineData(225)]
+    [InlineData(300)]
+    public void Long_Escaped_Strings_Preserve_Backslashes_And_Locations(int prefixLength)
+    {
+        string contents = new string('a', prefixLength) + "\\''line\n" + new string('b', 1024) + "\\";
+        string sql = $"'{contents}';";
+        var tokens = new MsLexer().Tokenize(sql);
+
+        Assert.Equal(contents, Assert.IsType<StringLiteral>(tokens[0]).Value);
+        int position = sql.Length - 1;
+        Assert.Equal(new Location(2, position - sql.LastIndexOf('\n'), position), Assert.IsType<Semicolon>(tokens[1]).Location);
+        Assert.Equal(2, tokens.Count);
     }
 
     [Fact]
