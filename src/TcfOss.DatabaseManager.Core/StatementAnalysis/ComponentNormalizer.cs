@@ -215,7 +215,7 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
             return _quoteStyle;
         }
         QuoteStyle original = (identifier.OriginalIdentifiers?.LastOrDefault() ?? identifier).QuoteStyle;
-        return original != QuoteStyle.None ? original : QuoteStyle.Ansi;
+        return original;
     }
 
     [GeneratedRegex(StandardIdentifierPattern, RegexOptions.Compiled)]

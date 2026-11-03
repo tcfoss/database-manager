@@ -44,6 +44,18 @@ public class HandleTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Handle.GetNamePart(identifier.Name, identifier.QuoteStyle, (NameHandling)999));
     }
 
+    [Fact]
+    public void RequiresQuotingForCase_InvalidNameHandling_Throws()
+    {
+        var identifier = new Identifier("Hello");
+        var invalidHandling = (NameHandling)999;
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => Handle.RequiresQuotingForCase(identifier, invalidHandling));
+
+        Assert.Equal("nameHandling", exception.ParamName);
+        Assert.Equal(invalidHandling, exception.ActualValue);
+    }
+
     // === Comparison operators ===
 
     [Fact]

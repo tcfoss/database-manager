@@ -348,6 +348,48 @@ public class ComponentNormalizerTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void NormalizeColumnIdentifier_PropagatesAvailableOriginalScopes(int? originalCount)
+    {
+        SqlValueList<Identifier> originals =
+        [
+            new("Catalog", QuoteStyle.Ansi),
+            new("Schema"),
+            new("Table"),
+            new("Column", QuoteStyle.Ansi)
+        ];
+        ColumnIdentifier identifier = ColumnIdentifier.FromStrings("Catalog", "Schema", "Table", "Column", QuoteStyle.Ansi) with
+        {
+            OriginalIdentifiers = originalCount.HasValue ? [.. originals[^originalCount.Value..]] : null,
+            Source = new SourceRef(1, 2, 3)
+        };
+        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted);
+
+        ColumnIdentifier normalized = normalizer.NormalizeColumnIdentifier(identifier);
+
+        Assert.Equal("Column", normalized.Name);
+        Assert.Equal(identifier.Source, normalized.Source);
+        Assert.Equal(("Catalog", originalCount >= 3 ? "schema" : "Schema", originalCount >= 2 ? "table" : "Table"), normalized.Table.Strings);
+        if (originalCount >= 2)
+        {
+            Assert.Equal(identifier.OriginalIdentifiers![..^1], normalized.Table.OriginalIdentifiers);
+        }
+        else
+        {
+            Assert.Same(identifier.Table, Assert.Single(normalized.Table.OriginalIdentifiers!));
+        }
+        ColumnIdentifier repeated = normalizer.NormalizeColumnIdentifier(normalized);
+        Assert.Equal(normalized, repeated);
+        Assert.Same(normalized.OriginalIdentifiers, repeated.OriginalIdentifiers);
+        Assert.Same(normalized.Table.OriginalIdentifiers, repeated.Table.OriginalIdentifiers);
+    }
+
+    [Theory]
     [InlineData(NameHandling.LowercaseUnlessQuoted, IdentifierQuotationHandling.Always)]
     [InlineData(NameHandling.LowercaseUnlessQuoted, IdentifierQuotationHandling.OnlyIfSpecial)]
     [InlineData(NameHandling.LowercaseUnlessQuoted, IdentifierQuotationHandling.OnlyIfSpecialOrFunction)]

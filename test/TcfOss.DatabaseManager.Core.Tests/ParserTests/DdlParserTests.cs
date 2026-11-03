@@ -216,6 +216,8 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE INDEX my_index USING BTREE ON mytable (my_id) USING HASH")]
+    [InlineData("CREATE INDEX my_index USING BTREE ON mytable USING HASH (my_id)")]
+    [InlineData("CREATE UNIQUE INDEX my_index USING HASH ON mytable USING BTREE (my_id)")]
     public static void CreateIndex_DuplicateIndexMethod_Throws(string sql)
     {
         var parser = new Parser();
