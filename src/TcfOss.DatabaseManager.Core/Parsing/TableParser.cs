@@ -812,7 +812,10 @@ public class TableParser
         return options;
     }
 
-    private static string GetIndexOptionDuplicateKey(StatementIndexOption option) => option.GetType().Name;
+    private static string GetIndexOptionDuplicateKey(StatementIndexOption option)
+    {
+        return option.GetType().Name;
+    }
 
     public virtual StatementIndexOption? ParseNextIndexOption(ParserState state)
     {

@@ -27,8 +27,10 @@ public abstract class BaseInfoSchemaRepoTests
     protected abstract string ViewExpectedText { get; }
     protected abstract string ExpectedLowercaseFunctionName { get; }
 
-    protected ObjectIdentifier ObIdent(string name, string schema) =>
-        new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+    protected ObjectIdentifier ObIdent(string name, string schema)
+    {
+        return new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+    }
 
     [Fact]
     public async Task Get_Table_Identifiers_1()

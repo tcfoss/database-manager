@@ -9,20 +9,35 @@ public abstract record DataTypeReference : IWriteSql
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
 
-    public static implicit operator DataTypeReference(DataType dataType) => new BuiltIn(dataType);
+    public static implicit operator DataTypeReference(DataType dataType)
+    {
+        return new BuiltIn(dataType);
+    }
 
     public record BuiltIn(DataType DataType) : DataTypeReference
     {
-        public override void ToSql(SqlTextWriter writer) => DataType.ToSql(writer);
+        public override void ToSql(SqlTextWriter writer)
+        {
+            DataType.ToSql(writer);
+        }
 
-        public override void FormatSql(SqlTextWriter writer, FormatManager manager) => DataType.ToSql(writer);
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            DataType.ToSql(writer);
+        }
     }
 
     public record Named(ObjectName Name) : DataTypeReference
     {
-        public override void ToSql(SqlTextWriter writer) => Name.ToSql(writer);
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Name.ToSql(writer);
+        }
 
-        public override void FormatSql(SqlTextWriter writer, FormatManager manager) => Name.FormatSql(writer, manager);
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Name.FormatSql(writer, manager);
+        }
     }
 
     public record Array(DataTypeReference ElementType, SqlValueList<Array.Dimension> Dimensions) : DataTypeReference

@@ -8,6 +8,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -159,6 +160,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE DOMAIN label AS missing[]")]
     [InlineData("CREATE TYPE details AS (label missing[])")]
     [InlineData("CREATE TABLE items (label missing[])")]
+    [InlineData("CREATE FUNCTION f() RETURNS SETOF missing LANGUAGE plpgsql AS 'opaque'")]
+    [InlineData("CREATE FUNCTION f() RETURNS TABLE (value missing[]) LANGUAGE plpgsql AS 'opaque'")]
     public void ToDefinition_RejectsMissingTypesWithSource(string sql)
     {
         var builder = CreateBuilder();
@@ -184,7 +187,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgStoredFunction function = Assert.Single(definition.Functions).Value;
         PgStoredProcedure procedure = Assert.Single(definition.Procedures).Value;
         Assert.Equal("echo", function.Name.Name);
-        Assert.Equal("label", Assert.IsType<PgDataType.Custom>(function.ReturnType).Name.Name);
+        Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.IsType<FunctionReturn.DataTypeReturn>(function.ReturnType).DataType).Name.Name);
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.Single(function.Parameters).DataType).Name.Name);
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.Single(procedure.Parameters).DataType).Name.Name);
         Assert.NotNull(Assert.IsType<RoutineParameter.Directed>(Assert.Single(procedure.Parameters)).Direction);
@@ -679,7 +682,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("labels", Assert.IsType<PgDataType.Custom>(table.Columns[1].DataType).Name.Name);
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(table.Columns[2].DataType).ElementType).Name.Name);
         PgStoredFunction function = Assert.Single(definition.Functions).Value;
-        Assert.Equal("labels", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(function.ReturnType).ElementType).Name.Name);
+        Assert.Equal("labels", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(Assert.IsType<FunctionReturn.DataTypeReturn>(function.ReturnType).DataType).ElementType).Name.Name);
         var statements = new List<Statement> { table.ToCreateStatement(true), function.ToCreateStatement(true), Assert.Single(definition.Procedures).Value.ToCreateStatement(true) };
         statements.AddRange(definition.CustomTypes.Values.Select(type => type.ToCreateStatement(true)));
         var rebuilt = CreateBuilder();
@@ -1169,6 +1172,105 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.NotEqual(unquoted.Key, quoted.Key);
     }
 
+    [Theory]
+    [InlineData("INT", typeof(FunctionReturn.DataTypeReturn))]
+    [InlineData("trigger", typeof(FunctionReturn.PseudoType))]
+    [InlineData("void", typeof(FunctionReturn.PseudoType))]
+    [InlineData("record", typeof(FunctionReturn.PseudoType))]
+    [InlineData("SETOF INT", typeof(FunctionReturn.SetOf))]
+    [InlineData("SETOF label[]", typeof(FunctionReturn.SetOf))]
+    [InlineData("SETOF items", typeof(FunctionReturn.SetOf))]
+    [InlineData("SETOF record", typeof(FunctionReturn.SetOf))]
+    [InlineData("SETOF void", typeof(FunctionReturn.SetOf))]
+    [InlineData("TABLE (Id INT, \"Label\" label[])", typeof(FunctionReturn.Table))]
+    public void FunctionReturnShapes_ResolveAndRoundTrip(string returnClause, Type expectedType)
+    {
+        const string declarations = "CREATE DOMAIN label AS TEXT; CREATE TABLE items (id INT)";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"{declarations}; CREATE FUNCTION f() RETURNS {returnClause} LANGUAGE plpgsql AS $$opaque body$$"), GetSchema(), 0);
+
+        PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
+        Assert.IsType(expectedType, function.ReturnType);
+        CreateFunction statement = function.ToCreateStatement(true);
+        Assert.Equal(function.ReturnType.ToStatementReturn(), statement.ReturnType);
+        Assert.Equal(statement.ReturnType.ToSql(), function.ReturnType.ToSql());
+        Assert.Equal("opaque body", Assert.IsType<RoutineBodyLiteral>(function.Body).Value);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements($"{declarations}; {statement.ToSql()}"), GetSchema(), 1);
+        Assert.Equal(function.ReturnType, Assert.Single(rebuilt.ToDefinition().Functions).Value.ReturnType);
+    }
+
+    [Fact]
+    public void FunctionTableReturn_NormalizesNamesAndPreservesResolvedArrayElements()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE DOMAIN label AS TEXT; CREATE FUNCTION f() RETURNS TABLE (Id INT, \"Label\" label[]) LANGUAGE plpgsql AS 'opaque'"), GetSchema(), 0);
+
+        var result = Assert.IsType<FunctionReturn.Table>(Assert.Single(builder.ToDefinition().Functions).Value.ReturnType);
+
+        Assert.Equal(["id", "Label"], result.Columns.Select(column => column.Name.Name));
+        Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(result.Columns[1].DataType).ElementType).Name.Name);
+    }
+
+    [Theory]
+    [InlineData("Id INT, id TEXT")]
+    [InlineData("id INT, \"id\" TEXT")]
+    [InlineData("\"Id\" INT, \"Id\" TEXT")]
+    public void FunctionTableReturn_DuplicateNames_AreRejectedWithSource(string columns)
+    {
+        string sql = $"CREATE FUNCTION f() RETURNS TABLE ({columns}) LANGUAGE plpgsql AS 'opaque'";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 7);
+
+        var exception = Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(builder.ToDefinition);
+
+        Assert.Equal(7, exception.ObjectSourceRef?.SourceId);
+        Assert.Contains("return column", exception.Message);
+        Assert.Contains("function", exception.Message);
+        Assert.True(exception.ObjectSourceRef?.Start > sql.IndexOf(',', StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FunctionTableReturn_QuotedCaseDistinctNames_ArePreserved()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE FUNCTION f() RETURNS TABLE (id INT, \"Id\" TEXT) LANGUAGE plpgsql AS 'opaque'"), GetSchema(), 0);
+
+        var result = Assert.IsType<FunctionReturn.Table>(Assert.Single(builder.ToDefinition().Functions).Value.ReturnType);
+
+        Assert.Equal(["id", "Id"], result.Columns.Select(column => column.Name.Name));
+    }
+
+    [Fact]
+    public void FunctionTableReturn_ManualDuplicateUsesRoutineSource()
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS TABLE (id INT, id TEXT) LANGUAGE plpgsql AS 'opaque'"));
+        var table = Assert.IsType<StatementFunctionReturn.Table>(function.ReturnType);
+        function = function with
+        {
+            ReturnType = table with { Columns = [.. table.Columns.Select(column => column with { Name = column.Name with { Source = null } })] }
+        };
+        var builder = CreateBuilder();
+        builder.ProcessStatements([function], GetSchema(), 7);
+
+        var exception = Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(builder.ToDefinition);
+
+        Assert.Equal(new SourceRef(7, function.Meta.Start!.Value, function.Meta.End!.Value), exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void FunctionReturn_UnknownManualVariant_IsExplicitlyRejected()
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1")) with
+        {
+            ReturnType = new UnknownFunctionReturn()
+        };
+        var builder = CreateBuilder();
+        builder.ProcessStatements([function], GetSchema(), 0);
+
+        Assert.Throws<NotSupportedException>(builder.ToDefinition);
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));
@@ -1190,6 +1292,19 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             QuoteStyle = QuoteStyle.Ansi,
             NameHandling = NameHandling.LowercaseUnlessQuoted,
         };
+    }
+
+    private sealed record UnknownFunctionReturn : StatementFunctionReturn
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class NameInspectingBuilder(PgConfig config)

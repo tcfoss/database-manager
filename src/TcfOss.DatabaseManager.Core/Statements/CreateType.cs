@@ -45,7 +45,10 @@ public abstract record CreateType(ObjectName Name) : Statement, ICreateStatement
 
     public record Composite(ObjectName Name, SqlValueList<CompositeTypeField> Attributes) : CreateType(Name)
     {
-        public override void ToSql(SqlTextWriter writer) => writer.WriteSql($"CREATE TYPE {Name} AS ({Attributes})");
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"CREATE TYPE {Name} AS ({Attributes})");
+        }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {

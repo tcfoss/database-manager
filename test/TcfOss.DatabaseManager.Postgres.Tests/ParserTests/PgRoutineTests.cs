@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Formatting;
@@ -11,6 +12,7 @@ using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -19,6 +21,63 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.ParserTests;
 
 public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
 {
+    [Theory]
+    [InlineData("INT", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("app.result[]", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("trigger", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("void", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("record", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("SETOF INT", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF app.result[]", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF record", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF void", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF \"record\"", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("TABLE (id INT, \"Label\" app.label[])", typeof(StatementFunctionReturn.Table))]
+    [InlineData("\"trigger\"", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("app.record", typeof(StatementFunctionReturn.DataTypeReturn))]
+    public void FunctionReturnShapes_ParseWriteAndFormat(string returnClause, Type expectedType)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f() RETURNS {returnClause} LANGUAGE plpgsql AS $$opaque; body$$"));
+
+        Assert.IsType(expectedType, function.ReturnType);
+        Assert.Equal("opaque; body", Assert.IsType<RoutineBodyLiteral>(function.Body).Value);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("TABLE ()")]
+    [InlineData("TABLE (value)")]
+    [InlineData("TABLE (value INT NOT NULL)")]
+    [InlineData("TABLE (value INT DEFAULT 1)")]
+    [InlineData("TABLE (value INT PRIMARY KEY)")]
+    [InlineData("TABLE (value INT,)")]
+    [InlineData("SETOF")]
+    [InlineData("SETOF SETOF INT")]
+    [InlineData("SETOF TABLE (value INT)")]
+    public void InvalidFunctionReturnShapes_AreRejected(string returnClause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE FUNCTION f() RETURNS {returnClause} LANGUAGE plpgsql AS 'opaque'"));
+    }
+
+    [Fact]
+    public void ScalarFunctionReturnConversions_PreserveTheDataTypeAndFormatting()
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1"));
+        var scalar = Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+        DataTypeReference reference = scalar.DataType;
+        DataType dataType = Assert.IsType<DataTypeReference.BuiltIn>(reference).DataType;
+
+        StatementFunctionReturn fromReference = reference;
+        StatementFunctionReturn fromDataType = dataType;
+        FunctionReturn resolved = dataType;
+
+        Assert.Equal(scalar, fromReference);
+        Assert.Equal(scalar, fromDataType);
+        Assert.Equal(scalar, resolved.ToStatementReturn());
+        Assert.Equal(scalar.ToSql(), Format(resolved));
+    }
+
     [Theory]
     [InlineData("LANGUAGE plpgsql AS $$BEGIN RETURN 'it''s fine'; END$$", "BEGIN RETURN 'it''s fine'; END", "")]
     [InlineData("AS $body$opaque $other$ text$body$ LANGUAGE plpgsql", "opaque $other$ text", "body")]
@@ -243,7 +302,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Contains("AGGREGATE FUNCTION", Format(function));
     }
 
-    private static string Format(Statement statement)
+    private static string Format(IWriteSql statement)
     {
         var names = new FunctionNameProvider();
         var manager = new FormatManager

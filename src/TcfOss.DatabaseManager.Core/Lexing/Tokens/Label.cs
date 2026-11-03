@@ -13,9 +13,15 @@ public sealed class Label(Identifier identifier) : Token
         return other != null && Identifier == other.Identifier;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as Label);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as Label);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as Label);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as Label);
+    }
 
     public override int GetHashCode()
     {

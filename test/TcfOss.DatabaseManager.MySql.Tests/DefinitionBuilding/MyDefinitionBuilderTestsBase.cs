@@ -8,6 +8,7 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -897,6 +898,22 @@ public abstract class MyDefinitionBuilderTestsBase
         var expected = "SELECT `schema1`.`table1`.`id` AS `id`, `schema1`.`table1`.`val` AS `val`, `schema2`.`table2`.`val` AS `table2_val` FROM `schema1`.`table1` INNER JOIN `schema2`.`table2` ON `schema1`.`table1`.`id` = `schema2`.`table2`.`parent_id`";
         var actual = (view.NormalizedBody ?? view.Body).ToSql();
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("TABLE (id INT)")]
+    [InlineData("SETOF INT")]
+    [InlineData("trigger")]
+    [InlineData("void")]
+    [InlineData("record")]
+    public void Function_ManuallySuppliedPostgresReturn_IsRejected(string returnClause)
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f() RETURNS INT SQL SECURITY DEFINER RETURN 1")));
+        var coreParser = new TextParser(new GenericLexer(), new Parser());
+        var extended = Assert.IsType<CreateFunction>(Assert.Single(coreParser.ParseText($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1")));
+        var statement = parsed with { ReturnType = extended.ReturnType };
+
+        Assert.Throws<NotSupportedException>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
     }
 
     [Fact]

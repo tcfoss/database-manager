@@ -167,13 +167,16 @@ public class MyFsDefinitionLoaderTests
         string? bookAuthorsOverride = null,
         string? usersOverride = null,
         string? rentalsOverride = null
-    ) => filePath switch
+    )
     {
-        "/fake/path/to/schema1/books.sql" => bookOverride ?? BookText,
-        "/fake/path/to/schema1/contributors.sql" => contributorOverride ?? ContributorText,
-        "/fake/path/to/schema1/book_authors.sql" => bookAuthorsOverride ?? BookAuthorsText,
-        "/fake/path/to/schema2/subdir/users.sql" => usersOverride ?? UsersText,
-        "/fake/path/to/schema2/rentals.sql" => rentalsOverride ?? RentalsText,
-        _ => throw new ArgumentException($"Unexpected file path: {filePath}"),
-    };
+        return filePath switch
+        {
+            "/fake/path/to/schema1/books.sql" => bookOverride ?? BookText,
+            "/fake/path/to/schema1/contributors.sql" => contributorOverride ?? ContributorText,
+            "/fake/path/to/schema1/book_authors.sql" => bookAuthorsOverride ?? BookAuthorsText,
+            "/fake/path/to/schema2/subdir/users.sql" => usersOverride ?? UsersText,
+            "/fake/path/to/schema2/rentals.sql" => rentalsOverride ?? RentalsText,
+            _ => throw new ArgumentException($"Unexpected file path: {filePath}"),
+        };
+    }
 }

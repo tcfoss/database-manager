@@ -487,7 +487,7 @@ public class DdlParser
         SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state);
 
         state.ExpectKeyword(Keyword.RETURNS);
-        DataTypeReference returnType = _p.DataTypeParser.ParseDataTypeReference(state);
+        StatementFunctionReturn returnType = ParseFunctionReturn(state);
         ParsedRoutineTail tail = ParseRoutineTail(state, isFunction: true);
 
         return new CreateFunction(name, parameters, returnType, tail.Body)
@@ -502,6 +502,52 @@ public class DdlParser
             UseAsBeforeBody = tail.UseAsBeforeBody,
             IfNotExists = ifNotExists
         };
+    }
+
+    protected virtual StatementFunctionReturn ParseFunctionReturn(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TABLE))
+        {
+            return new StatementFunctionReturn.Table(state.ParseParenthesizedCommaSeparated(ParseFunctionReturnColumn, allowEmpty: false));
+        }
+        if (state.ParseKeyword(Keyword.SETOF))
+        {
+            StatementFunctionReturn.Element element = ParseFunctionReturnElement(state);
+            return new StatementFunctionReturn.SetOf(element);
+        }
+        return ParseFunctionReturnElement(state);
+    }
+
+    protected StatementFunctionReturn.DataTypeReturn ParseScalarFunctionReturn(ParserState state)
+    {
+        return new StatementFunctionReturn.DataTypeReturn(_p.DataTypeParser.ParseDataTypeReference(state));
+    }
+
+    private StatementFunctionReturn.Element ParseFunctionReturnElement(ParserState state)
+    {
+        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word && !state.PeekNthIs<Dot>(1))
+        {
+            PgPseudoType? pseudoType = word.Value.ToUpperInvariant() switch
+            {
+                "TRIGGER" => PgPseudoType.Trigger,
+                "VOID" => PgPseudoType.Void,
+                "RECORD" => PgPseudoType.Record,
+                _ => null
+            };
+            if (pseudoType != null)
+            {
+                state.Next();
+                return new StatementFunctionReturn.PseudoType(pseudoType);
+            }
+        }
+        return ParseScalarFunctionReturn(state);
+    }
+
+    private StatementFunctionReturn.TableColumn ParseFunctionReturnColumn(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        return new StatementFunctionReturn.TableColumn(name, dataType);
     }
 
     public virtual CreateProcedure ParseCreateProcedure(ParserState state, CreateOrLabel? createOrLabel = null, Definer? definer = null)

@@ -19,7 +19,18 @@ public sealed class DollarQuotedStringLiteral(string tag, string value) : Token
         return other != null && Tag == other.Tag && Value == other.Value;
     }
 
-    public override bool Equals(Token? other) => Equals(other as DollarQuotedStringLiteral);
-    public override bool Equals(object? obj) => Equals(obj as DollarQuotedStringLiteral);
-    public override int GetHashCode() => HashCode.Combine(Tag, Value);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as DollarQuotedStringLiteral);
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as DollarQuotedStringLiteral);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Tag, Value);
+    }
 }

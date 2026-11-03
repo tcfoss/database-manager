@@ -1009,7 +1009,10 @@ public class MyConfigLoaderTests
             yield return new TheoryDataRow<int?, int?, NumericLength?, ExceptionType?, string?>(-1, -1, null, null, "Double");
         }
 
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
 
         public static string GetFormattedMessage(ExceptionType exceptionType, string label, int? precision, int? scale)
         {

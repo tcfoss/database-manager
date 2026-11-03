@@ -728,6 +728,7 @@ public enum Keyword
     SESSION,
     SESSION_USER,
     SET,
+    SETOF,
     SETS,
     SETTINGS,
     SHARE,

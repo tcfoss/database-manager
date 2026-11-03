@@ -21,7 +21,10 @@ public class Lexer<TRunState> : ILexer
         _isIdentifierPart = IsIdentifierPart;
     }
 
-    public virtual List<Token> Tokenize(string sql) => Tokenize(sql.AsSpan());
+    public virtual List<Token> Tokenize(string sql)
+    {
+        return Tokenize(sql.AsSpan());
+    }
 
     public virtual List<Token> Tokenize(ReadOnlySpan<char> sql)
     {

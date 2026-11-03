@@ -414,7 +414,7 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         var function = Assert.IsType<CreateFunction>(Assert.Single(ParseStatements(sql)));
 
         Assert.Equal(typeName, Assert.IsType<DataTypeReference.Named>(Assert.Single(function.Parameters).DataType).ToSql());
-        Assert.Equal(typeName, Assert.IsType<DataTypeReference.Named>(function.ReturnType).ToSql());
+        Assert.Equal(typeName, Assert.IsType<DataTypeReference.Named>(Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType).DataType).ToSql());
         Assert.Equal(sql, function.ToSql());
     }
 

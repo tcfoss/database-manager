@@ -17,6 +17,11 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
 
     private readonly MsParser _p = parser;
 
+    protected override StatementFunctionReturn ParseFunctionReturn(ParserState state)
+    {
+        return ParseScalarFunctionReturn(state);
+    }
+
     /// <summary>
     /// Parses a T-SQL routine parameter: <c>@name TYPE [= default] [OUT|OUTPUT]</c>.
     /// </summary>

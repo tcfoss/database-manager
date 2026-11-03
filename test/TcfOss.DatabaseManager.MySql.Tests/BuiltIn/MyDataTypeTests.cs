@@ -46,7 +46,10 @@ public class MyDataTypeTests
             }
         }
 
-        protected override bool GetDefaultValue() => false;
+        protected override bool GetDefaultValue()
+        {
+            return false;
+        }
     }
 
     [Fact]

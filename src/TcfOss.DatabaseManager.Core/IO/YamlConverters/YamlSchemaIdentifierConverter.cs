@@ -19,10 +19,16 @@ public class YamlSchemaIdentifierConverter : IYamlTypeConverter
     }
 
     [ExcludeFromCodeCoverage]
-    public static object ReadYaml(IParser parser, Type type) => throw new NotImplementedException();
+    public static object ReadYaml(IParser parser, Type type)
+    {
+        throw new NotImplementedException();
+    }
 
     [ExcludeFromCodeCoverage]
-    public object ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer) => throw new NotImplementedException();
+    public object ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer)
+    {
+        throw new NotImplementedException();
+    }
 
     public static void WriteYaml(IEmitter emitter, object? value, Type type)
     {

@@ -16,9 +16,15 @@ public class HexStringLiteral(string value) : Token
         return other != null && Value == other.Value;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as HexStringLiteral);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as HexStringLiteral);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as HexStringLiteral);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as HexStringLiteral);
+    }
 
     public override int GetHashCode()
     {

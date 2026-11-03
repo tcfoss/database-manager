@@ -419,7 +419,10 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
             { Label = "DECIMAL" };
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 
     [Fact]

@@ -16,9 +16,15 @@ public sealed class NumericLiteral(string value, bool isLong = false) : Token
         return other != null && Value == other.Value && IsLong == other.IsLong;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as NumericLiteral);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as NumericLiteral);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as NumericLiteral);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as NumericLiteral);
+    }
 
     public override int GetHashCode()
     {

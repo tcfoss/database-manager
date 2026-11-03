@@ -2,6 +2,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
@@ -19,7 +20,10 @@ public class MyConstructFunction(MyConfig config, MyAttributeNormalizer normaliz
         Definer definer = createFunctionStatement.Definer ?? new Definer(new Account.CurrentUser());
         definer = new Definer(_normalizer.NormalizeAccount(definer.Account, accountQuoteStyle));
         IEnumerable<RoutineParameter> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
-        DataTypeReference.BuiltIn returnType = (DataTypeReference.BuiltIn)createFunctionStatement.ReturnType;
+        if (createFunctionStatement.ReturnType is not StatementFunctionReturn.DataTypeReturn { DataType: DataTypeReference.BuiltIn returnType })
+        {
+            throw new NotSupportedException("MySQL and MariaDB functions require a scalar built-in return type.");
+        }
         return new MyStoredFunction(name, [.. parameters], returnType.DataType, createFunctionStatement.Body)
         {
             Definer = definer,

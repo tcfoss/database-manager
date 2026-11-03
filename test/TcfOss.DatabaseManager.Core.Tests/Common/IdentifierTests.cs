@@ -176,7 +176,10 @@ public partial class IdentifierTests
                 null);
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 
     [Theory]
@@ -230,7 +233,10 @@ public partial class IdentifierTests
                 1);
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 
     [Theory]
@@ -252,7 +258,10 @@ public partial class IdentifierTests
             yield return new TheoryDataRow<ObjectIdentifier>(s_objectAnsi);
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 
     [Theory]

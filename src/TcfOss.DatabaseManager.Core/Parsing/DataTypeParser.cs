@@ -11,13 +11,19 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 public class DataTypeParser(Parser parser)
 {
     protected static int ParseBoundedInt(ParserState state, int min = 0, int max = int.MaxValue, string label = "precision")
-        => ParseBoundedInteger(state, ValueParser.ParseLiteralInt, min, max, label);
+    {
+        return ParseBoundedInteger(state, ValueParser.ParseLiteralInt, min, max, label);
+    }
 
     protected static uint ParseBoundedUInt(ParserState state, uint min = 0, uint max = uint.MaxValue, string label = "precision")
-        => ParseBoundedInteger(state, ValueParser.ParseLiteralUInt, min, max, label);
+    {
+        return ParseBoundedInteger(state, ValueParser.ParseLiteralUInt, min, max, label);
+    }
 
     protected static long ParseBoundedLong(ParserState state, long min = 0, long max = long.MaxValue, string label = "precision")
-        => ParseBoundedInteger(state, ValueParser.ParseLiteralLong, min, max, label);
+    {
+        return ParseBoundedInteger(state, ValueParser.ParseLiteralLong, min, max, label);
+    }
 
     private static T ParseBoundedInteger<T>(ParserState state, Func<ParserState, T> parse, T min, T max, string label)
         where T : struct, IBinaryInteger<T>
@@ -60,10 +66,14 @@ public class DataTypeParser(Parser parser)
     }
 
     protected static uint? ParseOptionalLength(ParserState state, uint min = 0, uint max = uint.MaxValue)
-        => ParseOptionalSimplePrecision(state, min, max, "length");
+    {
+        return ParseOptionalSimplePrecision(state, min, max, "length");
+    }
 
     protected static uint ParseLength(ParserState state, uint min = 0, uint max = uint.MaxValue)
-        => ParseSimplePrecision(state, min, max, "length");
+    {
+        return ParseSimplePrecision(state, min, max, "length");
+    }
 
     protected static NumericLength? ParseOptionalNumericLength(ParserState state)
     {
@@ -235,7 +245,9 @@ public class DataTypeParser(Parser parser)
     }
 
     // Returns true for any keyword that can open a typed-string expression (TYPE 'literal').
-    public virtual bool IsDataTypeKeyword(Keyword? keyword) => keyword is
+    public virtual bool IsDataTypeKeyword(Keyword? keyword)
+    {
+        return keyword is
         Keyword.BOOLEAN or Keyword.BOOL or
         Keyword.INT or Keyword.INTEGER or
         Keyword.TINYINT or Keyword.BIGINT or
@@ -243,8 +255,12 @@ public class DataTypeParser(Parser parser)
         Keyword.CHAR or Keyword.CHARACTER or Keyword.NCHAR or Keyword.VARCHAR or Keyword.NVARCHAR or
         Keyword.TEXT or Keyword.DOUBLE or Keyword.FLOAT or
         Keyword.ENUM or Keyword.SET;
+    }
 
-    public virtual bool IsDataTypeStart(Token token) => token is Word word && IsDataTypeKeyword(word.Keyword);
+    public virtual bool IsDataTypeStart(Token token)
+    {
+        return token is Word word && IsDataTypeKeyword(word.Keyword);
+    }
 
     public virtual DataType ParseDataTypeForConvert(ParserState state)
     {

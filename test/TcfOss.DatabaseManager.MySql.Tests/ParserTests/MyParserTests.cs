@@ -469,4 +469,15 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
         Assert.Equal("a OR b", ParseExpression("a || b").ToSql());
     }
+
+    [Theory]
+    [InlineData("TABLE (id INT)")]
+    [InlineData("SETOF INT")]
+    [InlineData("trigger")]
+    [InlineData("void")]
+    [InlineData("record")]
+    public void FunctionReturn_PostgresShapes_AreRejected(string returnClause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1"));
+    }
 }

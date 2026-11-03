@@ -172,6 +172,37 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return new PgRoutineOptions(ComponentNormalizer.NormalizeSingleIdentifier(options.Language));
     }
 
+    private FunctionReturn ResolveFunctionReturn(StatementFunctionReturn returnType, ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
+    {
+        switch (returnType)
+        {
+            case StatementFunctionReturn.DataTypeReturn scalar:
+                return new FunctionReturn.DataTypeReturn(manager.Resolve(scalar.DataType, routine.Schema, sourceRef));
+            case StatementFunctionReturn.PseudoType pseudo:
+                return new FunctionReturn.PseudoType(pseudo.Type);
+            case StatementFunctionReturn.SetOf set:
+                return new FunctionReturn.SetOf((FunctionReturn.Element)ResolveFunctionReturn(set.ReturnType, routine, sourceRef, manager));
+            case StatementFunctionReturn.Table table:
+                var names = new HashSet<Handle>();
+                var columns = new SqlValueList<FunctionReturn.TableColumn>();
+                foreach (StatementFunctionReturn.TableColumn column in table.Columns)
+                {
+                    if (!names.Add(Handle.Create(column.Name, Config.NameHandling)))
+                    {
+                        SourceRef location = column.Name.Source is SourceRef columnSource
+                            ? columnSource with { SourceId = sourceRef.SourceId }
+                            : sourceRef;
+                        throw new SqlSyntaxException.SpecifiedMoreThanOnce("return column " + column.Name.Name, "function", routine, location);
+                    }
+                    columns.Add(new FunctionReturn.TableColumn(ComponentNormalizer.NormalizeSingleIdentifier(column.Name),
+                        manager.Resolve(column.DataType, routine.Schema, sourceRef)));
+                }
+                return new FunctionReturn.Table(columns);
+            default:
+                throw new NotSupportedException($"Unsupported function return shape: {returnType.GetType().Name}");
+        }
+    }
+
     public override PgDefinition ToDefinition()
     {
         PgTypeResolutionManager manager = GetTypeResolutionManager();
@@ -191,7 +222,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             Declaration<CreateFunction> item = declaration.Value;
             functions.Add(declaration.Key, new PgStoredFunction(item.Name,
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager),
-                manager.Resolve(item.Statement.ReturnType, item.Name.Schema, item.SourceRef), item.Statement.Body)
+                ResolveFunctionReturn(item.Statement.ReturnType, item.Name, item.SourceRef, manager), item.Statement.Body)
             {
                 Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
                 RawBodyText = SourceManager.GetText(item.SourceRef,

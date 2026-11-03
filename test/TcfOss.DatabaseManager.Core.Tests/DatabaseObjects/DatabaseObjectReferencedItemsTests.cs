@@ -40,13 +40,17 @@ public class DatabaseObjectReferencedItemsTests
             From = [new TableWithJoins(new TableFactor.Table(new ObjectName(new Identifier(tableName))))]
         };
 
-    private static Select MakeSelect(string tableName) =>
-        new(new SelectBody.SimpleSelectQuery(MakeSimpleSelect(tableName)));
+    private static Select MakeSelect(string tableName)
+    {
+        return new(new SelectBody.SimpleSelectQuery(MakeSimpleSelect(tableName)));
+    }
 
     private record TestView(ObjectIdentifier Name, Select Body) : View(Name, Body)
     {
-        public override CreateView ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null) =>
+        public override CreateView ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
+        {
             throw new NotSupportedException();
+        }
     }
 
     [Fact]

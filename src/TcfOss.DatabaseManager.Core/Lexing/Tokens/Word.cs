@@ -44,9 +44,15 @@ public sealed class Word(string value, QuoteStyle quoteStyle = QuoteStyle.None, 
         return other != null && Value == other.Value && QuoteStyle == other.QuoteStyle && Keyword == other.Keyword && Sigil == other.Sigil;
     }
 
-    public override bool Equals(Token? other) => Equals(other as Word);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as Word);
+    }
 
-    public override bool Equals(object? obj) => Equals(obj as Word);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as Word);
+    }
 
     public override int GetHashCode()
     {

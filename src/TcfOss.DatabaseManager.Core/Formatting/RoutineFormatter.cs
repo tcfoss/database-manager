@@ -57,7 +57,7 @@ internal static class RoutineFormatter
         ObjectName name,
         SqlValueList<StatementRoutineParameter> parameters,
         bool ifNotExists,
-        DataTypeReference? returnType,
+        StatementFunctionReturn? returnType,
         MyRoutineCharacteristic? characteristic,
         MsRoutineWithOptions? msOptions,
         PgRoutineOptions? pgOptions = null)

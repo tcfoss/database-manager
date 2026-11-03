@@ -20,40 +20,49 @@ public class ReferencedItemsManager
     public HashSet<Identifier> LocalVariables { get; } = [];
     public NameHandling NameHandling { get; init; }
 
-    private static ObjectNameFilters TypeToFilter(ItemType type) => type switch
+    private static ObjectNameFilters TypeToFilter(ItemType type)
     {
-        ItemType.Unknown => ObjectNameFilters.Unknown,
-        ItemType.Table => ObjectNameFilters.Table,
-        ItemType.TableColumn => ObjectNameFilters.TableColumn,
-        ItemType.View => ObjectNameFilters.View,
-        ItemType.ViewColumn => ObjectNameFilters.ViewColumn,
-        ItemType.DerivedTable => ObjectNameFilters.DerivedTable,
-        ItemType.DerivedColumn => ObjectNameFilters.DerivedColumn,
-        ItemType.Function => ObjectNameFilters.Function,
-        ItemType.Procedure => ObjectNameFilters.Procedure,
-        ItemType.Variable => ObjectNameFilters.Variable,
-        ItemType.Event => ObjectNameFilters.Event,
-        ItemType.BuiltInFunction => ObjectNameFilters.BuiltInFunction,
-        _ => ObjectNameFilters.None,
-    };
+        return type switch
+        {
+            ItemType.Unknown => ObjectNameFilters.Unknown,
+            ItemType.Table => ObjectNameFilters.Table,
+            ItemType.TableColumn => ObjectNameFilters.TableColumn,
+            ItemType.View => ObjectNameFilters.View,
+            ItemType.ViewColumn => ObjectNameFilters.ViewColumn,
+            ItemType.DerivedTable => ObjectNameFilters.DerivedTable,
+            ItemType.DerivedColumn => ObjectNameFilters.DerivedColumn,
+            ItemType.Function => ObjectNameFilters.Function,
+            ItemType.Procedure => ObjectNameFilters.Procedure,
+            ItemType.Variable => ObjectNameFilters.Variable,
+            ItemType.Event => ObjectNameFilters.Event,
+            ItemType.BuiltInFunction => ObjectNameFilters.BuiltInFunction,
+            _ => ObjectNameFilters.None,
+        };
+    }
 
-    private static ItemType PseudoTableTypeToItemRefType(PseudoTableType type) => type switch
+    private static ItemType PseudoTableTypeToItemRefType(PseudoTableType type)
     {
-        PseudoTableType.Table => ItemType.Table,
-        PseudoTableType.View => ItemType.View,
-        PseudoTableType.CommonTableExpression => ItemType.DerivedTable,
-        PseudoTableType.DerivedTable => ItemType.DerivedTable,
-        _ => ItemType.Unknown,
-    };
+        return type switch
+        {
+            PseudoTableType.Table => ItemType.Table,
+            PseudoTableType.View => ItemType.View,
+            PseudoTableType.CommonTableExpression => ItemType.DerivedTable,
+            PseudoTableType.DerivedTable => ItemType.DerivedTable,
+            _ => ItemType.Unknown,
+        };
+    }
 
-    private static ItemType PseudoTableTypeToColumnItemRefType(PseudoTableType type) => type switch
+    private static ItemType PseudoTableTypeToColumnItemRefType(PseudoTableType type)
     {
-        PseudoTableType.Table => ItemType.TableColumn,
-        PseudoTableType.View => ItemType.ViewColumn,
-        PseudoTableType.CommonTableExpression => ItemType.DerivedColumn,
-        PseudoTableType.DerivedTable => ItemType.DerivedColumn,
-        _ => ItemType.Unknown,
-    };
+        return type switch
+        {
+            PseudoTableType.Table => ItemType.TableColumn,
+            PseudoTableType.View => ItemType.ViewColumn,
+            PseudoTableType.CommonTableExpression => ItemType.DerivedColumn,
+            PseudoTableType.DerivedTable => ItemType.DerivedColumn,
+            _ => ItemType.Unknown,
+        };
+    }
 
     private bool MaybeExpectingTableOrView()
     {

@@ -14,9 +14,15 @@ public sealed class NationalStringLiteral(string value) : Token
         return other != null && Value == other.Value;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as NationalStringLiteral);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as NationalStringLiteral);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as NationalStringLiteral);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as NationalStringLiteral);
+    }
 
     public override int GetHashCode()
     {

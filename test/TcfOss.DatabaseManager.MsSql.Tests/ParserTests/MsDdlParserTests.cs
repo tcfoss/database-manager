@@ -83,6 +83,11 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
     [Theory]
     [InlineData("CREATE FUNCTION fn() RETURNS INT WITH RECOMPILE AS BEGIN RETURN 1; END", Label = "RECOMPILE not allowed on FUNCTION")]
     [InlineData("CREATE AGGREGATE FUNCTION fn() RETURNS INT AS BEGIN RETURN 1; END", Label = "AGGREGATE not allowed in T-SQL FUNCTION")]
+    [InlineData("CREATE FUNCTION fn() RETURNS TABLE (id INT) AS BEGIN RETURN 1; END")]
+    [InlineData("CREATE FUNCTION fn() RETURNS SETOF INT AS BEGIN RETURN 1; END")]
+    [InlineData("CREATE FUNCTION fn() RETURNS trigger AS BEGIN RETURN 1; END")]
+    [InlineData("CREATE FUNCTION fn() RETURNS void AS BEGIN RETURN 1; END")]
+    [InlineData("CREATE FUNCTION fn() RETURNS record AS BEGIN RETURN 1; END")]
     public void CreateFunction_Invalid_Throws(string text)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement(text));

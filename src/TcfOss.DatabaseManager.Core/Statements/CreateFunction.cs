@@ -10,7 +10,7 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParameter> Parameters, DataTypeReference ReturnType, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
+public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParameter> Parameters, StatementFunctionReturn ReturnType, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool IfNotExists { get; init; }

@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core;
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -10,7 +9,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
 
-public record MyStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, DataType ReturnType, Statement Body)
+public record MyStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, FunctionReturn ReturnType, Statement Body)
     : StoredFunction(Name, Parameters, ReturnType, Body)
 {
     public required Definer Definer { get; init; }
@@ -39,7 +38,7 @@ public record MyStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParame
 
     public override CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
-        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), [.. Parameters.Select(parameter => parameter.ToStatementParameter())], ReturnType, Body)
+        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), [.. Parameters.Select(parameter => parameter.ToStatementParameter())], ReturnType.ToStatementReturn(), Body)
         {
             Definer = Definer,
             MyCharacteristic = new MyRoutineCharacteristic()

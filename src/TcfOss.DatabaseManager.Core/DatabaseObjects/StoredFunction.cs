@@ -1,4 +1,3 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.IO;
@@ -7,7 +6,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public abstract record StoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, DataType ReturnType, Statement Body) : IDatabaseObject<CreateFunction>
+public abstract record StoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, FunctionReturn ReturnType, Statement Body) : IDatabaseObject<CreateFunction>
 {
     public ObjectType ObjectType => ObjectType.Function;
 

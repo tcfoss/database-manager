@@ -87,6 +87,21 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("TABLE (id INT, label TEXT)")]
+    [InlineData("SETOF INT ARRAY")]
+    [InlineData("SETOF app.items")]
+    [InlineData("SETOF record")]
+    [InlineData("trigger")]
+    [InlineData("void")]
+    [InlineData("record")]
+    public void FunctionReturnShapes_RoundTrip(string returnClause)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1"));
+
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+    }
+
+    [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
     [InlineData("CREATE OR REPLACE VIEW myview AS SELECT a, b", Label = "CREATE OR REPLACE VIEW")]
     [InlineData("CREATE OR ALTER VIEW myview AS SELECT a, b", Label = "CREATE OR ALTER VIEW")]

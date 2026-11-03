@@ -174,7 +174,10 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
             }
         }
 
-        protected override bool GetDefaultValue() => false;
+        protected override bool GetDefaultValue()
+        {
+            return false;
+        }
     }
 
     [Theory]
@@ -309,13 +312,19 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
     private sealed class ModifierParser() : DataTypeParser(new Parser())
     {
         public static long Parse(ParserState state, long minimum, long maximum)
-            => ParseBoundedLong(state, minimum, maximum, "length");
+        {
+            return ParseBoundedLong(state, minimum, maximum, "length");
+        }
 
         public static int ParseInt(ParserState state, int minimum, int maximum)
-            => ParseBoundedInt(state, minimum, maximum, "scale");
+        {
+            return ParseBoundedInt(state, minimum, maximum, "scale");
+        }
 
         public static uint ParseUInt(ParserState state, uint minimum, uint maximum)
-            => ParseBoundedUInt(state, minimum, maximum, "length");
+        {
+            return ParseBoundedUInt(state, minimum, maximum, "length");
+        }
     }
 
 
