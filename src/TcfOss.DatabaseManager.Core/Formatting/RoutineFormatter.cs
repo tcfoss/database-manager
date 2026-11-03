@@ -1,8 +1,8 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Formatting;
@@ -55,11 +55,12 @@ internal static class RoutineFormatter
         Definer? definer,
         string routineKeyword,
         ObjectName name,
-        SqlValueList<RoutineParameter> parameters,
+        SqlValueList<StatementRoutineParameter> parameters,
         bool ifNotExists,
-        DataType? returnType,
+        DataTypeReference? returnType,
         MyRoutineCharacteristic? characteristic,
-        MsRoutineWithOptions? msOptions)
+        MsRoutineWithOptions? msOptions,
+        PgRoutineOptions? pgOptions = null)
     {
         // CREATE [OR REPLACE / OR ALTER] [Definer]
         FormatCreateAndDefiner(writer, manager, createOrLabel, definer);
@@ -119,7 +120,8 @@ internal static class RoutineFormatter
         if (returnType != null)
         {
             writer.WriteLine();
-            writer.WriteSqlI($"RETURNS {returnType}");
+            writer.WriteSqlI("RETURNS ");
+            returnType.FormatSql(writer, manager);
         }
 
         if (characteristic != null)
@@ -137,6 +139,22 @@ internal static class RoutineFormatter
             msOptions.FormatSql(writer, manager);
             manager.DecreaseIndent();
         }
+
+        if (pgOptions != null)
+        {
+            writer.WriteLine();
+            pgOptions.FormatSql(writer, manager);
+        }
+    }
+
+    public static void WriteBody(SqlTextWriter writer, Statement body, bool useAsBeforeBody)
+    {
+        writer.Write(" ");
+        if (useAsBeforeBody)
+        {
+            writer.Write("AS ");
+        }
+        writer.WriteSql($"{body}");
     }
 
     public static void FormatBody(SqlTextWriter writer, FormatManager manager, Statement body, bool useAsBeforeBody = false)
@@ -147,7 +165,7 @@ internal static class RoutineFormatter
             writer.WriteSqlI("AS");
             writer.WriteLine();
         }
-        if (body is BeginEnd)
+        if (body is BeginEnd or BeginAtomic)
         {
             body.FormatSql(writer, manager);
         }

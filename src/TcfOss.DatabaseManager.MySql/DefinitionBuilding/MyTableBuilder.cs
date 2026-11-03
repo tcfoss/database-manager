@@ -19,7 +19,7 @@ using TcfOss.DatabaseManager.MySql.Statements.Components;
 namespace TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 
 public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaults schemaDefaults, INormalizeComponents componentNormalizer, INormalizeSql expressionNormalizer, SourceRef? sourceRef)
-    : TableBuilder<MyTable>(name, config.NameHandling, sourceRef)
+    : TableBuilder<MyTable>(name, config.NameHandling, componentNormalizer, sourceRef)
 {
     private readonly SqlValueList<MyColumn> _columns = [];
     private MyPrimaryKey? _primaryKey;
@@ -39,7 +39,6 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
     private readonly ValidationSettings _validationSettings = config.ValidationSettings;
 
     private readonly MyDataTypeNormalizer _dataTypeNormalizer = new(config, schemaDefaults.CharacterSet, schemaDefaults.Collation);
-    private readonly INormalizeComponents _componentNormalizer = componentNormalizer;
     private readonly INormalizeSql _expressionNormalizer = expressionNormalizer;
 
     private readonly SchemaDefaults _schemaDefaults = schemaDefaults;
@@ -119,7 +118,8 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             defaultValue = null;
         }
 
-        var myColumn = new MyColumn(name, GetNormalizedDataType(typedColumn.DataType))
+        DataTypeReference.BuiltIn dataType = (DataTypeReference.BuiltIn)typedColumn.DataType;
+        var myColumn = new MyColumn(name, GetNormalizedDataType(dataType.DataType))
         {
             Unique = unique,
             Nullability = nullability,
@@ -347,12 +347,6 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         return (normalized, flattened);
     }
 
-    private Value GetNormalizedValue(Value value)
-    {
-        value = _componentNormalizer.NormalizeValue(value);
-        return value;
-    }
-
     private static SqlValueList<Identifier> NormalizeIdentifierQuotations(SqlValueList<Identifier> identifiers, QuoteStyle quoteStyle)
     {
         SqlValueList<Identifier> normalized = new(identifiers.Count);
@@ -408,25 +402,6 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             }
         }
         return normalized;
-    }
-
-    private ColumnOption.ColumnDefault NormalizeDefault(StatementColumnOption.Default givenDefault)
-    {
-        switch (givenDefault)
-        {
-            case StatementColumnOption.Default.DefaultExpression { Expression: LiteralValue nested }:
-                return new ColumnOption.ColumnDefault.DefaultValue(GetNormalizedValue(nested.Value));
-            case StatementColumnOption.Default.DefaultValue dval:
-                return new ColumnOption.ColumnDefault.DefaultValue(GetNormalizedValue(dval.Value));
-            case StatementColumnOption.Default.DefaultExpression dexp:
-                (Expression normalized, Expression flattened) = GetNormalizedExpressions(dexp.Expression);
-                return new ColumnOption.ColumnDefault.DefaultExpression(normalized)
-                {
-                    NormalizedExpression = flattened
-                };
-            default:
-                throw new DefensiveGuardException(true, "column default type", givenDefault.GetType());
-        }
     }
 
     private ColumnOption.Generated.AsExpression NormalizeGenerated(StatementColumnOption.Generated givenGenerated)

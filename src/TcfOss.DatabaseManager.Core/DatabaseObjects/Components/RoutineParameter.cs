@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 
@@ -11,6 +12,7 @@ public abstract record RoutineParameter(Identifier Name, DataType DataType) : IW
 {
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
+    public abstract StatementRoutineParameter ToStatementParameter();
 
     /// <summary>
     /// MySQL/MariaDB-style parameter: optional leading direction keyword
@@ -18,6 +20,11 @@ public abstract record RoutineParameter(Identifier Name, DataType DataType) : IW
     /// </summary>
     public record Directed(Identifier Name, DataType DataType, RoutineParameterDirection? Direction) : RoutineParameter(Name, DataType)
     {
+        public override StatementRoutineParameter.Directed ToStatementParameter()
+        {
+            return new(Name, DataType, Direction);
+        }
+
         public override void ToSql(SqlTextWriter writer)
         {
             if (Direction != null)
@@ -47,6 +54,15 @@ public abstract record RoutineParameter(Identifier Name, DataType DataType) : IW
     {
         public Value? DefaultValue { get; init; }
         public OutputKeyword? Output { get; init; }
+
+        public override StatementRoutineParameter.Undirected ToStatementParameter()
+        {
+            return new(Name, DataType)
+            {
+                DefaultValue = DefaultValue,
+                Output = Output,
+            };
+        }
 
         public override void ToSql(SqlTextWriter writer)
         {

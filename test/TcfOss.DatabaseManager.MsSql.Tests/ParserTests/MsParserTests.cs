@@ -185,4 +185,69 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 2"));
         Assert.Contains("end of statement", ex.Message);
     }
+
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TYPE address AS (street TEXT)")]
+    [InlineData("CREATE DOMAIN postcode AS TEXT")]
+    [InlineData("CREATE EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
+    public void UnsupportedCreateDeclarations_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("INT[]")]
+    [InlineData("INT ARRAY")]
+    [InlineData("TEXT ARRAY[3]")]
+    public void ArrayTypeDeclarations_AreNotSupported(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE sample (value {sql})"));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX ix ON items USING BTREE (id)")]
+    [InlineData("CREATE UNIQUE INDEX ix ON items USING BTREE (id)")]
+    public void PostgresIndexMethodPlacement_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE FULLTEXT INDEX ix ON items (id)")]
+    [InlineData("CREATE SPATIAL INDEX ix ON items (id)")]
+    [InlineData("CREATE CLUSTERED INDEX ix ON items (id)")]
+    [InlineData("CREATE NONCLUSTERED INDEX ix ON items (id)")]
+    public void CreateIndex_KindKeywords_TextMatch(string sql)
+    {
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("CREATE OR ALTER TABLE items (id INT)")]
+    [InlineData("CREATE OR ALTER INDEX ix ON items (id)")]
+    public void CreateOrAlter_UnsupportedTargets_Throws(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatement(sql));
+        Assert.Contains("TRIGGER | FUNCTION | PROCEDURE | VIEW", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE *")]
+    [InlineData("CREATE unsupported_object")]
+    public void InvalidCreateTargets_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void PostgresOperators_AreNarrowed()
+    {
+        var parser = new MsParser();
+        Assert.False(parser.SupportsPostgresCastSyntax);
+        Assert.False(parser.SupportsPostgresRegexOperators);
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
+    }
 }

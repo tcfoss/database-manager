@@ -10,35 +10,6 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public static class TokenExtensions
 {
-    public static BinaryOperator? ToBinaryOperator(this Token token)
-    {
-        BinaryOperator? op = token switch
-        {
-            Equal => BinaryOperator.Equal,
-            NotEqual => BinaryOperator.NotEqual,
-            GreaterThan => BinaryOperator.GreaterThan,
-            GreaterThanOrEqual => BinaryOperator.GreaterThanOrEqual,
-            LessThan => BinaryOperator.LessThan,
-            LessThanOrEqual => BinaryOperator.LessThanOrEqual,
-            Plus => BinaryOperator.Add,
-            Minus => BinaryOperator.Subtract,
-            Asterisk => BinaryOperator.Multiply,
-            Slash => BinaryOperator.Divide,
-            Modulo => BinaryOperator.Modulo,
-            //StringConcat
-            //Pipe,
-            //Caret
-            //Ampersand,
-            // Lots of others
-            Word { Keyword: Keyword.AND } => BinaryOperator.And,
-            Word { Keyword: Keyword.OR } => BinaryOperator.Or,
-            Word { Keyword: Keyword.XOR } => BinaryOperator.Xor,
-            _ => null
-        };
-
-        return op;
-    }
-
     public static DateTimeUnit? ToDateTimeUnit(this Token token)
     {
         if (token is not Word w)

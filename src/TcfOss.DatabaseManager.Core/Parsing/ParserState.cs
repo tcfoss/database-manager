@@ -11,15 +11,21 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 public class ParserState
 {
     private readonly Token[] _tokens;
+    private readonly int _tokenCount;
     private readonly Eof _finalEof;
     private int _position;
     private int? _savedPosition;
 
     public int SourceId { get; }
 
+    internal bool IsDomainCheck { get; private set; }
+    public bool AllowStringLiteralAsStatement { get; private set; }
+    internal bool AllowBeginAtomic { get; private set; }
+
     public ParserState(Token[] tokens, int sourceId = 0)
     {
         _tokens = tokens;
+        _tokenCount = tokens.Length;
         SourceId = sourceId;
         if (tokens.Length == 0)
         {
@@ -27,7 +33,7 @@ public class ParserState
         }
         else if (tokens[^1] is NonSqlContainer nsc)
         {
-            _tokens = _tokens[..^1];
+            _tokenCount = tokens.Length - 1;
             _finalEof = new Eof() { Location = nsc.Location, PreNonSql = [.. nsc.SubTokens] };
         }
         else if (tokens[^1] is Semicolon or Eof)
@@ -38,17 +44,18 @@ public class ParserState
         {
             Token lastTok = _tokens[^1];
             Location lastLoc = lastTok.Location;
-            _finalEof = new Eof() { Location = new Location() { Column = lastLoc.Column + lastTok.Length, Line = lastLoc.Line, Position = lastLoc.Position + lastTok.Length - 1 } };
+            _finalEof = new Eof() { Location = new Location() { Column = lastLoc.Column + lastTok.Length, Line = lastLoc.Line, Position = lastLoc.Position + lastTok.Length } };
         }
     }
 
     public Token PeekNth(int n)
     {
-        if (_position + n >= _tokens.Length)
+        int target = _position + n;
+        if ((uint)target >= (uint)_tokenCount)
         {
             return _finalEof;
         }
-        return _tokens[_position + n];
+        return _tokens[target];
     }
 
     /// <summary>
@@ -57,16 +64,16 @@ public class ParserState
     /// <returns></returns>
     public Token Peek()
     {
-        return PeekNth(0);
+        if ((uint)_position >= (uint)_tokenCount)
+        {
+            return _finalEof;
+        }
+        return _tokens[_position];
     }
 
-    public SqlValueList<Token> PeekN(int n)
+    public ReadOnlySpan<Token> PeekN(int n)
     {
-        if (_position + n >= _tokens.Length)
-        {
-            return [.. _tokens[_position..]];
-        }
-        return [.. _tokens[_position..(_position + n)]];
+        return _tokens.AsSpan(_position, Math.Min(n, _tokenCount - _position));
     }
 
     public bool PeekIs<T>() where T : Token
@@ -84,10 +91,10 @@ public class ParserState
         return (Peek() as Word)?.Keyword == keyword;
     }
 
-    public bool PeekKeywordsAllEqual(params Keyword[] keywords)
+    public bool PeekKeywordsAllEqual(params ReadOnlySpan<Keyword> keywords)
     {
-        SqlValueList<Token> foundKeywords = PeekN(keywords.Length);
-        if (keywords.Length != foundKeywords.Count)
+        ReadOnlySpan<Token> foundKeywords = PeekN(keywords.Length);
+        if (keywords.Length != foundKeywords.Length)
         {
             return false;
         }
@@ -108,13 +115,11 @@ public class ParserState
     /// <returns></returns>
     public Token Next()
     {
-        if (_position >= _tokens.Length)
+        if ((uint)_position >= (uint)_tokenCount)
         {
             return _finalEof;
         }
-        Token curr = _tokens[_position];
-        _position++;
-        return curr;
+        return _tokens[_position++];
     }
 
     /// <summary>
@@ -172,7 +177,7 @@ public class ParserState
     /// </summary>
     /// <param name="keywords"></param>
     /// <returns></returns>
-    public bool ParseKeywordsAll(params IEnumerable<Keyword> keywords)
+    public bool ParseKeywordsAll(params ReadOnlySpan<Keyword> keywords)
     {
         int position = _position;
 
@@ -194,20 +199,23 @@ public class ParserState
     /// </summary>
     /// <param name="keywords"></param>
     /// <returns></returns>
-    public Keyword ParseKeywordsAny(params IEnumerable<Keyword> keywords)
+    public Keyword ParseKeywordsAny(params ReadOnlySpan<Keyword> keywords)
     {
         if (Peek() is not Word token)
         {
             return Keyword.undefined;
         }
 
-        Keyword foundKeyword = keywords.FirstOrDefault(k => k == token.Keyword);
-        if (foundKeyword is not Keyword.undefined)
+        for (int i = 0; i < keywords.Length; i++)
         {
-            Next();
+            if (keywords[i] == token.Keyword)
+            {
+                Next();
+                return keywords[i];
+            }
         }
 
-        return foundKeyword;
+        return Keyword.undefined;
     }
 
     /// <summary>
@@ -217,9 +225,9 @@ public class ParserState
     /// </summary>
     /// <param name="keywords"></param>
     /// <returns></returns>
-    public List<Keyword> ParseKeywordSequence(params IEnumerable<KeywordSearchCondition> keywords)
+    public List<Keyword> ParseKeywordSequence(params ReadOnlySpan<KeywordSearchCondition> keywords)
     {
-        List<Keyword> keywordsFound = [];
+        List<Keyword>? keywordsFound = null;
         int position = _position;
         foreach (KeywordSearchCondition keywordCondition in keywords)
         {
@@ -229,12 +237,13 @@ public class ParserState
                 bool found = ParseKeyword(keyword);
                 if (found)
                 {
-                    keywordsFound.Add(keyword);
+                    (keywordsFound ??= []).Add(keyword);
                 }
                 else
                 {
                     _position = position;
-                    return [];
+                    keywordsFound?.Clear();
+                    return keywordsFound ?? [];
                 }
             }
             else if (keywordCondition is KeywordSearchCondition.OneOfKeywords oneOf)
@@ -243,12 +252,13 @@ public class ParserState
                 Keyword result = ParseKeywordsAny(currKeywords);
                 if (result != Keyword.undefined)
                 {
-                    keywordsFound.Add(result);
+                    (keywordsFound ??= []).Add(result);
                 }
                 else
                 {
                     _position = position;
-                    return [];
+                    keywordsFound?.Clear();
+                    return keywordsFound ?? [];
                 }
 
             }
@@ -258,21 +268,21 @@ public class ParserState
                 bool found = ParseKeyword(currKeyword);
                 if (found)
                 {
-                    keywordsFound.Add(currKeyword);
+                    (keywordsFound ??= []).Add(currKeyword);
                 }
             }
             else if (keywordCondition is KeywordSearchCondition.OptionalKeywordSequence seq)
             {
                 Keyword[] currKeywords = seq.Keywords;
                 bool found = ParseKeywordsAll(currKeywords);
-                if (found)
+                if (found && currKeywords.Length > 0)
                 {
-                    keywordsFound.AddRange(currKeywords);
+                    (keywordsFound ??= []).AddRange(currKeywords);
                 }
             }
         }
 
-        return keywordsFound;
+        return keywordsFound ?? [];
     }
 
     public bool ConsumeTokenIs<T>() where T : Token
@@ -333,7 +343,7 @@ public class ParserState
         }
     }
 
-    public void ExpectKeywordsAll(params IEnumerable<Keyword> keywords)
+    public void ExpectKeywordsAll(params ReadOnlySpan<Keyword> keywords)
     {
         foreach (Keyword keyword in keywords)
         {
@@ -457,6 +467,75 @@ public class ParserState
         }
 
         return null;
+    }
+
+    public DomainCheckScope EnterDomainCheck()
+    {
+        return new DomainCheckScope(this);
+    }
+
+    public StringLiteralAsStatementScope EnterStringLiteralAsStatement()
+    {
+        return new StringLiteralAsStatementScope(this);
+    }
+
+    internal BeginAtomicScope EnterBeginAtomic(bool allow = true)
+    {
+        return new BeginAtomicScope(this, allow);
+    }
+
+    internal readonly struct BeginAtomicScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly bool _previousValue;
+
+        internal BeginAtomicScope(ParserState state, bool allow)
+        {
+            _state = state;
+            _previousValue = state.AllowBeginAtomic;
+            state.AllowBeginAtomic = allow;
+        }
+
+        public void Dispose()
+        {
+            _state.AllowBeginAtomic = _previousValue;
+        }
+    }
+
+    public readonly struct StringLiteralAsStatementScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly bool _previousValue;
+
+        internal StringLiteralAsStatementScope(ParserState state)
+        {
+            _state = state;
+            _previousValue = state.AllowStringLiteralAsStatement;
+            state.AllowStringLiteralAsStatement = true;
+        }
+
+        public void Dispose()
+        {
+            _state.AllowStringLiteralAsStatement = _previousValue;
+        }
+    }
+
+    public readonly struct DomainCheckScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly bool _previousIsDomainCheck;
+
+        internal DomainCheckScope(ParserState state)
+        {
+            _state = state;
+            _previousIsDomainCheck = state.IsDomainCheck;
+            state.IsDomainCheck = true;
+        }
+
+        public void Dispose()
+        {
+            _state.IsDomainCheck = _previousIsDomainCheck;
+        }
     }
 
     public ParseException ExpectedException(string expected)

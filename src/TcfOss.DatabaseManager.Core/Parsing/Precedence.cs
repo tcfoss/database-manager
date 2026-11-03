@@ -6,6 +6,7 @@ public enum Precedence
     AtTimezone,
     MultiplyDivide,
     AddSubtract,
+    PgConcat,
     Xor,
     Ampersand,
     Caret,

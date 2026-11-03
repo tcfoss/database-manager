@@ -11,6 +11,7 @@ using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.MsSql.BuiltIn;
 using TcfOss.DatabaseManager.MsSql.Statements;
 using TcfOss.DatabaseManager.MsSql.Statements.Components;
+using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 using MsBatchSeparatorStatement = TcfOss.DatabaseManager.MsSql.Statements.MsBatchSeparator;
 using MsBatchSeparatorToken = TcfOss.DatabaseManager.MsSql.Lexing.Tokens.MsBatchSeparator;
 
@@ -19,20 +20,64 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 public class MsParser : Parser
 {
     public override QuoteStyle DefaultQuoteStyle => QuoteStyle.Brackets;
+    public override bool SupportsPostgresCastSyntax => false;
+    public override bool SupportsPostgresRegexOperators => false;
 
     public MsParser()
     {
         PrecedenceManager = new PrecedenceManager();
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MsFunctionNameProvider().IsBuiltInFunction;
-        DataTypeParser = new MsDataTypeParser();
-        ComponentParser = new ComponentParser(this);
+        DataTypeParser = new MsDataTypeParser(this);
+        ComponentParser = new MsComponentParser(this);
         ExpressionParser = new ExpressionParser(this);
         SelectParser = new MsSelectParser(this);
         DmlParser = new MsDmlParser(this);
         DdlParser = new MsDdlParser(this);
         TableParser = new TableParser(this);
         ControlFlowParser = new MsControlFlowParser(this);
+    }
+
+    protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
+    {
+        CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);
+        return new CreateObjectOptions
+        {
+            CreateOrLabel = createOrLabel,
+            AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX"]
+        };
+    }
+
+    protected override void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
+    {
+        Keyword kw = objectTypeToken.Keyword;
+        if (options.CreateOrLabel != null && kw is not (Keyword.TRIGGER or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.VIEW))
+        {
+            throw state.ExpectedException("TRIGGER", "FUNCTION", "PROCEDURE", "VIEW");
+        }
+    }
+
+    protected override Statement ParseCreate(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.CREATE);
+
+        CreateObjectOptions options = ParseCreateObjectOptions(state);
+        if (state.Peek() is not Word objectTypeWord)
+        {
+            throw state.ExpectedException(options.AllSupportedTypes);
+        }
+        GuardCreateOptions(state, objectTypeWord, options);
+
+        return objectTypeWord.Keyword switch
+        {
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrAlter, options.Temporary),
+            Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
+            Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
+            Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
+            _ => throw state.ExpectedException(options.AllSupportedTypes),
+        };
     }
 
     public override SqlValueList<Statement> Parse(ParserState state, EndSubstatements? endChecker)

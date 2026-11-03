@@ -318,6 +318,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("CONVERT(col5, VARCHAR(255) CHARACTER SET utf8mb4)", Label = "CONVERT VARCHAR(255)")]
     [InlineData("CONVERT(col6, NATIONAL VARCHAR CHARACTER SET utf8mb4)", Label = "CONVERT NATIONAL VARCHAR")]
     [InlineData("CONVERT(col7, NATIONAL VARCHAR(100) CHARACTER SET utf8mb4)", Label = "CONVERT NATIONAL VARCHAR(100)")]
+    [InlineData("CONVERT(col12, NATIONAL CHAR(10))", Label = "CONVERT NATIONAL CHAR")]
     [InlineData("CONVERT(col8, TEXT CHARACTER SET utf8mb4)", Label = "CONVERT TEXT")]
     [InlineData("CONVERT(col9, INT)", Label = "CONVERT INT")]
     [InlineData("CAST(col10 AS CHAR(1000))", Label = "CAST AS CHAR(1000)")]
@@ -327,6 +328,12 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         var parser = new MyParser();
         var (expected, actual) = GetExpectedActual(parser.ExpressionParser.ParseExpr, text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void Convert_NonWordDataType_Throws()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("CONVERT(value, *)"));
     }
 
     [Theory]
@@ -399,5 +406,67 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements("SELECT 1 SELECT 1"));
         Assert.Contains("end of statement", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
+    [InlineData("CREATE TYPE address AS (street TEXT)")]
+    [InlineData("CREATE DOMAIN postcode AS TEXT")]
+    public void CreateTypeAndDomain_AreNotSupported(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("INT[]")]
+    [InlineData("INT ARRAY")]
+    [InlineData("TEXT ARRAY[3]")]
+    public void ArrayTypeDeclarations_AreNotSupported(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE sample (value {sql})"));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX ix ON items USING BTREE (id)")]
+    [InlineData("CREATE UNIQUE INDEX ix ON items USING BTREE (id)")]
+    public void PostgresIndexMethodPlacement_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE CLUSTERED INDEX ix ON items (id)")]
+    [InlineData("CREATE NONCLUSTERED INDEX ix ON items (id)")]
+    public void CreateIndex_OrganizationKeywords_TextMatch(string sql)
+    {
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("CREATE *")]
+    [InlineData("CREATE unsupported_object")]
+    public void InvalidCreateTargets_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE SQL SECURITY DEFINER TRIGGER trg")]
+    [InlineData("CREATE SQL SECURITY INVOKER EVENT ev")]
+    public void Create_SqlSecurityRejectedForTriggerAndEvent(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void PostgresOperators_AreNarrowedAndDoublePipeRemainsLogicalOr()
+    {
+        var parser = new MyParser();
+        Assert.False(parser.SupportsPostgresCastSyntax);
+        Assert.False(parser.SupportsPostgresRegexOperators);
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
+        Assert.Equal("a OR b", ParseExpression("a || b").ToSql());
     }
 }

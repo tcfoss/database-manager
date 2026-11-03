@@ -2,7 +2,12 @@
 
 import argparse
 from pathlib import Path
+from dbman_dev.containers import db_container
 from dbman_dev.db import info_schema, defaults as db_defaults
+from dbman_dev.db.get_show_fields_results import get_show_fields_results
+from dbman_dev.db.postgres_catalog import POSTGRES_CONFIGS
+from dbman_dev.db.postgres_fields import get_postgres_entity_models
+from dbman_dev.containers.db_container import PostgresContainer
 from dbman_dev.csharp_code_generation.entity_generator import EntityGeneratorConfig, run
 from dbman_dev.csharp_code_generation.model_config import ModelConfig
 from dbman_dev.cliversion import add_version_argument
@@ -17,6 +22,8 @@ def _extract_tables(dialect: str, initial_tables: list[str] | None = None) -> li
             return list(info_schema.MYSQL_CONFIGS.values())
         if dialect == "MariaDb":
             return list(info_schema.MARIADB_CONFIGS.values())
+        if dialect == "Postgres":
+            return list(POSTGRES_CONFIGS.values())
 
         raise ValueError(f"Unsupported dialect: {dialect}")
 
@@ -71,6 +78,9 @@ def get_arguments(
     elif dialect == "MariaDb":
         image = image or db_defaults.MARIADB_IMAGE
         output_root = output_root or paths.MARIADB_ENTITY_FRAMEWORK_DIR
+    elif dialect == "Postgres":
+        image = image or db_defaults.POSTGRES_IMAGE
+        output_root = output_root or paths.POSTGRES_ENTITY_FRAMEWORK_DIR
     else:
         raise ValueError(f"Unsupported dialect: {dialect}")
 
@@ -81,6 +91,10 @@ def get_arguments(
     config_namespace = config_namespace or f"{base_namespace}.Configurations"
 
     tables = _extract_tables(dialect=dialect, initial_tables=initial_tables)
+    container_factory = PostgresContainer if dialect == "Postgres" else db_container.MySqlContainer
+    column_loader = (
+        get_postgres_entity_models if dialect == "Postgres" else get_show_fields_results
+    )
 
     return EntityGeneratorConfig(
         dialect=dialect,
@@ -89,11 +103,20 @@ def get_arguments(
         base_namespace=base_namespace,
         entity_namespace=entity_namespace,
         config_namespace=config_namespace,
-        context_class="InfoSchemaContext",
-        config_import_selector=config_import_selector,
-        schema="information_schema",
+        context_class="PgCatalogContext" if dialect == "Postgres" else "InfoSchemaContext",
+        config_import_selector=(
+            (lambda _namespace, _config_lines: "")
+            if dialect == "Postgres"
+            else config_import_selector
+        ),
+        schema="pg_catalog" if dialect == "Postgres" else "information_schema",
         tables=tables,
-        environment=db_defaults.ENVIRONMENT,
+        environment=(
+            db_defaults.POSTGRES_ENVIRONMENT if dialect == "Postgres" else db_defaults.ENVIRONMENT
+        ),
+        container_factory=container_factory,
+        column_loader=column_loader,
+        container_port=5433 if dialect == "Postgres" else 3309,
     )
 
 
@@ -102,7 +125,9 @@ def run_cli() -> None:
 
     parser = argparse.ArgumentParser(description="Generate C# entities from database tables.")
     add_version_argument(parser)
-    parser.add_argument("dialect", choices=["MySql", "MariaDb"], help="Database dialect.")
+    parser.add_argument(
+        "dialect", choices=["MySql", "MariaDb", "Postgres"], help="Database dialect."
+    )
 
     parser.add_argument("--image", help="Docker image for MySQL container.")
     parser.add_argument("--output-root", help="Root directory for output files.")

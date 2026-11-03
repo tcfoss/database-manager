@@ -1,14 +1,14 @@
-using System.Collections.ObjectModel;
+using System.Collections.Frozen;
 
 namespace TcfOss.DatabaseManager.Core.BuiltIn;
 
 public static class KeywordHelper
 {
-    private static readonly ReadOnlyDictionary<string, Keyword> s_lookup;
+    private static readonly FrozenDictionary<string, Keyword> s_lookup;
 
     static KeywordHelper()
     {
-        var lookup = new Dictionary<string, Keyword>();
+        var lookup = new Dictionary<string, Keyword>(StringComparer.OrdinalIgnoreCase);
         foreach (Keyword enumVal in Enum.GetValues<Keyword>())
         {
             string? name = Enum.GetName(enumVal);
@@ -17,18 +17,17 @@ public static class KeywordHelper
                 lookup[name!] = enumVal;
             }
         }
-        s_lookup = new ReadOnlyDictionary<string, Keyword>(lookup);
+        s_lookup = lookup.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// Return the Keyword enumeration corresponding to the given text, or `null`
-    /// if the text is not a keyword. This function always capitalizes its input.
+    /// Return the Keyword enumeration corresponding to the given text.
     /// </summary>
     /// <param name="text"></param>
     /// <returns></returns>
     public static Keyword GetKeyword(string text)
     {
-        return s_lookup.GetValueOrDefault(text.ToUpperInvariant(), Keyword.undefined);
+        return s_lookup.GetValueOrDefault(text, Keyword.undefined);
     }
 
     /// These keywords can't be used as a table alias, so that `FROM table_name alias`

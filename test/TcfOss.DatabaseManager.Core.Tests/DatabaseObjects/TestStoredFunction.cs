@@ -13,7 +13,7 @@ public record TestStoredFunction(ObjectIdentifier Name, SqlValueList<RoutinePara
 {
     public override CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
-        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), Parameters, ReturnType, Body)
+        return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1), [.. Parameters.Select(parameter => parameter.ToStatementParameter())], ReturnType, Body)
         {
             Meta = new MetaData { RawText = RawBodyText }
         };

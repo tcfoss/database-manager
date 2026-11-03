@@ -51,6 +51,20 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatement(text));
     }
 
+    [Fact]
+    public void CreateProcedure_MissingBodyAfterNoParameterList_Throws()
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE PROCEDURE sp"));
+    }
+
+    [Theory]
+    [InlineData("CREATE PROCEDURE sp (value INT) AS SELECT 1")]
+    [InlineData("CREATE FUNCTION fn(value INT) RETURNS INT AS BEGIN RETURN 1; END")]
+    public void CreateRoutine_InvalidParameterName_Throws(string text)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(text));
+    }
+
     // ---------------- CREATE FUNCTION (scalar) ----------------
 
     [Theory]

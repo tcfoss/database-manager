@@ -2,31 +2,32 @@ using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
-using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
-using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsDdlParser(MsParser parser) : DdlParser(parser)
 {
+    protected override bool SupportsIndexMethodAfterTableName => false;
+
+    protected override bool UseSqlRoutineTail(ParserState state) => false;
+
     private readonly MsParser _p = parser;
 
     /// <summary>
     /// Parses a T-SQL routine parameter: <c>@name TYPE [= default] [OUT|OUTPUT]</c>.
     /// </summary>
-    protected override RoutineParameter ParseRoutineParameter(ParserState state)
+    protected override StatementRoutineParameter ParseRoutineParameter(ParserState state)
     {
         Identifier name = _p.ComponentParser.ParseIdentifier(state);
         if (name.Sigil != SigilKind.Variable)
         {
             throw state.ExpectedException("parameter name (@name)");
         }
-        DataType dataType = _p.DataTypeParser.ParseDataType(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
 
         Value? defaultValue = null;
         if (state.ConsumeTokenIs<Equal>())
@@ -44,7 +45,7 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
             output = OutputKeyword.Out;
         }
 
-        return new RoutineParameter.Undirected(name, dataType)
+        return new StatementRoutineParameter.Undirected(name, dataType)
         {
             DefaultValue = defaultValue,
             Output = output,
@@ -56,7 +57,7 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     /// empty). The bare form is detected by an <c>@</c>-prefixed identifier
     /// in the lookahead position.
     /// </summary>
-    protected override SqlValueList<RoutineParameter> ParseRoutineParameterList(ParserState state)
+    protected override SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state)
     {
         if (state.PeekIs<ParenOpen>())
         {
@@ -94,39 +95,4 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
         return true;
     }
 
-    public override CreateProcedure ParseCreateProcedure(ParserState state, CreateOrLabel? createOrLabel = null, Definer? definer = null)
-    {
-        if (definer != null)
-        {
-            throw state.ExpectedException("PROCEDURE");
-        }
-        return base.ParseCreateProcedure(state, createOrLabel, definer);
-    }
-
-    public override CreateFunction ParseCreateFunction(ParserState state, bool aggregate = false, CreateOrLabel? createOrLabel = null, Definer? definer = null)
-    {
-        if (aggregate || definer != null)
-        {
-            throw state.ExpectedException("FUNCTION");
-        }
-        return base.ParseCreateFunction(state, aggregate, createOrLabel, definer);
-    }
-
-    public override CreateTrigger ParseCreateTrigger(ParserState state, CreateOrLabel? createOrLabel = null, Definer? definer = null)
-    {
-        if (definer != null)
-        {
-            throw state.ExpectedException("TRIGGER");
-        }
-        return base.ParseCreateTrigger(state, createOrLabel, definer);
-    }
-
-    public override CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext)
-    {
-        if (definer != null || viewAlgorithm != null || securityContext != null)
-        {
-            throw state.ExpectedException("VIEW");
-        }
-        return base.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext);
-    }
 }

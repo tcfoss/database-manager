@@ -1,68 +1,61 @@
 <Project>
-    <PropertyGroup>
-        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-        <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    </PropertyGroup>
-
-    <!-- Core Dependencies -->
-    <ItemGroup>
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.14" />
-        <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
-        <PackageVersion Include="TestableIO.System.IO.Abstractions" Version="22.3.0" />
-        <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.3.0" />
-        <PackageVersion Include="TcfOss.DataStructures" Version="1.0.14" />
-        <PackageVersion Include="TcfOss.StringEnumGenerator" Version="1.0.3" />
-        <PackageVersion Include="YamlDotNet" Version="18.1.0" />
-    </ItemGroup>
-
-    <!-- Application Dependencies -->
-    <ItemGroup>
-        <PackageVersion Include="System.CommandLine" Version="3.0.0-rc.1.26425.128" />
-        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
-        <PackageVersion Include="Serilog" Version="4.3.0" />
-        <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
-        <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
-        <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <PackageVersion Include="MinVer" Version="7.0.0" PrivateAssets="All" />
-    </ItemGroup>
-
-    <!-- Database Providers -->
-    <ItemGroup>
-        <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.14" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
-        <!-- Microsoft.Data.SqlClient is required for Microsoft.EntityFrameworkCore.SqlServer, which currently chooses a version with vulnerabilities -->
-        <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.8" />
-    </ItemGroup>
-
-    <!-- Common Testing Dependencies -->
-    <ItemGroup>
-        <PackageVersion Include="xunit.v3" Version="4.0.1" />
-        <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
-        <PackageVersion Include="FluentAssertions" Version="7.2.0" />
-        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
-        <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.3.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <!-- <PackageVersion Include="Docker.DotNet.Enhanced" Version="3.130.0" /> -->
-        <PackageVersion Include="Testcontainers" Version="4.15.0" />
-        <PackageVersion Include="Testcontainers.MariaDb" Version="4.15.0" />
-        <PackageVersion Include="Testcontainers.MySql" Version="4.15.0" />
-        <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
-        <PackageVersion Include="Testcontainers.XunitV3" Version="4.15.0" />
-    </ItemGroup>
-
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <!-- Core Dependencies -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.14" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions" Version="22.3.0" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.3.0" />
+    <PackageVersion Include="TcfOss.DataStructures" Version="1.0.14" />
+    <PackageVersion Include="TcfOss.StringEnumGenerator" Version="1.0.3" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+  <!-- Application Dependencies -->
+  <ItemGroup>
+    <PackageVersion Include="System.CommandLine" Version="3.0.0-rc.1.26425.128" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageVersion Include="Serilog" Version="4.3.0" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageVersion Include="MinVer" Version="7.0.0" PrivateAssets="All" />
+  </ItemGroup>
+  <!-- Database Providers -->
+  <ItemGroup>
+    <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
+    <!-- Microsoft.Data.SqlClient is required for Microsoft.EntityFrameworkCore.SqlServer, which currently chooses a version with vulnerabilities -->
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.8" />
+  </ItemGroup>
+  <!-- Common Testing Dependencies -->
+  <ItemGroup>
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
+    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- <PackageVersion Include="Docker.DotNet.Enhanced" Version="3.130.0" /> -->
+    <PackageVersion Include="Testcontainers" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.MariaDb" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.MySql" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.XunitV3" Version="4.15.0" />
+  </ItemGroup>
 </Project>

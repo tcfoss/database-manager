@@ -13,3 +13,4 @@ class ModelConfig:
     plural_name_override: str | None = None
     not_null_overrides: list[str] | None = None
     ignored_columns: list[str] | None = None
+    data_query_template: str | None = None

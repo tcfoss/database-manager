@@ -9,6 +9,8 @@ This repository is a .NET/C# monorepo for a database management CLI and provider
 - Prefer collection initializers (e.g. `List<int> list = [1, 2, 3];`) where possible.
 - Use `var` when the type is obvious from the right-hand side (e.g. `var list = new List<int>();`), but use explicit types when the type is not clear (e.g. `List<int> list = GetList();`).
 - Always use braces for `if`, `else`, `for`, `foreach`, and `while` statements, even if the body is a single line.
+- Prefer block-bodied functions over expression-bodied functions. Expression bodies are fine for read-only properties.
+- When adding tests to an existing file, add them in the neighborhood of related tests. If there are no related tests, add them to the end of the list of test cases, before helper functions and classes.
 
 ## Repository Structure
 

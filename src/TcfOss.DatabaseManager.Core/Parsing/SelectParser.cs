@@ -542,7 +542,7 @@ public class SelectParser
     {
         // Hints take the form WITH (...). Peek two tokens ahead so we don't
         // consume a stray WITH that begins a CTE or other clause.
-        Token[] peeked = state.PeekN(2);
+        ReadOnlySpan<Token> peeked = state.PeekN(2);
         if (peeked.Length < 2 || peeked[0] is not Word { Keyword: Keyword.WITH } || peeked[1] is not ParenOpen)
         {
             return null;

@@ -355,9 +355,17 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
         var tokens = lexer.Tokenize("CREATE UNKNOWN OBJECT");
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse([.. tokens]));
-        var expectedMessage = "Expected one of { TABLE | TRIGGER | VIEW | FUNCTION | PROCEDURE | EVENT | INDEX }. Found UNKNOWN.";
+        var expectedMessage = "Expected one of { TABLE | TRIGGER | VIEW | FUNCTION | PROCEDURE | EVENT | INDEX | TYPE | DOMAIN }. Found UNKNOWN.";
 
         Assert.Equal(expectedMessage, exception.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE")]
+    [InlineData("CREATE *")]
+    public void Create_MissingOrNonWordObjectType_Throws(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatements(sql));
     }
 
     [Fact]

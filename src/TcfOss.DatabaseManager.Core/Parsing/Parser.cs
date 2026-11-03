@@ -25,6 +25,8 @@ public class Parser : IParser
     public ControlFlowParser ControlFlowParser { get; protected init; }
 
     public PrecedenceManager PrecedenceManager { get; protected init; }
+    public virtual bool SupportsPostgresCastSyntax => true;
+    public virtual bool SupportsPostgresRegexOperators => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }
 
@@ -34,7 +36,7 @@ public class Parser : IParser
         IsBuiltInFunction = new FunctionNameProvider().IsBuiltInFunction;
         AllowsFunctionCallWithoutParentheses = FunctionNameProvider.AllowsFunctionCallWithoutParentheses;
         ValueParser = new ValueParser();
-        DataTypeParser = new DataTypeParser();
+        DataTypeParser = new DataTypeParser(this);
         ComponentParser = new ComponentParser(this);
         ExpressionParser = new ExpressionParser(this);
         SelectParser = new SelectParser(this);
@@ -74,6 +76,11 @@ public class Parser : IParser
                     statements.Add(next.PreNonSql.ToInertOnly());
                 }
                 break;
+            }
+
+            if (expectingTerminator && endChecker is { RequireTerminatorBeforeEnd: true })
+            {
+                throw ParserState.ExpectedException("end of statement", next);
             }
 
             if (endChecker?.GetFinished(state) ?? false)
@@ -154,12 +161,21 @@ public class Parser : IParser
 
     protected virtual Statement ParseNormalStatement(ParserState state, Token token, Label? label)
     {
-        return token switch
+        switch (token)
         {
-            Word word => ParseKeywordStatement(state, word, label),
-            ParenOpen => SelectParser.ParseSelect(state, null),
-            _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
-        };
+            case Word word:
+                return ParseKeywordStatement(state, word, label);
+            case ParenOpen:
+                return SelectParser.ParseSelect(state, null);
+            case StringLiteral literal when state.AllowStringLiteralAsStatement:
+                state.Next();
+                return new RoutineBodyLiteral(literal.Value.Replace("''", "'", StringComparison.Ordinal));
+            case DollarQuotedStringLiteral literal when state.AllowStringLiteralAsStatement:
+                state.Next();
+                return new RoutineBodyLiteral(literal.Value) { DollarQuoteTag = literal.Tag };
+            default:
+                throw ParserState.ExpectedException("SQL statement".Italic(), token);
+        }
     }
 
     protected virtual Statement ParseKeywordStatement(ParserState state, Word first, Label? label)
@@ -259,10 +275,8 @@ public class Parser : IParser
         return statement;
     }
 
-    private Statement ParseCreate(ParserState state)
+    protected virtual CreateObjectOptions ParseCreateObjectOptions(ParserState state)
     {
-        state.ExpectKeyword(Keyword.CREATE);
-
         CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);
 
         ViewAlgorithm? viewAlgorithm = DdlParser.ParseViewAlgorithm(state);
@@ -271,16 +285,70 @@ public class Parser : IParser
         bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
         bool temporary = state.ParseKeywordsAny(Keyword.TEMPORARY, Keyword.TEMP) != Keyword.undefined;
 
-        return state.Peek() switch
+        return new CreateObjectOptions
         {
-            Word { Keyword: Keyword.TABLE } => TableParser.ParseCreate(state, createOrLabel == CreateOrLabel.OrReplace, temporary),
-            Word { Keyword: Keyword.TRIGGER } => DdlParser.ParseCreateTrigger(state, createOrLabel, definer),
-            Word { Keyword: Keyword.FUNCTION } => DdlParser.ParseCreateFunction(state, aggregate, createOrLabel, definer),
-            Word { Keyword: Keyword.PROCEDURE or Keyword.PROC } => DdlParser.ParseCreateProcedure(state, createOrLabel, definer),
-            Word { Keyword: Keyword.VIEW } => DdlParser.ParseCreateView(state, createOrLabel, definer, viewAlgorithm, securityContext),
-            Word { Keyword: Keyword.EVENT } => DdlParser.ParseCreateEvent(state, createOrLabel, definer),
-            Word { Keyword: Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED } => DdlParser.ParseCreateIndex(state, createOrLabel),
-            _ => throw state.ExpectedException("TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX")
+            CreateOrLabel = createOrLabel,
+            ViewAlgorithm = viewAlgorithm,
+            Definer = definer,
+            SecurityContext = securityContext,
+            Aggregate = aggregate,
+            Temporary = temporary
+        };
+    }
+
+    protected virtual void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
+    {
+        Keyword kw = objectTypeToken.Keyword;
+        if (options.ViewAlgorithm != null && kw != Keyword.VIEW)
+        {
+            throw state.ExpectedException("VIEW");
+        }
+        if (options.Definer != null && kw is not (Keyword.VIEW or Keyword.PROCEDURE or Keyword.FUNCTION or Keyword.TRIGGER or Keyword.EVENT))
+        {
+            throw state.ExpectedException("VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT");
+        }
+        if (options.SecurityContext != null && kw is not (Keyword.VIEW or Keyword.PROCEDURE or Keyword.FUNCTION))
+        {
+            throw state.ExpectedException("VIEW", "PROCEDURE", "FUNCTION");
+        }
+        if (options.Aggregate && kw is not Keyword.FUNCTION)
+        {
+            throw state.ExpectedException("FUNCTION");
+        }
+        if (options.Temporary && kw is not Keyword.TABLE)
+        {
+            throw state.ExpectedException("TABLE");
+        }
+        if (options.CreateOrLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.TRIGGER or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.EVENT or Keyword.INDEX))
+        {
+            throw state.ExpectedException("TABLE", "VIEW", "TRIGGER", "FUNCTION", "PROCEDURE", "EVENT", "INDEX");
+        }
+    }
+
+    protected virtual Statement ParseCreate(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.CREATE);
+        CreateObjectOptions options = ParseCreateObjectOptions(state);
+
+        if (state.Peek() is not Word objectTypeWord)
+        {
+            throw state.ExpectedException(options.AllSupportedTypes);
+        }
+
+        GuardCreateOptions(state, objectTypeWord, options);
+
+        return objectTypeWord.Keyword switch
+        {
+            Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
+            Keyword.TYPE => DdlParser.ParseCreateType(state),
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
+            Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
+            Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
+            Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.EVENT => DdlParser.ParseCreateEvent(state, options.CreateOrLabel, options.Definer),
+            Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
+            _ => throw state.ExpectedException(options.AllSupportedTypes)
         };
     }
 
@@ -297,6 +365,17 @@ public class Parser : IParser
 
     protected virtual Statement ParseBegin(ParserState state)
     {
+        if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
+        {
+            if (!state.AllowBeginAtomic)
+            {
+                throw state.ExpectedException("SQL statement");
+            }
+            using (state.EnterBeginAtomic(allow: false))
+            {
+                return ControlFlowParser.ParseBeginAtomic(state);
+            }
+        }
         return ControlFlowParser.ParseBeginEnd(state);
     }
 

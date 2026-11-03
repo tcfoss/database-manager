@@ -1,4 +1,5 @@
-﻿using TcfOss.DatabaseManager.Core.IO;
+﻿using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -24,19 +25,28 @@ public class ParserTestsBase<TLexer, TParser>
 
     protected static SqlValueList<Statement> ParseStatements(string sql)
     {
-        var state = new ParserState(GetTokens(sql));
+        var state = GetState(sql);
         return new TParser().Parse(state, null);
     }
 
     protected static IWriteSql ParseStatement(string sql)
     {
-        var state = new ParserState(GetTokens(sql));
-        return new TParser().Parse(state, null).First();
+        return Assert.Single(ParseStatements(sql));
+    }
+
+    protected static Expression ParseExpression(ParserState state)
+    {
+        return new TParser().ExpressionParser.ParseExpr(state);
+    }
+
+    protected static Expression ParseExpression(string sql)
+    {
+        return ParseExpression(GetState(sql));
     }
 
     protected static (string? expected, string? actual) GetExpectedActual(Func<ParserState, IWriteSql?> parser, string sql, string? expectedSql = null, bool normalizeExpectedWhitespace = false, bool normalizeActualWhitespace = false)
     {
-        var state = new ParserState(GetTokens(sql));
+        var state = GetState(sql);
         var parsed = parser(state);
 
         var actual = parsed?.ToSql();
@@ -58,7 +68,7 @@ public class ParserTestsBase<TLexer, TParser>
     protected static (string? expected, string? actual) GetExpectedActual<T>(Func<ParserState, EndSubstatements?, SqlValueList<T>> parser, string sql, string? expectedSql = null, bool normalizeExpectedWhitespace = false, bool normalizeActualWhitespace = false)
         where T : IEquatable<T>
     {
-        var state = new ParserState(GetTokens(sql));
+        var state = GetState(sql);
         var parsed = parser(state, null);
 
         var actual = parsed.ToSql();
@@ -80,7 +90,7 @@ public class ParserTestsBase<TLexer, TParser>
     protected static (string? expected, string? actual) GetExpectedActual<T>(Func<ParserState, SqlValueList<T>> parser, string sql, string? expectedSql = null, bool normalizeExpectedWhitespace = false, bool normalizeActualWhitespace = false)
         where T : IEquatable<T>
     {
-        var state = new ParserState(GetTokens(sql));
+        var state = GetState(sql);
         var parsed = parser(state);
 
         var actual = parsed.ToSql();
@@ -100,7 +110,7 @@ public class ParserTestsBase<TLexer, TParser>
 
     protected static (string? expected, string? actual) GetExpectedActual(string sql, string? expectedSql = null, bool normalizeExpectedWhitespace = false, bool normalizeActualWhitespace = false)
     {
-        var state = new ParserState(GetTokens(sql));
+        var state = GetState(sql);
         var parsed = new TParser().Parse(state, null).First();
 
         var actual = parsed.ToSql();

@@ -2,11 +2,12 @@
 
 import os
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 from attrs import define as _define
 from dbman_dev.containers import db_container
 from dbman_dev.csharp_code_generation.entity_model import EntityModel
-from dbman_dev.db.show_fields_result import ShowFieldsResult as _ShowFieldResult
+from dbman_dev.containers.db_container import DbContainer
+from dbman_dev.db.get_show_fields_results import get_show_fields_results
 from dbman_dev.utilities.text_conversion import (
     snake_to_pascal as _snake_to_pascal,
     pluralize as _pluralize,
@@ -84,10 +85,15 @@ class EntityGenerator:
         config_namespace: str,
         context_class: str,
         config_import_selector: Callable[[str, list[str]], str],
+        container_factory: Callable[..., DbContainer] = db_container.MySqlContainer,
+        column_loader: Callable[
+            [DbContainer, str, str], list[EntityModel]
+        ] = get_show_fields_results,
+        container_port: int = 3309,
     ):
-        self.container = db_container.MySqlContainer(
+        self.container = container_factory(
             image=image,
-            port=3309,
+            port=container_port,
             environment=environment,
         )
 
@@ -99,6 +105,7 @@ class EntityGenerator:
         self.config_dir: Path = output_root / "Configurations"
         self.context_class: str = context_class
         self.config_import_selector: Callable[[str, list[str]], str] = config_import_selector
+        self.column_loader = column_loader
 
     def __get_key(self, conversion_config: _ModelConfig) -> list[str]:
         """Get a unique key for the information schema configuration."""
@@ -117,28 +124,30 @@ class EntityGenerator:
         return result
 
     def __get_column_model(
-        self, field: tuple[Any, ...], conversion_config: _ModelConfig
+        self, model: EntityModel, conversion_config: _ModelConfig
     ) -> EntityModel | None:
-        """Return an EntityModel from a database field tuple."""
+        """Apply ModelConfig overrides to a mapped database column."""
 
-        model = _ShowFieldResult.from_row(field)
-        if conversion_config.ignored_columns and model.field in conversion_config.ignored_columns:
+        if (
+            conversion_config.ignored_columns
+            and model.column_name in conversion_config.ignored_columns
+        ):
             return None
 
-        if model.field in conversion_config.key_columns:
-            model.nullable = False  # Key columns should not be nullable
+        if model.column_name in conversion_config.key_columns:
+            model.is_nullable = False
 
         if (
             conversion_config.not_null_overrides
-            and model.field in conversion_config.not_null_overrides
+            and model.column_name in conversion_config.not_null_overrides
         ):
-            model.nullable = False
+            model.is_nullable = False
 
-        return model.to_cs_model()
+        return model
 
     def __generate_entity_for_table(
         self,
-        container: db_container.MySqlContainer,
+        container: DbContainer,
         schema: str,
         conversion_config: _ModelConfig,
         table_name: str,
@@ -153,7 +162,7 @@ class EntityGenerator:
 
         config_lines.extend(self.__get_key(conversion_config))
 
-        fields = container.query(f"SHOW FIELDS FROM `{schema}`.`{table_name}`;")
+        fields = self.column_loader(container, schema, table_name)
         for field in fields:
             entity_model = self.__get_column_model(field, conversion_config)
             if not entity_model:
@@ -255,6 +264,9 @@ class EntityGeneratorConfig:
     context_class: str
     environment: dict[str, str]
     config_import_selector: Callable[[str, list[str]], str] = _default_config_import_selector
+    container_factory: Callable[..., DbContainer] = db_container.MySqlContainer
+    column_loader: Callable[[DbContainer, str, str], list[EntityModel]] = get_show_fields_results
+    container_port: int = 3309
 
 
 def run(args: EntityGeneratorConfig) -> None:
@@ -271,6 +283,9 @@ def run(args: EntityGeneratorConfig) -> None:
         config_namespace=args.config_namespace,
         context_class=args.context_class,
         config_import_selector=args.config_import_selector,
+        container_factory=args.container_factory,
+        column_loader=args.column_loader,
+        container_port=args.container_port,
     )
 
     generator.generate_entities(args.schema, args.tables)

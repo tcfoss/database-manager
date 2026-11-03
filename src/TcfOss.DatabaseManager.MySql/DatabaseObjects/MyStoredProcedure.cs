@@ -36,7 +36,7 @@ public record MyStoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParam
 
     public override CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
-        return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1), Parameters, Body)
+        return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1), [.. Parameters.Select(parameter => parameter.ToStatementParameter())], Body)
         {
             Definer = Definer,
             MyCharacteristic = new MyRoutineCharacteristic()

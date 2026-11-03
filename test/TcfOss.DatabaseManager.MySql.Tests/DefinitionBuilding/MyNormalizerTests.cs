@@ -33,17 +33,18 @@ public class MyNormalizerTests
         var cast = new Cast(new SingleIdentifier(new Identifier("value")), dataType);
 
         var actual = Assert.IsType<Cast>(normalizer.NormalizeExpression(cast));
+        DataType actualDataType = Assert.IsType<DataTypeReference.BuiltIn>(actual.DataType).DataType;
 
         Assert.Equal((uint?)12,
             convertVarchar
-                ? Assert.IsType<MyDataType.MyCharOptionalLength>(actual.DataType).Length
-                : Assert.IsType<MyDataType.MyVarcharOptionalLength>(actual.DataType).Length);
+            ? Assert.IsType<MyDataType.MyCharOptionalLength>(actualDataType).Length
+            : Assert.IsType<MyDataType.MyVarcharOptionalLength>(actualDataType).Length);
 
-        var actualType = Assert.IsType<MyDataType.BaseMyStringType>(actual.DataType, exactMatch: false);
+        var actualType = Assert.IsType<MyDataType.BaseMyStringType>(actualDataType, exactMatch: false);
         Assert.Equal(charset ?? (addCharset ? config.DatabaseCredentials.DefaultCharset : null), actualType.StringAttribute?.CharacterSet);
         Assert.Equal(collation, actualType.StringAttribute?.Collation);
         Assert.Equal(new SingleIdentifier(new Identifier("value", config.QuoteStyle)), actual.Expression);
-        Assert.Same(dataType, cast.DataType);
+        Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(cast.DataType).DataType);
         Assert.Same(attribute, dataType.StringAttribute);
     }
 
@@ -65,14 +66,14 @@ public class MyNormalizerTests
 
         if (stringType)
         {
-            var charType = Assert.IsType<MyDataType.MyCharOptionalLength>(actual.DataType);
+            var charType = Assert.IsType<MyDataType.MyCharOptionalLength>(Assert.IsType<DataTypeReference.BuiltIn>(actual.DataType).DataType);
             Assert.Null(charType.Length);
             Assert.NotNull(charType.StringAttribute);
             Assert.Equal(config.DatabaseCredentials.DefaultCharset, charType.StringAttribute.CharacterSet);
         }
         else
         {
-            Assert.Equal(dataType, actual.DataType);
+            Assert.Equal(dataType, Assert.IsType<DataTypeReference.BuiltIn>(actual.DataType).DataType);
         }
         Assert.Equal(cast.Expression, actual.Expression);
     }

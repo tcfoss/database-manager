@@ -100,7 +100,7 @@ public class TableParser
             return computedColumn;
         }
 
-        DataType dataType = _p.DataTypeParser.ParseDataType(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
 
         SqlValueList<StatementColumnOption> options = ParseColumnOptions(state);
         return new StatementColumn.Typed(name, dataType, options);
@@ -260,7 +260,7 @@ public class TableParser
 
     private StatementColumnOption.Default ParseDefault(ParserState state, Identifier? constraintName)
     {
-        if (state.Peek() is NumericLiteral or StringLiteral or NationalStringLiteral or HexStringLiteral
+        if (state.Peek() is NumericLiteral or StringLiteral or DollarQuotedStringLiteral or NationalStringLiteral or HexStringLiteral
                 or Word { Keyword: Keyword.TRUE or Keyword.FALSE or Keyword.NULL }
             && state.TryParse(ValueParser.ParseValue, out Value? val))
         {

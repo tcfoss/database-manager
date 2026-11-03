@@ -1,12 +1,12 @@
 using TcfOss.DatabaseManager.Core.IO;
 
-namespace TcfOss.DatabaseManager.Core.BuiltIn;
+namespace TcfOss.DatabaseManager.MsSql.BuiltIn;
 
-public abstract record CharLength() : IWriteSql
+public abstract record MsCharLength() : IWriteSql
 {
     public abstract void ToSql(SqlTextWriter writer);
 
-    public record Specified(uint Length) : CharLength
+    public record Specified(uint Length) : MsCharLength
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -14,7 +14,7 @@ public abstract record CharLength() : IWriteSql
         }
     }
 
-    public record Max() : CharLength
+    public record Max() : MsCharLength
     {
         public override void ToSql(SqlTextWriter writer)
         {

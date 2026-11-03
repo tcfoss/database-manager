@@ -11,6 +11,8 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
 public static class ParserStateTests
 {
+    private sealed record UnrecognizedKeywordSearchCondition : Ksc;
+
     private static Token[] TokenSet1 => [
         new Word("SELECT") { Location = new Lexing.Location() },
         new Word("a") { Location = new Lexing.Location() },
@@ -60,6 +62,48 @@ public static class ParserStateTests
         Assert.True(s.PeekNth(100) is Eof);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(4)]
+    public static void Trailing_Trivia_Is_Only_Exposed_On_Eof(int tokenCount)
+    {
+        Token[] expected = TokenSet1[..tokenCount];
+        var whitespace = new NonSql(NonSqlType.Newline) { Location = new Lexing.Location() { Line = 1, Column = 9, Position = 8 } };
+        var trivia = new NonSqlContainer([whitespace]) { Location = whitespace.Location };
+        Token[] tokens = [.. expected, trivia];
+        var s = new ParserState(tokens, sourceId: 7);
+
+        Assert.Equal(7, s.SourceId);
+        Assert.True(s.PeekN(0).IsEmpty);
+        Assert.True(s.PeekN(tokenCount).SequenceEqual(expected));
+        Assert.True(s.PeekN(tokenCount + 1).SequenceEqual(expected));
+        var eof = Assert.IsType<Eof>(s.PeekNth(tokenCount));
+        Assert.Equal(trivia.Location, eof.Location);
+        Assert.Equal(trivia.SubTokens, eof.PreNonSql);
+        Assert.Same(eof, s.PeekNth(tokenCount + 1));
+        Assert.Same(eof, s.PeekNth(-1));
+
+        foreach (Token token in expected)
+        {
+            Assert.Same(token, s.Peek());
+            Assert.Same(token, s.Next());
+        }
+
+        Assert.Same(eof, s.Peek());
+        Assert.Same(eof, s.Next());
+        Assert.Same(eof, s.Next());
+        Assert.True(s.PeekN(1).IsEmpty);
+        Assert.Same(trivia, tokens[^1]);
+
+        s.Rewind();
+        if (tokenCount > 0)
+        {
+            Assert.Same(expected[^1], s.Next());
+        }
+        Assert.Same(eof, s.Peek());
+    }
+
     [Fact]
     public static void PeekKeyword_Matches_True()
     {
@@ -92,7 +136,7 @@ public static class ParserStateTests
             new Plus() { Location = new Lexing.Location() }
         };
 
-        Assert.Equal(expected, s.PeekN(3));
+        Assert.True(s.PeekN(3).SequenceEqual(expected));
     }
 
     [Fact]
@@ -106,7 +150,23 @@ public static class ParserStateTests
             new Plus() { Location = new Lexing.Location() },
         };
 
-        Assert.NotEqual(expected, s.PeekN(3));
+        Assert.False(s.PeekN(3).SequenceEqual(expected));
+    }
+
+    [Fact]
+    public static void PeekN_Returns_View_Without_Advancing()
+    {
+        Token[] tokens = TokenSet1;
+        var s = new ParserState(tokens);
+        s.Next();
+
+        ReadOnlySpan<Token> peeked = s.PeekN(2);
+
+        Assert.True(peeked == tokens.AsSpan(1, 2));
+        Assert.Same(tokens[1], s.Peek());
+        s.Next();
+        Assert.Same(tokens[1], peeked[0]);
+        Assert.True(s.PeekN(int.MaxValue).SequenceEqual(tokens.AsSpan(2)));
     }
 
     [Fact]
@@ -434,6 +494,88 @@ public static class ParserStateTests
         Assert.Empty(actual);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void ParseKeywordSequence_Partial_Failure_Restores_Position(bool useOneOf)
+    {
+        var s = new ParserState(TokenSet2);
+        s.Next();
+        Token expected = s.Peek();
+        Ksc required = useOneOf ? Ksc.OneOf(Keyword.VIEW, Keyword.INDEX) : Ksc.Required(Keyword.VIEW);
+
+        List<Keyword> actual = s.ParseKeywordSequence(Ksc.Optionals(Keyword.OR, Keyword.REPLACE), required);
+
+        Assert.Empty(actual);
+        Assert.Same(expected, s.Peek());
+    }
+
+    [Fact]
+    public static void ParseKeywordSequence_Optional_First_Match()
+    {
+        var s = new ParserState(TokenSet2);
+
+        List<Keyword> actual = s.ParseKeywordSequence(Ksc.Optional(Keyword.TEMPORARY), Ksc.Optional(Keyword.CREATE));
+
+        Assert.Equal([Keyword.CREATE], actual);
+        Assert.True(s.PeekKeyword(Keyword.OR));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void ParseKeywordSequence_Empty_Optional_Sequence_Preserves_Position(bool afterRequiredKeyword)
+    {
+        Token[] tokens =
+        [
+            new Word("CREATE") { Location = new Lexing.Location() },
+            new Word("TABLE") { Location = new Lexing.Location() }
+        ];
+        var state = new ParserState(tokens);
+
+        List<Keyword> found = afterRequiredKeyword
+            ? state.ParseKeywordSequence(Ksc.Required(Keyword.CREATE), Ksc.Optionals())
+            : state.ParseKeywordSequence(Ksc.Optionals());
+
+        if (afterRequiredKeyword)
+        {
+            Assert.Equal(Keyword.CREATE, Assert.Single(found));
+        }
+        else
+        {
+            Assert.Empty(found);
+        }
+        Assert.Same(tokens[afterRequiredKeyword ? 1 : 0], state.Peek());
+    }
+
+    [Fact]
+    public static void ParseKeywordSequence_Unrecognized_Condition_Does_Not_Consume_Tokens()
+    {
+        Token[] tokens = TokenSet1;
+        var state = new ParserState(tokens);
+
+        List<Keyword> found = state.ParseKeywordSequence(new UnrecognizedKeywordSearchCondition());
+
+        Assert.Empty(found);
+        Assert.Same(tokens[0], state.Peek());
+        Assert.Equal(Keyword.SELECT, Assert.Single(state.ParseKeywordSequence(Ksc.Required(Keyword.SELECT))));
+        Assert.Same(tokens[1], state.Peek());
+    }
+
+    [Fact]
+    public static void ParseKeywordSequence_No_Matches_Returns_Independent_Empty_Lists()
+    {
+        var s = new ParserState(TokenSet2);
+        Token expected = s.Peek();
+
+        List<Keyword> first = s.ParseKeywordSequence(Ksc.Optional(Keyword.TEMPORARY));
+        List<Keyword> second = s.ParseKeywordSequence();
+        first.Add(Keyword.SELECT);
+
+        Assert.Empty(second);
+        Assert.Same(expected, s.Peek());
+    }
+
     [Fact]
     public static void ParseKeywordSequence_Eof()
     {
@@ -481,6 +623,22 @@ public static class ParserStateTests
         }
 
         Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.DATABASE));
+    }
+
+    [Fact]
+    public static void PeekKeywordsAllEqual_Handles_Empty_And_Short_Input_Without_Advancing()
+    {
+        Token[] tokens = [new Word("CREATE") { Location = new Lexing.Location() }];
+        var s = new ParserState(tokens);
+
+        Assert.True(s.PeekKeywordsAllEqual());
+        Assert.True(s.PeekKeywordsAllEqual(Keyword.CREATE));
+        Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE, Keyword.TABLE));
+        Assert.Same(tokens[0], s.Peek());
+
+        s.Next();
+        Assert.True(s.PeekKeywordsAllEqual());
+        Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE));
     }
 
     [Fact]

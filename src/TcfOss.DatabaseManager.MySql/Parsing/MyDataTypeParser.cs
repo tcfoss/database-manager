@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -6,7 +7,7 @@ using TcfOss.DatabaseManager.MySql.BuiltIn;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MyDataTypeParser : DataTypeParser
+public class MyDataTypeParser(Parser parser) : DataTypeParser(parser)
 {
     private static MySqlNumericAttribute? ParseOptionalNumericAttribute(ParserState state)
     {
@@ -180,7 +181,7 @@ public class MyDataTypeParser : DataTypeParser
 
     protected override DataType ParseChar(ParserState state)
     {
-        uint length = ParseSimplePrecision(state);
+        uint length = ParseLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
         return new MyDataType.MyChar(length)
@@ -191,7 +192,7 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.MyCharOptionalLength ParseCharOptionalLength(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
 
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
@@ -203,7 +204,7 @@ public class MyDataTypeParser : DataTypeParser
 
     protected override DataType ParseVarchar(ParserState state)
     {
-        uint length = ParseSimplePrecision(state);
+        uint length = ParseLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
         return new MyDataType.MyVarchar(length)
@@ -214,7 +215,7 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.MyVarcharOptionalLength ParseVarcharOptionalLength(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
 
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
@@ -226,7 +227,7 @@ public class MyDataTypeParser : DataTypeParser
 
     protected override DataType ParseNationalVarchar(ParserState state)
     {
-        uint length = ParseSimplePrecision(state);
+        uint length = ParseLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
         return new MyDataType.MyNationalVarchar(length)
@@ -235,9 +236,9 @@ public class MyDataTypeParser : DataTypeParser
         };
     }
 
-    protected static MyDataType.MyNationalChar ParseNationalChar(ParserState state)
+    protected override MyDataType.MyNationalChar ParseNationalChar(ParserState state)
     {
-        uint length = ParseSimplePrecision(state);
+        uint length = ParseLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
         return new MyDataType.MyNationalChar(length)
@@ -248,7 +249,7 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.MyNationalVarcharOptionalLength ParseNationalVarcharOptionalLength(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
 
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
@@ -260,7 +261,7 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.MyTinyText ParseTinyText(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
         return new MyDataType.MyTinyText()
@@ -272,7 +273,7 @@ public class MyDataTypeParser : DataTypeParser
 
     protected override DataType ParseText(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
 
         return new MyDataType.MyText()
@@ -284,7 +285,7 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.MyMediumText ParseMediumText(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
         return new MyDataType.MyMediumText()
         {
@@ -295,7 +296,7 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.MyLongText ParseLongText(ParserState state)
     {
-        uint? length = ParseOptionalSimplePrecision(state);
+        uint? length = ParseOptionalLength(state);
         StringAttribute? stringOptions = ParseOptionalStringAttribute(state);
         return new MyDataType.MyLongText()
         {
@@ -306,13 +307,13 @@ public class MyDataTypeParser : DataTypeParser
 
     private static MyDataType.Binary ParseBinary(ParserState state)
     {
-        uint length = ParseSimplePrecision(state);
+        uint length = ParseLength(state);
         return new MyDataType.Binary(length);
     }
 
     private static MyDataType.Varbinary ParseVarbinary(ParserState state)
     {
-        uint length = ParseSimplePrecision(state);
+        uint length = ParseLength(state);
         return new MyDataType.Varbinary(length);
     }
 
@@ -382,6 +383,11 @@ public class MyDataTypeParser : DataTypeParser
         return base.ParseDataType(state);
     }
 
+    public override DataTypeReference ParseDataTypeReference(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataType(state));
+    }
+
     public override DataType ParseDataTypeForConvert(ParserState state)
     {
         Keyword? keyword = (state.Peek() as Word)?.Keyword;
@@ -404,5 +410,10 @@ public class MyDataTypeParser : DataTypeParser
         }
 
         return ParseDataType(state);
+    }
+
+    public override DataTypeReference ParseDataTypeReferenceForConvert(ParserState state)
+    {
+        return new DataTypeReference.BuiltIn(ParseDataTypeForConvert(state));
     }
 }

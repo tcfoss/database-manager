@@ -1,3 +1,4 @@
+using System.Buffers;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -7,7 +8,16 @@ namespace TcfOss.DatabaseManager.MsSql.Lexing;
 
 public class MsLexer : Lexer<MsRunState>
 {
+    private static readonly SearchValues<char> s_identifierCharacters =
+        SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@$#");
+
     protected override bool SupportBackslashQuoteEscape => false;
+    protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
+
+    protected override bool IsIdentifierPart(char character)
+    {
+        return base.IsIdentifierPart(character) || character is CharSymbols.At or CharSymbols.Dollar or CharSymbols.Num;
+    }
 
     protected override Token NextToken(ref LexerState state, ref MsRunState runState)
     {
@@ -70,7 +80,7 @@ public class MsLexer : Lexer<MsRunState>
         int count = 1;
         if (char.IsDigit(afterGo.Peek()))
         {
-            ReadOnlySpan<char> digits = afterGo.TakeWhile(char.IsDigit);
+            ReadOnlySpan<char> digits = afterGo.TakeWhileDigit();
             if (int.TryParse(new string(digits), out int parsed) && parsed > 0)
             {
                 count = parsed;

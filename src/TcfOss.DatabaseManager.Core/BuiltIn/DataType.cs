@@ -17,20 +17,7 @@ public abstract record DataType() : IWriteSql
         return this;
     }
 
-    public interface IHaveOptionalPrecision
-    {
-        public uint? Precision { get; }
 
-        public void WritePrecision(SqlTextWriter writer)
-        {
-            if (Precision != null)
-            {
-                writer.WriteSql($"({Precision})");
-            }
-        }
-    }
-
-    public abstract record CharLengthDataType(CharLength CharLength) : DataType;
     public abstract record OptionalNumericLengthDataType(NumericLength? NumericLength) : DataType;
 
     public abstract record BaseIntegerType : DataType
@@ -114,33 +101,58 @@ public abstract record DataType() : IWriteSql
         }
     }
 
-    public record Char(CharLength CharLength) : CharLengthDataType(CharLength)
+    public abstract record BaseLengthedStringType(uint? Length) : DataType
     {
-        public override DataTypeClass Class => DataTypeClass.String;
-
-        public override void ToSql(SqlTextWriter writer)
+        public void WriteLength(SqlTextWriter writer)
         {
-            writer.WriteSql($"CHAR{CharLength}");
+            if (Length != null)
+            {
+                writer.WriteSql($"({Length})");
+            }
         }
     }
 
-    public record Varchar(CharLength CharLength) : CharLengthDataType(CharLength)
+    public record Char(uint? Length) : BaseLengthedStringType(Length)
     {
         public override DataTypeClass Class => DataTypeClass.String;
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"VARCHAR{CharLength}");
+            writer.WriteSql($"CHAR");
+            WriteLength(writer);
         }
     }
 
-    public record NationalVarchar(CharLength CharLength) : CharLengthDataType(CharLength)
+    public record Varchar(uint? Length) : BaseLengthedStringType(Length)
     {
         public override DataTypeClass Class => DataTypeClass.String;
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"NVARCHAR{CharLength}");
+            writer.WriteSql($"VARCHAR");
+            WriteLength(writer);
+        }
+    }
+
+    public record NationalChar(uint? Length) : BaseLengthedStringType(Length)
+    {
+        public override DataTypeClass Class => DataTypeClass.String;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"NCHAR");
+            WriteLength(writer);
+        }
+    }
+
+    public record NationalVarchar(uint? Length) : BaseLengthedStringType(Length)
+    {
+        public override DataTypeClass Class => DataTypeClass.String;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"NVARCHAR");
+            WriteLength(writer);
         }
     }
 

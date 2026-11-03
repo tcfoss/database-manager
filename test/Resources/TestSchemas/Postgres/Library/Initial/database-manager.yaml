@@ -1,0 +1,27 @@
+Catalog: postgres
+QuoteStyle: Ansi
+Dialect: Postgres
+
+Schemas:
+  - SchemaName: library_catalog
+    RootPath: LibraryCatalog
+  - SchemaName: library_identity
+    RootPath: LibraryIdentity
+  - SchemaName: library_activity
+    RootPath: LibraryActivity
+
+Credentials:
+  HostName: localhost
+  UserName: postgres
+  Password: password
+  Port: 5432
+
+Formatting:
+  PreferTabs: false
+  TabSize: 4
+  ObjectNamePrefixWithSchema: false
+  SelectItemPrefixWithObject: true
+  UpdateTargetPrefixWithObject: true
+  OmitModifiersIfDefault: true
+  OpeningParensOnNewLine: false
+  JoinConditionIndent: 4

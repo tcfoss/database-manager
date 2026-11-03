@@ -2,6 +2,8 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
@@ -129,22 +131,6 @@ public class StatementComponentTests
     public void NonSql_CountSpaces_UsesTabStops(string text, int expected)
     {
         Assert.Equal(expected, NonSql.CountSpacesBeforeText(text, 4));
-    }
-
-    private static string FormatComponent(IWriteSql component)
-    {
-        var functionNames = new FunctionNameProvider();
-        var indenter = new Indenter(4, false);
-        var manager = new FormatManager
-        {
-            Formatting = new FormattingSettings(),
-            FunctionNameProvider = functionNames,
-            ComponentNormalizer = new ComponentNormalizer(QuoteStyle.Ansi, functionNames),
-            Indenter = indenter,
-        };
-        using var writer = new SqlTextWriter(new StringBuilder(), indenter);
-        component.FormatSql(writer, manager);
-        return writer.ToString();
     }
 
     [Theory]
@@ -285,5 +271,136 @@ public class StatementComponentTests
     public void DeallocatePrepareLabel_FromText_Unknown_Throws()
     {
         Assert.Throws<ArgumentException>(() => DeallocatePrepareLabel.Parse("UNKNOWN"));
+    }
+
+    [Fact]
+    public void DataTypeReferences_FormatBuiltInAndNamedTypes()
+    {
+        DataTypeReference builtIn = new DataType.Int();
+        var named = new DataTypeReference.Named(new ObjectName([new Identifier("app"), new Identifier("Mood", QuoteStyle.Ansi)]));
+
+        Assert.Equal("INT", FormatComponent(builtIn));
+        Assert.Equal("\"app\".\"Mood\"", FormatComponent(named));
+        Assert.Equal("\"value\" \"app\".\"Mood\"", FormatComponent(new StatementColumn.Typed(new Identifier("value"), named, [])));
+        Assert.Equal("\"input\" \"app\".\"Mood\"", FormatComponent(new StatementRoutineParameter.Directed(new Identifier("input"), named, null)));
+    }
+
+    [Fact]
+    public void DirectedRoutineParameters_ConvertResolvedTypesToStatementReferences()
+    {
+        var dataType = new DataType.Int();
+        var parameter = new RoutineParameter.Directed(new Identifier("value"), dataType, RoutineParameterDirection.InOut);
+        StatementRoutineParameter.Directed statement = parameter.ToStatementParameter();
+
+        Assert.Same(dataType, parameter.DataType);
+        Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
+        Assert.Equal(parameter.Name, statement.Name);
+        Assert.Equal(parameter.Direction, statement.Direction);
+        Assert.Equal("INOUT value INT", statement.ToSql());
+        Assert.Equal(parameter.ToSql(), statement.ToSql());
+        Assert.Equal(FormatComponent(parameter), FormatComponent(statement));
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(false, "OUT")]
+    [InlineData(false, "OUTPUT")]
+    [InlineData(true, null)]
+    [InlineData(true, "OUT")]
+    [InlineData(true, "OUTPUT")]
+    public void UndirectedRoutineParameters_ConversionPreservesDefaultAndOutput(bool hasDefault, string? output)
+    {
+        var dataType = new DataType.Int();
+        var parameter = new RoutineParameter.Undirected(new Identifier("value", QuoteStyle.None, SigilKind.Variable), dataType)
+        {
+            DefaultValue = hasDefault ? new Value.Number("7", false) : null,
+            Output = output == null ? null : OutputKeyword.Parse(output),
+        };
+        StatementRoutineParameter.Undirected statement = parameter.ToStatementParameter();
+
+        Assert.Same(dataType, parameter.DataType);
+        Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
+        Assert.Equal(parameter.Name, statement.Name);
+        Assert.Same(parameter.DefaultValue, statement.DefaultValue);
+        Assert.Equal(parameter.Output, statement.Output);
+        Assert.Equal(parameter.ToSql(), statement.ToSql());
+        Assert.Equal(FormatComponent(parameter), FormatComponent(statement));
+    }
+
+    [Fact]
+    public void CreateType_FormatsNamesFieldsAndCollations()
+    {
+        var enumerated = new CreateType.Enumerated(new ObjectName([new Identifier("app"), new Identifier("mood")]), ["sad", "happy"]);
+        Assert.Equal("""CREATE TYPE "app"."mood" AS ENUM ('sad', 'happy')""", FormatComponent(enumerated));
+
+        var composite = new CreateType.Composite(new ObjectName([new Identifier("app"), new Identifier("address")]),
+        [
+            new CompositeTypeField(new Identifier("street"), new DataType.Text(), new ObjectName([new Identifier("app"), new Identifier("collation")])),
+            new CompositeTypeField(new Identifier("postal"), new DataTypeReference.Named(new ObjectName([new Identifier("app"), new Identifier("postal_code")]))),
+        ]);
+        Assert.Equal("""CREATE TYPE "app"."address" AS ("street" TEXT COLLATE "app"."collation", "postal" "app"."postal_code")""", FormatComponent(composite));
+    }
+
+    [Theory]
+    [InlineData("CREATE DOMAIN label AS TEXT", "CREATE DOMAIN \"label\" AS TEXT")]
+    [InlineData("CREATE DOMAIN label TEXT NULL", "CREATE DOMAIN \"label\" TEXT NULL")]
+    [InlineData("CREATE DOMAIN label AS TEXT NOT NULL", "CREATE DOMAIN \"label\" AS TEXT NOT NULL")]
+    [InlineData("CREATE DOMAIN label AS TEXT CHECK (VALUE IS NOT NULL)", "CREATE DOMAIN \"label\" AS TEXT CHECK (VALUE IS NOT NULL)")]
+    [InlineData("CREATE DOMAIN label AS TEXT CONSTRAINT optional NULL", "CREATE DOMAIN \"label\" AS TEXT CONSTRAINT \"optional\" NULL")]
+    [InlineData("CREATE DOMAIN app.label AS app.base_type COLLATE app.collation DEFAULT 'a' CONSTRAINT required NOT NULL CONSTRAINT valid CHECK (VALUE <> '')", "CREATE DOMAIN \"app\".\"label\" AS \"app\".\"base_type\" COLLATE \"app\".\"collation\" DEFAULT 'a' CONSTRAINT \"required\" NOT NULL CONSTRAINT \"valid\" CHECK (VALUE <> '')")]
+    public void CreateDomain_FormatsNamesDefaultsAndConstraints(string sql, string expected)
+    {
+        var parser = new Parsing.Parser();
+        var lexer = new Lexing.GenericLexer();
+        Statement statement = Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize(sql)]), null));
+
+        Assert.Equal(expected, FormatComponent(statement));
+        Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize(expected)]), null)));
+    }
+
+    [Fact]
+    public void ArrayReferences_FormatElementNamesAndPreserveDeclaredBounds()
+    {
+        var array = new DataTypeReference.Array(new DataTypeReference.Named(new ObjectName([new Identifier("app"), new Identifier("mood")])),
+        [
+            new DataTypeReference.Array.Dimension(null),
+            new DataTypeReference.Array.Dimension(3)
+        ]);
+
+        Assert.Equal("\"app\".\"mood\"[][3]", FormatComponent(array));
+        var standard = new DataTypeReference.Array(new DataTypeReference.BuiltIn(new DataType.Int()),
+            [new DataTypeReference.Array.Dimension(4)])
+        {
+            UseArrayKeyword = true
+        };
+        Assert.Equal("INT ARRAY[4]", FormatComponent(standard));
+    }
+
+    [Fact]
+    public void CoreParser_AcceptsStandardArrayTypeSyntax()
+    {
+        var parser = new Parsing.Parser();
+        var lexer = new Lexing.GenericLexer();
+        Statement statement = Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize("CREATE TYPE wrapper AS (values TEXT ARRAY)")]), null));
+
+        var composite = Assert.IsType<CreateType.Composite>(statement);
+        Assert.IsType<DataTypeReference.Array>(Assert.Single(composite.Attributes).DataType);
+        Assert.Equal("CREATE TYPE wrapper AS (values TEXT ARRAY)", statement.ToSql());
+    }
+
+    private static string FormatComponent(IWriteSql component)
+    {
+        var functionNames = new FunctionNameProvider();
+        var indenter = new Indenter(4, false);
+        var manager = new FormatManager
+        {
+            Formatting = new FormattingSettings(),
+            FunctionNameProvider = functionNames,
+            ComponentNormalizer = new ComponentNormalizer(QuoteStyle.Ansi, functionNames),
+            Indenter = indenter,
+        };
+        using var writer = new SqlTextWriter(new StringBuilder(), indenter);
+        component.FormatSql(writer, manager);
+        return writer.ToString();
     }
 }

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Description>PostgreSQL provider for DatabaseManager with SQL parsing and formatting. Database-definition loading and migration generation are not yet implemented.</Description>
+    <PackageTags>database;sql;postgres;postgresql;ddl;parsing;formatting</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TcfOss.DatabaseManager.Core\TcfOss.DatabaseManager.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+</Project>

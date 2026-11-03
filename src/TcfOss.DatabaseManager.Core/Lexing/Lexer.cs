@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Text;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -11,8 +10,16 @@ namespace TcfOss.DatabaseManager.Core.Lexing;
 public class Lexer<TRunState> : ILexer
     where TRunState : struct
 {
-    private const int StackAllocationThreshold = 256;
+    private readonly Func<char, bool> _isIdentifierPart;
     protected virtual bool SupportBackslashQuoteEscape => true;
+    protected virtual bool SupportBracketQuotedIdentifiers => true;
+    protected virtual bool SupportDollarQuotedStrings => false;
+    protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
+
+    public Lexer()
+    {
+        _isIdentifierPart = IsIdentifierPart;
+    }
 
     public virtual List<Token> Tokenize(string sql) => Tokenize(sql.AsSpan());
 
@@ -76,7 +83,9 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.NewLine => TokenizeSingleCharacter(ref state, new NonSql(NonSqlType.Newline) { Location = state.Location }),
             CharSymbols.CarriageReturn => TokenizeCarriageReturn(ref state),
 
-            CharSymbols.SquareBracketOpen => TokenizeQuotedIdentifier(ref state),
+            CharSymbols.SquareBracketOpen when SupportBracketQuotedIdentifiers => TokenizeQuotedIdentifier(ref state),
+            CharSymbols.SquareBracketOpen => TokenizeSingleCharacter(ref state, new BracketOpen() { Location = state.Location }),
+            CharSymbols.SquareBracketClose when !SupportBracketQuotedIdentifiers => TokenizeSingleCharacter(ref state, new BracketClose() { Location = state.Location }),
             CharSymbols.DoubleQuote => TokenizeQuotedIdentifier(ref state),
             CharSymbols.Backtick => TokenizeQuotedIdentifier(ref state),
 
@@ -85,7 +94,7 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.SingleQuote => TokenizeStringLiteral(ref state),
 
-            _ when char.IsDigit(character) || character == CharSymbols.Dot => TokenizeNumber(ref state),
+            _ when char.IsAsciiDigit(character) || character == CharSymbols.Dot => TokenizeNumber(ref state),
 
             CharSymbols.ParenOpen => TokenizeSingleCharacter(ref state, new ParenOpen() { Location = state.Location }),
             CharSymbols.ParenClose => TokenizeSingleCharacter(ref state, new ParenClose() { Location = state.Location }),
@@ -98,6 +107,7 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.Slash => TokenizeSlash(ref state),
             CharSymbols.Asterisk => TokenizeSingleCharacter(ref state, new Asterisk() { Location = state.Location }),
             CharSymbols.Percent => TokenizeSingleCharacter(ref state, new Modulo() { Location = state.Location }),
+            CharSymbols.Dollar => TokenizeDollar(ref state),
 
             CharSymbols.GreaterThan => TokenizeGreaterThan(ref state),
             CharSymbols.LessThan => TokenizeLessThan(ref state),
@@ -106,6 +116,10 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.Semicolon => TokenizeSingleCharacter(ref state, new Semicolon() { Location = state.Location }),
             CharSymbols.Colon => TokenizeColon(ref state),
+            CharSymbols.Pipe => TokenizePipe(ref state),
+            CharSymbols.Ampersand => TokenizeSingleCharacter(ref state, new Ampersand() { Location = state.Location }),
+            CharSymbols.Caret => TokenizeSingleCharacter(ref state, new Caret() { Location = state.Location }),
+            CharSymbols.Tilde => TokenizeTilde(ref state),
 
             CharSymbols.Backslash => TokenizeSingleCharacter(ref state, new Backslash() { Location = state.Location }),
 
@@ -176,7 +190,7 @@ public class Lexer<TRunState> : ILexer
         }
 
         char? lastChar = null;
-        var chars = new StringBuilder();
+        int startPosition = state.Position;
 
         char curr;
         do
@@ -186,18 +200,12 @@ public class Lexer<TRunState> : ILexer
 
             if (curr == quoteEnd && state.Peek() == quoteEnd)
             {
-                chars.Append(curr);
-                chars.Append(curr);
                 state.Next();
             }
             else if (curr == quoteEnd)
             {
                 lastChar = quoteEnd;
                 break;
-            }
-            else
-            {
-                chars.Append(curr);
             }
         } while (curr != CharSymbols.EndOfFile);
 
@@ -206,7 +214,7 @@ public class Lexer<TRunState> : ILexer
             throw new LexException.UnterminatedQuotedIdentifier(quoteEnd, initialLocation);
         }
 
-        string word = chars.ToString();
+        string word = new(state.SpanFrom(startPosition, state.Position - 1));
         Label? label = MaybeTokenizeLabel(ref state, word, initialLocation, quoteStyle);
         if (label != null)
         {
@@ -227,7 +235,7 @@ public class Lexer<TRunState> : ILexer
         Location initialLocation = state.Location;
 
         state.Next();
-        string word = new(ExtractWordTrustNoNewLines(ref state));
+        string word = ExtractWordTrustNoNewLines(ref state);
 
         if (sigil == SigilKind.None)
         {
@@ -276,6 +284,16 @@ public class Lexer<TRunState> : ILexer
             state.Next();
             return new NotEqual() { Location = initialLocation };
         }
+        if (state.Peek() == CharSymbols.Tilde)
+        {
+            state.Next();
+            if (state.Peek() == CharSymbols.Asterisk)
+            {
+                state.Next();
+                return new NotTildeAsterisk() { Location = initialLocation };
+            }
+            return new NotTilde() { Location = initialLocation };
+        }
         return new Exclamation() { Location = initialLocation };
     }
 
@@ -288,7 +306,36 @@ public class Lexer<TRunState> : ILexer
             state.Next();
             return new Walrus() { Location = initialLocation };
         }
+        if (state.Peek() == CharSymbols.Colon)
+        {
+            state.Next();
+            return new DoubleColon() { Location = initialLocation };
+        }
         return new Colon() { Location = initialLocation };
+    }
+
+    private static Token TokenizePipe(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        if (state.Peek() == CharSymbols.Pipe)
+        {
+            state.Next();
+            return new DoublePipe() { Location = initialLocation };
+        }
+        return new Pipe() { Location = initialLocation };
+    }
+
+    private static Token TokenizeTilde(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        if (state.Peek() == CharSymbols.Asterisk)
+        {
+            state.Next();
+            return new TildeAsterisk() { Location = initialLocation };
+        }
+        return new Tilde() { Location = initialLocation };
     }
 
     private static Token TokenizeGreaterThan(ref LexerState state)
@@ -325,6 +372,48 @@ public class Lexer<TRunState> : ILexer
         return new LessThan() { Location = initialLocation };
     }
 
+    private Token TokenizeDollar(ref LexerState state)
+    {
+        if (SupportDollarQuotedStrings)
+        {
+            if (MaybeTokenizeDollarQuotedString(ref state) is { } token)
+            {
+                return token;
+            }
+        }
+
+        if (IsIdentifierStart(CharSymbols.Dollar))
+        {
+            return TokenizeIdentifierOrKeyword(ref state);
+        }
+
+        throw new LexException.UnexpectedCharacter(CharSymbols.Dollar, state.Location);
+    }
+
+    private DollarQuotedStringLiteral? MaybeTokenizeDollarQuotedString(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        LexerState candidate = state.Clone();
+        candidate.Next();
+        int tagStart = candidate.Position;
+        if (IsStrictIdentifierStart(candidate.Peek()))
+        {
+            candidate.Next();
+            candidate.TakeWhileIdentifierPart(LexerState.s_standardIdentifierCharacters, _isIdentifierPart);
+        }
+        if (candidate.Peek() != CharSymbols.Dollar)
+        {
+            return null;
+        }
+        int tagEnd = candidate.Position;
+        string tag = new(candidate.SpanFrom(tagStart, tagEnd));
+        string delimiter = $"${tag}$";
+        candidate = state.Clone();
+        string value = ExtractStringCustomQuotes(ref candidate, delimiter);
+        state = candidate;
+        return new DollarQuotedStringLiteral(tag, value) { Location = initialLocation };
+    }
+
     private static Token TokenizeNumber(ref LexerState state)
     {
         Location initialLocation = state.Location;
@@ -333,7 +422,7 @@ public class Lexer<TRunState> : ILexer
         {
             state.Next(); // Consume the '0'
             state.Next(); // Consume the 'x' or 'X'
-            ReadOnlySpan<char> hex = state.TakeWhile(char.IsAsciiHexDigit);
+            ReadOnlySpan<char> hex = state.TakeWhileHexDigit();
             return new HexStringLiteral(new string(hex)) { Location = initialLocation };
         }
 
@@ -400,20 +489,6 @@ public class Lexer<TRunState> : ILexer
         return new StringLiteral(contents) { Location = initialLocation };
     }
 
-    private Token TokenizeHex(ref LexerState state)
-    {
-        Location initialLocation = state.Location;
-        state.Next();
-
-        if (state.Peek() != CharSymbols.SingleQuote)
-        {
-            return new Word(new string(ExtractWordTrustNoNewLines(ref state))) { Location = state.Location };
-        }
-
-        string hex = ExtractString(ref state);
-        return new HexStringLiteral(hex) { Location = initialLocation };
-    }
-
     private Token TokenizeNationalStringLiteral(ref LexerState state)
     {
         Location initialLocation = state.Location;
@@ -421,9 +496,23 @@ public class Lexer<TRunState> : ILexer
         state.Next();
         return state.Peek() switch
         {
-            CharSymbols.SingleQuote => new NationalStringLiteral(new string(ExtractString(ref state))) { Location = initialLocation },
-            _ => new Word(new string(ExtractWordTrustNoNewLines(ref state))) { Location = initialLocation }
+            CharSymbols.SingleQuote => new NationalStringLiteral(ExtractString(ref state)) { Location = initialLocation },
+            _ => new Word(ExtractWordTrustNoNewLines(ref state)) { Location = initialLocation }
         };
+    }
+
+    private Token TokenizeHex(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+
+        if (state.Peek() != CharSymbols.SingleQuote)
+        {
+            return new Word(ExtractWordTrustNoNewLines(ref state)) { Location = state.Location };
+        }
+
+        string hex = ExtractString(ref state);
+        return new HexStringLiteral(hex) { Location = initialLocation };
     }
 
     private static Token TokenizeSlash(ref LexerState state)
@@ -497,7 +586,7 @@ public class Lexer<TRunState> : ILexer
     private static string ExtractLineComment(ref LexerState state)
     {
         int startPosition = state.Position;
-        state.TakeWhile(c => c is not CharSymbols.NewLine and not CharSymbols.EndOfFile);
+        state.AdvanceToEndOfLine();
 
         bool isEof = state.Next() == CharSymbols.EndOfFile;
 
@@ -549,149 +638,89 @@ public class Lexer<TRunState> : ILexer
             state.Next();
         }
 
-        // Escaped strings---have to go the slower route.
-        int estimatedCapacity = Math.Max(16, state.Position - startPosition + 32);
-        char[]? rentedArray = null;
-        char[] buffer;
-
-        Span<char> stackBuffer = stackalloc char[StackAllocationThreshold];
-
-        if (estimatedCapacity <= StackAllocationThreshold)
+        bool escapeNext = false;
+        while (true)
         {
-            buffer = null!;
-            state.SpanFrom(startPosition).CopyTo(stackBuffer);
-        }
-        else
-        {
-            rentedArray = ArrayPool<char>.Shared.Rent(estimatedCapacity);
-            buffer = rentedArray;
-            state.SpanFrom(startPosition).CopyTo(buffer);
-        }
+            char curr = state.Peek();
 
-        int length = state.Position - startPosition;
-
-        void Append(char c, Span<char> stackBuffer)
-        {
-            if (rentedArray == null)
+            if (curr == CharSymbols.EndOfFile)
             {
-                if (length < StackAllocationThreshold)
-                {
-                    stackBuffer[length++] = c;
-                    return;
-                }
-
-                // Overflow to heap.
-                rentedArray = ArrayPool<char>.Shared.Rent(Math.Max(estimatedCapacity * 2, length + 64));
-                buffer = rentedArray;
-                stackBuffer[..length].CopyTo(buffer);
-            }
-            else if (length >= rentedArray.Length)
-            {
-                // Get a bigger buffer.
-                char[] expanded = ArrayPool<char>.Shared.Rent(rentedArray.Length * 2);
-                rentedArray.AsSpan(0, length).CopyTo(expanded);
-                ArrayPool<char>.Shared.Return(rentedArray);
-                rentedArray = expanded;
-                buffer = rentedArray;
+                throw new LexException.UnterminatedString(startLocation);
             }
 
-            buffer[length++] = c;
-        }
-
-        try
-        {
-            bool escapeNext = false;
-
-            while (true)
+            if (curr == quoteChar)
             {
-                char curr = state.Peek();
-
-                if (curr == CharSymbols.EndOfFile)
+                if (escapeNext)
                 {
-                    throw new LexException.UnterminatedString(startLocation);
-                }
-
-                if (curr == quoteChar)
-                {
-                    if (escapeNext)
-                    {
-                        Append(curr, stackBuffer);
-                        state.Next();
-                        escapeNext = false;
-                    }
-                    else
-                    {
-                        int quoteStart = state.Position;
-                        while (state.Peek() == quoteChar)
-                        {
-                            state.Next();
-                        }
-
-                        int numberQuotes = state.Position - quoteStart;
-                        int pairedQuotes = numberQuotes / 2 * 2;
-
-                        for (int i = 0; i < pairedQuotes; i++)
-                        {
-                            Append(quoteChar, stackBuffer);
-                        }
-
-                        if (numberQuotes - pairedQuotes == 1)
-                        {
-                            // Closing quote found. Return the string.
-                            return BuildResult(stackBuffer);
-                        }
-                    }
-                }
-                else if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
-                {
-                    Append(curr, stackBuffer);
-                    state.Next();
-                    escapeNext = true;
-                }
-                else
-                {
-                    Append(curr, stackBuffer);
                     state.Next();
                     escapeNext = false;
                 }
+                else
+                {
+                    int quoteStart = state.Position;
+                    while (state.Peek() == quoteChar)
+                    {
+                        state.Next();
+                    }
+
+                    int numberQuotes = state.Position - quoteStart;
+                    if (numberQuotes % 2 != 0)
+                    {
+                        return new string(state.SpanFrom(startPosition, state.Position - 1));
+                    }
+                }
+            }
+            else if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
+            {
+                state.Next();
+                escapeNext = true;
+            }
+            else
+            {
+                state.Next();
+                escapeNext = false;
             }
         }
-        catch
+    }
+
+    private static string ExtractStringCustomQuotes(ref LexerState state, string delimiter)
+    {
+        Location startLocation = state.Location;
+        state.TakeIfSequence(delimiter);
+
+        int bodyStart = state.Position;
+        while (state.Peek() != CharSymbols.EndOfFile)
         {
-            if (rentedArray != null)
+            if (state.TakeIfSequence(delimiter))
             {
-                ArrayPool<char>.Shared.Return(rentedArray);
+                return new string(state.SpanFrom(bodyStart, state.Position - delimiter.Length));
             }
-            throw;
+            state.Next();
         }
 
-        string BuildResult(Span<char> stackBuffer)
-        {
-            if (rentedArray == null)
-            {
-                return new string(stackBuffer[..length]);
-            }
-            string s = new(buffer.AsSpan(0, length));
-            ArrayPool<char>.Shared.Return(rentedArray);
-            return s;
-        }
+        throw new LexException.UnterminatedString(startLocation);
     }
 
     private string ExtractWordTrustNoNewLines(ref LexerState state)
     {
         int start = state.Position - 1;
-        state.TakeWhileTrustNoNewLines(IsIdentifierPart);
+        state.TakeWhileIdentifierPart(IdentifierAsciiCharacters, _isIdentifierPart);
         return new string(state.SpanFrom(start, state.Position));
     }
 
-    private static bool IsIdentifierStart(char character)
+    protected virtual bool IsIdentifierStart(char character)
     {
         return char.IsLetter(character)
             || character is CharSymbols.Underscore or CharSymbols.Num or CharSymbols.At;
     }
 
-    protected bool IsIdentifierPart(char character)
+    protected virtual bool IsIdentifierPart(char character)
     {
         return char.IsLetter(character) || char.IsDigit(character) || character is CharSymbols.Underscore;
+    }
+
+    protected bool IsStrictIdentifierStart(char character)
+    {
+        return char.IsLetter(character) || character is CharSymbols.Underscore;
     }
 }

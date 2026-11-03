@@ -1,6 +1,10 @@
 ﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Tests;
+using TcfOss.DatabaseManager.Core.Tests.BuiltIn;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
@@ -12,6 +16,53 @@ namespace TcfOss.DatabaseManager.MySql.Tests.BuiltIn;
 
 public class MyDataTypeTests
 {
+    private static readonly Keyword[] s_mySqlDataTypeKeywords =
+    [
+        Keyword.MEDIUMINT, Keyword.SMALLINT, Keyword.DATETIME, Keyword.TIMESTAMP, Keyword.TIME, Keyword.DATE, Keyword.YEAR,
+        Keyword.TINYTEXT, Keyword.MEDIUMTEXT, Keyword.LONGTEXT, Keyword.TINYBLOB, Keyword.BLOB, Keyword.MEDIUMBLOB, Keyword.LONGBLOB,
+        Keyword.BINARY, Keyword.VARBINARY, Keyword.GEOMETRY, Keyword.POINT, Keyword.CURVE, Keyword.LINESTRING, Keyword.LINE,
+        Keyword.LINEARRING, Keyword.SURFACE, Keyword.POLYGON, Keyword.GEOMETRYCOLLECTION, Keyword.MULTIPOINT, Keyword.MULTICURVE,
+        Keyword.MULTILINESTRING, Keyword.MULTISURFACE, Keyword.MULTIPOLYGON, Keyword.NATIONAL,
+    ];
+
+    [Theory]
+    [ClassData(typeof(IsDataTypeKeywordTestData))]
+    public void IsDataTypeKeyword_Exhaustive(Keyword keyword, bool expected)
+    {
+        Assert.Equal(expected, new MyParser().DataTypeParser.IsDataTypeKeyword(keyword));
+    }
+
+    public class IsDataTypeKeywordTestData : ExhaustiveKeywordTestData<bool>
+    {
+        protected override IEnumerable<TheoryDataRow<Keyword, bool>> GetSupportedData()
+        {
+            foreach (Keyword keyword in DataTypeKeywords.All)
+            {
+                yield return new TheoryDataRow<Keyword, bool>(keyword, true);
+            }
+            foreach (Keyword keyword in s_mySqlDataTypeKeywords)
+            {
+                yield return new TheoryDataRow<Keyword, bool>(keyword, true);
+            }
+        }
+
+        protected override bool GetDefaultValue() => false;
+    }
+
+    [Fact]
+    public void IsDataTypeKeyword_NullIsFalse()
+    {
+        Assert.False(new MyParser().DataTypeParser.IsDataTypeKeyword(null));
+    }
+
+    [Fact]
+    public void UnknownDataType_RewindsAndFallsThroughToExpectedTypeError()
+    {
+        var state = new ParserState([.. new MyLexer().Tokenize("unknown_type")]);
+
+        Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().DataTypeParser.ParseDataType(state));
+    }
+
     [Theory]
     [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<MySqlNumericAttribute>))]
     public void NumericAttributeSerializerRoundTrips(string text, MySqlNumericAttribute attribute)
@@ -103,6 +154,8 @@ public class MyDataTypeTests
 
     [Theory]
     [InlineData("char(4)", typeof(MyDataType.MyChar), null, null, "CHAR(4)", Label = "char")]
+    [InlineData("char(0)", typeof(MyDataType.MyChar), null, null, "CHAR(0)", Label = "zero-length char")]
+    [InlineData("varchar(0)", typeof(MyDataType.MyVarchar), null, null, "VARCHAR(0)", Label = "zero-length varchar")]
     [InlineData("char(10) character set utf8 collate utf8_general_ci", typeof(MyDataType.MyChar), "utf8", "utf8_general_ci", "CHAR(10) CHARACTER SET utf8 COLLATE utf8_general_ci", Label = "char charset and collation")]
     [InlineData("Char(3) Character Set utf8", typeof(MyDataType.MyChar), "utf8", null, "CHAR(3) CHARACTER SET utf8", Label = "char charset")]
     [InlineData("CHAR(5) COLLATE utf8mb4_unicode_ci", typeof(MyDataType.MyChar), null, "utf8mb4_unicode_ci", "CHAR(5) COLLATE utf8mb4_unicode_ci", Label = "char collation")]
@@ -219,6 +272,39 @@ public class MyDataTypeTests
         Assert.Equal(DataTypeClass.Geometry, dt.Class);
         Assert.Equal(expectedText, dt.ToSql());
     }
+
+    [Theory]
+    [InlineData("mood")]
+    [InlineData("app.mood")]
+    [InlineData("\"mood\"")]
+    [InlineData("`mood`")]
+    public void TypeReferences_RejectNamedTypes(string sql)
+    {
+        var parser = new MyParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(new ParserState([.. new MyLexer().Tokenize(sql)])));
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState([.. new MyLexer().Tokenize(sql)])));
+    }
+
+    [Fact]
+    public void ConversionReferences_PreserveMySqlTypeGrammar()
+    {
+        var parser = new MyParser();
+        var reference = Assert.IsType<DataTypeReference.BuiltIn>(parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState([.. new MyLexer().Tokenize("CHAR")])));
+
+        Assert.IsType<MyDataType.MyCharOptionalLength>(reference.DataType);
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("NATIONAL")]
+    public void ConvertTypeFallback_HandlesNonWordAndIncompleteNationalType(string sql)
+    {
+        var state = new ParserState([.. new MyLexer().Tokenize(sql)]);
+
+        Assert.ThrowsAny<ParseException>(() => new MyParser().DataTypeParser.ParseDataTypeForConvert(state));
+    }
+
 
     private static DataType GetDataType(string text)
     {

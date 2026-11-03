@@ -81,6 +81,15 @@
     <data name="Err_Parse" xml:space="preserve">
         <value>Parse Error</value>
     </data>
+    <data name="Err_Parse_ValueOutOfRange" xml:space="preserve">
+        <value>The {0} value {1} is outside the allowed range [{2}, {3}].</value>
+    </data>
+    <data name="Err_Parse_InvalidIntervalFieldRange" xml:space="preserve">
+        <value>The interval field range {0} TO {1} is not valid.</value>
+    </data>
+    <data name="Err_Parse_IntervalPrecisionRequiresSecond" xml:space="preserve">
+        <value>Interval precision requires a field specification ending in SECOND.</value>
+    </data>
     <data name="Err_Parse_ColumnComponentUnexpectedName" xml:space="preserve">
         <value>Column components of type {0} do not support an explicit name, but 'CONSTRAINT {1}' was specified.</value>
     </data>
@@ -135,8 +144,17 @@
     <data name="Err_Syntax_ConstraintNameNotAllowedDialect" xml:space="preserve">
         <value>The constraint name '{0}' is not allowed for {1} constraints on {2} {3} in {4}.</value>
     </data>
+    <data name="Err_Syntax_UnsupportedDialectClause" xml:space="preserve">
+        <value>Dialect '{0}' does not support the clause '{1}'.</value>
+    </data>
     <data name="Err_Syntax_UnknownIdentifier" xml:space="preserve">
         <value>The identifier '{0}' could be found.</value>
+    </data>
+    <data name="Err_Syntax_TypeNotFound" xml:space="preserve">
+        <value>The type '{0}' could not be resolved. Searched schemas: [{1}].</value>
+    </data>
+    <data name="Err_Syntax_CyclicTypeDependency" xml:space="preserve">
+        <value>Cyclic type dependency: {0}.</value>
     </data>
     <data name="Err_Syntax_UnknownTable" xml:space="preserve">
         <value>The table or view '{0}' could be found.</value>

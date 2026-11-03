@@ -2,6 +2,7 @@
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
+using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -57,6 +58,8 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData("2", 2)]
     [InlineData("9", 9)]
+    [InlineData("0", 0)]
+    [InlineData("4294967295", uint.MaxValue)]
     public static void ParseLiteralUInt_Match(string sql, uint expected)
     {
         var state = GetState(sql);
@@ -67,7 +70,6 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData("3.24")]
     [InlineData("SELECT")]
-    [InlineData("-3")]
     [InlineData("'string'")]
     public static void ParseLiteralUInt_Fail(string sql)
     {
@@ -78,6 +80,113 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
         var found = sql.StartsWith('-') ? "-" : sql;
         var expectedMessage = string.Format(expectedTemplate, "literal_int".Italic(), found);
         Assert.Equal(expectedMessage, exception.Message);
+    }
+
+    [Theory]
+    [InlineData("0", 0)]
+    [InlineData("-3", -3)]
+    [InlineData("+3", 3)]
+    [InlineData("- 3", -3)]
+    [InlineData("-2147483648", int.MinValue)]
+    [InlineData("2147483647", int.MaxValue)]
+    public void ParseLiteralInt_Match(string sql, int expected)
+    {
+        Assert.Equal(expected, ValueParser.ParseLiteralInt(GetState(sql)));
+    }
+
+    [Theory]
+    [InlineData("0", 0L)]
+    [InlineData("-3", -3L)]
+    [InlineData("+3", 3L)]
+    [InlineData("-9223372036854775808", long.MinValue)]
+    [InlineData("9223372036854775807", long.MaxValue)]
+    public void ParseLiteralLong_Match(string sql, long expected)
+    {
+        Assert.Equal(expected, ValueParser.ParseLiteralLong(GetState(sql)));
+    }
+
+    [Theory]
+    [InlineData("0", 0UL)]
+    [InlineData("18446744073709551615", ulong.MaxValue)]
+    public void ParseLiteralULong_Match(string sql, ulong expected)
+    {
+        Assert.Equal(expected, ValueParser.ParseLiteralULong(GetState(sql)));
+    }
+
+    [Theory]
+    [InlineData("2147483648")]
+    [InlineData("-2147483649")]
+    [InlineData("999999999999999999999999")]
+    public void ParseLiteralInt_Overflow(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ValueParser.ParseLiteralInt(GetState(sql)));
+
+        Assert.Equal(sql, exception.Value);
+        Assert.Equal(int.MinValue, exception.Minimum);
+        Assert.Equal(int.MaxValue, exception.Maximum);
+    }
+
+    [Theory]
+    [InlineData("4294967296")]
+    public void ParseLiteralUInt_OutOfRange(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ValueParser.ParseLiteralUInt(GetState(sql)));
+
+        Assert.Equal(sql, exception.Value);
+        Assert.Equal(0, exception.Minimum);
+        Assert.Equal(uint.MaxValue, exception.Maximum);
+    }
+
+    [Theory]
+    [InlineData("+3")]
+    [InlineData("-3")]
+    [InlineData("+ 3")]
+    [InlineData("- 3")]
+    public void UnsignedIntegerLiterals_RejectSeparateSignTokens(string sql)
+    {
+        var uintState = GetState(sql);
+        var ulongState = GetState(sql);
+
+        Assert.Throws<ParseException.ExpectedButFound>(() => ValueParser.ParseLiteralUInt(uintState));
+        Assert.Throws<ParseException.ExpectedButFound>(() => ValueParser.ParseLiteralULong(ulongState));
+        Assert.IsType<NumericLiteral>(uintState.Peek());
+        Assert.IsType<NumericLiteral>(ulongState.Peek());
+    }
+
+    [Theory]
+    [InlineData("9223372036854775808")]
+    [InlineData("-9223372036854775809")]
+    public void ParseLiteralLong_Overflow(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ValueParser.ParseLiteralLong(GetState(sql)));
+
+        Assert.Equal(sql, exception.Value);
+        Assert.Equal(long.MinValue, exception.Minimum);
+        Assert.Equal(long.MaxValue, exception.Maximum);
+    }
+
+    [Theory]
+    [InlineData("3.24")]
+    [InlineData("SELECT")]
+    [InlineData("'string'")]
+    [InlineData("+")]
+    [InlineData("-")]
+    [InlineData("-+3")]
+    public void SignedIntegerLiterals_RejectInvalidSyntax(string sql)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ValueParser.ParseLiteralInt(GetState(sql)));
+        Assert.Throws<ParseException.ExpectedButFound>(() => ValueParser.ParseLiteralLong(GetState(sql)));
+    }
+
+    [Theory]
+    [InlineData("+3", 3)]
+    [InlineData("-3", -3)]
+    public void SignedNumericTokens_AreInterpretedByTryParse(string text, int expected)
+    {
+        var token = new NumericLiteral(text) { Location = default };
+
+        Assert.Equal(expected, ValueParser.ParseLiteralInt(new ParserState([token])));
+        Assert.Equal(expected, ValueParser.ParseLiteralLong(new ParserState([token])));
     }
 
     [Theory]
