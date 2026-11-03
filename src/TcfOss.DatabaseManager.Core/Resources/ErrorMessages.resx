@@ -147,6 +147,9 @@
     <data name="Err_Syntax_UnsupportedDialectClause" xml:space="preserve">
         <value>Dialect '{0}' does not support the clause '{1}'.</value>
     </data>
+    <data name="Err_Syntax_UnsupportedDialectGeneral" xml:space="preserve">
+        <value>Dialect '{0}' does not support {1}.</value>
+    </data>
     <data name="Err_Syntax_UnknownIdentifier" xml:space="preserve">
         <value>The identifier '{0}' could be found.</value>
     </data>
@@ -201,6 +204,9 @@
     <data name="Err_Syntax_CreateIndexUnexpectedType" xml:space="preserve">
         <value>The CREATE INDEX statement specifies an unexpected index type '{0}'.</value>
     </data>
+    <data name="Err_Syntax_EmptyIndexColumnList" xml:space="preserve">
+        <value>{0} must specify at least one column.</value>
+    </data>
     <data name="Err_Def" xml:space="preserve">
         <value>Unsupported in Definitions Error</value>
     </data>
@@ -230,6 +236,9 @@
     </data>
     <data name="Err_Def_Table_SelectAs" xml:space="preserve">
         <value>The definition of TABLE '{0}' contains a SELECT AS clause, which is not supported.</value>
+    </data>
+    <data name="Err_Def_TempTable" xml:space="preserve">
+        <value>Temporary table ('{0}') cannot be included in definitions.</value>
     </data>
     <data name="Err_Def_View_UnexpectedSelectItem" xml:space="preserve">
         <value>The definition of VIEW '{0}' contains an unexpected selected item '{1}'.</value>

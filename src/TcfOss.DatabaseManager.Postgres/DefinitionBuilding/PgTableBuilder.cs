@@ -328,10 +328,10 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         }
         if (method != null && method != IndexMethod.Btree && unique)
         {
-            throw new NotSupportedException("Unique indexes and index ordering are only supported with PostgreSQL B-tree indexes.");
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"UNIQUE USING {method}", sourceRef);
         }
-        ValidateIncludedColumnMethod(method ?? IndexMethod.Btree, includedColumns);
-        SqlValueList<KeyPart> parts = NormalizeIndexParts(columns);
+        ValidateIncludedColumnMethod(method ?? IndexMethod.Btree, includedColumns, sourceRef);
+        SqlValueList<KeyPart> parts = NormalizeIndexParts(columns, sourceRef);
         foreach (KeyPart.IndexExpression part in parts.OfType<KeyPart.IndexExpression>())
         {
             ValidateExpressionScope(part.Expression, sourceRef);
@@ -352,11 +352,11 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         }, sourceRef));
     }
 
-    private static void ValidateIncludedColumnMethod(IndexMethod method, IncludedColumns? includedColumns)
+    private static void ValidateIncludedColumnMethod(IndexMethod method, IncludedColumns? includedColumns, SourceRef? sourceRef)
     {
         if (includedColumns != null && method != IndexMethod.Btree && method != IndexMethod.Gist && method != IndexMethod.SpGist)
         {
-            throw new NotSupportedException($"PostgreSQL {method} indexes do not support INCLUDE columns.");
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"INCLUDE with {method} indexes", sourceRef);
         }
     }
 
@@ -458,7 +458,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         }
         if (includedColumns.Columns.Count == 0)
         {
-            throw new NotSupportedException("PostgreSQL INCLUDE must contain at least one column.");
+            throw new SqlSyntaxException.EmptyIndexColumnList("An index INCLUDE clause", indexSource);
         }
         var seen = keyColumns.Select(column => column.Name).ToHashSet();
         SqlValueList<Identifier> normalized = [];
@@ -491,7 +491,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     {
         if (keyParts.Count == 0)
         {
-            throw new NotSupportedException("A PostgreSQL key constraint must contain at least one column.");
+            throw new SqlSyntaxException.EmptyIndexColumnList("A primary key", sourceRef);
         }
         SqlValueList<Identifier> result = [];
         var seen = new HashSet<string>();
@@ -499,7 +499,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             if (keyPart is not KeyPart.Column { Length: null, Direction: null } column)
             {
-                throw new NotSupportedException("PostgreSQL primary/unique constraints currently support plain column names only.");
+                throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "index expressions, prefix lengths, or sort directions in PRIMARY KEY/UNIQUE constraints", sourceRef);
             }
             Identifier actual = ComponentNormalizer.NormalizeSingleIdentifier(column.Name);
             if (!seen.Add(actual.Name))
@@ -511,11 +511,11 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         return result;
     }
 
-    private SqlValueList<KeyPart> NormalizeIndexParts(SqlValueList<KeyPart> keyParts)
+    private SqlValueList<KeyPart> NormalizeIndexParts(SqlValueList<KeyPart> keyParts, SourceRef? sourceRef)
     {
         if (keyParts.Count == 0)
         {
-            throw new NotSupportedException("A PostgreSQL index must contain at least one key part.");
+            throw new SqlSyntaxException.EmptyIndexColumnList("An index", sourceRef);
         }
         SqlValueList<KeyPart> result = [];
         foreach (KeyPart part in keyParts)
@@ -529,7 +529,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
                     result.Add(new KeyPart.IndexExpression(GetNormalizedExpression(expression.Expression), expression.Direction));
                     break;
                 default:
-                    throw new NotSupportedException("PostgreSQL indexes do not support column prefix lengths.");
+                    throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "index column prefix lengths", sourceRef);
             }
         }
         return result;

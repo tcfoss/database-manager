@@ -298,6 +298,103 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
+    public void AddIndex_RejectsEmptyIncludeWithSourcedSyntaxError()
+    {
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id) INCLUDE (payload)")) with
+        {
+            IncludedColumns = new IncludedColumns([])
+        };
+        var sourceRef = new SourceRef(4, 10, 20);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.EmptyIndexColumnList>(() => builder.AddIndex(index, sourceRef));
+
+        Assert.Contains("INCLUDE", exception.Message);
+        Assert.Equal(sourceRef, exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void AddPrimaryKey_RejectsEmptyColumnListWithSourcedSyntaxError()
+    {
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, PRIMARY KEY (id))"));
+        var constraint = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints)) with
+        {
+            Columns = []
+        };
+        var sourceRef = new SourceRef(4, 10, 20);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.EmptyIndexColumnList>(() => builder.AddIndexOrConstraint(constraint, sourceRef));
+
+        Assert.Contains("primary key", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(sourceRef, exception.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id DESC))")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY ((id + 1)))")]
+    public void AddPrimaryKey_RejectsNonColumnKeyPartsWithSourcedSyntaxError(string sql)
+    {
+        var table = Assert.IsType<CreateTable>(ParseStatement(sql));
+        var constraint = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints));
+        var sourceRef = new SourceRef(4, 10, 20);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.AddIndexOrConstraint(constraint, sourceRef));
+
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Contains("PRIMARY KEY/UNIQUE constraints", exception.Clause);
+        Assert.Equal(sourceRef, exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void AddIndex_RejectsEmptyKeyListWithSourcedSyntaxError()
+    {
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)")) with
+        {
+            Columns = []
+        };
+        var sourceRef = new SourceRef(4, 10, 20);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.EmptyIndexColumnList>(() => builder.AddIndex(index, sourceRef));
+
+        Assert.Contains("index", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(sourceRef, exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void AddIndex_RejectsPrefixLengthWithSourcedSyntaxError()
+    {
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)")) with
+        {
+            Columns = [new KeyPart.Column(new Identifier("id"), 3)]
+        };
+        var sourceRef = new SourceRef(4, 10, 20);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.AddIndex(index, sourceRef));
+
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Equal("index column prefix lengths", exception.Clause);
+        Assert.Equal(sourceRef, exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void AddIndex_RejectsUniqueHashIndexWithSourcedSyntaxError()
+    {
+        var index = Assert.IsType<CreateIndex.Unique>(ParseStatement("CREATE UNIQUE INDEX ix ON items USING HASH (id)"));
+        var sourceRef = new SourceRef(4, 10, 20);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.AddIndex(index, sourceRef));
+
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Equal("UNIQUE USING HASH", exception.Clause);
+        Assert.Equal(sourceRef, exception.ObjectSourceRef);
+    }
+
+    [Fact]
     public void CheckExpressions_RejectExternalScopesAtAddTime()
     {
         var builder = CreateBuilder();

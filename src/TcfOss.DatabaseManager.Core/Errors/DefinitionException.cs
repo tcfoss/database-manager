@@ -37,6 +37,12 @@ public class DefinitionException(string message, SourceRef? sourceRef = null) : 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Def_Table_SelectAs);
     }
 
+    public class TempTable(string tableName, SourceRef? sourceRef = null)
+        : DefinitionException(s_compositeFormat.Apply(tableName), sourceRef)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Def_TempTable);
+    }
+
     public class MissingTableColumns(string tableName, SourceRef? sourceRef)
         : DefinitionException(s_compositeFormat.Apply(tableName), sourceRef)
     {

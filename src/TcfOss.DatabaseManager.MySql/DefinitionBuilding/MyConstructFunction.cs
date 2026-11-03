@@ -1,6 +1,9 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
@@ -22,7 +25,8 @@ public class MyConstructFunction(MyConfig config, MyAttributeNormalizer normaliz
         IEnumerable<RoutineParameter> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
         if (createFunctionStatement.ReturnType is not StatementFunctionReturn.DataTypeReturn { DataType: DataTypeReference.BuiltIn returnType })
         {
-            throw new NotSupportedException("MySQL and MariaDB functions require a scalar built-in return type.");
+            string dialect = _config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
+            throw new SqlSyntaxException.UnsupportedDialect(dialect, $"function return type {createFunctionStatement.ReturnType.ToSql()}", sourceRef);
         }
         return new MyStoredFunction(name, [.. parameters], returnType.DataType, createFunctionStatement.Body)
         {

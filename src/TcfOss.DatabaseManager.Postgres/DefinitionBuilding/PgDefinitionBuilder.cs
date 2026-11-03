@@ -47,7 +47,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 case CreateTable table:
                     if (table.Temporary)
                     {
-                        throw new NotSupportedException("PostgreSQL temporary-table definition construction is not implemented.");
+                        throw new DefinitionException.TempTable(table.Name.ToString(), sourceRef);
                     }
                     if (table.AsSelect != null)
                     {
@@ -199,7 +199,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 }
                 return new FunctionReturn.Table(columns);
             default:
-                throw new NotSupportedException($"Unsupported function return shape: {returnType.GetType().Name}");
+                throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"function return shape {returnType.GetType().Name}", sourceRef);
         }
     }
 

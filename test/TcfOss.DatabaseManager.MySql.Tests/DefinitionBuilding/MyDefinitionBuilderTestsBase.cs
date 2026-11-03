@@ -12,6 +12,7 @@ using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
@@ -913,7 +914,9 @@ public abstract class MyDefinitionBuilderTestsBase
         var extended = Assert.IsType<CreateFunction>(Assert.Single(coreParser.ParseText($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1")));
         var statement = parsed with { ReturnType = extended.ReturnType };
 
-        Assert.Throws<NotSupportedException>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", exception.Dialect);
+        Assert.Contains("function return type", exception.Contents);
     }
 
     [Fact]
@@ -2415,11 +2418,36 @@ public abstract class MyDefinitionBuilderTestsBase
         var column =
             new StatementColumn.MsComputed(new Identifier("val", QuoteStyle.None), new LiteralValue(new Value.Null()), []);
         var createTable = new CreateTable(tableName, [column], []) { Meta = { Start = 0, End = 10 } };
-        var error = Assert.Throws<NotSupportedException>(() =>
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() =>
         {
             DefinitionBuilder.ProcessStatements([createTable], Schema, 0);
         });
-        Assert.Contains("Only typed columns are supported", error.Message);
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", error.Dialect);
+        Assert.Contains("column declaration", error.Contents);
+    }
+
+    [Fact]
+    public void CreateTable_UnsupportedGeneratedOption_ThrowsSyntaxError()
+    {
+        var table = new CreateTable(new ObjectName(new Identifier("mytable")),
+            [new StatementColumn.Typed(new Identifier("val"), new DataType.Int(), [new UnsupportedGeneratedOption()])], [])
+        {
+            Meta = { Start = 0, End = 10 }
+        };
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => DefinitionBuilder.ProcessStatements([table], Schema, 0));
+
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", exception.Dialect);
+        Assert.Contains("generated column option", exception.Clause);
+        Assert.Equal(new SourceRef(0, 0, 10), exception.ObjectSourceRef);
+    }
+
+    private sealed record UnsupportedGeneratedOption : StatementColumnOption.Generated
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("GENERATED UNSUPPORTED");
+        }
     }
 
     public class DataTypeSerializer : IXunitSerializer

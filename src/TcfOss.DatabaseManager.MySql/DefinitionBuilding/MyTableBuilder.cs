@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
@@ -54,12 +55,13 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
     public override void AddColumn(StatementColumn column, SourceRef? sourceRef)
     {
+        sourceRef ??= SourceRef;
         if (column is not StatementColumn.Typed typedColumn)
         {
-            throw new NotSupportedException($"Only typed columns are supported, got {column.GetType().Name}");
+            string dialect = config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
+            throw new SqlSyntaxException.UnsupportedDialect(dialect, $"column declaration {column.GetType().Name}", sourceRef);
         }
 
-        sourceRef ??= SourceRef;
         var name = new ColumnIdentifier(column.Name.Name, Name, _quoteStyle);
         ColumnOption.Unique? unique = null;
         ColumnOption.Nullability? nullability = null;
@@ -404,7 +406,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         return normalized;
     }
 
-    private ColumnOption.Generated.AsExpression NormalizeGenerated(StatementColumnOption.Generated givenGenerated)
+    private ColumnOption.Generated.AsExpression NormalizeGenerated(StatementColumnOption.Generated givenGenerated, SourceRef? sourceRef)
     {
         if (givenGenerated is StatementColumnOption.Generated.AsExpression gen)
         {
@@ -414,7 +416,8 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                 NormalizedExpression = flattened
             };
         }
-        throw new NotSupportedException($"Not-implemented generated option type {givenGenerated}.");
+        string dialect = config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
+        throw new SqlSyntaxException.UnsupportedDialectClause(dialect, $"generated column option {givenGenerated.GetType().Name}", sourceRef);
     }
 
     private MyPrimaryKey ConvertColumnPrimaryKey(StatementColumnOption.PrimaryKey primaryKey, ColumnIdentifier columnName, SourceRef? sourceRef = null)
@@ -533,7 +536,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("GENERATED", "column", columnName, sourceRef);
         }
-        return NormalizeGenerated(generatedOption);
+        return NormalizeGenerated(generatedOption, sourceRef);
     }
 
     // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local

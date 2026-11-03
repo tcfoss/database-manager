@@ -651,7 +651,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var builder = CreateBuilder();
 
-        Assert.Throws<NotSupportedException>(() => builder.ProcessStatements(ParseStatements("CREATE TEMP TABLE items (id INT)"), GetSchema(), 0));
+        var exception = Assert.Throws<DefinitionException.TempTable>(() => builder.ProcessStatements(ParseStatements("CREATE TEMP TABLE items (id INT)"), GetSchema(), 0));
+        Assert.Contains("Temporary table", exception.Message);
+        Assert.NotNull(exception.ObjectSourceRef);
     }
 
     [Fact]
@@ -1017,8 +1019,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT, payload TEXT); CREATE INDEX ix ON items USING HASH (id) INCLUDE (payload)"), GetSchema(), 0);
 
-        var exception = Assert.Throws<NotSupportedException>(builder.ToDefinition);
-        Assert.Contains("HASH indexes do not support INCLUDE", exception.Message);
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Equal("INCLUDE with HASH indexes", exception.Clause);
+        Assert.NotNull(exception.ObjectSourceRef);
     }
 
     [Theory]
@@ -1268,7 +1272,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements([function], GetSchema(), 0);
 
-        Assert.Throws<NotSupportedException>(builder.ToDefinition);
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Contains("function return shape", exception.Clause);
     }
 
     private static SchemaIdentifier GetSchema()

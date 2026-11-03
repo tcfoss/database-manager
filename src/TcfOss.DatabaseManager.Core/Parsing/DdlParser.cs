@@ -527,14 +527,7 @@ public class DdlParser
     {
         if (state.Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word && !state.PeekNthIs<Dot>(1))
         {
-            PgPseudoType? pseudoType = word.Value.ToUpperInvariant() switch
-            {
-                "TRIGGER" => PgPseudoType.Trigger,
-                "VOID" => PgPseudoType.Void,
-                "RECORD" => PgPseudoType.Record,
-                _ => null
-            };
-            if (pseudoType != null)
+            if (PgPseudoType.TryParse(word.Value, out PgPseudoType? pseudoType))
             {
                 state.Next();
                 return new StatementFunctionReturn.PseudoType(pseudoType);
