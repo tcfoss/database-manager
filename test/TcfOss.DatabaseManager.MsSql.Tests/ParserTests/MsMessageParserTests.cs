@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -21,6 +22,59 @@ public class MsMessageParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("THROW 50000, 'oops', 1", Label = "THROW with arguments")]
     [InlineData("THROW @num, @msg, @state", Label = "THROW with variables")]
     public void Throw_TextMatch(string text)
+    {
+        var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(";")]
+    [InlineData(")")]
+    [InlineData("GO")]
+    [InlineData("END")]
+    [InlineData("ELSE")]
+    [InlineData("SELECT")]
+    [InlineData("INSERT")]
+    [InlineData("UPDATE")]
+    [InlineData("DELETE")]
+    [InlineData("EXEC")]
+    [InlineData("EXECUTE")]
+    [InlineData("CREATE")]
+    [InlineData("ALTER")]
+    [InlineData("DROP")]
+    [InlineData("TRUNCATE")]
+    [InlineData("DECLARE")]
+    [InlineData("SET")]
+    [InlineData("IF")]
+    [InlineData("WHILE")]
+    [InlineData("BEGIN")]
+    [InlineData("RETURN")]
+    [InlineData("USE")]
+    [InlineData("OPEN")]
+    [InlineData("CLOSE")]
+    [InlineData("FETCH")]
+    [InlineData("BREAK")]
+    [InlineData("CONTINUE")]
+    public void ReturnAndThrow_TerminatorsRemainUnconsumed(string terminator)
+    {
+        string[] keywords = ["RETURN", "THROW"];
+        foreach (string keyword in keywords)
+        {
+            var state = GetState($"{keyword}\n{terminator}");
+            var parser = new MsParser();
+            var next = state.PeekNth(1);
+
+            var statement = parser.ParseStatement(state);
+
+            Assert.Equal(keyword, statement.ToSql());
+            Assert.Same(next, state.Peek());
+        }
+    }
+
+    [Theory]
+    [InlineData("RETURN result")]
+    [InlineData("THROW error_number, error_message, error_state")]
+    public void ReturnAndThrow_IdentifierExpressions_TextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);

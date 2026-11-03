@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -39,6 +40,22 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("BEGIN TRANSACTION")]
+    [InlineData("COMMIT TRANSACTION")]
+    [InlineData("ROLLBACK TRANSACTION")]
+    public void TransactionName_StatementKeyword_RemainsUnconsumed(string sql)
+    {
+        var state = GetState($"{sql} SELECT 1");
+        var next = state.PeekNth(2);
+        var parser = new MsParser();
+
+        var statement = parser.ParseStatement(state);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Same(next, state.Peek());
     }
 
     [Theory]

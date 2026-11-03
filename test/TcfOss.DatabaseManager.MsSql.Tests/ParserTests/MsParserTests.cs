@@ -214,6 +214,26 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     }
 
     [Theory]
+    [InlineData("CREATE FULLTEXT INDEX ix ON items (id)")]
+    [InlineData("CREATE SPATIAL INDEX ix ON items (id)")]
+    [InlineData("CREATE CLUSTERED INDEX ix ON items (id)")]
+    [InlineData("CREATE NONCLUSTERED INDEX ix ON items (id)")]
+    public void CreateIndex_KindKeywords_TextMatch(string sql)
+    {
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("CREATE OR ALTER TABLE items (id INT)")]
+    [InlineData("CREATE OR ALTER INDEX ix ON items (id)")]
+    public void CreateOrAlter_UnsupportedTargets_Throws(string sql)
+    {
+        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatement(sql));
+        Assert.Contains("TRIGGER | FUNCTION | PROCEDURE | VIEW", exception.Message);
+    }
+
+    [Theory]
     [InlineData("CREATE *")]
     [InlineData("CREATE unsupported_object")]
     public void InvalidCreateTargets_AreRejected(string sql)

@@ -435,6 +435,15 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("CREATE CLUSTERED INDEX ix ON items (id)")]
+    [InlineData("CREATE NONCLUSTERED INDEX ix ON items (id)")]
+    public void CreateIndex_OrganizationKeywords_TextMatch(string sql)
+    {
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
     [InlineData("CREATE *")]
     [InlineData("CREATE unsupported_object")]
     public void InvalidCreateTargets_AreRejected(string sql)
