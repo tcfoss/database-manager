@@ -30,3 +30,5 @@ BuildInfo.cs
 traces/
 
 unreachable-coverage-filter.*.log
+
+planning/
