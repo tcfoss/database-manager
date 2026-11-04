@@ -6,20 +6,26 @@ using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects;
 
-public abstract record StoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, FunctionReturn ReturnType, Statement Body) : IDatabaseObject<CreateFunction>
+public abstract record StoredFunction<TParam>(
+    ObjectIdentifier Name,
+    SqlValueList<TParam> Parameters,
+    FunctionReturn ReturnType,
+    Statement Body)
+    : IDatabaseObject<CreateFunction>
+    where TParam : RoutineParameter, IEquatable<TParam>
 {
     public ObjectType ObjectType => ObjectType.Function;
 
     public string? RawBodyText { get; init; }
 
-    public virtual bool Equals(StoredFunction? other)
+    public virtual bool Equals(StoredFunction<TParam>? other)
     {
-        // `RawBodyText` is excluded from the equality contract.
         if (other == null)
         {
             return false;
         }
 
+        // `RawBodyText` is excluded from the equality contract.
         return Name == other.Name
             && Parameters.Equals(other.Parameters)
             && ReturnType == other.ReturnType

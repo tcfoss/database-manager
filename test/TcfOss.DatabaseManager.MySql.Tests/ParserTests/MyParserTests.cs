@@ -484,9 +484,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [Fact]
     public void ProcedureParameter_MariaDbDefaultKeyword_RoundTripsInSharedParser()
     {
-        string sql = $"CREATE PROCEDURE p(IN value INT DEFAULT (1 + 2)) SELECT value";
-        string expectedSql = $"CREATE PROCEDURE p (IN value INT DEFAULT (1 + 2)) SELECT value";
-        var (expected, actual) = GetExpectedActual(sql, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        string sql = "CREATE PROCEDURE p(IN value INT DEFAULT (1 + 2)) SELECT value";
+        string expectedSql = "CREATE PROCEDURE p (IN value INT DEFAULT (1 + 2)) SELECT value";
+        (string? expected, string? actual) = GetExpectedActual(sql, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
 
         Assert.Equal(expected, actual);
     }
@@ -494,9 +494,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [Fact]
     public void FunctionParameter_MariaDbDefaultKeyword_RoundTripsInSharedParser()
     {
-        string sql = $"CREATE FUNCTION f(IN value INT DEFAULT (1 + 2)) RETURNS INT RETURN value";
-        string expectedSql = $"CREATE FUNCTION f (IN value INT DEFAULT (1 + 2)) RETURNS INT RETURN value";
-        var (expected, actual) = GetExpectedActual(sql, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+        string sql = "CREATE FUNCTION f(IN value INT DEFAULT (1 + 2)) RETURNS INT RETURN value";
+        string expectedSql = "CREATE FUNCTION f (IN value INT DEFAULT (1 + 2)) RETURNS INT RETURN value";
+        (string? expected, string? actual) = GetExpectedActual(sql, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
 
         Assert.Equal(expected, actual);
     }

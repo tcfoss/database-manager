@@ -174,11 +174,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return new PgRoutineOptions(ComponentNormalizer.NormalizeSingleIdentifier(options.Language));
     }
 
-    private FunctionReturn ResolveFunctionReturn(StatementFunctionReturn? returnType, SqlValueList<RoutineParameter> parameters,
+    private FunctionReturn ResolveFunctionReturn(StatementFunctionReturn? returnType, SqlValueList<RoutineParameter.Postgres> parameters,
         ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
     {
-        RoutineParameter.Postgres[] outputParameters = [.. parameters.OfType<RoutineParameter.Postgres>()
-            .Where(parameter => parameter.Direction == RoutineParameterDirection.Out || parameter.Direction == RoutineParameterDirection.InOut)];
+        RoutineParameter.Postgres[] outputParameters = [.. parameters.Where(parameter => parameter.Direction == RoutineParameterDirection.Out || parameter.Direction == RoutineParameterDirection.InOut)];
 
         if (returnType == null)
         {
@@ -228,7 +227,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 {
                     if (!names.Add(Handle.Create(column.Name, Config.NameHandling)))
                     {
-                        SourceRef location = column.Name.Source is SourceRef columnSource
+                        SourceRef location = column.Name.Source is { } columnSource
                             ? columnSource with { SourceId = sourceRef.SourceId }
                             : sourceRef;
                         throw new SqlSyntaxException.SpecifiedMoreThanOnce("return column " + column.Name.Name, "function", routine, location);
@@ -259,7 +258,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         foreach (KeyValuePair<ObjectHandle, Declaration<CreateFunction>> declaration in _functions)
         {
             Declaration<CreateFunction> item = declaration.Value;
-            SqlValueList<RoutineParameter> parameters = ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager);
+            SqlValueList<RoutineParameter.Postgres> parameters = ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager);
             functions.Add(declaration.Key, new PgStoredFunction(item.Name,
                 parameters,
                 ResolveFunctionReturn(item.Statement.ReturnType, parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
@@ -271,10 +270,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         }
 
         var procedures = new DatabaseObjectDict<PgStoredProcedure>(Config.NameHandling);
-        foreach (KeyValuePair<ObjectHandle, Declaration<CreateProcedure>> declaration in _procedures)
+        foreach ((ObjectHandle key, Declaration<CreateProcedure> item) in _procedures)
         {
-            Declaration<CreateProcedure> item = declaration.Value;
-            procedures.Add(declaration.Key, new PgStoredProcedure(item.Name,
+            procedures.Add(key, new PgStoredProcedure(item.Name,
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
             {
                 Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
@@ -354,11 +352,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         }
     }
 
-    private SqlValueList<RoutineParameter> ResolveParameters(SqlValueList<StatementRoutineParameter> parameters,
+    private SqlValueList<RoutineParameter.Postgres> ResolveParameters(SqlValueList<StatementRoutineParameter> parameters,
         ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
     {
         var names = new HashSet<string>();
-        SqlValueList<RoutineParameter> result = [];
+        SqlValueList<RoutineParameter.Postgres> result = [];
         bool hasInputDefault = false;
         bool hasVariadic = false;
         foreach (StatementRoutineParameter parameter in parameters)

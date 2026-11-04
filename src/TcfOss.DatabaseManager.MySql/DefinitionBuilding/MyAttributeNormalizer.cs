@@ -28,7 +28,7 @@ public class MyAttributeNormalizer(MyConfig config, INormalizeComponents compone
         };
     }
 
-    public RoutineParameter NormalizeRoutineParameter(StatementRoutineParameter parameter, bool isFunction)
+    public RoutineParameter.Directed NormalizeRoutineParameter(StatementRoutineParameter parameter, bool isFunction)
     {
         Identifier name = parameter.Name
             ?? throw new SqlSyntaxException.UnsupportedDialect("MySQL/MariaDB", "unnamed routine parameters");

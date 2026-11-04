@@ -285,7 +285,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(plain, tagged);
         Assert.Equal(plain.GetHashCode(), tagged.GetHashCode());
         Assert.NotEqual(plain, tagged with { Value = "SELECT 'y'" });
-        Assert.False(plain.Equals((RoutineBodyLiteral?)null));
+        Assert.False(plain.Equals(null));
         Assert.NotEqual<Statement>(plain, new BeginAtomic([]));
         Assert.Equal("'SELECT ''x'''", plain.ToSql());
         Assert.Equal("$body$SELECT 'x'$body$", tagged.ToSql());

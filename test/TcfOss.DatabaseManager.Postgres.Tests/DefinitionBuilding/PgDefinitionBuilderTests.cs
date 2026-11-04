@@ -348,8 +348,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements($"{types}; CREATE FUNCTION Echo(value app.label) RETURNS app.mood RETURN 'happy'; CREATE PROCEDURE save(IN value app.label) BEGIN ATOMIC SELECT value; END"), GetSchema(), 0);
         PgDefinition original = builder.ToDefinition();
-        StoredFunction function = Assert.Single(original.Functions).Value;
-        StoredProcedure procedure = Assert.Single(original.Procedures).Value;
+        StoredFunction<RoutineParameter.Postgres> function = Assert.Single(original.Functions).Value;
+        StoredProcedure<RoutineParameter.Postgres> procedure = Assert.Single(original.Procedures).Value;
 
         CreateFunction functionStatement = function.ToCreateStatement(includeSchema);
         CreateProcedure procedureStatement = procedure.ToCreateStatement(includeSchema);
@@ -361,8 +361,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements($"{types}; {functionStatement.ToSql()}; {procedureStatement.ToSql()}"), GetSchema(), 1);
         PgDefinition result = rebuilt.ToDefinition();
-        StoredFunction rebuiltFunction = Assert.Single(result.Functions).Value;
-        StoredProcedure rebuiltProcedure = Assert.Single(result.Procedures).Value;
+        StoredFunction<RoutineParameter.Postgres> rebuiltFunction = Assert.Single(result.Functions).Value;
+        StoredProcedure<RoutineParameter.Postgres> rebuiltProcedure = Assert.Single(result.Procedures).Value;
         Assert.Equal(function.Name, rebuiltFunction.Name);
         Assert.Equal(function.Parameters, rebuiltFunction.Parameters);
         Assert.Equal(function.ReturnType, rebuiltFunction.ReturnType);

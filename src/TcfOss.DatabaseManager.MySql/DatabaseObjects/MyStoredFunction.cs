@@ -9,8 +9,8 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
 
-public record MyStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, FunctionReturn ReturnType, Statement Body)
-    : StoredFunction(Name, Parameters, ReturnType, Body)
+public record MyStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter.Directed> Parameters, FunctionReturn ReturnType, Statement Body)
+    : StoredFunction<RoutineParameter.Directed>(Name, Parameters, ReturnType, Body)
 {
     public required Definer Definer { get; init; }
     public required SecurityContext SecurityContext { get; init; }

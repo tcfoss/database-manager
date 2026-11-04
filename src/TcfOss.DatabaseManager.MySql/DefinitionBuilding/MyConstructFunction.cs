@@ -22,7 +22,7 @@ public class MyConstructFunction(MyConfig config, MyAttributeNormalizer normaliz
     {
         Definer definer = createFunctionStatement.Definer ?? new Definer(new Account.CurrentUser());
         definer = new Definer(_normalizer.NormalizeAccount(definer.Account, accountQuoteStyle));
-        IEnumerable<RoutineParameter> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
+        IEnumerable<RoutineParameter.Directed> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
         if (createFunctionStatement.ReturnType is not StatementFunctionReturn.DataTypeReturn { DataType: DataTypeReference.BuiltIn returnType })
         {
             string dialect = _config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";

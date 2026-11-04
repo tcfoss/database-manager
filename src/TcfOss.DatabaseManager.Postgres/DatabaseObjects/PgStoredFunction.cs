@@ -8,8 +8,9 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 
-public record PgStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters,
-    FunctionReturn ReturnType, Statement Body) : StoredFunction(Name, Parameters, ReturnType, Body)
+public record PgStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter.Postgres> Parameters,
+    FunctionReturn ReturnType, Statement Body)
+    : StoredFunction<RoutineParameter.Postgres>(Name, Parameters, ReturnType, Body)
 {
     public PgRoutineOptions? Options { get; init; }
 

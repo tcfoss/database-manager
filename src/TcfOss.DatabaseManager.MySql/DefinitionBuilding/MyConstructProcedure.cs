@@ -16,7 +16,7 @@ public class MyConstructProcedure(MyConfig config, MyAttributeNormalizer normali
 
     public MyStoredProcedure ConstructProcedure(CreateProcedure createProcedureStatement, ObjectIdentifier name, ExtendedQuoteStyle? accountQuoteStyle, SourceRef? sourceRef)
     {
-        IEnumerable<RoutineParameter> parameters = createProcedureStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, false));
+        IEnumerable<RoutineParameter.Directed> parameters = createProcedureStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, false));
         Definer definer = createProcedureStatement.Definer ?? new Definer(new Account.CurrentUser());
         definer = new Definer(_normalizer.NormalizeAccount(definer.Account, accountQuoteStyle));
 

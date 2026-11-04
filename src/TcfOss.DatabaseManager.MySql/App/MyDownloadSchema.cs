@@ -66,7 +66,7 @@ public partial class MyDownloadSchema(MyConfig config, ILogger<MyDownloadSchema>
             fout.WriteLine($"CREATE TABLE {stmt.Name.ToSql()}");
             fout.WriteLine("(");
             int i = 0;
-            foreach (StatementColumn col in stmt.Columns!)
+            foreach (StatementColumn col in stmt.Columns)
             {
                 fout.Write($"    {col.ToSql()}");
                 if (i < stmt.Columns.Count - 1 || stmt.Constraints.Any())

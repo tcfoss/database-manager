@@ -981,10 +981,10 @@ public abstract class MyDefinitionBuilderTestsBase
 
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("param1", parameters[0].Name!.Name);
+        Assert.Equal("param1", parameters[0].Name.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(FunctionParameterDirection, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("param2", parameters[1].Name!.Name);
+        Assert.Equal("param2", parameters[1].Name.Name);
         Assert.Equal($"VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter}", parameters[1].DataType.ToSql());
         Assert.Equal(FunctionParameterDirection, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
 
@@ -1029,10 +1029,10 @@ public abstract class MyDefinitionBuilderTestsBase
 
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("param1", parameters[0].Name!.Name);
+        Assert.Equal("param1", parameters[0].Name.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.InOut, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("param2", parameters[1].Name!.Name);
+        Assert.Equal("param2", parameters[1].Name.Name);
         Assert.Equal($"VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter}", parameters[1].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.Out, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
 
@@ -1548,7 +1548,7 @@ public abstract class MyDefinitionBuilderTestsBase
 
 
         var expected1 = $"`id` INT{DefaultUnsignedIntegerWidth} UNSIGNED NOT NULL AUTO_INCREMENT";
-        Assert.Equal(expected1, table.Columns![0].ToSql());
+        Assert.Equal(expected1, table.Columns[0].ToSql());
         var expected2 = $"`val` VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter} NULL DEFAULT NULL";
         Assert.Equal(expected2, table.Columns[1].ToSql());
 
@@ -1953,7 +1953,7 @@ public abstract class MyDefinitionBuilderTestsBase
     [Fact]
     public void UseCatalog_Throws()
     {
-        var statementText = $"""
+        var statementText = """
         CREATE TABLE table1 (
             id INT NOT NULL
         );

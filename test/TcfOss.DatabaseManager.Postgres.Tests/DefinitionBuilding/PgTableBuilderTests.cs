@@ -40,7 +40,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PseudoTable pseudoTable = builder.ToPseudoTable();
         Assert.Equal(new[] { "id", "Mood" }, pseudoTable.SelectableItems);
         Assert.Equal(PseudoTableType.Table, pseudoTable.Type);
-        Assert.Throws<NotImplementedException>(() => builder.ToTable());
+        Assert.Throws<NotImplementedException>(builder.ToTable);
     }
 
     [Theory]

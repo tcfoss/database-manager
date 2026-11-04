@@ -486,26 +486,6 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<RoutineParameterDto>)[.. g.Select(r => r.Value)]));
     }
 
-    private SqlValueList<RoutineParameter> GetRoutineParameters(
-        SchemaRoutineData routineData,
-        string routineType,
-        string routineName)
-    {
-        routineData.ParametersByRoutine.TryGetValue((routineName, routineType), out IReadOnlyList<RoutineParameterDto>? parameters);
-        var routineParms = new SqlValueList<RoutineParameter>();
-        foreach (RoutineParameterDto p in parameters ?? [])
-        {
-            DataType dataType = _helper.ParseDataTypeWithDefaults(p.DataType, p.CharacterSet, p.Collation);
-            var name = new Identifier(p.ParameterName, _quoteStyle);
-            RoutineParameterDirection? direction = routineType == "FUNCTION"
-                ? null
-                : RoutineParameterDirection.Parse(p.ParameterMode!);
-            routineParms.Add(new RoutineParameter.Directed(name, dataType, direction));
-        }
-
-        return routineParms;
-    }
-
     public async Task<MyStoredProcedure> GetProcedureAsync(ObjectIdentifier procedureId, CancellationToken cancellationToken = default)
     {
         string createProcText = (await _rawEntityRetriever.GetCreateProcedureAsync(procedureId, cancellationToken)).CreateProcedure!;
@@ -517,7 +497,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         SchemaRoutineData routineData = await _routineDataBySchema.GetAsync(procedureId.InfoSchemaKey, cancellationToken);
         RoutineDto proc = routineData.RoutinesByName[(procName, "PROCEDURE")];
 
-        SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "PROCEDURE", procName);
+        SqlValueList<RoutineParameter.Directed> routineParams = _helper.GetRoutineParameters(routineData, "PROCEDURE", procName, false);
 
         RoutineInfo procInfo = _helper.RoutineToRoutineInfo(proc);
 
@@ -540,7 +520,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         SchemaRoutineData routineData = await _routineDataBySchema.GetAsync(functionId.InfoSchemaKey, cancellationToken);
         RoutineDto func = routineData.RoutinesByName[(funcName, "FUNCTION")];
 
-        SqlValueList<RoutineParameter> routineParams = GetRoutineParameters(routineData, "FUNCTION", funcName);
+        SqlValueList<RoutineParameter.Directed> routineParams = _helper.GetRoutineParameters(routineData, "FUNCTION", funcName, false);
         RoutineInfo funcInfo = _helper.RoutineToRoutineInfo(func);
         DataType returnType = _helper.ParseDataType(func.DataType!);
 

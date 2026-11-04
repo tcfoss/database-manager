@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 namespace TcfOss.DatabaseManager.Core.Tests.DatabaseObjects;
 
 public record TestStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, FunctionReturn ReturnType, Statement Body)
-    : StoredFunction(Name, Parameters, ReturnType, Body)
+    : StoredFunction<RoutineParameter>(Name, Parameters, ReturnType, Body)
 {
     public override CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
