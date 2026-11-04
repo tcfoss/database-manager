@@ -140,7 +140,7 @@ public partial class MyDownloadSchema(MyConfig config, ILogger<MyDownloadSchema>
             fout.WriteLine("CREATE");
             fout.WriteLine($"    {function.Definer.ToSql()}");
             fout.WriteLine($"{aggregate}FUNCTION {stmt.Name.ToSql()} ({stmt.Parameters.ToSqlDelimited()})");
-            fout.WriteLine($"    RETURNS {(stmt.ReturnType ?? throw new InvalidOperationException("MySQL functions require a return type.")).ToSql()}");
+            fout.WriteLine($"    RETURNS {stmt.ReturnType!.ToSql()}");
             if (stmt.MyCharacteristic != null)
             {
                 fout.WriteLine($"    {stmt.MyCharacteristic.ToSql()}");

@@ -9,42 +9,46 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 public abstract record StatementRoutineParameter(DataTypeReference DataType) : IWriteSql
 {
     public abstract Identifier? Name { get; }
+    public abstract RoutineParameterDirection? Direction { get; }
+    public abstract ParameterDefault? ParameterDefault { get; }
 
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
 
-    public record Directed(Identifier ParameterName, DataTypeReference DataType, RoutineParameterDirection? Direction)
+    public record Directed(Identifier ParameterName, DataTypeReference DataType, RoutineParameterDirection? Direction, ParameterDefault? Default = null)
         : StatementRoutineParameter(DataType)
     {
         public override Identifier Name => ParameterName;
-        public ParameterDefault? Default { get; init; }
+        public override RoutineParameterDirection? Direction { get; } = Direction;
+        public override ParameterDefault? ParameterDefault { get; } = Default;
 
         public override void ToSql(SqlTextWriter writer)
         {
             WritePrefix(writer, Name, DataType, Direction);
-            Default?.ToSql(writer);
+            ParameterDefault?.ToSql(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             FormatPrefix(writer, manager, Name, DataType, Direction);
-            Default?.FormatSql(writer, manager);
+            ParameterDefault?.FormatSql(writer, manager);
         }
     }
 
-    public record Undirected(Identifier ParameterName, DataTypeReference DataType) : StatementRoutineParameter(DataType)
+    public record Undirected(Identifier ParameterName, DataTypeReference DataType, ParameterDefault.ValueDefault? Default = null) : StatementRoutineParameter(DataType)
     {
         public override Identifier Name => ParameterName;
-        public Value? DefaultValue { get; init; }
+        public override RoutineParameterDirection? Direction => null;
+        public override ParameterDefault.ValueDefault? ParameterDefault { get; } = Default;
         public MsRoutineParameterOptions? Options { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
             writer.WriteSql($"{Name} {DataType}");
             Options?.WriteBeforeDefault(writer);
-            if (DefaultValue != null)
+            if (ParameterDefault != null)
             {
-                writer.WriteSql($" = {DefaultValue}");
+                writer.WriteSql($" = {ParameterDefault.Value}");
             }
             Options?.WriteAfterDefault(writer);
         }
@@ -55,9 +59,9 @@ public abstract record StatementRoutineParameter(DataTypeReference DataType) : I
             writer.Write(" ");
             DataType.FormatSql(writer, manager);
             Options?.WriteBeforeDefault(writer);
-            if (DefaultValue != null)
+            if (ParameterDefault != null)
             {
-                writer.WriteSql($" = {DefaultValue}");
+                writer.WriteSql($" = {ParameterDefault.Value}");
             }
             Options?.WriteAfterDefault(writer);
         }
@@ -67,12 +71,14 @@ public abstract record StatementRoutineParameter(DataTypeReference DataType) : I
         ParameterDefault? Default, MsRoutineParameterOptions? Options = null) : StatementRoutineParameter(DataType)
     {
         public override Identifier? Name => ParameterName;
+        public override RoutineParameterDirection? Direction { get; } = Direction;
+        public override ParameterDefault? ParameterDefault { get; } = Default;
 
         public override void ToSql(SqlTextWriter writer)
         {
             WritePrefix(writer, Name, DataType, Direction);
             Options?.WriteBeforeDefault(writer);
-            Default?.ToSql(writer);
+            ParameterDefault?.ToSql(writer);
             Options?.WriteAfterDefault(writer);
         }
 
@@ -80,7 +86,7 @@ public abstract record StatementRoutineParameter(DataTypeReference DataType) : I
         {
             FormatPrefix(writer, manager, Name, DataType, Direction);
             Options?.WriteBeforeDefault(writer);
-            Default?.FormatSql(writer, manager);
+            ParameterDefault?.FormatSql(writer, manager);
             Options?.WriteAfterDefault(writer);
         }
     }

@@ -22,10 +22,10 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Null(Assert.IsType<StatementRoutineParameter.General>(function.Parameters[0]).Name);
         Assert.Equal("named", Assert.IsType<StatementRoutineParameter.General>(function.Parameters[1]).Name?.Name);
         Assert.True(Assert.IsType<ParameterDefault.ExpressionDefault>(
-            Assert.IsType<StatementRoutineParameter.General>(function.Parameters[1]).Default).UseDefaultKeyword);
+            Assert.IsType<StatementRoutineParameter.General>(function.Parameters[1]).ParameterDefault).UseDefaultKeyword);
         Assert.Equal(RoutineParameterDirection.InOut, Assert.IsType<StatementRoutineParameter.General>(function.Parameters[2]).Direction);
         Assert.False(Assert.IsType<ParameterDefault.ExpressionDefault>(
-            Assert.IsType<StatementRoutineParameter.General>(function.Parameters[2]).Default).UseDefaultKeyword);
+            Assert.IsType<StatementRoutineParameter.General>(function.Parameters[2]).ParameterDefault).UseDefaultKeyword);
         Assert.Equal(RoutineParameterDirection.InOut, Assert.IsType<StatementRoutineParameter.General>(function.Parameters[3]).Direction);
         Assert.Equal(RoutineParameterDirection.Variadic, Assert.IsType<StatementRoutineParameter.General>(function.Parameters[4]).Direction);
         Assert.Equal(function, ParseStatement(function.ToSql()));

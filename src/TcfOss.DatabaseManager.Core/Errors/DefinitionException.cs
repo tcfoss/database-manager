@@ -158,6 +158,8 @@ public class DefinitionException(string message, SourceRef? sourceRef = null) : 
     public class StringAttributeInvalidCharacterSet(Identifier columnId, ObjectIdentifier tableId, string characterSet, SourceRef? sourceRef = null)
         : DefinitionException(s_compositeFormat.Apply(characterSet, columnId, tableId), sourceRef)
     {
+        public string CharacterSet { get; } = characterSet;
+
         public StringAttributeInvalidCharacterSet(ColumnIdentifier columnId, string characterSet, SourceRef? sourceRef = null)
             : this(columnId.ToSimpleIdentifier(), columnId.Table, characterSet, sourceRef) { }
 
@@ -167,6 +169,9 @@ public class DefinitionException(string message, SourceRef? sourceRef = null) : 
     public class StringAttributeInvalidCollation(Identifier columnId, ObjectIdentifier tableId, string characterSet, string collation, SourceRef? sourceRef = null)
         : DefinitionException(s_compositeFormat.Apply(collation, columnId, tableId, characterSet), sourceRef)
     {
+        public string CharacterSet { get; } = characterSet;
+        public string Collation { get; } = collation;
+
         public StringAttributeInvalidCollation(ColumnIdentifier columnId, string characterSet, string collation, SourceRef? sourceRef = null)
             : this(columnId.ToSimpleIdentifier(), columnId.Table, characterSet, collation, sourceRef) { }
 

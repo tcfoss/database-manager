@@ -11,7 +11,7 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyTableParser(MyParser parser) : TableParser(parser)
 {
-    private readonly Func<ParserState, string> _parseString = ValueParser.ParseLiteralString;
+    private readonly Func<ParserState, string> _parseString = ValueParser.ParseLiteralStringOptionalQuotes;
 
     protected override StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)
     {
@@ -77,7 +77,7 @@ public class MyTableParser(MyParser parser) : TableParser(parser)
             if (state.ParseKeyword(Keyword.COMMENT))
             {
                 bool hasEquals = state.ConsumeTokenIs<Equal>();
-                string value = _parseString(state);
+                string value = ValueParser.ParseLiteralString(state);
                 return new MyStatementTableOption.Comment(value)
                 {
                     IncludeEquals = hasEquals

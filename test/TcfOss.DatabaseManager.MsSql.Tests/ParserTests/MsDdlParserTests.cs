@@ -1,4 +1,7 @@
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -57,14 +60,6 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE PROCEDURE sp"));
     }
 
-    [Theory]
-    [InlineData("CREATE PROCEDURE sp (value INT) AS SELECT 1")]
-    [InlineData("CREATE FUNCTION fn(value INT) RETURNS INT AS BEGIN RETURN 1; END")]
-    public void CreateRoutine_InvalidParameterName_Throws(string text)
-    {
-        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(text));
-    }
-
     // ---------------- CREATE FUNCTION (scalar) ----------------
 
     [Theory]
@@ -89,6 +84,46 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("CREATE FUNCTION fn() RETURNS void AS BEGIN RETURN 1; END")]
     [InlineData("CREATE FUNCTION fn() RETURNS record AS BEGIN RETURN 1; END")]
     public void CreateFunction_Invalid_Throws(string text)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement(text));
+    }
+
+
+
+    [Theory]
+    [InlineData("CREATE PROCEDURE sp (value INT) AS SELECT 1")]
+    [InlineData("CREATE FUNCTION fn(value INT) RETURNS INT AS BEGIN RETURN 1; END")]
+    public void CreateRoutine_InvalidParameterName_Throws(string text)
+    {
+        Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(text));
+    }
+
+    // ---------------- ROUTINE PROCEDURE OPTIONS ----------------
+
+    [Theory]
+    [InlineData("7")]
+    [InlineData("NULL")]
+    [InlineData("'text'")]
+    public void CreateProcedure_ParameterDefault_IsEqualsValue(string value)
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement($"CREATE PROCEDURE sp @value VARCHAR(20) = {value} AS SELECT 1"));
+        var parameter = Assert.IsType<StatementRoutineParameter.Undirected>(Assert.Single(procedure.Parameters));
+        StatementRoutineParameter common = parameter;
+
+        Assert.NotNull(parameter.ParameterDefault);
+        Assert.Same(parameter.ParameterDefault, common.ParameterDefault);
+        Assert.False(parameter.ParameterDefault.UseDefaultKeyword);
+        Assert.Equal(value, parameter.ParameterDefault.Value.ToSql());
+        Assert.Null(common.Direction);
+    }
+
+    [Theory]
+    [InlineData("CREATE PROCEDURE sp @value INT DEFAULT 1 AS SELECT 1")]
+    [InlineData("CREATE PROCEDURE sp @value INT = (1 + 2) AS SELECT 1")]
+    [InlineData("CREATE PROCEDURE sp @value INT = 1 + 2 AS SELECT 1")]
+    [InlineData("CREATE FUNCTION fn(@value INT DEFAULT 1) RETURNS INT AS BEGIN RETURN 1; END")]
+    [InlineData("CREATE FUNCTION fn(@value INT = (1 + 2)) RETURNS INT AS BEGIN RETURN 1; END")]
+    public void CreateRoutine_NonConstantOrDefaultKeywordParameterDefault_IsRejected(string text)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement(text));
     }

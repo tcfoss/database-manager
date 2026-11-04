@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
@@ -33,24 +32,16 @@ public class MyAttributeNormalizer(MyConfig config, INormalizeComponents compone
     {
         Identifier name = parameter.Name
             ?? throw new SqlSyntaxException.UnsupportedDialect("MySQL/MariaDB", "unnamed routine parameters");
-        RoutineParameterDirection? direction = parameter switch
+        Expression? defaultExpression = parameter.ParameterDefault switch
         {
-            StatementRoutineParameter.Directed directed => directed.Direction,
-            StatementRoutineParameter.General general => general.Direction,
-            _ => null
-        };
-        Expression? defaultExpression = parameter switch
-        {
-            StatementRoutineParameter.Directed { Default: ParameterDefault.ExpressionDefault expression } => expression.Expression,
-            StatementRoutineParameter.Directed { Default: ParameterDefault.ValueDefault value } => new LiteralValue(value.Value),
-            StatementRoutineParameter.General { Default: ParameterDefault.ExpressionDefault expression } => expression.Expression,
-            StatementRoutineParameter.General { Default: ParameterDefault.ValueDefault value } => new LiteralValue(value.Value),
+            ParameterDefault.ExpressionDefault expression => expression.Expression,
+            ParameterDefault.ValueDefault value => new LiteralValue(value.Value),
             _ => null
         };
         return new RoutineParameter.Directed(
             _componentNormalizer.NormalizeSingleIdentifier(name),
             _dataTypeNormalizer.NormalizeDataType(((DataTypeReference.BuiltIn)parameter.DataType).DataType),
-            direction ?? (isFunction ? _config.AttributeDefaults.FunctionParameterDirection : _config.AttributeDefaults.ProcedureParameterDirection)
+            parameter.Direction ?? (isFunction ? _config.AttributeDefaults.FunctionParameterDirection : _config.AttributeDefaults.ProcedureParameterDirection)
         )
         {
             DefaultExpression = defaultExpression

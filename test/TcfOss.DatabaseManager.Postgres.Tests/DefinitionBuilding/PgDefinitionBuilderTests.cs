@@ -254,8 +254,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("CREATE FUNCTION f(OUT result INT) RETURNS TEXT LANGUAGE plpgsql AS 'opaque'")]
+    [InlineData("CREATE FUNCTION f(OUT result INT) RETURNS RECORD LANGUAGE plpgsql AS 'opaque'")]
     [InlineData("CREATE FUNCTION f(OUT result INT) RETURNS SETOF TEXT LANGUAGE plpgsql AS 'opaque'")]
     [InlineData("CREATE FUNCTION f(OUT first INT, OUT second TEXT) RETURNS SETOF INT LANGUAGE plpgsql AS 'opaque'")]
+    [InlineData("CREATE FUNCTION f(OUT first INT, OUT second TEXT) RETURNS VOID LANGUAGE plpgsql AS 'opaque'")]
     [InlineData("CREATE FUNCTION f(OUT result INT) RETURNS TABLE (result INT) LANGUAGE plpgsql AS 'opaque'")]
     [InlineData("CREATE FUNCTION f() LANGUAGE plpgsql AS 'opaque'")]
     public void ToDefinition_RejectsMissingOrConflictingOutputReturnTypes(string sql)
@@ -279,6 +281,62 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
         Assert.ThrowsAny<SqlSyntaxException>(builder.ToDefinition);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void ToDefinition_ResolvesDirectedParameterDefaults(bool useExplicitDirection, bool useExpressionDefault)
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(ParseStatements("CREATE FUNCTION f(value INT) RETURNS INT RETURN 1")));
+        StatementRoutineParameter original = Assert.Single(parsed.Parameters);
+        var expression = new LiteralValue(new Value.Number("1", false));
+        ParameterDefault parameterDefault = useExpressionDefault
+            ? new ParameterDefault.ExpressionDefault(expression, true)
+            : new ParameterDefault.ValueDefault(expression.Value, true);
+        CreateFunction statement = parsed with
+        {
+            Parameters = [new StatementRoutineParameter.Directed(original.Name!, original.DataType,
+                useExplicitDirection ? RoutineParameterDirection.In : null, parameterDefault)]
+        };
+        var builder = CreateBuilder();
+        builder.ProcessStatements([statement], GetSchema(), 0);
+
+        var parameter = Assert.IsType<RoutineParameter.Postgres>(Assert.Single(Assert.Single(builder.ToDefinition().Functions).Value.Parameters));
+
+        Assert.Equal(RoutineParameterDirection.In, parameter.Direction);
+        Assert.Equal("value", parameter.Name!.Name);
+        Assert.Equal(expression, parameter.DefaultExpression);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToDefinition_RejectsSqlServerParameterShapes(bool useGeneralParameter)
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(ParseStatements("CREATE FUNCTION f(value INT) RETURNS INT RETURN 1")));
+        StatementRoutineParameter original = Assert.Single(parsed.Parameters);
+        StatementRoutineParameter parameter = useGeneralParameter
+            ? new StatementRoutineParameter.General(original.Name, original.DataType, null, null, new MsRoutineParameterOptions(ReadOnly: true))
+            : new StatementRoutineParameter.Undirected(original.Name!, original.DataType);
+        var builder = CreateBuilder();
+        builder.ProcessStatements([parsed with { Parameters = [parameter] }], GetSchema(), 0);
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(builder.ToDefinition);
+
+        Assert.Equal("PostgreSQL", exception.Dialect);
+        Assert.Contains("SQL Server routine parameter options", exception.Contents);
+    }
+
+    [Theory]
+    [InlineData("value INT, VALUE INT")]
+    [InlineData("\"value\" INT, value INT")]
+    public void ToDefinition_RejectsDuplicateNormalizedParameterNames(string parameters)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE FUNCTION f({parameters}) RETURNS INT RETURN 1"), GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(builder.ToDefinition);
     }
 
     [Theory]

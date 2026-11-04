@@ -13,7 +13,7 @@ public class Lexer<TRunState> : ILexer
     private readonly Func<char, bool> _isIdentifierPart;
     protected virtual bool SupportBackslashQuoteEscape => true;
     protected virtual bool SupportBracketQuotedIdentifiers => true;
-    protected virtual bool SupportDollarQuotedStrings => false;
+    protected virtual bool SupportDollarQuotedStrings => true;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()

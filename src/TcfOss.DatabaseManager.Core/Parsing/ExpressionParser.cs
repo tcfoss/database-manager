@@ -457,7 +457,7 @@ public class ExpressionParser
 
         if (state.ParseKeyword(Keyword.USING))
         {
-            string characterSet = ValueParser.ParseLiteralString(state);
+            string characterSet = ValueParser.ParseLiteralStringOptionalQuotes(state);
             state.ExpectRightParen();
             return new Expressions.Convert.UsingCharset(expr, characterSet);
         }

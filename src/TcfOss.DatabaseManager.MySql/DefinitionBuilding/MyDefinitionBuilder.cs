@@ -427,14 +427,7 @@ public partial class MyDefinitionBuilder
     {
         foreach (StatementRoutineParameter parameter in parameters)
         {
-            bool hasDefault = parameter switch
-            {
-                StatementRoutineParameter.Directed directed => directed.Default != null,
-                StatementRoutineParameter.General general => general.Default != null,
-                StatementRoutineParameter.Undirected undirected => undirected.DefaultValue != null,
-                _ => false
-            };
-            if (!hasDefault)
+            if (parameter.ParameterDefault == null)
             {
                 continue;
             }
@@ -444,12 +437,7 @@ public partial class MyDefinitionBuilder
                 throw new SqlSyntaxException.UnsupportedDialect(dialect,
                     isFunction ? "defaults on function parameters" : "defaults on procedure parameters", sourceRef);
             }
-            RoutineParameterDirection? direction = parameter switch
-            {
-                StatementRoutineParameter.Directed directed => directed.Direction,
-                StatementRoutineParameter.General general => general.Direction,
-                _ => null
-            };
+            RoutineParameterDirection? direction = parameter.Direction;
             if (direction != null && direction != RoutineParameterDirection.In)
             {
                 throw new SqlSyntaxException.UnsupportedDialect(dialect, "defaults on OUT or INOUT parameters", sourceRef);
@@ -550,19 +538,13 @@ public partial class MyDefinitionBuilder
         return errors;
     }
 
-
     private bool MatchingColumnListExists(List<Identifier> requiredColumns, MyTable table, string? extractionReason)
     {
         return _validationHelper.GetValidMatchingKeyPartList(requiredColumns, table.GetPotentialKeyPartLists(), extractionReason) != null;
     }
 
-    private static bool DataTypesMatch(DataType? dt1, DataType? dt2)
+    private static bool DataTypesMatch(DataType dt1, DataType dt2)
     {
-        if (dt1 == null || dt2 == null)
-        {
-            return false;
-        }
-
         if (dt1.Class != dt2.Class)
         {
             return false;
@@ -613,12 +595,12 @@ public partial class MyDefinitionBuilder
     {
         var errors = new List<SourcedException>();
 
-        var localCols = key.Columns.Select(keyCol => table.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).Where(c => c != null).ToList();
-        var foreignCols = key.ReferencedColumns.Select(keyCol => referencedTable.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).Where(c => c != null).ToList();
+        var localCols = key.Columns.Select(keyCol => table.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).OfType<MyColumn>().ToList();
+        var foreignCols = key.ReferencedColumns.Select(keyCol => referencedTable.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).OfType<MyColumn>().ToList();
 
         if (localCols.Count == foreignCols.Count)
         {
-            foreach ((MyColumn? local, MyColumn? other) in localCols.Zip(foreignCols))
+            foreach ((MyColumn local, MyColumn other) in localCols.Zip(foreignCols))
             {
                 if (!DataTypesMatch(local!.DataType, other!.DataType))
                 {

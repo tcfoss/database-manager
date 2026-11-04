@@ -365,15 +365,14 @@ public class DdlParser
             }
             DataTypeReference variableType = _p.DataTypeParser.ParseDataTypeReference(state);
             (ParameterDefault? variableDefault, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
-            Value? defaultValue = variableDefault switch
+            ParameterDefault.ValueDefault? defaultValue = variableDefault switch
             {
-                ParameterDefault.ValueDefault valueDefault => valueDefault.Value,
+                ParameterDefault.ValueDefault valueDefault => valueDefault,
                 null => null,
                 _ => throw state.ExpectedException("constant parameter default")
             };
-            return new StatementRoutineParameter.Undirected(variableName, variableType)
+            return new StatementRoutineParameter.Undirected(variableName, variableType, defaultValue)
             {
-                DefaultValue = defaultValue,
                 Options = options
             };
         }
@@ -382,10 +381,8 @@ public class DdlParser
         {
             Identifier requiredName = _parseIdentifier(state);
             DataTypeReference requiredType = _p.DataTypeParser.ParseDataTypeReference(state);
-            return new StatementRoutineParameter.Directed(requiredName, requiredType, direction)
-            {
-                Default = ParseRoutineParameterDefault(state, style)
-            };
+            return new StatementRoutineParameter.Directed(requiredName, requiredType, direction,
+                ParseRoutineParameterDefault(state, style));
         }
 
         if (CanStartUnnamedRoutineParameter(state)

@@ -285,19 +285,63 @@ public class StatementComponentTests
         Assert.Equal("\"input\" \"app\".\"Mood\"", FormatComponent(new StatementRoutineParameter.Directed(new Identifier("input"), named, null)));
     }
 
-    [Fact]
-    public void DirectedRoutineParameters_ConvertResolvedTypesToStatementReferences()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectedRoutineParameters_ConvertResolvedTypesToStatementReferences(bool hasDefault)
     {
         var dataType = new DataType.Int();
-        var parameter = new RoutineParameter.Directed(new Identifier("value"), dataType, RoutineParameterDirection.InOut);
+        var parameter = new RoutineParameter.Directed(new Identifier("value"), dataType, RoutineParameterDirection.InOut)
+        {
+            DefaultExpression = hasDefault ? new LiteralValue(new Value.Number("7", false)) : null
+        };
         StatementRoutineParameter.Directed statement = parameter.ToStatementParameter();
 
         Assert.Same(dataType, parameter.DataType);
         Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
         Assert.Equal(parameter.Name, statement.Name);
         Assert.Equal(parameter.Direction, statement.Direction);
-        Assert.Equal("INOUT value INT", statement.ToSql());
-        Assert.Equal("INOUT \"value\" INT", FormatComponent(statement));
+        Assert.Equal($"INOUT value INT{(hasDefault ? " DEFAULT 7" : "")}", statement.ToSql());
+        Assert.Equal($"INOUT \"value\" INT{(hasDefault ? " DEFAULT 7" : "")}", FormatComponent(statement));
+        if (hasDefault)
+        {
+            Assert.Same(parameter.DefaultExpression, Assert.IsType<ParameterDefault.ExpressionDefault>(statement.ParameterDefault).Expression);
+        }
+        else
+        {
+            Assert.Null(statement.ParameterDefault);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void PostgresRoutineParameters_ConversionPreservesDirectionAndDefault(bool isInput, bool hasDefault)
+    {
+        var dataType = new DataType.Int();
+        var parameter = new RoutineParameter.Postgres(new Identifier("value"), dataType,
+            isInput ? RoutineParameterDirection.In : RoutineParameterDirection.InOut,
+            hasDefault ? new LiteralValue(new Value.Number("7", false)) : null);
+
+        StatementRoutineParameter.General statement = parameter.ToStatementParameter();
+
+        Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
+        Assert.Equal(parameter.Name, statement.Name);
+        Assert.Equal(isInput ? null : RoutineParameterDirection.InOut, statement.Direction);
+        Assert.Equal($"{(isInput ? "" : "INOUT ")}value INT{(hasDefault ? " = 7" : "")}", statement.ToSql());
+        Assert.Equal($"{(isInput ? "" : "INOUT ")}\"value\" INT{(hasDefault ? " = 7" : "")}", FormatComponent(statement));
+        if (hasDefault)
+        {
+            var statementDefault = Assert.IsType<ParameterDefault.ExpressionDefault>(statement.ParameterDefault);
+            Assert.Same(parameter.DefaultExpression, statementDefault.Expression);
+            Assert.False(statementDefault.UseDefaultKeyword);
+        }
+        else
+        {
+            Assert.Null(statement.ParameterDefault);
+        }
     }
 
     [Theory]
@@ -320,7 +364,11 @@ public class StatementComponentTests
         Assert.Same(dataType, parameter.DataType);
         Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
         Assert.Equal(parameter.Name, statement.Name);
-        Assert.Same(parameter.DefaultValue, statement.DefaultValue);
+        Assert.Same(parameter.DefaultValue, statement.ParameterDefault?.Value);
+        if (hasDefault)
+        {
+            Assert.False(statement.ParameterDefault!.UseDefaultKeyword);
+        }
         Assert.Same(parameter.Options, statement.Options);
         Assert.Equal(parameter.Options?.Output, statement.Options?.Output);
         string expected = $"@value INT{(hasDefault ? " = 7" : "")}{(output == null ? "" : " " + output)}";
@@ -344,6 +392,22 @@ public class StatementComponentTests
         Assert.Equal(useDefaultKeyword ? " DEFAULT 7" : " = 7", copied.ToSql());
         Assert.Equal(copied.ToSql(), FormatComponent(copied));
         Assert.NotEqual(original.UseDefaultKeyword, copied.UseDefaultKeyword);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UndirectedRoutineParameter_UsesEqualsRegardlessOfDefaultMarker(bool useDefaultKeyword)
+    {
+        var parameterDefault = new ParameterDefault.ValueDefault(new Value.Number("7", false), useDefaultKeyword);
+        var parameter = new StatementRoutineParameter.Undirected(
+            new Identifier("value", QuoteStyle.None, SigilKind.Variable), new DataType.Int(), parameterDefault);
+        StatementRoutineParameter common = parameter;
+
+        Assert.Same(parameterDefault, common.ParameterDefault);
+        Assert.Null(common.Direction);
+        Assert.Equal("@value INT = 7", parameter.ToSql());
+        Assert.Equal("@value INT = 7", FormatComponent(parameter));
     }
 
     [Fact]

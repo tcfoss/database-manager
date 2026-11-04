@@ -371,27 +371,18 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 throw new SqlSyntaxException.SpecifiedMoreThanOnce(name.Name, "routine", routine, sourceRef);
             }
             DataType dataType = manager.Resolve(parameter.DataType, routine.Schema, sourceRef);
-            RoutineParameterDirection direction;
-            Expression? defaultExpression;
             switch (parameter)
             {
-                case StatementRoutineParameter.General general:
-                    direction = general.Direction ?? RoutineParameterDirection.In;
-                    defaultExpression = ResolveRoutineParameterDefault(general.Default);
-                    if (general.Options != null)
-                    {
-                        throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "SQL Server routine parameter options", sourceRef);
-                    }
-                    break;
-                case StatementRoutineParameter.Directed directed:
-                    direction = directed.Direction ?? RoutineParameterDirection.In;
-                    defaultExpression = ResolveRoutineParameterDefault(directed.Default);
-                    break;
+                case StatementRoutineParameter.General { Options: not null }:
                 case StatementRoutineParameter.Undirected:
                     throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "SQL Server routine parameter options", sourceRef);
+                case StatementRoutineParameter.General or StatementRoutineParameter.Directed:
+                    break;
                 default:
                     throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"routine parameter {parameter.GetType().Name}", sourceRef);
             }
+            RoutineParameterDirection direction = parameter.Direction ?? RoutineParameterDirection.In;
+            Expression? defaultExpression = ResolveRoutineParameterDefault(parameter.ParameterDefault);
 
             bool isInput = direction != RoutineParameterDirection.Out;
             if (direction == RoutineParameterDirection.Variadic)

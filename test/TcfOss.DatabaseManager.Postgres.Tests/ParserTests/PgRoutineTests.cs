@@ -76,9 +76,9 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(unnamed.Name);
         Assert.IsType<DataTypeReference.BuiltIn>(unnamed.DataType);
         Assert.Equal("named", named.Name?.Name);
-        Assert.IsType<ParameterDefault.ExpressionDefault>(named.Default);
+        Assert.IsType<ParameterDefault.ExpressionDefault>(named.ParameterDefault);
         Assert.Equal(RoutineParameterDirection.InOut, inout.Direction);
-        Assert.IsType<ParameterDefault.ExpressionDefault>(inout.Default);
+        Assert.IsType<ParameterDefault.ExpressionDefault>(inout.ParameterDefault);
         Assert.Equal(RoutineParameterDirection.InOut, inOutAlias.Direction);
         Assert.Equal(RoutineParameterDirection.Variadic, variadic.Direction);
         Assert.Equal(function, ParseStatement(function.ToSql()));
@@ -106,7 +106,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         var parameter = Assert.IsType<StatementRoutineParameter.General>(Assert.Single(function.Parameters));
 
         Assert.Null(parameter.Name);
-        Assert.Equal(hasDefault, parameter.Default != null);
+        Assert.Equal(hasDefault, parameter.ParameterDefault != null);
         Assert.IsType(dataTypeType, parameter.DataType);
         Assert.Equal(function, ParseStatement(function.ToSql()));
         Assert.Equal(function, ParseStatement(Format(function)));

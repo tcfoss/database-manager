@@ -23,10 +23,8 @@ public abstract record RoutineParameter(DataType DataType)
 
         public override StatementRoutineParameter.Directed ToStatementParameter()
         {
-            return new(Name, DataType, Direction)
-            {
-                Default = DefaultExpression == null ? null : new ParameterDefault.ExpressionDefault(DefaultExpression, true)
-            };
+            return new(Name, DataType, Direction,
+                DefaultExpression == null ? null : new ParameterDefault.ExpressionDefault(DefaultExpression, true));
         }
     }
 
@@ -43,9 +41,8 @@ public abstract record RoutineParameter(DataType DataType)
 
         public override StatementRoutineParameter.Undirected ToStatementParameter()
         {
-            return new(Name, DataType)
+            return new(Name, DataType, DefaultValue == null ? null : new ParameterDefault.ValueDefault(DefaultValue, false))
             {
-                DefaultValue = DefaultValue,
                 Options = Options,
             };
         }
