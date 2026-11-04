@@ -951,10 +951,10 @@ public abstract class MyDefinitionBuilderTestsBase
 
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("param1", parameters[0].Name.Name);
+        Assert.Equal("param1", parameters[0].Name!.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(FunctionParameterDirection, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("param2", parameters[1].Name.Name);
+        Assert.Equal("param2", parameters[1].Name!.Name);
         Assert.Equal($"VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter}", parameters[1].DataType.ToSql());
         Assert.Equal(FunctionParameterDirection, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
 
@@ -999,10 +999,10 @@ public abstract class MyDefinitionBuilderTestsBase
 
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("param1", parameters[0].Name.Name);
+        Assert.Equal("param1", parameters[0].Name!.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.InOut, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("param2", parameters[1].Name.Name);
+        Assert.Equal("param2", parameters[1].Name!.Name);
         Assert.Equal($"VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter}", parameters[1].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.Out, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
 
@@ -1012,6 +1012,97 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.Equal(new Account.Identity(new ExtendedIdentifier("admin_users", ExtendedQuoteStyle.Backticks)), function.Definer.Account);
 
         Assert.Equal("BEGIN SET param2 = 'success'; RETURN CONCAT(param1, ' is a parameter'); END", function.Body.ToSql());
+    }
+
+    [Theory]
+    [InlineData("value INT DEFAULT 1")]
+    [InlineData("IN value INT DEFAULT (1 + 2)")]
+    public void ProcedureParameterDefaults_RequireMariaDb(string declaration)
+    {
+        var statements = TextParser.ParseText($"CREATE DEFINER = 'root'@'localhost' PROCEDURE p({declaration}) SQL SECURITY DEFINER SELECT value");
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on procedure parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var procedure = Assert.Single(DefinitionBuilder.ToDefinition().Procedures).Value;
+        var parameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(procedure.Parameters));
+
+        Assert.NotNull(parameter.DefaultExpression);
+        var rebuilt = GetDefinitionBuilder();
+        rebuilt.ProcessStatements(TextParser.ParseText(procedure.ToCreateStatement(true).ToSql()), Schema, 1);
+        Assert.Equal(procedure.Parameters, Assert.Single(rebuilt.ToDefinition().Procedures).Value.Parameters);
+    }
+
+    [Theory]
+    [InlineData("value INT DEFAULT 1")]
+    [InlineData("IN value INT DEFAULT (1 + 2)")]
+    public void FunctionParameterDefaults_RequireMariaDb(string declaration)
+    {
+        var statements = TextParser.ParseText($"CREATE DEFINER = 'root'@'localhost' FUNCTION f({declaration}) RETURNS INT SQL SECURITY DEFINER RETURN value");
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on function parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var function = Assert.Single(DefinitionBuilder.ToDefinition().Functions).Value;
+        var parameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(function.Parameters));
+
+        Assert.NotNull(parameter.DefaultExpression);
+        var rebuilt = GetDefinitionBuilder();
+        rebuilt.ProcessStatements(TextParser.ParseText(function.ToCreateStatement(true).ToSql()), Schema, 1);
+        Assert.Equal(function.Parameters, Assert.Single(rebuilt.ToDefinition().Functions).Value.Parameters);
+    }
+
+    [Theory]
+    [InlineData(false, "OUT")]
+    [InlineData(false, "INOUT")]
+    [InlineData(true, "OUT")]
+    [InlineData(true, "INOUT")]
+    public void RoutineOutputParameterDefaults_AreRejected(bool isFunction, string direction)
+    {
+        string declaration = isFunction
+            ? $"FUNCTION f({direction} value INT DEFAULT 1) RETURNS INT SQL SECURITY DEFINER RETURN value"
+            : $"PROCEDURE p({direction} value INT DEFAULT 1) SQL SECURITY DEFINER SELECT value";
+        var statements = TextParser.ParseText($"CREATE DEFINER = 'root'@'localhost' {declaration}");
+
+        Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FunctionParameterDefaults_ManuallySuppliedRequireMariaDb(bool useGeneralParameter)
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f(value INT) RETURNS INT SQL SECURITY DEFINER RETURN value")));
+        StatementRoutineParameter original = Assert.Single(parsed.Parameters);
+        var parameterDefault = new ParameterDefault.ValueDefault(new Value.Number("1", false), true);
+        StatementRoutineParameter parameter = useGeneralParameter
+            ? new StatementRoutineParameter.General(original.Name, original.DataType, null, parameterDefault)
+            : Assert.IsType<StatementRoutineParameter.Directed>(original) with { Default = parameterDefault };
+        CreateFunction statement = parsed with { Parameters = [parameter] };
+
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on function parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements([statement], Schema, 0);
+        var function = Assert.Single(DefinitionBuilder.ToDefinition().Functions).Value;
+        var resolvedParameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(function.Parameters));
+
+        Assert.Equal(new LiteralValue(new Value.Number("1", false)), resolvedParameter.DefaultExpression);
     }
 
     [Fact]

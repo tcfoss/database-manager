@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -197,6 +198,7 @@ public partial class MyDefinitionBuilder
         }
         ValidateDefiner(createProcedureStatement.Definer, "Procedure", procedureId, sourceRef);
         ValidateSecurityContext(createProcedureStatement.MyCharacteristic?.SecurityContext, "Procedure", procedureId, sourceRef);
+        ValidateRoutineParameters(createProcedureStatement.Parameters, isFunction: false, sourceRef);
 
         return _helpers[currentSchema].ProcedureConstructor.ConstructProcedure(createProcedureStatement, procedureId, _accountQuoteStyle, sourceRef);
     }
@@ -218,6 +220,7 @@ public partial class MyDefinitionBuilder
         }
         ValidateDefiner(createFunctionStatement.Definer, "Function", functionId, sourceRef);
         ValidateSecurityContext(createFunctionStatement.MyCharacteristic?.SecurityContext, "Function", functionId, sourceRef);
+        ValidateRoutineParameters(createFunctionStatement.Parameters, isFunction: true, sourceRef);
 
         return _helpers[currentSchema].FunctionConstructor.ConstructFunction(createFunctionStatement, functionId, _accountQuoteStyle, sourceRef);
     }
@@ -419,6 +422,40 @@ public partial class MyDefinitionBuilder
         }
     }
 
+
+    protected virtual void ValidateRoutineParameters(SqlValueList<StatementRoutineParameter> parameters, bool isFunction, SourceRef? sourceRef)
+    {
+        foreach (StatementRoutineParameter parameter in parameters)
+        {
+            bool hasDefault = parameter switch
+            {
+                StatementRoutineParameter.Directed directed => directed.Default != null,
+                StatementRoutineParameter.General general => general.Default != null,
+                StatementRoutineParameter.Undirected undirected => undirected.DefaultValue != null,
+                _ => false
+            };
+            if (!hasDefault)
+            {
+                continue;
+            }
+            string dialect = Config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
+            if (Config.Dialect != SqlDialect.MariaDb)
+            {
+                throw new SqlSyntaxException.UnsupportedDialect(dialect,
+                    isFunction ? "defaults on function parameters" : "defaults on procedure parameters", sourceRef);
+            }
+            RoutineParameterDirection? direction = parameter switch
+            {
+                StatementRoutineParameter.Directed directed => directed.Direction,
+                StatementRoutineParameter.General general => general.Direction,
+                _ => null
+            };
+            if (direction != null && direction != RoutineParameterDirection.In)
+            {
+                throw new SqlSyntaxException.UnsupportedDialect(dialect, "defaults on OUT or INOUT parameters", sourceRef);
+            }
+        }
+    }
 
     protected virtual void ValidateCreateTable(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef? sourceRef)
     {

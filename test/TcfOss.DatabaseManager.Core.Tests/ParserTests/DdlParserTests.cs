@@ -1,5 +1,6 @@
 ﻿using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
@@ -12,6 +13,24 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 // ReSharper disable ClassNeverInstantiated.Global
 public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 {
+    [Fact]
+    public void CreateFunction_RoutineParametersParseKitchenSinkUnion()
+    {
+        const string sql = "CREATE FUNCTION f(INT, named TEXT DEFAULT 'x', INOUT count INT = 1, IN OUT total INT, VARIADIC rest INT) RETURNS RECORD RETURN 1";
+        CreateFunction function = Assert.IsType<CreateFunction>(ParseStatement(sql));
+
+        Assert.Null(Assert.IsType<StatementRoutineParameter.General>(function.Parameters[0]).Name);
+        Assert.Equal("named", Assert.IsType<StatementRoutineParameter.General>(function.Parameters[1]).Name?.Name);
+        Assert.True(Assert.IsType<ParameterDefault.ExpressionDefault>(
+            Assert.IsType<StatementRoutineParameter.General>(function.Parameters[1]).Default).UseDefaultKeyword);
+        Assert.Equal(RoutineParameterDirection.InOut, Assert.IsType<StatementRoutineParameter.General>(function.Parameters[2]).Direction);
+        Assert.False(Assert.IsType<ParameterDefault.ExpressionDefault>(
+            Assert.IsType<StatementRoutineParameter.General>(function.Parameters[2]).Default).UseDefaultKeyword);
+        Assert.Equal(RoutineParameterDirection.InOut, Assert.IsType<StatementRoutineParameter.General>(function.Parameters[3]).Direction);
+        Assert.Equal(RoutineParameterDirection.Variadic, Assert.IsType<StatementRoutineParameter.General>(function.Parameters[4]).Direction);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+    }
+
     [Theory]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH STATEMENT SELECT 1")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE TRIGGER basic")]
@@ -99,6 +118,25 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1"));
 
         Assert.Equal(function, ParseStatement(function.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" VARYING")]
+    [InlineData(" NULL")]
+    [InlineData(" NOT NULL")]
+    [InlineData(" = 1 OUTPUT")]
+    [InlineData(" READONLY")]
+    [InlineData(" VARYING NULL = 1 OUTPUT READONLY")]
+    [InlineData(" NOT NULL = 1 OUT")]
+    public void RoutineParameterOptions_PreserveOptionsBeforeAndAfterDefault(string suffix)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f(@value INT{suffix}) RETURNS INT RETURN 1"));
+        var parameter = Assert.IsType<StatementRoutineParameter.General>(Assert.Single(function.Parameters));
+
+        Assert.Equal($"@value INT{suffix}", parameter.ToSql());
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(suffix.Length > 0, parameter.Options != null);
     }
 
     [Theory]

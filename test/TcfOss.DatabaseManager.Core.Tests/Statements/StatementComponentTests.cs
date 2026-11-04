@@ -297,8 +297,7 @@ public class StatementComponentTests
         Assert.Equal(parameter.Name, statement.Name);
         Assert.Equal(parameter.Direction, statement.Direction);
         Assert.Equal("INOUT value INT", statement.ToSql());
-        Assert.Equal(parameter.ToSql(), statement.ToSql());
-        Assert.Equal(FormatComponent(parameter), FormatComponent(statement));
+        Assert.Equal("INOUT \"value\" INT", FormatComponent(statement));
     }
 
     [Theory]
@@ -314,7 +313,7 @@ public class StatementComponentTests
         var parameter = new RoutineParameter.Undirected(new Identifier("value", QuoteStyle.None, SigilKind.Variable), dataType)
         {
             DefaultValue = hasDefault ? new Value.Number("7", false) : null,
-            Output = output == null ? null : OutputKeyword.Parse(output),
+            Options = output == null ? null : new MsRoutineParameterOptions(Output: OutputKeyword.Parse(output)),
         };
         StatementRoutineParameter.Undirected statement = parameter.ToStatementParameter();
 
@@ -322,9 +321,41 @@ public class StatementComponentTests
         Assert.Same(dataType, Assert.IsType<DataTypeReference.BuiltIn>(statement.DataType).DataType);
         Assert.Equal(parameter.Name, statement.Name);
         Assert.Same(parameter.DefaultValue, statement.DefaultValue);
-        Assert.Equal(parameter.Output, statement.Output);
-        Assert.Equal(parameter.ToSql(), statement.ToSql());
-        Assert.Equal(FormatComponent(parameter), FormatComponent(statement));
+        Assert.Same(parameter.Options, statement.Options);
+        Assert.Equal(parameter.Options?.Output, statement.Options?.Output);
+        string expected = $"@value INT{(hasDefault ? " = 7" : "")}{(output == null ? "" : " " + output)}";
+        Assert.Equal(expected, statement.ToSql());
+        Assert.Equal(expected, FormatComponent(statement));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ParameterDefaults_UseInheritedMarkerWhenCopied(bool expressionDefault, bool useDefaultKeyword)
+    {
+        var value = new Value.Number("7", false);
+        ParameterDefault original = expressionDefault
+            ? new ParameterDefault.ExpressionDefault(new LiteralValue(value), !useDefaultKeyword)
+            : new ParameterDefault.ValueDefault(value, !useDefaultKeyword);
+        ParameterDefault copied = original with { UseDefaultKeyword = useDefaultKeyword };
+
+        Assert.Equal(useDefaultKeyword ? " DEFAULT 7" : " = 7", copied.ToSql());
+        Assert.Equal(copied.ToSql(), FormatComponent(copied));
+        Assert.NotEqual(original.UseDefaultKeyword, copied.UseDefaultKeyword);
+    }
+
+    [Fact]
+    public void GeneralRoutineParameter_FormatsSqlServerOptionsAroundDefault()
+    {
+        var parameter = new StatementRoutineParameter.General(
+            new Identifier("items", QuoteStyle.None, SigilKind.Variable), new DataType.Int(), null,
+            new ParameterDefault.ValueDefault(new Value.Number("1", false), false),
+            new MsRoutineParameterOptions(true, true, OutputKeyword.Output, true));
+
+        Assert.Equal("@items INT VARYING NULL = 1 OUTPUT READONLY", parameter.ToSql());
+        Assert.Equal(parameter.ToSql(), FormatComponent(parameter));
     }
 
     [Fact]

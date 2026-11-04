@@ -218,10 +218,10 @@ public class MaDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var function = def.Functions.Values.First();
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("param1", parameters[0].Name.Name);
+        Assert.Equal("param1", parameters[0].Name!.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.In, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("param2", parameters[1].Name.Name);
+        Assert.Equal("param2", parameters[1].Name!.Name);
         Assert.Equal($"VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter}", parameters[1].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.In, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
     }
@@ -255,10 +255,10 @@ public class MaDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         var function = def.Functions.Values.First();
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("param1", parameters[0].Name.Name);
+        Assert.Equal("param1", parameters[0].Name!.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.In, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("param2", parameters[1].Name.Name);
+        Assert.Equal("param2", parameters[1].Name!.Name);
         Assert.Equal($"VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter}", parameters[1].DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.Out, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
     }

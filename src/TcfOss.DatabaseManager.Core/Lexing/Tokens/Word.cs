@@ -9,26 +9,26 @@ namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 /// </summary>
 /// <param name="value">
 /// The bare identifier text, excluding any quoting characters and any
-/// <see cref="Common.SigilKind"/> prefix.
+/// <see cref="SigilKind"/> prefix.
 /// </param>
 /// <param name="quoteStyle">Quoting style applied to <paramref name="value"/>.</param>
 /// <param name="sigil">Lexical sigil prefix (e.g. <c>@</c> for a local variable).</param>
 public sealed class Word(string value, QuoteStyle quoteStyle = QuoteStyle.None, SigilKind sigil = SigilKind.None) : Token
 {
     public string Value { get; } = value;
-    public QuoteStyle? QuoteStyle { get; } = quoteStyle;
+    public QuoteStyle QuoteStyle { get; } = quoteStyle;
     public SigilKind Sigil { get; } = sigil;
-    public Keyword Keyword { get; } = quoteStyle == Common.QuoteStyle.None && sigil == SigilKind.None
+    public Keyword Keyword { get; } = quoteStyle == QuoteStyle.None && sigil == SigilKind.None
         ? KeywordHelper.GetKeyword(value)
         : Keyword.undefined;
 
     public override int Length => Value.Length
-        + (QuoteStyle != Common.QuoteStyle.None ? 2 : 0)
+        + (QuoteStyle != QuoteStyle.None ? 2 : 0)
         + Sigil switch { SigilKind.Variable => 1, _ => 0 };
 
     public Identifier ToIdentifier(int sourceId)
     {
-        return new Identifier(Value, QuoteStyle ?? Common.QuoteStyle.None, Sigil)
+        return new Identifier(Value, QuoteStyle, Sigil)
         {
             Source = new SourceRef(sourceId, Location.Position, Location.Position + Length)
         };
@@ -36,7 +36,7 @@ public sealed class Word(string value, QuoteStyle quoteStyle = QuoteStyle.None, 
 
     public override string ToString()
     {
-        return Identifier.QuoteString(Value, QuoteStyle ?? Common.QuoteStyle.None, Sigil);
+        return Identifier.QuoteString(Value, QuoteStyle, Sigil);
     }
 
     private bool Equals(Word? other)

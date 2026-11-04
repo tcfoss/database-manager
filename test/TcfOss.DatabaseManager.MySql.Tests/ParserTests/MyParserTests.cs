@@ -480,4 +480,30 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1"));
     }
+
+    [Fact]
+    public void ProcedureParameter_MariaDbDefaultKeyword_RoundTripsInSharedParser()
+    {
+        string sql = $"CREATE PROCEDURE p(IN value INT DEFAULT (1 + 2)) SELECT value";
+        string expectedSql = $"CREATE PROCEDURE p (IN value INT DEFAULT (1 + 2)) SELECT value";
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void FunctionParameter_MariaDbDefaultKeyword_RoundTripsInSharedParser()
+    {
+        string sql = $"CREATE FUNCTION f(IN value INT DEFAULT (1 + 2)) RETURNS INT RETURN value";
+        string expectedSql = $"CREATE FUNCTION f (IN value INT DEFAULT (1 + 2)) RETURNS INT RETURN value";
+        var (expected, actual) = GetExpectedActual(sql, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void FunctionParameter_EqualsDefaultIsRejected()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CREATE FUNCTION f(value INT = 1) RETURNS INT RETURN value"));
+    }
 }

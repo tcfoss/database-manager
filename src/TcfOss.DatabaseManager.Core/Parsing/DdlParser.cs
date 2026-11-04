@@ -19,6 +19,8 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 public class DdlParser
 {
     protected virtual bool SupportsIndexMethodAfterTableName => true;
+    protected virtual RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction) => RoutineParamsSupportStyle.KitchenSink;
+    protected virtual bool SupportsOmittedFunctionReturn => true;
 
     private readonly Parser _p;
     private readonly Func<ParserState, ObjectName> _parseObjectName;
@@ -256,22 +258,40 @@ public class DdlParser
         return state.ParseKeyword(Keyword.AS);
     }
 
-    private static RoutineParameterDirection? ParseRoutineParameterDirection(ParserState state)
+    private static RoutineParameterDirection? ParseRoutineParameterDirection(ParserState state, RoutineParameterModeSupport supportedModes)
     {
-        RoutineParameterDirection? direction = state.Peek() switch
+        if (supportedModes.HasFlag(RoutineParameterModeSupport.InOut)
+            && state.ParseKeywordsAll(Keyword.IN, Keyword.OUT))
         {
-            Word { Keyword: Keyword.IN } => RoutineParameterDirection.In,
-            Word { Keyword: Keyword.OUT } => RoutineParameterDirection.Out,
-            Word { Keyword: Keyword.INOUT } => RoutineParameterDirection.InOut,
-            _ => null
-        };
-
-        if (direction != null)
-        {
-            state.Next();
+            return RoutineParameterDirection.InOut;
         }
 
-        return direction;
+        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word
+            && RoutineParameterDirection.TryParse(word.Value, out RoutineParameterDirection? direction)
+            && supportedModes.HasFlag(GetRoutineParameterModeSupport(direction)))
+        {
+            state.Next();
+            return direction;
+        }
+
+        return null;
+    }
+
+    private static RoutineParameterModeSupport GetRoutineParameterModeSupport(RoutineParameterDirection direction)
+    {
+        if (direction == RoutineParameterDirection.In)
+        {
+            return RoutineParameterModeSupport.In;
+        }
+        if (direction == RoutineParameterDirection.Out)
+        {
+            return RoutineParameterModeSupport.Out;
+        }
+        if (direction == RoutineParameterDirection.InOut)
+        {
+            return RoutineParameterModeSupport.InOut;
+        }
+        return RoutineParameterModeSupport.Variadic;
     }
 
     public static SecurityContext? ParseSecurityContext(ParserState state)
@@ -327,18 +347,161 @@ public class DdlParser
         return option;
     }
 
-    protected virtual SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state)
+    protected virtual SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state, bool isFunction)
     {
-        return state.ParseParenthesizedCommaSeparated(ParseRoutineParameter, allowEmpty: true);
+        RoutineParamsSupportStyle style = GetRoutineParamsSupportStyle(isFunction);
+        return state.ParseParenthesizedCommaSeparated(innerState => ParseRoutineParameter(innerState, style), allowEmpty: true);
     }
 
-    protected virtual StatementRoutineParameter ParseRoutineParameter(ParserState state)
+    protected virtual StatementRoutineParameter ParseRoutineParameter(ParserState state, RoutineParamsSupportStyle style)
     {
-        RoutineParameterDirection? direction = ParseRoutineParameterDirection(state);
-        Identifier name = _parseIdentifier(state);
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        RoutineParameterDirection? direction = ParseRoutineParameterDirection(state, style.Modes);
+        if (style.NameMode == RoutineParameterNameMode.RequiredVariable)
+        {
+            Identifier variableName = _parseIdentifier(state);
+            if (variableName.Sigil != SigilKind.Variable)
+            {
+                throw state.ExpectedException("parameter name (@name)");
+            }
+            DataTypeReference variableType = _p.DataTypeParser.ParseDataTypeReference(state);
+            (ParameterDefault? variableDefault, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
+            Value? defaultValue = variableDefault switch
+            {
+                ParameterDefault.ValueDefault valueDefault => valueDefault.Value,
+                null => null,
+                _ => throw state.ExpectedException("constant parameter default")
+            };
+            return new StatementRoutineParameter.Undirected(variableName, variableType)
+            {
+                DefaultValue = defaultValue,
+                Options = options
+            };
+        }
 
-        return new StatementRoutineParameter.Directed(name, dataType, direction);
+        if (style.NameMode == RoutineParameterNameMode.RequiredIdentifier)
+        {
+            Identifier requiredName = _parseIdentifier(state);
+            DataTypeReference requiredType = _p.DataTypeParser.ParseDataTypeReference(state);
+            return new StatementRoutineParameter.Directed(requiredName, requiredType, direction)
+            {
+                Default = ParseRoutineParameterDefault(state, style)
+            };
+        }
+
+        if (CanStartUnnamedRoutineParameter(state)
+            && state.TryParse(innerState => ParseUnnamedRoutineParameter(innerState, direction, style), out StatementRoutineParameter.General? unnamed))
+        {
+            return unnamed;
+        }
+
+        Identifier name = _parseIdentifier(state);
+        direction ??= ParseRoutineParameterDirection(state, style.Modes);
+        DataTypeReference namedType = _p.DataTypeParser.ParseDataTypeReference(state);
+        (ParameterDefault? namedDefault, MsRoutineParameterOptions? namedOptions) = ParseRoutineParameterSuffix(state, style);
+        return new StatementRoutineParameter.General(name, namedType, direction, namedDefault, namedOptions);
+    }
+
+    private bool CanStartUnnamedRoutineParameter(ParserState state)
+    {
+        return _p.DataTypeParser.IsDataTypeStart(state.Peek()) || state.PeekNth(1) switch
+        {
+            Comma or ParenClose or Dot or BracketOpen or Equal => true,
+            Word { Keyword: Keyword.DEFAULT or Keyword.ARRAY } => true,
+            _ => false
+        };
+    }
+
+    private StatementRoutineParameter.General ParseUnnamedRoutineParameter(ParserState state, RoutineParameterDirection? direction,
+        RoutineParamsSupportStyle style)
+    {
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        (ParameterDefault? defaultValue, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
+        if (!state.PeekIs<Comma>() && !state.PeekIs<ParenClose>())
+        {
+            throw state.ExpectedException(",", ")");
+        }
+        return new StatementRoutineParameter.General(null, dataType, direction, defaultValue, options);
+    }
+
+    private (ParameterDefault? Default, MsRoutineParameterOptions? Options) ParseRoutineParameterSuffix(ParserState state,
+        RoutineParamsSupportStyle style)
+    {
+        MsRoutineParameterOptions? optionsBeforeDefault = style.AllowSqlServerOptions
+            ? ParseSqlServerParameterOptionsBeforeDefault(state)
+            : null;
+
+        ParameterDefault? defaultValue = ParseRoutineParameterDefault(state, style);
+
+        MsRoutineParameterOptions? options = style.AllowSqlServerOptions
+            ? ParseSqlServerParameterOptionsAfterDefault(state, optionsBeforeDefault)
+            : optionsBeforeDefault;
+        return (defaultValue, options);
+    }
+
+    private ParameterDefault? ParseRoutineParameterDefault(ParserState state, RoutineParamsSupportStyle style)
+    {
+        bool useDefaultKeyword;
+        if (style.DefaultSyntax.HasFlag(RoutineParameterDefaultSyntax.DefaultKeyword) && state.ParseKeyword(Keyword.DEFAULT))
+        {
+            useDefaultKeyword = true;
+        }
+        else if (style.DefaultSyntax.HasFlag(RoutineParameterDefaultSyntax.Equals) && state.ConsumeTokenIs<Equal>())
+        {
+            useDefaultKeyword = false;
+        }
+        else
+        {
+            return null;
+        }
+
+        if (style.DefaultKinds.HasFlag(RoutineParameterDefaultKind.Expression))
+        {
+            return new ParameterDefault.ExpressionDefault(_p.ExpressionParser.ParseExpr(state), useDefaultKeyword);
+        }
+        if (style.DefaultKinds.HasFlag(RoutineParameterDefaultKind.Value))
+        {
+            return new ParameterDefault.ValueDefault(ValueParser.ParseValue(state), useDefaultKeyword);
+        }
+        throw state.ExpectedException("parameter default value");
+    }
+
+    private static MsRoutineParameterOptions? ParseSqlServerParameterOptionsBeforeDefault(ParserState state)
+    {
+        bool varying = state.ParseKeyword(Keyword.VARYING);
+        bool? nullable = null;
+        if (state.ParseKeyword(Keyword.NULL))
+        {
+            nullable = true;
+        }
+        else if (state.ParseKeywordsAll(Keyword.NOT, Keyword.NULL))
+        {
+            nullable = false;
+        }
+        return varying || nullable.HasValue
+            ? new MsRoutineParameterOptions(Varying: varying, Nullable: nullable)
+            : null;
+    }
+
+    private static MsRoutineParameterOptions? ParseSqlServerParameterOptionsAfterDefault(ParserState state, MsRoutineParameterOptions? options)
+    {
+        OutputKeyword? output = null;
+        if (state.ParseKeyword(Keyword.OUTPUT))
+        {
+            output = OutputKeyword.Output;
+        }
+        else if (state.ParseKeyword(Keyword.OUT))
+        {
+            output = OutputKeyword.Out;
+        }
+
+        bool readOnly = state.ParseKeyword(Keyword.READONLY);
+        if (output == null && !readOnly)
+        {
+            return options;
+        }
+        return options == null
+            ? new MsRoutineParameterOptions(Output: output, ReadOnly: readOnly)
+            : options with { Output = output, ReadOnly = readOnly };
     }
 
     protected virtual MyRoutineCharacteristic? ParseOptionalRoutineCharacteristic(ParserState state)
@@ -484,10 +647,17 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: true);
 
-        state.ExpectKeyword(Keyword.RETURNS);
-        StatementFunctionReturn returnType = ParseFunctionReturn(state);
+        StatementFunctionReturn? returnType = null;
+        if (state.ParseKeyword(Keyword.RETURNS))
+        {
+            returnType = ParseFunctionReturn(state);
+        }
+        else if (!SupportsOmittedFunctionReturn)
+        {
+            throw state.ExpectedException("RETURNS");
+        }
         ParsedRoutineTail tail = ParseRoutineTail(state, isFunction: true);
 
         return new CreateFunction(name, parameters, returnType, tail.Body)
@@ -553,7 +723,7 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: false);
 
         ParsedRoutineTail tail = ParseRoutineTail(state, isFunction: false);
 

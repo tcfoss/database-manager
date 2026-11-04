@@ -1,47 +1,32 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
-using TcfOss.DatabaseManager.Core.Formatting;
-using TcfOss.DatabaseManager.Core.IO;
-using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 
-public abstract record RoutineParameter(Identifier Name, DataType DataType) : IWriteSql
+public abstract record RoutineParameter(DataType DataType)
 {
-    public abstract void ToSql(SqlTextWriter writer);
-    public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
+    public abstract Identifier? Name { get; }
+
     public abstract StatementRoutineParameter ToStatementParameter();
 
     /// <summary>
     /// MySQL/MariaDB-style parameter: optional leading direction keyword
-    /// (IN/OUT/INOUT), no default value.
+    /// (IN/OUT/INOUT), with optional MariaDB procedure defaults.
     /// </summary>
-    public record Directed(Identifier Name, DataType DataType, RoutineParameterDirection? Direction) : RoutineParameter(Name, DataType)
+    public record Directed(Identifier ParameterName, DataType DataType, RoutineParameterDirection? Direction) : RoutineParameter(DataType)
     {
+        public override Identifier Name => ParameterName;
+        public Expression? DefaultExpression { get; init; }
+
         public override StatementRoutineParameter.Directed ToStatementParameter()
         {
-            return new(Name, DataType, Direction);
-        }
-
-        public override void ToSql(SqlTextWriter writer)
-        {
-            if (Direction != null)
+            return new(Name, DataType, Direction)
             {
-                writer.Write($"{Direction} ");
-            }
-            writer.WriteSql($"{Name} {DataType}");
-        }
-
-        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
-        {
-            if (Direction != null)
-            {
-                writer.Write($"{Direction} ");
-            }
-            Name.FormatSql(writer, manager);
-            writer.WriteSql($" {DataType}");
+                Default = DefaultExpression == null ? null : new ParameterDefault.ExpressionDefault(DefaultExpression, true)
+            };
         }
     }
 
@@ -50,45 +35,31 @@ public abstract record RoutineParameter(Identifier Name, DataType DataType) : IW
     /// No direction keyword; default value and OUTPUT marker are independent
     /// and both optional.
     /// </summary>
-    public record Undirected(Identifier Name, DataType DataType) : RoutineParameter(Name, DataType)
+    public record Undirected(Identifier ParameterName, DataType DataType) : RoutineParameter(DataType)
     {
+        public override Identifier Name => ParameterName;
         public Value? DefaultValue { get; init; }
-        public OutputKeyword? Output { get; init; }
+        public MsRoutineParameterOptions? Options { get; init; }
 
         public override StatementRoutineParameter.Undirected ToStatementParameter()
         {
             return new(Name, DataType)
             {
                 DefaultValue = DefaultValue,
-                Output = Output,
+                Options = Options,
             };
         }
+    }
 
-        public override void ToSql(SqlTextWriter writer)
-        {
-            writer.WriteSql($"{Name} {DataType}");
-            if (DefaultValue != null)
-            {
-                writer.WriteSql($" = {DefaultValue}");
-            }
-            if (Output != null)
-            {
-                writer.Write($" {Output}");
-            }
-        }
+    public record Postgres(Identifier? ParameterName, DataType DataType, RoutineParameterDirection Direction,
+        Expression? DefaultExpression) : RoutineParameter(DataType)
+    {
+        public override Identifier? Name => ParameterName;
 
-        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        public override StatementRoutineParameter.General ToStatementParameter()
         {
-            Name.FormatSql(writer, manager);
-            writer.WriteSql($" {DataType}");
-            if (DefaultValue != null)
-            {
-                writer.WriteSql($" = {DefaultValue}");
-            }
-            if (Output != null)
-            {
-                writer.Write($" {Output}");
-            }
+            return new StatementRoutineParameter.General(Name, DataType, Direction == RoutineParameterDirection.In ? null : Direction,
+                DefaultExpression == null ? null : new ParameterDefault.ExpressionDefault(DefaultExpression, false));
         }
     }
 }

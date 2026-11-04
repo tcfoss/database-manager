@@ -26,7 +26,8 @@ public class MyConstructFunction(MyConfig config, MyAttributeNormalizer normaliz
         if (createFunctionStatement.ReturnType is not StatementFunctionReturn.DataTypeReturn { DataType: DataTypeReference.BuiltIn returnType })
         {
             string dialect = _config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
-            throw new SqlSyntaxException.UnsupportedDialect(dialect, $"function return type {createFunctionStatement.ReturnType.ToSql()}", sourceRef);
+            throw new SqlSyntaxException.UnsupportedDialect(dialect,
+                $"function return type {createFunctionStatement.ReturnType?.ToSql() ?? "omitted"}", sourceRef);
         }
         return new MyStoredFunction(name, [.. parameters], returnType.DataType, createFunctionStatement.Body)
         {

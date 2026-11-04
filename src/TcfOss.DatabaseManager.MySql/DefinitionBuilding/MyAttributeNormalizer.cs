@@ -1,6 +1,8 @@
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -29,11 +31,29 @@ public class MyAttributeNormalizer(MyConfig config, INormalizeComponents compone
 
     public RoutineParameter NormalizeRoutineParameter(StatementRoutineParameter parameter, bool isFunction)
     {
-        RoutineParameterDirection? direction = parameter is StatementRoutineParameter.Directed d ? d.Direction : null;
+        Identifier name = parameter.Name
+            ?? throw new SqlSyntaxException.UnsupportedDialect("MySQL/MariaDB", "unnamed routine parameters");
+        RoutineParameterDirection? direction = parameter switch
+        {
+            StatementRoutineParameter.Directed directed => directed.Direction,
+            StatementRoutineParameter.General general => general.Direction,
+            _ => null
+        };
+        Expression? defaultExpression = parameter switch
+        {
+            StatementRoutineParameter.Directed { Default: ParameterDefault.ExpressionDefault expression } => expression.Expression,
+            StatementRoutineParameter.Directed { Default: ParameterDefault.ValueDefault value } => new LiteralValue(value.Value),
+            StatementRoutineParameter.General { Default: ParameterDefault.ExpressionDefault expression } => expression.Expression,
+            StatementRoutineParameter.General { Default: ParameterDefault.ValueDefault value } => new LiteralValue(value.Value),
+            _ => null
+        };
         return new RoutineParameter.Directed(
-            _componentNormalizer.NormalizeSingleIdentifier(parameter.Name),
+            _componentNormalizer.NormalizeSingleIdentifier(name),
             _dataTypeNormalizer.NormalizeDataType(((DataTypeReference.BuiltIn)parameter.DataType).DataType),
             direction ?? (isFunction ? _config.AttributeDefaults.FunctionParameterDirection : _config.AttributeDefaults.ProcedureParameterDirection)
-        );
+        )
+        {
+            DefaultExpression = defaultExpression
+        };
     }
 }

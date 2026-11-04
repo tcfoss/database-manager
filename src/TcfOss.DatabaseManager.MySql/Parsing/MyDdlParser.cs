@@ -9,8 +9,13 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 public class MyDdlParser(MyParser parser) : DdlParser(parser)
 {
     protected override bool SupportsIndexMethodAfterTableName => false;
-
     protected override bool UseSqlRoutineTail(ParserState state) => false;
+    protected override bool SupportsOmittedFunctionReturn => false;
+
+    protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
+    {
+        return isFunction ? RoutineParamsSupportStyle.MySqlFunction : RoutineParamsSupportStyle.MySqlProcedure;
+    }
 
     protected override StatementFunctionReturn ParseFunctionReturn(ParserState state)
     {

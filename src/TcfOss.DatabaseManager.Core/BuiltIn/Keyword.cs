@@ -640,6 +640,7 @@ public enum Keyword
     RCFILE,
     READ,
     READ_ONLY,
+    READONLY,
     READS,
     REAL,
     RECOMPILE,

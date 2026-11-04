@@ -2,9 +2,11 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -172,7 +174,44 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return new PgRoutineOptions(ComponentNormalizer.NormalizeSingleIdentifier(options.Language));
     }
 
-    private FunctionReturn ResolveFunctionReturn(StatementFunctionReturn returnType, ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
+    private FunctionReturn ResolveFunctionReturn(StatementFunctionReturn? returnType, SqlValueList<RoutineParameter> parameters,
+        ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
+    {
+        RoutineParameter.Postgres[] outputParameters = [.. parameters.OfType<RoutineParameter.Postgres>()
+            .Where(parameter => parameter.Direction == RoutineParameterDirection.Out || parameter.Direction == RoutineParameterDirection.InOut)];
+
+        if (returnType == null)
+        {
+            return outputParameters.Length switch
+            {
+                1 => new FunctionReturn.DataTypeReturn(outputParameters[0].DataType),
+                > 1 => new FunctionReturn.PseudoType(PgPseudoType.Record),
+                _ => throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "a function without RETURNS or output parameters", sourceRef)
+            };
+        }
+
+        FunctionReturn resolved = ResolveFunctionReturnShape(returnType, routine, sourceRef, manager);
+        if (outputParameters.Length == 0)
+        {
+            return resolved;
+        }
+        if (returnType is StatementFunctionReturn.Table)
+        {
+            throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "RETURNS TABLE with OUT or INOUT parameters", sourceRef);
+        }
+        FunctionReturn outputType = resolved is FunctionReturn.SetOf set ? set.ReturnType : resolved;
+        bool matchesOutput = outputParameters.Length == 1
+            ? outputType is FunctionReturn.DataTypeReturn scalar && scalar.DataType == outputParameters[0].DataType
+            : outputType is FunctionReturn.PseudoType { Type: var type } && type == PgPseudoType.Record;
+        if (!matchesOutput)
+        {
+            throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "a RETURNS clause that conflicts with OUT or INOUT parameters", sourceRef);
+        }
+        return resolved;
+    }
+
+    private FunctionReturn ResolveFunctionReturnShape(StatementFunctionReturn returnType, ObjectIdentifier routine,
+        SourceRef sourceRef, PgTypeResolutionManager manager)
     {
         switch (returnType)
         {
@@ -181,7 +220,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             case StatementFunctionReturn.PseudoType pseudo:
                 return new FunctionReturn.PseudoType(pseudo.Type);
             case StatementFunctionReturn.SetOf set:
-                return new FunctionReturn.SetOf((FunctionReturn.Element)ResolveFunctionReturn(set.ReturnType, routine, sourceRef, manager));
+                return new FunctionReturn.SetOf((FunctionReturn.Element)ResolveFunctionReturnShape(set.ReturnType, routine, sourceRef, manager));
             case StatementFunctionReturn.Table table:
                 var names = new HashSet<Handle>();
                 var columns = new SqlValueList<FunctionReturn.TableColumn>();
@@ -220,9 +259,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         foreach (KeyValuePair<ObjectHandle, Declaration<CreateFunction>> declaration in _functions)
         {
             Declaration<CreateFunction> item = declaration.Value;
+            SqlValueList<RoutineParameter> parameters = ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager);
             functions.Add(declaration.Key, new PgStoredFunction(item.Name,
-                ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager),
-                ResolveFunctionReturn(item.Statement.ReturnType, item.Name, item.SourceRef, manager), item.Statement.Body)
+                parameters,
+                ResolveFunctionReturn(item.Statement.ReturnType, parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
             {
                 Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
                 RawBodyText = SourceManager.GetText(item.SourceRef,
@@ -319,26 +359,83 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     {
         var names = new HashSet<string>();
         SqlValueList<RoutineParameter> result = [];
+        bool hasInputDefault = false;
+        bool hasVariadic = false;
         foreach (StatementRoutineParameter parameter in parameters)
         {
-            Identifier name = ComponentNormalizer.NormalizeSingleIdentifier(parameter.Name);
-            if (!names.Add(name.Name))
+            Identifier? name = parameter.Name is { } parameterName
+                ? ComponentNormalizer.NormalizeSingleIdentifier(parameterName)
+                : null;
+            if (name != null && !names.Add(name.Name))
             {
                 throw new SqlSyntaxException.SpecifiedMoreThanOnce(name.Name, "routine", routine, sourceRef);
             }
             DataType dataType = manager.Resolve(parameter.DataType, routine.Schema, sourceRef);
-            result.Add(parameter switch
+            RoutineParameterDirection direction;
+            Expression? defaultExpression;
+            switch (parameter)
             {
-                StatementRoutineParameter.Directed directed => new RoutineParameter.Directed(name, dataType, directed.Direction),
-                StatementRoutineParameter.Undirected undirected => new RoutineParameter.Undirected(name, dataType)
+                case StatementRoutineParameter.General general:
+                    direction = general.Direction ?? RoutineParameterDirection.In;
+                    defaultExpression = ResolveRoutineParameterDefault(general.Default);
+                    if (general.Options != null)
+                    {
+                        throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "SQL Server routine parameter options", sourceRef);
+                    }
+                    break;
+                case StatementRoutineParameter.Directed directed:
+                    direction = directed.Direction ?? RoutineParameterDirection.In;
+                    defaultExpression = ResolveRoutineParameterDefault(directed.Default);
+                    break;
+                case StatementRoutineParameter.Undirected:
+                    throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "SQL Server routine parameter options", sourceRef);
+                default:
+                    throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"routine parameter {parameter.GetType().Name}", sourceRef);
+            }
+
+            bool isInput = direction != RoutineParameterDirection.Out;
+            if (direction == RoutineParameterDirection.Variadic)
+            {
+                if (hasVariadic)
                 {
-                    DefaultValue = undirected.DefaultValue,
-                    Output = undirected.Output
-                },
-                _ => throw new NotImplementedException()
-            });
+                    throw new SqlSyntaxException.SpecifiedMoreThanOnce("VARIADIC", "routine", routine, sourceRef);
+                }
+                if (dataType is not PgDataType.Array)
+                {
+                    throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "a non-array VARIADIC parameter", sourceRef);
+                }
+                hasVariadic = true;
+            }
+            else if (hasVariadic && isInput)
+            {
+                throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "input parameters after VARIADIC", sourceRef);
+            }
+            if (direction == RoutineParameterDirection.Out && defaultExpression != null)
+            {
+                throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "defaults on OUT parameters", sourceRef);
+            }
+            if (isInput)
+            {
+                if (defaultExpression == null && hasInputDefault)
+                {
+                    throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "an input parameter without a default after a parameter with a default", sourceRef);
+                }
+                hasInputDefault |= defaultExpression != null;
+            }
+            result.Add(new RoutineParameter.Postgres(name, dataType, direction, defaultExpression));
         }
         return result;
+    }
+
+    private static Expression? ResolveRoutineParameterDefault(ParameterDefault? parameterDefault)
+    {
+        return parameterDefault switch
+        {
+            ParameterDefault.ExpressionDefault expression => expression.Expression,
+            ParameterDefault.ValueDefault value => new LiteralValue(value.Value),
+            null => null,
+            _ => throw new NotImplementedException()
+        };
     }
 
     protected override List<SourcedException> ValidateDefinition(PgDefinition definition)
