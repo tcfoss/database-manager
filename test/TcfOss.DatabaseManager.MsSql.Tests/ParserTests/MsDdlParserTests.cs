@@ -128,6 +128,16 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatement(text));
     }
 
+    [Theory]
+    [InlineData("CREATE FUNCTION fn() AS BEGIN RETURN 1; END")]
+    [InlineData("CREATE FUNCTION fn(@value INT) AS BEGIN RETURN @value; END")]
+    public void CreateFunction_MissingReturns_IsRejected(string text)
+    {
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(text));
+
+        Assert.StartsWith("Expected RETURNS.", exception.Message);
+    }
+
     // ---------------- CREATE TRIGGER ----------------
 
     [Theory]

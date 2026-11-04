@@ -365,12 +365,7 @@ public class DdlParser
             }
             DataTypeReference variableType = _p.DataTypeParser.ParseDataTypeReference(state);
             (ParameterDefault? variableDefault, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
-            ParameterDefault.ValueDefault? defaultValue = variableDefault switch
-            {
-                ParameterDefault.ValueDefault valueDefault => valueDefault,
-                null => null,
-                _ => throw state.ExpectedException("constant parameter default")
-            };
+            var defaultValue = (ParameterDefault.ValueDefault?)variableDefault;
             return new StatementRoutineParameter.Undirected(variableName, variableType, defaultValue)
             {
                 Options = options
@@ -392,10 +387,10 @@ public class DdlParser
         }
 
         Identifier name = _parseIdentifier(state);
-        direction ??= ParseRoutineParameterDirection(state, style.Modes);
+        RoutineParameterDirection? namedDirection = direction ?? ParseRoutineParameterDirection(state, style.Modes);
         DataTypeReference namedType = _p.DataTypeParser.ParseDataTypeReference(state);
         (ParameterDefault? namedDefault, MsRoutineParameterOptions? namedOptions) = ParseRoutineParameterSuffix(state, style);
-        return new StatementRoutineParameter.General(name, namedType, direction, namedDefault, namedOptions);
+        return new StatementRoutineParameter.General(name, namedType, namedDirection, namedDefault, namedOptions);
     }
 
     private bool CanStartUnnamedRoutineParameter(ParserState state)
@@ -455,11 +450,7 @@ public class DdlParser
         {
             return new ParameterDefault.ExpressionDefault(_p.ExpressionParser.ParseExpr(state), useDefaultKeyword);
         }
-        if (style.DefaultKinds.HasFlag(RoutineParameterDefaultKind.Value))
-        {
-            return new ParameterDefault.ValueDefault(ValueParser.ParseValue(state), useDefaultKeyword);
-        }
-        throw state.ExpectedException("parameter default value");
+        return new ParameterDefault.ValueDefault(ValueParser.ParseValue(state), useDefaultKeyword);
     }
 
     private static MsRoutineParameterOptions? ParseSqlServerParameterOptionsBeforeDefault(ParserState state)
