@@ -98,7 +98,7 @@ public class ObjectComparisonTests
             RawBodyText = "RAW BODY TEXT 1"
         };
 
-        StoredFunction? otherFunction = function with { RawBodyText = "RAW BODY TEXT 2" };
+        StoredFunction<RoutineParameter>? otherFunction = function with { RawBodyText = "RAW BODY TEXT 2" };
 
         Assert.Equal(function, otherFunction);
         Assert.True(function.Equals(otherFunction));

@@ -301,6 +301,27 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         };
     }
 
+    public SqlValueList<RoutineParameter.Directed> GetRoutineParameters(
+        SchemaRoutineData routineData,
+        string routineType,
+        string routineName,
+        bool parseDirectionForFunction)
+    {
+        routineData.ParametersByRoutine.TryGetValue((routineName, routineType), out IReadOnlyList<RoutineParameterDto>? parameters);
+        var routineParms = new SqlValueList<RoutineParameter.Directed>();
+        foreach (RoutineParameterDto p in parameters ?? [])
+        {
+            DataType dataType = ParseDataTypeWithDefaults(p.DataType, p.CharacterSet, p.Collation);
+            var name = new Identifier(p.ParameterName, _quoteStyle);
+            RoutineParameterDirection? direction = routineType == "PROCEDURE" || parseDirectionForFunction
+                ? RoutineParameterDirection.Parse(p.ParameterMode!)
+                : null;
+            routineParms.Add(new RoutineParameter.Directed(name, dataType, direction));
+        }
+
+        return routineParms;
+    }
+
     public Dictionary<ObjectIdentifier, MyTrigger> TriggersOnTableToDictionary(IEnumerable<TriggerDto> tableRows, ObjectIdentifier tableId)
     {
         Dictionary<ObjectIdentifier, MyTrigger> triggers = [];

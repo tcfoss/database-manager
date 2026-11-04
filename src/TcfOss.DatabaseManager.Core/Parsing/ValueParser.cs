@@ -37,7 +37,19 @@ public class ValueParser
 
         return token switch
         {
-            Word { Keyword: Keyword.undefined } word => word.Value,
+            StringLiteral s => s.Value,
+            DollarQuotedStringLiteral s => s.Value,
+            _ => throw ParserState.ExpectedCategoryException("literal_string", token)
+        };
+    }
+
+    public static string ParseLiteralStringOptionalQuotes(ParserState state)
+    {
+        Token token = state.Next();
+
+        return token switch
+        {
+            Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word => word.Value,
             StringLiteral s => s.Value,
             DollarQuotedStringLiteral s => s.Value,
             _ => throw ParserState.ExpectedCategoryException("literal_string", token)

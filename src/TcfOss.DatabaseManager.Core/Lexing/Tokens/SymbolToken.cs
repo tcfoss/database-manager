@@ -16,9 +16,15 @@ public abstract class SymbolToken(string symbol) : Token
         return other != null && Symbol == other.Symbol;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as SymbolToken);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as SymbolToken);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as SymbolToken);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as SymbolToken);
+    }
 
     public override int GetHashCode()
     {

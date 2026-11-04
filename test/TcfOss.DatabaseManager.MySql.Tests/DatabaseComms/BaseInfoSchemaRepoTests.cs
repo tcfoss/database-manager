@@ -27,8 +27,10 @@ public abstract class BaseInfoSchemaRepoTests
     protected abstract string ViewExpectedText { get; }
     protected abstract string ExpectedLowercaseFunctionName { get; }
 
-    protected ObjectIdentifier ObIdent(string name, string schema) =>
-        new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+    protected ObjectIdentifier ObIdent(string name, string schema)
+    {
+        return new(name, new SchemaIdentifier(schema, MyConfig.Catalog, MyConfig.QuoteStyle), MyConfig.QuoteStyle);
+    }
 
     [Fact]
     public async Task Get_Table_Identifiers_1()
@@ -415,7 +417,7 @@ public abstract class BaseInfoSchemaRepoTests
 
         var parameters = procedure.Parameters.ToList();
         var parameter = Assert.Single(parameters);
-        Assert.Equal("search_term", parameter.Name.Name);
+        Assert.Equal("search_term", parameter.Name!.Name);
         Assert.Equal($"VARCHAR(255) CHARACTER SET utf8mb4{DefaultCollation}", parameter.DataType.ToSql());
         Assert.Equal(RoutineParameterDirection.In, Assert.IsType<RoutineParameter.Directed>(parameter).Direction);
 
@@ -451,10 +453,10 @@ public abstract class BaseInfoSchemaRepoTests
 
         var parameters = function.Parameters.ToList();
         Assert.Equal(2, parameters.Count);
-        Assert.Equal("rental_id", parameters[0].Name.Name);
+        Assert.Equal("rental_id", parameters[0].Name!.Name);
         Assert.Equal($"INT{DefaultIntegerWidth} SIGNED", parameters[0].DataType.ToSql());
         Assert.Equal(FunctionParameterDirection, Assert.IsType<RoutineParameter.Directed>(parameters[0]).Direction);
-        Assert.Equal("lateness_rate", parameters[1].Name.Name);
+        Assert.Equal("lateness_rate", parameters[1].Name!.Name);
         Assert.Equal("DECIMAL(10,2) SIGNED", parameters[1].DataType.ToSql());
         Assert.Equal(FunctionParameterDirection, Assert.IsType<RoutineParameter.Directed>(parameters[1]).Direction);
 

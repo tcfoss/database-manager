@@ -8,5 +8,8 @@ namespace TcfOss.DatabaseManager.Core.Tests.DatabaseObjects;
 public record TestTrigger(ObjectIdentifier Name, ObjectIdentifier OnTable, Statement Body)
     : Trigger(Name, OnTable, Body)
 {
-    public override CreateTrigger ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null) => throw new NotImplementedException();
+    public override CreateTrigger ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
+    {
+        throw new NotImplementedException();
+    }
 }

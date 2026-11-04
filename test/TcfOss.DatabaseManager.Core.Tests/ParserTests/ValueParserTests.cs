@@ -28,7 +28,8 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
-    [InlineData("rawstring", "rawstring")]
+    [InlineData("$$a dollar quoted string$$", "a dollar quoted string")]
+    [InlineData("$tag$a tagged dollar quoted string$tag$", "a tagged dollar quoted string")]
     [InlineData("'a quoted string'", "a quoted string")]
     public static void ParseLiteralString_Match(string sql, string expected)
     {
@@ -47,6 +48,36 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
         var state = GetState(sql);
 
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ValueParser.ParseLiteralString(state));
+        var expectedTemplate = "Expected {0}. Found {1}.";
+        found = found == null
+            ? sql.Trim().Split(' ')[0]
+            : found.Italic();
+        var expectedMessage = string.Format(expectedTemplate, "literal_string".Italic(), found);
+        Assert.Equal(expectedMessage, exception.Message);
+    }
+
+    [Theory]
+    [InlineData("$$a dollar quoted string$$", "a dollar quoted string")]
+    [InlineData("$tag$a tagged dollar quoted string$tag$", "a tagged dollar quoted string")]
+    [InlineData("'a quoted string'", "a quoted string")]
+    [InlineData("rawstring", "rawstring")]
+    [InlineData("SELECT", "SELECT")]
+    public static void ParseLiteralStringOptionalQuotes_Match(string sql, string expected)
+    {
+        var state = GetState(sql);
+
+        Assert.Equal(expected, ValueParser.ParseLiteralStringOptionalQuotes(state));
+    }
+
+    [Theory]
+    [InlineData("3", null)]
+    [InlineData("3.14", null)]
+    [InlineData("  ", "end of input")]
+    public static void ParseLiteralStringOptionalQuotes_Fail(string sql, string? found)
+    {
+        var state = GetState(sql);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ValueParser.ParseLiteralStringOptionalQuotes(state));
         var expectedTemplate = "Expected {0}. Found {1}.";
         found = found == null
             ? sql.Trim().Split(' ')[0]

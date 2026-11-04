@@ -18,9 +18,15 @@ public sealed class StringLiteral(string value) : Token
         return other != null && Value == other.Value && CharSet == other.CharSet;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as StringLiteral);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as StringLiteral);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as StringLiteral);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as StringLiteral);
+    }
 
     public override int GetHashCode()
     {

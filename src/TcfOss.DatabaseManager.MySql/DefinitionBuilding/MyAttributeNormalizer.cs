@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -27,13 +28,23 @@ public class MyAttributeNormalizer(MyConfig config, INormalizeComponents compone
         };
     }
 
-    public RoutineParameter NormalizeRoutineParameter(StatementRoutineParameter parameter, bool isFunction)
+    public RoutineParameter.Directed NormalizeRoutineParameter(StatementRoutineParameter parameter, bool isFunction)
     {
-        RoutineParameterDirection? direction = parameter is StatementRoutineParameter.Directed d ? d.Direction : null;
+        Identifier name = parameter.Name
+            ?? throw new SqlSyntaxException.UnsupportedDialect("MySQL/MariaDB", "unnamed routine parameters");
+        Expression? defaultExpression = parameter.ParameterDefault switch
+        {
+            ParameterDefault.ExpressionDefault expression => expression.Expression,
+            ParameterDefault.ValueDefault value => new LiteralValue(value.Value),
+            _ => null
+        };
         return new RoutineParameter.Directed(
-            _componentNormalizer.NormalizeSingleIdentifier(parameter.Name),
+            _componentNormalizer.NormalizeSingleIdentifier(name),
             _dataTypeNormalizer.NormalizeDataType(((DataTypeReference.BuiltIn)parameter.DataType).DataType),
-            direction ?? (isFunction ? _config.AttributeDefaults.FunctionParameterDirection : _config.AttributeDefaults.ProcedureParameterDirection)
-        );
+            parameter.Direction ?? (isFunction ? _config.AttributeDefaults.FunctionParameterDirection : _config.AttributeDefaults.ProcedureParameterDirection)
+        )
+        {
+            DefaultExpression = defaultExpression
+        };
     }
 }

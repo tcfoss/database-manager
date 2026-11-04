@@ -10,9 +10,18 @@ public class MyTerminator(string delimiter) : Token
         return other != null && Delimiter == other.Delimiter;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as MyTerminator);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as MyTerminator);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as MyTerminator);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as MyTerminator);
+    }
 
-    public override int GetHashCode() => Delimiter.GetHashCode();
+    public override int GetHashCode()
+    {
+        return Delimiter.GetHashCode();
+    }
 }

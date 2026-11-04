@@ -20,6 +20,15 @@ public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_UnsupportedDialectClause);
     }
 
+    public class UnsupportedDialect(string dialect, string contents, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(dialect, contents), sourceRef)
+    {
+        public string Dialect { get; } = dialect;
+        public string Contents { get; } = contents;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_UnsupportedDialectGeneral);
+    }
+
     public class DuplicateObject(string objectName, SourceRef? sourceRef = null)
         : SqlSyntaxException(s_compositeFormat.Apply(objectName), sourceRef)
     {
@@ -173,6 +182,12 @@ public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         : SqlSyntaxException(s_compositeFormat.Apply(dialect, triggerName, eventCount), sourceRef)
     {
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_TriggerSupportsOnlyOneEvent);
+    }
+
+    public class EmptyIndexColumnList(string indexType, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(indexType), sourceRef)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_EmptyIndexColumnList);
     }
 
     private static string GetMessage(string message)

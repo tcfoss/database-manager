@@ -8,11 +8,15 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.MySql.Configuration;
+using TcfOss.DatabaseManager.MySql.DatabaseObjects;
+using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.Lexing;
 using TcfOss.DatabaseManager.MySql.Parsing;
@@ -794,6 +798,52 @@ public abstract class MyDefinitionBuilderTestsBase
     }
 
     [Fact]
+    public void UnknownCharSet_Throws()
+    {
+        var statementText = """
+        CREATE TABLE mytable (
+            id int not null,
+            val varchar(100) character set unknown collate unknown
+        );
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var errors = Assert.Throws<ValidationExceptionSet>(() =>
+        {
+            DefinitionBuilder.ToDefinition();
+        });
+
+        var ex = Assert.IsType<DefinitionException.StringAttributeInvalidCharacterSet>(Assert.Single(errors.Exceptions));
+        Assert.Equal("unknown", ex.CharacterSet);
+    }
+
+    [Fact]
+    public void UnknownCollation_Throws()
+    {
+        var statementText = """
+        CREATE TABLE mytable (
+            id int not null,
+            val varchar(100) character set utf8mb4 collate unknown
+        );
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var errors = Assert.Throws<ValidationExceptionSet>(() =>
+        {
+            DefinitionBuilder.ToDefinition();
+        });
+
+        var ex = Assert.IsType<DefinitionException.StringAttributeInvalidCollation>(Assert.Single(errors.Exceptions));
+        Assert.Equal("unknown", ex.Collation);
+    }
+
+    [Fact]
     public void View()
     {
         var statementText = """
@@ -992,6 +1042,174 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.Equal(new Account.Identity(new ExtendedIdentifier("admin_users", ExtendedQuoteStyle.Backticks)), function.Definer.Account);
 
         Assert.Equal("BEGIN SET param2 = 'success'; RETURN CONCAT(param1, ' is a parameter'); END", function.Body.ToSql());
+    }
+
+    [Theory]
+    [InlineData("TABLE (id INT)")]
+    [InlineData("SETOF INT")]
+    [InlineData("trigger")]
+    [InlineData("void")]
+    [InlineData("record")]
+    public void Function_ManuallySuppliedPostgresReturn_IsRejected(string returnClause)
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f() RETURNS INT SQL SECURITY DEFINER RETURN 1")));
+        var coreParser = new TextParser(new GenericLexer(), new Parser());
+        var extended = Assert.IsType<CreateFunction>(Assert.Single(coreParser.ParseText($"CREATE FUNCTION f() RETURNS {returnClause} RETURN 1")));
+        var statement = parsed with { ReturnType = extended.ReturnType };
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", exception.Dialect);
+        Assert.Contains("function return type", exception.Contents);
+    }
+
+    [Fact]
+    public void Function_ManuallySuppliedMissingReturn_IsRejected()
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f() RETURNS INT SQL SECURITY DEFINER RETURN 1")));
+        CreateFunction statement = parsed with { ReturnType = null };
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", exception.Dialect);
+        Assert.Equal("function return type omitted", exception.Contents);
+    }
+
+    [Theory]
+    [InlineData("value INT DEFAULT 1")]
+    [InlineData("IN value INT DEFAULT (1 + 2)")]
+    public void ProcedureParameterDefaults_RequireMariaDb(string declaration)
+    {
+        var statements = TextParser.ParseText($"CREATE DEFINER = 'root'@'localhost' PROCEDURE p({declaration}) SQL SECURITY DEFINER SELECT value");
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on procedure parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var procedure = Assert.Single(DefinitionBuilder.ToDefinition().Procedures).Value;
+        var parameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(procedure.Parameters));
+
+        Assert.NotNull(parameter.DefaultExpression);
+        var rebuilt = GetDefinitionBuilder();
+        rebuilt.ProcessStatements(TextParser.ParseText(procedure.ToCreateStatement(true).ToSql()), Schema, 1);
+        Assert.Equal(procedure.Parameters, Assert.Single(rebuilt.ToDefinition().Procedures).Value.Parameters);
+    }
+
+    [Theory]
+    [InlineData("value INT DEFAULT 1")]
+    [InlineData("IN value INT DEFAULT (1 + 2)")]
+    public void FunctionParameterDefaults_RequireMariaDb(string declaration)
+    {
+        var statements = TextParser.ParseText($"CREATE DEFINER = 'root'@'localhost' FUNCTION f({declaration}) RETURNS INT SQL SECURITY DEFINER RETURN value");
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on function parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        var function = Assert.Single(DefinitionBuilder.ToDefinition().Functions).Value;
+        var parameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(function.Parameters));
+
+        Assert.NotNull(parameter.DefaultExpression);
+        var rebuilt = GetDefinitionBuilder();
+        rebuilt.ProcessStatements(TextParser.ParseText(function.ToCreateStatement(true).ToSql()), Schema, 1);
+        Assert.Equal(function.Parameters, Assert.Single(rebuilt.ToDefinition().Functions).Value.Parameters);
+    }
+
+    [Theory]
+    [InlineData(false, "OUT")]
+    [InlineData(false, "INOUT")]
+    [InlineData(true, "OUT")]
+    [InlineData(true, "INOUT")]
+    public void RoutineOutputParameterDefaults_AreRejected(bool isFunction, string direction)
+    {
+        string declaration = isFunction
+            ? $"FUNCTION f({direction} value INT DEFAULT 1) RETURNS INT SQL SECURITY DEFINER RETURN value"
+            : $"PROCEDURE p({direction} value INT DEFAULT 1) SQL SECURITY DEFINER SELECT value";
+        var statements = TextParser.ParseText($"CREATE DEFINER = 'root'@'localhost' {declaration}");
+
+        Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void FunctionParameterDefaults_ManuallySuppliedRequireMariaDb(bool useGeneralParameter, bool useExpressionDefault)
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f(value INT) RETURNS INT SQL SECURITY DEFINER RETURN value")));
+        StatementRoutineParameter original = Assert.Single(parsed.Parameters);
+        ParameterDefault parameterDefault = useExpressionDefault
+            ? new ParameterDefault.ExpressionDefault(new LiteralValue(new Value.Number("1", false)), true)
+            : new ParameterDefault.ValueDefault(new Value.Number("1", false), true);
+        StatementRoutineParameter parameter = useGeneralParameter
+            ? new StatementRoutineParameter.General(original.Name, original.DataType, null, parameterDefault)
+            : new StatementRoutineParameter.Directed(original.Name!, original.DataType,
+                Assert.IsType<StatementRoutineParameter.Directed>(original).Direction, parameterDefault);
+        CreateFunction statement = parsed with { Parameters = [parameter] };
+
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on function parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements([statement], Schema, 0);
+        var function = Assert.Single(DefinitionBuilder.ToDefinition().Functions).Value;
+        var resolvedParameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(function.Parameters));
+
+        Assert.Equal(new LiteralValue(new Value.Number("1", false)), resolvedParameter.DefaultExpression);
+    }
+
+    [Fact]
+    public void FunctionParameterDefault_ManuallySuppliedUndirectedValue_RequiresMariaDb()
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f(value INT) RETURNS INT SQL SECURITY DEFINER RETURN value")));
+        StatementRoutineParameter original = Assert.Single(parsed.Parameters);
+        var parameterDefault = new ParameterDefault.ValueDefault(new Value.Number("7", false), false);
+        CreateFunction statement = parsed with
+        {
+            Parameters = [new StatementRoutineParameter.Undirected(original.Name!, original.DataType, parameterDefault)]
+        };
+
+        if (MyConfig.Dialect != SqlDialect.MariaDb)
+        {
+            var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+            Assert.Equal("MySQL", exception.Dialect);
+            Assert.Contains("defaults on function parameters", exception.Contents);
+            return;
+        }
+
+        DefinitionBuilder.ProcessStatements([statement], Schema, 0);
+        var function = Assert.Single(DefinitionBuilder.ToDefinition().Functions).Value;
+        var parameter = Assert.IsType<RoutineParameter.Directed>(Assert.Single(function.Parameters));
+
+        Assert.Equal(new LiteralValue(parameterDefault.Value), parameter.DefaultExpression);
+        Assert.Equal(FunctionParameterDirection, parameter.Direction);
+    }
+
+    [Fact]
+    public void FunctionParameter_ManuallySuppliedWithoutName_IsRejected()
+    {
+        var parsed = Assert.IsType<CreateFunction>(Assert.Single(TextParser.ParseText("CREATE DEFINER = 'root'@'localhost' FUNCTION f(value INT) RETURNS INT SQL SECURITY DEFINER RETURN 1")));
+        StatementRoutineParameter original = Assert.Single(parsed.Parameters);
+        CreateFunction statement = parsed with
+        {
+            Parameters = [new StatementRoutineParameter.General(null, original.DataType, null, null)]
+        };
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() => DefinitionBuilder.ProcessStatements([statement], Schema, 0));
+
+        Assert.Equal("MySQL/MariaDB", exception.Dialect);
+        Assert.Contains("unnamed routine parameters", exception.Contents);
     }
 
     [Fact]
@@ -1330,7 +1548,7 @@ public abstract class MyDefinitionBuilderTestsBase
 
 
         var expected1 = $"`id` INT{DefaultUnsignedIntegerWidth} UNSIGNED NOT NULL AUTO_INCREMENT";
-        Assert.Equal(expected1, table.Columns![0].ToSql());
+        Assert.Equal(expected1, table.Columns[0].ToSql());
         var expected2 = $"`val` VARCHAR(100) CHARACTER SET utf8mb4{DefaultCollationSetter} NULL DEFAULT NULL";
         Assert.Equal(expected2, table.Columns[1].ToSql());
 
@@ -1631,6 +1849,129 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.Equal(2, CountNestedDepth(thenRight2));
         Assert.IsType<Core.Expressions.BinaryOperator>(thenRight1Normalized);
         Assert.IsType<Core.Expressions.BinaryOperator>(thenRight2Normalized);
+    }
+
+    [Fact]
+    public void CreateIndex_FulltextSpatial_AddedToDefinition()
+    {
+        var statementText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            description TEXT NULL,
+            location POINT NOT NULL
+        );
+
+        CREATE FULLTEXT INDEX ft_idx ON mytable (description);
+
+        CREATE SPATIAL INDEX sp_idx ON mytable (location);
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var definition = DefinitionBuilder.ToDefinition();
+
+        var table = Assert.Single(definition.Tables.Values);
+        var ft = Assert.IsType<MyKey.FullText>(Assert.Single(table.Keys, k => k.Key.Name == "ft_idx").Value);
+        var ftCol = Assert.IsType<KeyPart.Column>(Assert.Single(ft.Columns));
+        Assert.Equal("description", ftCol.Name.Name);
+        var sp = Assert.IsType<MyKey.Spatial>(Assert.Single(table.Keys, k => k.Key.Name == "sp_idx").Value);
+        var spCol = Assert.IsType<KeyPart.Column>(Assert.Single(sp.Columns));
+        Assert.Equal("location", spCol.Name.Name);
+    }
+
+    [Fact]
+    public void CreateIndex_FakeType_Throws()
+    {
+        var statementText = """
+        CREATE TABLE mytable (
+            id INT NOT NULL
+        );
+        """;
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var fakeCreateIndex = new CreateFakeIndex(new ObjectName(new Identifier("mytable")))
+        {
+            Meta = new MetaData
+            {
+                Start = 0,
+                End = 0
+            }
+        };
+
+        DefinitionBuilder.ProcessStatements(new[] { fakeCreateIndex }, Schema, 0);
+
+        Assert.Throws<SqlSyntaxException.CreateIndexUnexpectedType>(() =>
+        {
+            DefinitionBuilder.ToDefinition();
+        });
+    }
+
+    private record CreateFakeIndex(ObjectName TableName) : CreateIndex(TableName, [], null)
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    [Theory]
+    [InlineData("DATABASE")]
+    [InlineData("SCHEMA")]
+    [InlineData(null)]
+    public void UseSchema_ChangesSchema(string? useType)
+    {
+        var statementText = $"""
+        CREATE TABLE table1 (
+            id INT NOT NULL
+        );
+
+        USE {useType} schema2;
+
+        CREATE TABLE table2 (
+            id INT NOT NULL
+        );
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var definition = DefinitionBuilder.ToDefinition();
+
+        var table1 = Assert.IsType<MyTable>(Assert.Single(definition.Tables, t => t.Key.Name == "table1").Value);
+        Assert.Equal("schema1", table1.Name.Schema.Name);
+
+        var table2 = Assert.IsType<MyTable>(Assert.Single(definition.Tables, t => t.Key.Name == "table2").Value);
+        Assert.Equal("schema2", table2.Name.Schema.Name);
+    }
+
+    [Fact]
+    public void UseCatalog_Throws()
+    {
+        var statementText = """
+        CREATE TABLE table1 (
+            id INT NOT NULL
+        );
+
+        USE CATALOG othercatalog;
+
+        CREATE TABLE table2 (
+            id INT NOT NULL
+        );
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+
+        var ex = Assert.Throws<SqlSyntaxException>(() =>
+        {
+            DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        });
+        Assert.Contains("Got USE CATALOG", ex.Message);
     }
 
     protected static Expression? ExtractThenClause(Expression expr)
@@ -2398,11 +2739,63 @@ public abstract class MyDefinitionBuilderTestsBase
         var column =
             new StatementColumn.MsComputed(new Identifier("val", QuoteStyle.None), new LiteralValue(new Value.Null()), []);
         var createTable = new CreateTable(tableName, [column], []) { Meta = { Start = 0, End = 10 } };
-        var error = Assert.Throws<NotSupportedException>(() =>
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialect>(() =>
         {
             DefinitionBuilder.ProcessStatements([createTable], Schema, 0);
         });
-        Assert.Contains("Only typed columns are supported", error.Message);
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", error.Dialect);
+        Assert.Contains("column declaration", error.Contents);
+    }
+
+    [Fact]
+    public void CreateTable_UnsupportedGeneratedOption_ThrowsSyntaxError()
+    {
+        var table = new CreateTable(new ObjectName(new Identifier("mytable")),
+            [new StatementColumn.Typed(new Identifier("val"), new DataType.Int(), [new UnsupportedGeneratedOption()])], [])
+        {
+            Meta = { Start = 0, End = 10 }
+        };
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => DefinitionBuilder.ProcessStatements([table], Schema, 0));
+
+        Assert.Equal(MyConfig.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL", exception.Dialect);
+        Assert.Contains("generated column option", exception.Clause);
+        Assert.Equal(new SourceRef(0, 0, 10), exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void NonDdlStatement_Throws()
+    {
+        var statementText = "SELECT 1;";
+        var statements = TextParser.ParseText(statementText);
+        var ex = Assert.Throws<DefinitionException>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+        Assert.Contains("Select statement", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(null, 10)]
+    [InlineData(0, null)]
+    [InlineData(null, null)]
+    public void StatementWithoutStartOrEnd_Throws(int? start, int? end)
+    {
+        var statementText = """
+        CREATE TABLE mytable (val INT);
+        """;
+
+        var statements = TextParser.ParseText(statementText);
+        statements[0].Meta.Start = start;
+        statements[0].Meta.End = end;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DefinitionBuilder.ProcessStatements(statements, Schema, 0));
+        Assert.Contains("Statement is missing source position metadata", ex.Message);
+    }
+
+    private sealed record UnsupportedGeneratedOption : StatementColumnOption.Generated
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("GENERATED UNSUPPORTED");
+        }
     }
 
     public class DataTypeSerializer : IXunitSerializer

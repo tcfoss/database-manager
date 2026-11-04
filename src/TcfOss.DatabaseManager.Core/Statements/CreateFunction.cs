@@ -10,7 +10,7 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParameter> Parameters, DataTypeReference ReturnType, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
+public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParameter> Parameters, StatementFunctionReturn? ReturnType, Statement Body) : Statement, ICreateStatement, IHaveBodyStatement, IWriteSqlWithOptions
 {
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool IfNotExists { get; init; }
@@ -55,7 +55,11 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
         {
             writer.Write(" IF NOT EXISTS");
         }
-        writer.WriteSql($" {Name} ({Parameters}) RETURNS {ReturnType}");
+        writer.WriteSql($" {Name} ({Parameters})");
+        if (ReturnType != null)
+        {
+            writer.WriteSql($" RETURNS {ReturnType}");
+        }
 
         if (MyCharacteristic != null)
         {

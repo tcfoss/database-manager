@@ -66,7 +66,7 @@ public partial class MyDownloadSchema(MyConfig config, ILogger<MyDownloadSchema>
             fout.WriteLine($"CREATE TABLE {stmt.Name.ToSql()}");
             fout.WriteLine("(");
             int i = 0;
-            foreach (StatementColumn col in stmt.Columns!)
+            foreach (StatementColumn col in stmt.Columns)
             {
                 fout.Write($"    {col.ToSql()}");
                 if (i < stmt.Columns.Count - 1 || stmt.Constraints.Any())
@@ -140,7 +140,7 @@ public partial class MyDownloadSchema(MyConfig config, ILogger<MyDownloadSchema>
             fout.WriteLine("CREATE");
             fout.WriteLine($"    {function.Definer.ToSql()}");
             fout.WriteLine($"{aggregate}FUNCTION {stmt.Name.ToSql()} ({stmt.Parameters.ToSqlDelimited()})");
-            fout.WriteLine($"    RETURNS {stmt.ReturnType.ToSql()}");
+            fout.WriteLine($"    RETURNS {stmt.ReturnType!.ToSql()}");
             if (stmt.MyCharacteristic != null)
             {
                 fout.WriteLine($"    {stmt.MyCharacteristic.ToSql()}");

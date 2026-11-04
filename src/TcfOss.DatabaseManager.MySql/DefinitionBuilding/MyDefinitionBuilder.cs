@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -197,6 +198,7 @@ public partial class MyDefinitionBuilder
         }
         ValidateDefiner(createProcedureStatement.Definer, "Procedure", procedureId, sourceRef);
         ValidateSecurityContext(createProcedureStatement.MyCharacteristic?.SecurityContext, "Procedure", procedureId, sourceRef);
+        ValidateRoutineParameters(createProcedureStatement.Parameters, isFunction: false, sourceRef);
 
         return _helpers[currentSchema].ProcedureConstructor.ConstructProcedure(createProcedureStatement, procedureId, _accountQuoteStyle, sourceRef);
     }
@@ -218,6 +220,7 @@ public partial class MyDefinitionBuilder
         }
         ValidateDefiner(createFunctionStatement.Definer, "Function", functionId, sourceRef);
         ValidateSecurityContext(createFunctionStatement.MyCharacteristic?.SecurityContext, "Function", functionId, sourceRef);
+        ValidateRoutineParameters(createFunctionStatement.Parameters, isFunction: true, sourceRef);
 
         return _helpers[currentSchema].FunctionConstructor.ConstructFunction(createFunctionStatement, functionId, _accountQuoteStyle, sourceRef);
     }
@@ -420,6 +423,28 @@ public partial class MyDefinitionBuilder
     }
 
 
+    protected virtual void ValidateRoutineParameters(SqlValueList<StatementRoutineParameter> parameters, bool isFunction, SourceRef? sourceRef)
+    {
+        foreach (StatementRoutineParameter parameter in parameters)
+        {
+            if (parameter.ParameterDefault == null)
+            {
+                continue;
+            }
+            string dialect = Config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
+            if (Config.Dialect != SqlDialect.MariaDb)
+            {
+                throw new SqlSyntaxException.UnsupportedDialect(dialect,
+                    isFunction ? "defaults on function parameters" : "defaults on procedure parameters", sourceRef);
+            }
+            RoutineParameterDirection? direction = parameter.Direction;
+            if (direction != null && direction != RoutineParameterDirection.In)
+            {
+                throw new SqlSyntaxException.UnsupportedDialect(dialect, "defaults on OUT or INOUT parameters", sourceRef);
+            }
+        }
+    }
+
     protected virtual void ValidateCreateTable(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef? sourceRef)
     {
         if (createTableStatement.AsSelect != null)
@@ -513,19 +538,13 @@ public partial class MyDefinitionBuilder
         return errors;
     }
 
-
     private bool MatchingColumnListExists(List<Identifier> requiredColumns, MyTable table, string? extractionReason)
     {
         return _validationHelper.GetValidMatchingKeyPartList(requiredColumns, table.GetPotentialKeyPartLists(), extractionReason) != null;
     }
 
-    private static bool DataTypesMatch(DataType? dt1, DataType? dt2)
+    private static bool DataTypesMatch(DataType dt1, DataType dt2)
     {
-        if (dt1 == null || dt2 == null)
-        {
-            return false;
-        }
-
         if (dt1.Class != dt2.Class)
         {
             return false;
@@ -576,12 +595,12 @@ public partial class MyDefinitionBuilder
     {
         var errors = new List<SourcedException>();
 
-        var localCols = key.Columns.Select(keyCol => table.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).Where(c => c != null).ToList();
-        var foreignCols = key.ReferencedColumns.Select(keyCol => referencedTable.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).Where(c => c != null).ToList();
+        var localCols = key.Columns.Select(keyCol => table.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).OfType<MyColumn>().ToList();
+        var foreignCols = key.ReferencedColumns.Select(keyCol => referencedTable.Columns.FirstOrDefault(col => col.Name.Name == keyCol.Name)).OfType<MyColumn>().ToList();
 
         if (localCols.Count == foreignCols.Count)
         {
-            foreach ((MyColumn? local, MyColumn? other) in localCols.Zip(foreignCols))
+            foreach ((MyColumn local, MyColumn other) in localCols.Zip(foreignCols))
             {
                 if (!DataTypesMatch(local!.DataType, other!.DataType))
                 {

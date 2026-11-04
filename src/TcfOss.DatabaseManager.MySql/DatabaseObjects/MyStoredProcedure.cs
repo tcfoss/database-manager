@@ -9,8 +9,11 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
 
-public record MyStoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, Statement Body)
-    : StoredProcedure(Name, Parameters, Body)
+public record MyStoredProcedure(
+    ObjectIdentifier Name,
+    SqlValueList<RoutineParameter.Directed> Parameters,
+    Statement Body)
+    : StoredProcedure<RoutineParameter.Directed>(Name, Parameters, Body)
 {
     public required Definer Definer { get; init; }
     public required SecurityContext SecurityContext { get; init; }

@@ -13,9 +13,15 @@ public sealed class NonSqlContainer(ValueList<NonSql> subTokens) : Token
         return other != null && SubTokens.SequenceEqual(other.SubTokens);
     }
 
-    public override bool Equals(object? obj) => Equals(obj as NonSqlContainer);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as NonSqlContainer);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as NonSqlContainer);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as NonSqlContainer);
+    }
 
     public override int GetHashCode()
     {

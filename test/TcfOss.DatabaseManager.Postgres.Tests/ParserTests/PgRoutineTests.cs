@@ -3,6 +3,8 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Formatting;
@@ -11,6 +13,7 @@ using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -19,6 +22,142 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.ParserTests;
 
 public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
 {
+    [Theory]
+    [InlineData("INT", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("app.result[]", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("trigger", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("void", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("record", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("SETOF INT", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF app.result[]", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF record", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF void", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF \"record\"", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("TABLE (id INT, \"Label\" app.label[])", typeof(StatementFunctionReturn.Table))]
+    [InlineData("\"trigger\"", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("app.record", typeof(StatementFunctionReturn.DataTypeReturn))]
+    public void FunctionReturnShapes_ParseWriteAndFormat(string returnClause, Type expectedType)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f() RETURNS {returnClause} LANGUAGE plpgsql AS $$opaque; body$$"));
+
+        Assert.IsType(expectedType, function.ReturnType);
+        Assert.Equal("opaque; body", Assert.IsType<RoutineBodyLiteral>(function.Body).Value);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("TABLE ()")]
+    [InlineData("TABLE (value)")]
+    [InlineData("TABLE (value INT NOT NULL)")]
+    [InlineData("TABLE (value INT DEFAULT 1)")]
+    [InlineData("TABLE (value INT PRIMARY KEY)")]
+    [InlineData("TABLE (value INT,)")]
+    [InlineData("SETOF")]
+    [InlineData("SETOF SETOF INT")]
+    [InlineData("SETOF TABLE (value INT)")]
+    public void InvalidFunctionReturnShapes_AreRejected(string returnClause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE FUNCTION f() RETURNS {returnClause} LANGUAGE plpgsql AS 'opaque'"));
+    }
+
+    [Fact]
+    public void RoutineParameters_ParsePostgresModesNamesAndDefaults()
+    {
+        const string sql = "CREATE FUNCTION f(INT, named TEXT DEFAULT 'x', INOUT count INT = 1, IN OUT total INT, VARIADIC rest INT[]) "
+            + "RETURNS RECORD LANGUAGE plpgsql AS 'opaque'";
+        var function = Assert.IsType<CreateFunction>(ParseStatement(sql));
+        var unnamed = Assert.IsType<StatementRoutineParameter.General>(function.Parameters[0]);
+        var named = Assert.IsType<StatementRoutineParameter.General>(function.Parameters[1]);
+        var inout = Assert.IsType<StatementRoutineParameter.General>(function.Parameters[2]);
+        var inOutAlias = Assert.IsType<StatementRoutineParameter.General>(function.Parameters[3]);
+        var variadic = Assert.IsType<StatementRoutineParameter.General>(function.Parameters[4]);
+
+        Assert.Null(unnamed.Name);
+        Assert.IsType<DataTypeReference.BuiltIn>(unnamed.DataType);
+        Assert.Equal("named", named.Name?.Name);
+        Assert.IsType<ParameterDefault.ExpressionDefault>(named.ParameterDefault);
+        Assert.Equal(RoutineParameterDirection.InOut, inout.Direction);
+        Assert.IsType<ParameterDefault.ExpressionDefault>(inout.ParameterDefault);
+        Assert.Equal(RoutineParameterDirection.InOut, inOutAlias.Direction);
+        Assert.Equal(RoutineParameterDirection.Variadic, variadic.Direction);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("INT", false, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("INT DEFAULT 1", true, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("INT = 1", true, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("DOUBLE PRECISION", false, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("CHARACTER VARYING", false, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("TIMESTAMP WITHOUT TIME ZONE", false, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("TIMESTAMP WITH TIME ZONE", false, typeof(DataTypeReference.BuiltIn))]
+    [InlineData("INT[] DEFAULT NULL", true, typeof(DataTypeReference.Array))]
+    [InlineData("app.label DEFAULT 'x'", true, typeof(DataTypeReference.Named))]
+    [InlineData("custom_type", false, typeof(DataTypeReference.Named))]
+    [InlineData("custom_type DEFAULT 'x'", true, typeof(DataTypeReference.Named))]
+    [InlineData("\"CustomType\"", false, typeof(DataTypeReference.Named))]
+    [InlineData("\"CustomType\"[] DEFAULT NULL", true, typeof(DataTypeReference.Array))]
+    [InlineData("custom_type ARRAY DEFAULT NULL", true, typeof(DataTypeReference.Array))]
+    public void RoutineParameters_ParseUnnamedTypesAndDefaults(string declaration, bool hasDefault, Type dataTypeType)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f({declaration}) RETURNS INT LANGUAGE plpgsql AS 'opaque'"));
+        var parameter = Assert.IsType<StatementRoutineParameter.General>(Assert.Single(function.Parameters));
+
+        Assert.Null(parameter.Name);
+        Assert.Equal(hasDefault, parameter.ParameterDefault != null);
+        Assert.IsType(dataTypeType, parameter.DataType);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("INT TEXT", "INT", null)]
+    [InlineData("DOUBLE INT", "DOUBLE", null)]
+    [InlineData("result OUT INT", "result", "OUT")]
+    [InlineData("result IN OUT INT", "result", "INOUT")]
+    public void RoutineParameters_ParseNamesThatCouldBeTypesAndTrailingModes(string declaration, string name, string? direction)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f({declaration}) RETURNS INT LANGUAGE plpgsql AS 'opaque'"));
+        var parameter = Assert.IsType<StatementRoutineParameter.General>(Assert.Single(function.Parameters));
+
+        Assert.Equal(name, parameter.Name?.Name);
+        Assert.Equal(direction == null ? null : RoutineParameterDirection.Parse(direction), parameter.Direction);
+        Assert.IsType<DataTypeReference.BuiltIn>(parameter.DataType);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE FUNCTION f(OUT result INT) LANGUAGE plpgsql AS 'opaque'")]
+    [InlineData("CREATE FUNCTION f(OUT left INT, OUT right TEXT) LANGUAGE plpgsql AS 'opaque'")]
+    public void FunctionReturnMayBeOmittedWhenOutputParametersArePresent(string sql)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement(sql));
+
+        Assert.Null(function.ReturnType);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Fact]
+    public void ScalarFunctionReturnConversions_PreserveTheDataTypeAndFormatting()
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1"));
+        var scalar = Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+        DataTypeReference reference = scalar.DataType;
+        DataType dataType = Assert.IsType<DataTypeReference.BuiltIn>(reference).DataType;
+
+        StatementFunctionReturn fromReference = reference;
+        StatementFunctionReturn fromDataType = dataType;
+        FunctionReturn resolved = dataType;
+
+        Assert.Equal(scalar, fromReference);
+        Assert.Equal(scalar, fromDataType);
+        Assert.Equal(scalar, resolved.ToStatementReturn());
+        Assert.Equal(scalar.ToSql(), Format(resolved));
+    }
+
     [Theory]
     [InlineData("LANGUAGE plpgsql AS $$BEGIN RETURN 'it''s fine'; END$$", "BEGIN RETURN 'it''s fine'; END", "")]
     [InlineData("AS $body$opaque $other$ text$body$ LANGUAGE plpgsql", "opaque $other$ text", "body")]
@@ -146,7 +285,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(plain, tagged);
         Assert.Equal(plain.GetHashCode(), tagged.GetHashCode());
         Assert.NotEqual(plain, tagged with { Value = "SELECT 'y'" });
-        Assert.False(plain.Equals((RoutineBodyLiteral?)null));
+        Assert.False(plain.Equals(null));
         Assert.NotEqual<Statement>(plain, new BeginAtomic([]));
         Assert.Equal("'SELECT ''x'''", plain.ToSql());
         Assert.Equal("$body$SELECT 'x'$body$", tagged.ToSql());
@@ -243,7 +382,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Contains("AGGREGATE FUNCTION", Format(function));
     }
 
-    private static string Format(Statement statement)
+    private static string Format(IWriteSql statement)
     {
         var names = new FunctionNameProvider();
         var manager = new FormatManager

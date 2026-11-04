@@ -12,6 +12,7 @@ public class MsLexer : Lexer<MsRunState>
         SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@$#");
 
     protected override bool SupportBackslashQuoteEscape => false;
+    protected override bool SupportDollarQuotedStrings => false;
     protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
 
     protected override bool IsIdentifierPart(char character)

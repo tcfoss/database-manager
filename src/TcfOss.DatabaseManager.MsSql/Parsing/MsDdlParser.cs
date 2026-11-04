@@ -4,7 +4,6 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
-using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
@@ -15,41 +14,16 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
 
     protected override bool UseSqlRoutineTail(ParserState state) => false;
 
-    private readonly MsParser _p = parser;
+    protected override bool SupportsOmittedFunctionReturn => false;
 
-    /// <summary>
-    /// Parses a T-SQL routine parameter: <c>@name TYPE [= default] [OUT|OUTPUT]</c>.
-    /// </summary>
-    protected override StatementRoutineParameter ParseRoutineParameter(ParserState state)
+    protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
     {
-        Identifier name = _p.ComponentParser.ParseIdentifier(state);
-        if (name.Sigil != SigilKind.Variable)
-        {
-            throw state.ExpectedException("parameter name (@name)");
-        }
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        return isFunction ? RoutineParamsSupportStyle.MsSqlFunction : RoutineParamsSupportStyle.MsSqlProcedure;
+    }
 
-        Value? defaultValue = null;
-        if (state.ConsumeTokenIs<Equal>())
-        {
-            defaultValue = ValueParser.ParseValue(state);
-        }
-
-        OutputKeyword? output = null;
-        if (state.ParseKeyword(Keyword.OUTPUT))
-        {
-            output = OutputKeyword.Output;
-        }
-        else if (state.ParseKeyword(Keyword.OUT))
-        {
-            output = OutputKeyword.Out;
-        }
-
-        return new StatementRoutineParameter.Undirected(name, dataType)
-        {
-            DefaultValue = defaultValue,
-            Output = output,
-        };
+    protected override StatementFunctionReturn ParseFunctionReturn(ParserState state)
+    {
+        return ParseScalarFunctionReturn(state);
     }
 
     /// <summary>
@@ -57,15 +31,18 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     /// empty). The bare form is detected by an <c>@</c>-prefixed identifier
     /// in the lookahead position.
     /// </summary>
-    protected override SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state)
+    protected override SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state, bool isFunction)
     {
+        RoutineParamsSupportStyle style = GetRoutineParamsSupportStyle(isFunction);
         if (state.PeekIs<ParenOpen>())
         {
-            return state.ParseParenthesizedCommaSeparated(ParseRoutineParameter, allowEmpty: true);
+            return state.ParseParenthesizedCommaSeparated(parameterState =>
+                ParseRoutineParameter(parameterState, style), allowEmpty: true);
         }
         if (state.Peek() is Word { Sigil: SigilKind.Variable })
         {
-            return state.ParseCommaSeparated(ParseRoutineParameter);
+            return state.ParseCommaSeparated(parameterState =>
+                ParseRoutineParameter(parameterState, style));
         }
         return [];
     }

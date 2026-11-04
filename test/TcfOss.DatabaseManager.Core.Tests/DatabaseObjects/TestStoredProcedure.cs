@@ -9,7 +9,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 namespace TcfOss.DatabaseManager.Core.Tests.DatabaseObjects;
 
 public record TestStoredProcedure(ObjectIdentifier Name, SqlValueList<RoutineParameter> Parameters, Statement Body)
-    : StoredProcedure(Name, Parameters, Body)
+    : StoredProcedure<RoutineParameter>(Name, Parameters, Body)
 {
     public override CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {

@@ -156,15 +156,15 @@ public class MyDataTypeParser(Parser parser) : DataTypeParser(parser)
         {
             if (state.ParseKeywordsAll(Keyword.CHARACTER, Keyword.SET))
             {
-                characterSet = ValueParser.ParseLiteralString(state);
+                characterSet = ValueParser.ParseLiteralStringOptionalQuotes(state);
             }
             else if (state.ParseKeyword(Keyword.CHARSET))
             {
-                characterSet = ValueParser.ParseLiteralString(state);
+                characterSet = ValueParser.ParseLiteralStringOptionalQuotes(state);
             }
             else if (state.ParseKeyword(Keyword.COLLATE))
             {
-                collation = ValueParser.ParseLiteralString(state);
+                collation = ValueParser.ParseLiteralStringOptionalQuotes(state);
             }
             else
             {

@@ -233,7 +233,10 @@ public class TokenEquatability
             }
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
 
         private static IEnumerable<TheoryDataRow<Token, Token>> GetTestData()
         {

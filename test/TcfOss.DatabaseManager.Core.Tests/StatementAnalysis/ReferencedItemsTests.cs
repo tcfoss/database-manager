@@ -269,7 +269,7 @@ public class ReferencedItemsTests
     }
 
     [Theory]
-    [InlineData("a LIKE b ESCAPE c")]
+    [InlineData("a LIKE b ESCAPE 'c'")]
     [InlineData("a IS DISTINCT FROM b")]
     [InlineData("a IS NOT DISTINCT FROM b")]
     [InlineData("a AT TIME ZONE b")]

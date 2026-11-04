@@ -43,7 +43,10 @@ public sealed class SqlValueList<T> : ValueList<T>, IEquatable<SqlValueList<T>>,
         }
     }
 
-    public bool Equals(SqlValueList<T>? other) => base.Equals(other);
+    public bool Equals(SqlValueList<T>? other)
+    {
+        return base.Equals(other);
+    }
 
     public static implicit operator T[](SqlValueList<T> list)
     {
@@ -55,7 +58,13 @@ public sealed class SqlValueList<T> : ValueList<T>, IEquatable<SqlValueList<T>>,
         return [.. array];
     }
 
-    public override bool Equals(object? obj) => Equals(obj as SqlValueList<T>);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as SqlValueList<T>);
+    }
 
-    public override int GetHashCode() => base.GetHashCode();
+    public override int GetHashCode()
+    {
+        return base.GetHashCode();
+    }
 }

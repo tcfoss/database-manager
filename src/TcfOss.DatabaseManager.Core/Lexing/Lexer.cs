@@ -13,7 +13,7 @@ public class Lexer<TRunState> : ILexer
     private readonly Func<char, bool> _isIdentifierPart;
     protected virtual bool SupportBackslashQuoteEscape => true;
     protected virtual bool SupportBracketQuotedIdentifiers => true;
-    protected virtual bool SupportDollarQuotedStrings => false;
+    protected virtual bool SupportDollarQuotedStrings => true;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -21,7 +21,10 @@ public class Lexer<TRunState> : ILexer
         _isIdentifierPart = IsIdentifierPart;
     }
 
-    public virtual List<Token> Tokenize(string sql) => Tokenize(sql.AsSpan());
+    public virtual List<Token> Tokenize(string sql)
+    {
+        return Tokenize(sql.AsSpan());
+    }
 
     public virtual List<Token> Tokenize(ReadOnlySpan<char> sql)
     {

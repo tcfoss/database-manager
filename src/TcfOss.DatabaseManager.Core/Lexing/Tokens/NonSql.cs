@@ -34,14 +34,23 @@ public sealed class NonSql(NonSqlType nonSqlType, string? value = null) : Token,
         return other != null && NonSqlType == other.NonSqlType && Value == other.Value && Prefix == other.Prefix;
     }
 
-    public override bool Equals(object? obj) => Equals(obj as NonSql);
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as NonSql);
+    }
 
-    public override bool Equals(Token? other) => Equals(other as NonSql);
+    public override bool Equals(Token? other)
+    {
+        return Equals(other as NonSql);
+    }
 
     public override int GetHashCode()
     {
         return HashCode.Combine(NonSqlType, Value, Prefix);
     }
 
-    bool IEquatable<NonSql>.Equals(NonSql? other) => Equals(other);
+    bool IEquatable<NonSql>.Equals(NonSql? other)
+    {
+        return Equals(other);
+    }
 }

@@ -20,7 +20,7 @@ public class TableParser
     private readonly Parser _p;
     private readonly Func<ParserState, Identifier> _ident;
     private readonly Func<ParserState, ObjectName> _objname;
-    private readonly Func<ParserState, string> _parseString = ValueParser.ParseLiteralString;
+    private readonly Func<ParserState, string> _parseString = ValueParser.ParseLiteralStringOptionalQuotes;
 
     public TableParser(Parser parser)
     {
@@ -812,7 +812,10 @@ public class TableParser
         return options;
     }
 
-    private static string GetIndexOptionDuplicateKey(StatementIndexOption option) => option.GetType().Name;
+    private static string GetIndexOptionDuplicateKey(StatementIndexOption option)
+    {
+        return option.GetType().Name;
+    }
 
     public virtual StatementIndexOption? ParseNextIndexOption(ParserState state)
     {

@@ -1,7 +1,11 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
@@ -18,8 +22,13 @@ public class MyConstructFunction(MyConfig config, MyAttributeNormalizer normaliz
     {
         Definer definer = createFunctionStatement.Definer ?? new Definer(new Account.CurrentUser());
         definer = new Definer(_normalizer.NormalizeAccount(definer.Account, accountQuoteStyle));
-        IEnumerable<RoutineParameter> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
-        DataTypeReference.BuiltIn returnType = (DataTypeReference.BuiltIn)createFunctionStatement.ReturnType;
+        IEnumerable<RoutineParameter.Directed> parameters = createFunctionStatement.Parameters.Select(p => _normalizer.NormalizeRoutineParameter(p, true));
+        if (createFunctionStatement.ReturnType is not StatementFunctionReturn.DataTypeReturn { DataType: DataTypeReference.BuiltIn returnType })
+        {
+            string dialect = _config.Dialect == SqlDialect.MariaDb ? "MariaDB" : "MySQL";
+            throw new SqlSyntaxException.UnsupportedDialect(dialect,
+                $"function return type {createFunctionStatement.ReturnType?.ToSql() ?? "omitted"}", sourceRef);
+        }
         return new MyStoredFunction(name, [.. parameters], returnType.DataType, createFunctionStatement.Body)
         {
             Definer = definer,

@@ -183,6 +183,8 @@ public class ConfigLoaderFileSystemTests
         return loader.LoadConfig(projectRoot, rawConfig, []);
     }
 
-    private static string GetProjectRoot() =>
-        Path.Combine(Path.GetTempPath(), "dbman-in-memory-tests", Guid.NewGuid().ToString("N"));
+    private static string GetProjectRoot()
+    {
+        return Path.Combine(Path.GetTempPath(), "dbman-in-memory-tests", Guid.NewGuid().ToString("N"));
+    }
 }

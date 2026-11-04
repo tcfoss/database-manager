@@ -189,7 +189,10 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
         throw new FileNotFoundException($"Deploy script file '{filePath}' not found in schema root or parent root.", filePath);
 
-        bool Exists(string path) => _fileSystem.File.Exists(path) || _fileSystem.Directory.Exists(path);
+        bool Exists(string path)
+        {
+            return _fileSystem.File.Exists(path) || _fileSystem.Directory.Exists(path);
+        }
     }
 
     protected Refactor[] GetRefactors(SchemaIdentifier schemaId, string schemaRootPath, IReadOnlyCollection<string>? refactorFiles, QuoteStyle quoteStyle)
