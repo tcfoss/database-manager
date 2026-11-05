@@ -1082,6 +1082,55 @@ public class LexerSimpleTests : LexerTestBase
         Assert.Equal(8, location.Position);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("`")]
+    [InlineData("a`")]
+    [InlineData("abc")]
+    [InlineData("a\nb`c")]
+    [InlineData("a\n`")]
+    [InlineData("a\n")]
+    [InlineData("\n\nab\r\ncd\n`x")]
+    [InlineData("ab\0c`")]
+    [InlineData("a\\b`")]
+    public void LexerState_AdvanceThroughNonQuote_Matches_Repeated_Next(string input)
+    {
+        AssertAdvanceMatchesRepeatedNext(
+            input,
+            (ref state) => state.AdvanceThroughNonQuote('`'),
+            c => c is '`' or CharSymbols.EndOfFile);
+    }
+
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("abc", true)]
+    [InlineData("a\nb'c", true)]
+    [InlineData("a\\b'", true)]
+    [InlineData("a\\b'", false)]
+    [InlineData("\n\nab\r\ncd\n\\x", true)]
+    [InlineData("\n\nab\r\ncd\n\\x", false)]
+    [InlineData("ab\0c'", true)]
+    public void LexerState_AdvanceThroughOrdinaryStringCharacters_Matches_Repeated_Next(string input, bool backslashEscapes)
+    {
+        AssertAdvanceMatchesRepeatedNext(
+            input,
+            (ref state) => state.AdvanceThroughOrdinaryStringCharacters('\'', backslashEscapes),
+            c => c is '\'' or CharSymbols.EndOfFile || (backslashEscapes && c == '\\'));
+    }
+
+    [Fact]
+    public void LexerState_AdvanceThroughNonQuote_Past_End_Is_NoOp()
+    {
+        var state = new LexerState("a");
+        state.Next();
+        state.Next();
+        Location before = state.Location;
+
+        state.AdvanceThroughNonQuote('`');
+
+        Assert.Equal(before, state.Location);
+    }
+
     public static TheoryData<string, NonSqlComponent> WhitespaceData => new()
     {
         { "\n", new NonSqlComponent.Newlines(1) },
@@ -1094,4 +1143,29 @@ public class LexerSimpleTests : LexerTestBase
         { "    ", new NonSqlComponent.Spaces(4) },
         { new string(' ', 40), new NonSqlComponent.Spaces(40) },
     };
+
+    private delegate void LexerStateAction(ref LexerState state);
+
+    private static void AssertAdvanceMatchesRepeatedNext(string input, LexerStateAction advance, Func<char, bool> isStop)
+    {
+        for (int start = 0; start <= input.Length; start++)
+        {
+            var expected = new LexerState(input);
+            var actual = new LexerState(input);
+            for (int i = 0; i < start; i++)
+            {
+                expected.Next();
+                actual.Next();
+            }
+            while (!isStop(expected.Peek()))
+            {
+                expected.Next();
+            }
+
+            advance(ref actual);
+
+            Assert.Equal(expected.Location, actual.Location);
+            Assert.Equal(expected.Peek(), actual.Peek());
+        }
+    }
 }

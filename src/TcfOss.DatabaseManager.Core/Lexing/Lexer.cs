@@ -103,7 +103,7 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.SingleQuote => TokenizeStringLiteral(ref state),
 
-            _ when char.IsAsciiDigit(character) || character == CharSymbols.Dot => TokenizeNumber(ref state),
+            >= '0' and <= '9' or CharSymbols.Dot => TokenizeNumber(ref state),
 
             CharSymbols.ParenOpen => TokenizeSingleCharacter(ref state, new ParenOpen() { Location = state.Location }),
             CharSymbols.ParenClose => TokenizeSingleCharacter(ref state, new ParenClose() { Location = state.Location }),
@@ -229,29 +229,22 @@ public class Lexer<TRunState> : ILexer
                 throw new DefensiveGuardException("identifier quote character", quoteStart.ToString());
         }
 
-        char? lastChar = null;
         int startPosition = state.Position;
 
-        char curr;
-        do
+        while (true)
         {
-            curr = state.Peek();
-            state.Next();
-
-            if (curr == quoteEnd && state.Peek() == quoteEnd)
+            state.AdvanceThroughNonQuote(quoteEnd);
+            if (state.Peek() == CharSymbols.EndOfFile)
             {
-                state.Next();
+                throw new LexException.UnterminatedQuotedIdentifier(quoteEnd, initialLocation);
             }
-            else if (curr == quoteEnd)
+
+            state.Next();
+            if (state.Peek() != quoteEnd)
             {
-                lastChar = quoteEnd;
                 break;
             }
-        } while (curr != CharSymbols.EndOfFile);
-
-        if (lastChar != quoteEnd)
-        {
-            throw new LexException.UnterminatedQuotedIdentifier(quoteEnd, initialLocation);
+            state.Next();
         }
 
         string word = new(state.SpanFrom(startPosition, state.Position - 1));
@@ -651,41 +644,30 @@ public class Lexer<TRunState> : ILexer
 
         // Try allocation-free search first.
         int startPosition = state.Position;
-        while (true)
+        state.AdvanceThroughOrdinaryStringCharacters(quoteChar, SupportBackslashQuoteEscape);
+        char first = state.Peek();
+
+        if (first == CharSymbols.EndOfFile)
         {
-            char curr = state.Peek();
-
-            if (curr == CharSymbols.EndOfFile)
-            {
-                throw new LexException.UnterminatedString(startLocation);
-            }
-
-            if (curr == quoteChar)
-            {
-                if (state.PeekNth(1) == quoteChar)
-                {
-                    // Escaped quote. Have to do it the slower way.
-                    break;
-                }
-
-                // String was closed without any escaping. Return it.
-                string result = new(state.SpanFrom(startPosition));
-                state.Next(); // Consume the closing quotation mark.
-                return result;
-            }
-
-            if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
-            {
-                // String contains backslash escapes. Have to do it the slower way.
-                break;
-            }
-
-            state.Next();
+            throw new LexException.UnterminatedString(startLocation);
         }
 
+        if (first == quoteChar && state.PeekNth(1) != quoteChar)
+        {
+            // String was closed without any escaping. Return it.
+            string result = new(state.SpanFrom(startPosition));
+            state.Next(); // Consume the closing quotation mark.
+            return result;
+        }
+
+        // Escaped quote or backslash. Have to do it the slower way.
         bool escapeNext = false;
         while (true)
         {
+            if (!escapeNext)
+            {
+                state.AdvanceThroughOrdinaryStringCharacters(quoteChar, SupportBackslashQuoteEscape);
+            }
             char curr = state.Peek();
 
             if (curr == CharSymbols.EndOfFile)

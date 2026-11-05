@@ -13,6 +13,7 @@ public ref struct LexerState
     public string? IdentifierTerminator { get; set; }
 
     public readonly bool IsAtEnd => Position >= _characters.Length;
+    private readonly ReadOnlySpan<char> Remaining => Position >= _characters.Length ? [] : _characters[Position..];
 
     public readonly Location Location
     {
@@ -114,6 +115,49 @@ public ref struct LexerState
         Position += count;
         _column += count;
         return count;
+    }
+
+    /// <summary>
+    /// Advance to the next <paramref name="quoteChar"/>, backslash (if <paramref name="backslashEscapes"/>), or end of input.
+    /// </summary>
+    public void AdvanceThroughOrdinaryStringCharacters(char quoteChar, bool backslashEscapes)
+    {
+        ReadOnlySpan<char> remaining = Remaining;
+        int index = backslashEscapes
+            ? remaining.IndexOfAny(quoteChar, CharSymbols.Backslash, CharSymbols.EndOfFile)
+            : remaining.IndexOfAny(quoteChar, CharSymbols.EndOfFile);
+        AdvanceBy(index < 0 ? remaining.Length : index);
+    }
+
+    public void AdvanceThroughNonQuote(char quoteChar)
+    {
+        ReadOnlySpan<char> remaining = Remaining;
+        int index = remaining.IndexOfAny(quoteChar, CharSymbols.EndOfFile);
+        AdvanceBy(index < 0 ? remaining.Length : index);
+    }
+
+
+
+    // Tracks line/column exactly as repeated Next() calls would.
+    private void AdvanceBy(int count)
+    {
+        // Next() does not update line/column when consuming the final character.
+        int trackedEnd = Math.Min(Position + count, _characters.Length - 1);
+        if (trackedEnd > Position)
+        {
+            ReadOnlySpan<char> skipped = _characters[Position..trackedEnd];
+            int lastNewLine = skipped.LastIndexOf(CharSymbols.NewLine);
+            if (lastNewLine < 0)
+            {
+                _column += skipped.Length;
+            }
+            else
+            {
+                _line += skipped.Count(CharSymbols.NewLine);
+                _column = skipped.Length - lastNewLine;
+            }
+        }
+        Position += count;
     }
 
     public void AdvanceToEndOfLine()
