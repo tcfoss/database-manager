@@ -506,4 +506,12 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements("CREATE FUNCTION f(value INT = 1) RETURNS INT RETURN value"));
     }
+
+    [Fact]
+    public void FunctionReturn_CannotBeOmittedInSharedMySqlMariaDbParser()
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE FUNCTION f() RETURN 1"));
+
+        Assert.Contains("RETURNS", error.Message);
+    }
 }

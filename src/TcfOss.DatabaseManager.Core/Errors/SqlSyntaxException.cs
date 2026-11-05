@@ -50,6 +50,17 @@ public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_AttributeSpecifiedMultipleTimes);
     }
 
+    public class MutuallyExclusive(string attribute1, string attribute2, string objectType, string parentType, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(attribute1, attribute2, objectType, parentType), sourceRef)
+    {
+        private string Attribute1 { get; } = attribute1;
+        private string Attribute2 { get; } = attribute2;
+        private string ObjectType { get; } = objectType;
+        private string ParentType { get; } = parentType;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_MutuallyExclusive);
+    }
+
     public class ConstraintNameNotAllowedException(string constraintName, string objectType, string parentType, Identifier parentName, string? dialect = null, SourceRef? sourceRef = null)
             : SqlSyntaxException(dialect != null ? s_compositeFormatDialect.Apply(constraintName, objectType, parentType, parentName, dialect) : s_compositeFormat.Apply(constraintName, objectType, parentType, parentName), sourceRef)
     {

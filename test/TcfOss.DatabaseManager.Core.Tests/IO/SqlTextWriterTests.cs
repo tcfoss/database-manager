@@ -3,6 +3,7 @@ using System.Text;
 using FluentAssertions;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -260,6 +261,25 @@ public class SqlTextWriterTests
         finally
         {
             CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void RoutineSettingFormatting_DelegatesToSqlForBothVariants()
+    {
+        var name = new ObjectName([new Identifier("app"), new Identifier("mode")]);
+        PgRoutineSetting[] settings =
+        [
+            new PgRoutineSetting.FromCurrent(name),
+            new PgRoutineSetting.ToValues(name, [new Value.SingleQuotedString("it's"), new Value.Number("2", false)])
+        ];
+        string[] expected = ["SET app.mode FROM CURRENT", "SET app.mode TO 'it''s', 2"];
+        for (int index = 0; index < settings.Length; index++)
+        {
+            using var writer = new SqlTextWriter(new StringBuilder());
+            settings[index].FormatSql(writer, GetFormatManager());
+
+            Assert.Equal(expected[index], writer.ToString());
         }
     }
 

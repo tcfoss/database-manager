@@ -545,6 +545,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgStoredProcedure procedure = Assert.Single(builder.ToDefinition().Procedures).Value;
         Assert.Null(procedure.Options);
         Assert.Same(statement.Body, procedure.Body);
+        CreateProcedure generatedProcedure = procedure.ToCreateStatement(true);
+        Assert.Null(generatedProcedure.PgOptionsBeforeBody);
+        Assert.Empty(generatedProcedure.PgOptionsAfterBody!);
+        Assert.Same(statement.Body, generatedProcedure.Body);
+        Assert.Contains("SELECT 1", generatedProcedure.ToSql());
 
         var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1")) with
         {
@@ -556,6 +561,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgStoredFunction definition = Assert.Single(functionBuilder.ToDefinition().Functions).Value;
         Assert.Null(definition.Options);
         Assert.Same(function.Body, definition.Body);
+        CreateFunction generatedFunction = definition.ToCreateStatement(true);
+        Assert.Null(generatedFunction.PgOptionsBeforeBody);
+        Assert.Empty(generatedFunction.PgOptionsAfterBody!);
+        Assert.Same(function.Body, generatedFunction.Body);
+        Assert.Contains("SELECT 1", generatedFunction.ToSql());
     }
 
     [Theory]
@@ -629,6 +639,26 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Collection(procedure.Options.ToStatementOptions(),
             option => Assert.IsType<PgStatementRoutineOption.Language>(option),
             option => Assert.IsType<PgStatementRoutineOption.Security>(option));
+    }
+
+    [Fact]
+    public void ProcedureSettings_NormalizeDelimiterAndRoundTripThroughEmission()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            "CREATE PROCEDURE p() LANGUAGE sql SET app.mode = 'x' AS $$body$$ SET app.limit TO 2"), GetSchema(), 0);
+        PgStoredProcedure procedure = Assert.Single(builder.ToDefinition().Procedures).Value;
+        Assert.NotNull(procedure.Options);
+        Assert.Collection(procedure.Options.Settings,
+            setting => Assert.Equal("SET app.mode TO 'x'", setting.ToSql()),
+            setting => Assert.Equal("SET app.limit TO 2", setting.ToSql()));
+
+        string sql = procedure.ToCreateStatement(true).ToSql();
+
+        Assert.Contains("SET app.mode TO 'x' SET app.limit TO 2", sql);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(sql), GetSchema(), 1);
+        Assert.Equal(procedure, Assert.Single(rebuilt.ToDefinition().Procedures).Value);
     }
 
     [Theory]

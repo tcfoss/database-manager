@@ -32,13 +32,14 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
 
     public override void AddColumn(StatementColumn column, SourceRef? sourceRef)
     {
+        sourceRef ??= SourceRef;
         if (column is not StatementColumn.Typed typedColumn)
         {
             throw new NotImplementedException("PostgreSQL column construction currently supports typed declarations only.");
         }
         if (!ColumnNames.Add(Handle.GetNamePart(typedColumn.Name, NameHandling)))
         {
-            throw new SqlSyntaxException.DuplicateColumn(typedColumn.Name.Name, Name, sourceRef ?? SourceRef);
+            throw new SqlSyntaxException.DuplicateColumn(typedColumn.Name.Name, Name, sourceRef);
         }
         Identifier normalizedName = ComponentNormalizer.NormalizeSingleIdentifier(typedColumn.Name);
         var columnName = new ColumnIdentifier(normalizedName.Name, Name, normalizedName.QuoteStyle)
@@ -55,18 +56,18 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             if (!seenOptions.Add(option.DuplicateCheckKey))
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef ?? SourceRef);
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef);
             }
             switch (option)
             {
                 case StatementColumnOption.PrimaryKey primaryKey:
-                    AddColumnPrimaryKey(typedColumn.Name, primaryKey, sourceRef ?? SourceRef);
+                    AddColumnPrimaryKey(typedColumn.Name, primaryKey, sourceRef);
                     break;
                 case StatementColumnOption.Unique unique:
-                    AddColumnUnique(typedColumn.Name, unique, sourceRef ?? SourceRef);
+                    AddColumnUnique(typedColumn.Name, unique, sourceRef);
                     break;
                 case StatementColumnOption.CheckConstraint check:
-                    AddColumnCheck(check, sourceRef ?? SourceRef);
+                    AddColumnCheck(check, sourceRef);
                     break;
                 case StatementColumnOption.Nullability nullabilityOption:
                     Identifier? nullabilityName = ComponentNormalizer.NormalizeSingleIdentifierNullable(nullabilityOption.Name);
@@ -79,7 +80,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
                     break;
                 case StatementColumnOption.Generated.AsExpression expression:
                     Expression normalized = GetNormalizedExpression(expression.Expression);
-                    ValidateExpressionScope(normalized, sourceRef ?? SourceRef);
+                    ValidateExpressionScope(normalized, sourceRef);
                     generated = new ColumnOption.Generated.AsExpression(normalized, expression.Mode);
                     break;
                 case StatementColumnOption.Generated.PgIdentity identityOption:
@@ -89,15 +90,19 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
                     throw new NotImplementedException($"PostgreSQL column option {option.GetType().Name} is not implemented.");
             }
         }
-        if ((generated != null || identity != null) && defaultValue != null)
+        if (generated != null && defaultValue != null)
         {
-            throw new SqlSyntaxException.SpecifiedMoreThanOnce("DEFAULT/GENERATED", "column", typedColumn.Name, sourceRef ?? SourceRef);
+            throw new SqlSyntaxException.MutuallyExclusive("GENERATED", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
+        }
+        if (identity != null && defaultValue != null)
+        {
+            throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
         }
         if (identity != null)
         {
             if (nullability is ColumnOption.Nullability.Null)
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce("NULL/IDENTITY", "column", typedColumn.Name, sourceRef ?? SourceRef);
+                throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "NULL", "column", typedColumn.Name.Name, sourceRef);
             }
             nullability ??= new ColumnOption.Nullability.NotNull();
         }
@@ -294,17 +299,18 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             throw new DefinitionException.TableConstraintNameRequired("INDEX", Name, sourceRef);
         }
+        Identifier name = statement.Name;
         switch (statement)
         {
             case CreateIndex.Standard standard:
                 ValidateConstraintIndexOptions(standard.Comment, sourceRef, organization: standard.IndexOrganization,
                     options: standard.Options, storageLocation: standard.StorageLocation);
-                AddIndexDeclaration(standard.Name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter, sourceRef, standard.IncludedColumns);
+                AddIndexDeclaration(name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter, sourceRef, standard.IncludedColumns);
                 break;
             case CreateIndex.Unique unique:
                 ValidateConstraintIndexOptions(unique.Comment, sourceRef, organization: unique.IndexOrganization,
                     options: unique.Options, storageLocation: unique.StorageLocation);
-                AddIndexDeclaration(unique.Name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter, sourceRef, unique.IncludedColumns);
+                AddIndexDeclaration(name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter, sourceRef, unique.IncludedColumns);
                 break;
             default:
                 throw new NotSupportedException("Only basic PostgreSQL standard and unique indexes are supported.");
@@ -327,13 +333,9 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         }
     }
 
-    private void AddIndexDeclaration(Identifier? name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
+    private void AddIndexDeclaration(Identifier name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
         Expression? predicate, SourceRef? sourceRef, IncludedColumns? includedColumns = null)
     {
-        if (name == null)
-        {
-            throw new DefinitionException.TableConstraintNameRequired(unique ? "UNIQUE constraint" : "INDEX", Name, sourceRef);
-        }
         name = ComponentNormalizer.NormalizeSingleIdentifier(name);
         if (_indexes.ContainsKey(name) || _uniqueConstraints.ContainsKey(name))
         {

@@ -135,6 +135,9 @@
     <data name="Err_Syntax_AttributeSpecifiedMultipleTimes" xml:space="preserve">
         <value>The attribute '{0}' is specified multiple times on {1} {2}.</value>
     </data>
+    <data name="Err_Syntax_MutuallyExclusive" xml:space="preserve">
+        <value>The attributes '{0}' and '{1}' are mutually exclusive on {2} {3}.</value>
+    </data>
     <data name="Err_Syntax_TriggerSupportsOnlyOneEvent" xml:space="preserve">
         <value>Dialect '{0}' requires that triggers have one and only one event. Trigger '{1}' specifies {2} events.</value>
     </data>

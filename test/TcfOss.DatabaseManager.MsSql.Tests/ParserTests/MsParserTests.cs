@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -75,6 +76,7 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("SELECT [Id], [Name] FROM [Users]", Label = "Bracketed columns")]
     public void BracketedIdentifiers_TextMatch(string text)
     {
+        Assert.Equal(QuoteStyle.Brackets, new MsParser().DefaultQuoteStyle);
         var (expected, actual) = GetExpectedActual(text, normalizeActualWhitespace: true, normalizeExpectedWhitespace: true);
         Assert.Equal(expected, actual);
     }
@@ -239,6 +241,17 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     public void InvalidCreateTargets_AreRejected(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("ALWAYS")]
+    [InlineData("BY DEFAULT")]
+    public void PostgresIdentityColumns_AreRejected(string mode)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(
+            $"CREATE TABLE items (id INT GENERATED {mode} AS IDENTITY)"));
+
+        Assert.Contains("generated expression", error.Message);
     }
 
     [Fact]

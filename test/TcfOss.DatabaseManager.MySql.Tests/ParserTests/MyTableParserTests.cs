@@ -144,6 +144,17 @@ public class MyTableParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Contains("data_type", ex.Message);
     }
 
+    [Theory]
+    [InlineData("ALWAYS")]
+    [InlineData("BY DEFAULT")]
+    public void PostgresIdentityColumns_AreRejected(string mode)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(
+            $"CREATE TABLE items (id INT GENERATED {mode} AS IDENTITY)"));
+
+        Assert.Contains("generated expression", error.Message);
+    }
+
     [Fact]
     public void AlterTable_Default_InvalidFollowup_Throws()
     {

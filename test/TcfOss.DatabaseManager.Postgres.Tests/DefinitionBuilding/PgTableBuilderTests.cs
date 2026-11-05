@@ -533,16 +533,23 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("DEFAULT 1 GENERATED ALWAYS AS IDENTITY")]
-    [InlineData("GENERATED ALWAYS AS IDENTITY DEFAULT 1")]
-    [InlineData("NULL GENERATED ALWAYS AS IDENTITY")]
-    [InlineData("GENERATED ALWAYS AS IDENTITY NULL")]
-    [InlineData("DEFAULT 1 GENERATED ALWAYS AS (1) STORED")]
-    public void GeneratedColumns_RejectConflictingDefaultAndNullability(string options)
+    [InlineData("DEFAULT 1 GENERATED ALWAYS AS IDENTITY", "IDENTITY", "DEFAULT")]
+    [InlineData("GENERATED ALWAYS AS IDENTITY DEFAULT 1", "IDENTITY", "DEFAULT")]
+    [InlineData("NULL GENERATED ALWAYS AS IDENTITY", "IDENTITY", "NULL")]
+    [InlineData("GENERATED ALWAYS AS IDENTITY NULL", "IDENTITY", "NULL")]
+    [InlineData("DEFAULT 1 GENERATED ALWAYS AS (1) STORED", "GENERATED", "DEFAULT")]
+    [InlineData("GENERATED ALWAYS AS (1) STORED DEFAULT 1", "GENERATED", "DEFAULT")]
+    public void GeneratedColumns_RejectConflictingDefaultAndNullability(string options, string attribute1, string attribute2)
     {
-        var builder = CreateBuilder();
+        var source = new SourceRef(7, 0, 10);
+        var builder = CreateBuilder(source);
         var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT {options})"));
-        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ApplyCreateTable(statement));
+        var column = Assert.Single(statement.Columns);
+
+        var exception = Assert.Throws<SqlSyntaxException.MutuallyExclusive>(() => builder.AddColumn(column, null));
+
+        Assert.Contains($"The attributes '{attribute1}' and '{attribute2}' are mutually exclusive on column id.", exception.Message);
+        Assert.Equal(source, exception.ObjectSourceRef);
     }
 
     [Theory]
@@ -573,6 +580,195 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE TABLE items (id INT {options})"));
     }
 
+    [Theory]
+    [InlineData("ALWAYS")]
+    [InlineData("BY DEFAULT")]
+    public void IdentityStatements_WithoutOptions_RoundTrip(string mode)
+    {
+        string sql = $"CREATE TABLE items (id INT GENERATED {mode} AS IDENTITY)";
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(statement.Columns));
+        var identity = Assert.IsType<StatementColumnOption.Generated.PgIdentity>(Assert.Single(column.Options));
+
+        Assert.Null(identity.Options);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("CONSTRAINT pk PRIMARY KEY (id)")]
+    public void PrimaryKeys_AllowIndexesWithDistinctNames(string constraint)
+    {
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, {constraint})")));
+        builder.AddIndex(Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)")), null);
+
+        var table = builder.ToTable(CreateManager());
+
+        Assert.NotNull(table.PrimaryKey);
+        Assert.Equal("ix", Assert.Single(table.Indexes.Values).Name.Name);
+    }
+
+    [Theory]
+    [InlineData("id")]
+    [InlineData("items.id")]
+    [InlineData("public.items.id")]
+    [InlineData("catalog.public.items.id")]
+    public void CheckExpressions_AcceptOwnColumnReferencesAtEveryQualificationLevel(string reference)
+    {
+        var builder = CreateBuilder(new SourceRef(7, 0, 10));
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, CONSTRAINT ck CHECK ({reference} > 0))")));
+
+        Assert.Single(builder.ToTable(CreateManager()).Checks.Values);
+    }
+
+    [Theory]
+    [InlineData("id")]
+    [InlineData("(id + 1)")]
+    public void HashIndexes_AcceptKeyPartsWithoutSortDirections(string columns)
+    {
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT)")));
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items USING HASH ({columns})")) with { Options = [] };
+        builder.AddIndex(index, null);
+
+        Assert.Equal(IndexMethod.Hash, Assert.Single(builder.ToTable(CreateManager()).Indexes.Values).Method);
+    }
+
+    [Fact]
+    public void AddColumn_RejectsComputedDeclarationsAndUnsupportedOptions()
+    {
+        var builder = CreateBuilder();
+        var expression = new LiteralValue(new Value.Number("1", false));
+
+        Assert.Throws<NotImplementedException>(() => builder.AddColumn(new StatementColumn.MsComputed(new Identifier("computed"), expression, []), null));
+        Assert.Throws<NotImplementedException>(() => builder.AddColumn(new StatementColumn.Typed(new Identifier("id"), new DataType.Int(), [new StatementColumnOption.AutoIncrement()]), null));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddIndex_RejectsMissingNamesWithTableSourceFallback(bool unique)
+    {
+        var source = new SourceRef(7, 0, 10);
+        var builder = CreateBuilder(source);
+        CreateIndex index = unique
+            ? Assert.IsType<CreateIndex.Unique>(ParseStatement("CREATE UNIQUE INDEX ix ON items (id)"))
+            : Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)"));
+        index = index with { Name = null };
+
+        var error = Assert.Throws<DefinitionException.TableConstraintNameRequired>(() => builder.AddIndex(index, null));
+
+        Assert.Equal(source, error.ObjectSourceRef);
+        Assert.Contains("INDEX", error.Message);
+    }
+
+    [Fact]
+    public void AddIndex_RejectsUnsupportedIndexVariants()
+    {
+        var index = new CreateIndex.FullText([new KeyPart.Column(new Identifier("id"))], new Identifier("ix"), new ObjectName(new Identifier("items")));
+
+        Assert.Throws<NotSupportedException>(() => CreateBuilder().AddIndex(index, null));
+    }
+
+    [Theory]
+    [InlineData("CONSTRAINT ix PRIMARY KEY (id)", false)]
+    [InlineData("CONSTRAINT ix PRIMARY KEY (id)", true)]
+    [InlineData("CONSTRAINT ix UNIQUE (id)", false)]
+    [InlineData("CONSTRAINT ix UNIQUE (id)", true)]
+    public void IndexAndConstraintNames_RejectCollisionsInBothDeclarationOrders(string constraintSql, bool indexFirst)
+    {
+        var source = new SourceRef(7, 0, 10);
+        var builder = CreateBuilder(source);
+        var table = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, {constraintSql})"));
+        builder.AddColumn(Assert.Single(table.Columns), null);
+        StatementTableConstraint constraint = Assert.Single(table.Constraints);
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)"));
+        Action addConstraint = () => builder.AddIndexOrConstraint(constraint, null);
+        Action addIndex = () => builder.AddIndex(index, null);
+        if (indexFirst)
+        {
+            addIndex();
+        }
+        else
+        {
+            addConstraint();
+        }
+
+        var error = Assert.Throws<SqlSyntaxException.DuplicateObject>(indexFirst ? addConstraint : addIndex);
+
+        Assert.Contains("ix", error.Message);
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("id DESC")]
+    [InlineData("(id + 1) DESC")]
+    public void HashIndexes_RejectSortDirections(string columns)
+    {
+        var source = new SourceRef(7, 0, 10);
+        var builder = CreateBuilder(source);
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items USING HASH ({columns})"));
+
+        var error = Assert.Throws<SqlSyntaxException.IndexDirectionNotSupported>(() => builder.AddIndex(index, null));
+
+        Assert.Contains("HASH", error.Message);
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void HashIndexes_RejectUnknownPublicKeyPartVariants()
+    {
+        var source = new SourceRef(7, 0, 10);
+        var builder = CreateBuilder(source);
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items USING HASH (id)")) with
+        {
+            Columns = [new TestKeyPart()]
+        };
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.AddIndex(index, null));
+
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY (id, id)")]
+    [InlineData("CONSTRAINT pk PRIMARY KEY (id, id)")]
+    public void PrimaryKeys_RejectDuplicateColumnsWithOrWithoutConstraintName(string constraint)
+    {
+        var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, {constraint})"));
+
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ApplyCreateTable(table));
+    }
+
+    [Theory]
+    [InlineData("other.items.id")]
+    [InlineData("other.public.items.id")]
+    [InlineData("extra.catalog.public.items.id")]
+    public void CheckExpressions_RejectWrongSchemaCatalogAndExcessQualification(string reference)
+    {
+        var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, CONSTRAINT ck CHECK ({reference} > 0))"));
+
+        Assert.Throws<NotImplementedException>(() => builder.ApplyCreateTable(table));
+    }
+
+    [Fact]
+    public void IdentityOptions_RejectUnknownPublicAstVariants()
+    {
+        var source = new SourceRef(7, 0, 10);
+        var builder = CreateBuilder(source);
+        builder.AddColumn(new StatementColumn.Typed(new Identifier("id"), new DataType.Int(),
+            [new StatementColumnOption.Generated.PgIdentity(true, [new TestSequenceOption()])]), null);
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ToTable(CreateManager()));
+
+        Assert.Equal("identity sequence option TEST", error.Clause);
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
     private static PgTypeResolutionManager CreateManager()
     {
         var config = new PgConfig
@@ -587,11 +783,11 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         return new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
     }
 
-    private static PgTableBuilder CreateBuilder()
+    private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null)
     {
         var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted);
         return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
-            NameHandling.LowercaseUnlessQuoted, normalizer, null);
+            NameHandling.LowercaseUnlessQuoted, normalizer, sourceRef);
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)
@@ -600,6 +796,29 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         public override Value NormalizeValue(Value value)
         {
             return normalizedValue;
+        }
+    }
+
+    private record TestKeyPart : KeyPart
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("TEST");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, Core.Formatting.FormatManager manager)
+        {
+            ToSql(writer);
+        }
+    }
+
+    private record TestSequenceOption : PgStatementSequenceOption
+    {
+        public override string UniqueName => "TEST";
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("TEST");
         }
     }
 

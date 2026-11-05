@@ -447,6 +447,76 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE FUNCTION f() RETURNS SETOF INT LANGUAGE sql {option} AS $$body$$"));
     }
 
+    [Theory]
+    [InlineData("IMMUTABLE")]
+    [InlineData("STABLE")]
+    [InlineData("VOLATILE")]
+    [InlineData("STRICT")]
+    [InlineData("CALLED ON NULL INPUT")]
+    [InlineData("RETURNS NULL ON NULL INPUT")]
+    [InlineData("SECURITY DEFINER")]
+    [InlineData("EXTERNAL SECURITY INVOKER")]
+    [InlineData("PARALLEL SAFE")]
+    [InlineData("COST 2")]
+    [InlineData("ROWS 3")]
+    [InlineData("SET app.mode TO 'x'")]
+    public void CoreParser_KitchenSinkDispatch_AcceptsLeadingRoutineAttributes(string option)
+    {
+        var parser = new Parser();
+        foreach (string tail in new[] { $"{option} AS $$body$$ LANGUAGE sql", $"LANGUAGE sql {option} AS $$body$$" })
+        {
+            string sql = "CREATE FUNCTION f() RETURNS SETOF INT " + tail;
+            var function = Assert.IsType<CreateFunction>(Assert.Single(parser.Parse([.. new PgLexer().Tokenize(sql)])));
+
+            Assert.Equal(ParseStatement(sql), function);
+            Assert.Equal(function, Assert.Single(parser.Parse([.. new PgLexer().Tokenize(function.ToSql())])));
+        }
+    }
+
+    [Theory]
+    [InlineData("+2", "+2")]
+    [InlineData("-2", "-2")]
+    [InlineData("+1.5", "+1.5")]
+    [InlineData("-1.5", "-1.5")]
+    [InlineData("public", "'public'")]
+    [InlineData("true", "TRUE")]
+    [InlineData("false", "FALSE")]
+    [InlineData("null", "NULL")]
+    public void RoutineSettings_ParseSignedNumbersBareWordsAndSpecialValues(string value, string expected)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement(
+            $"CREATE FUNCTION f() RETURNS INT LANGUAGE sql SET app.mode TO {value} AS $$body$$"));
+        Assert.NotNull(function.PgOptionsBeforeBody);
+        var setting = Assert.IsType<PgStatementRoutineOption.RoutineSetting>(function.PgOptionsBeforeBody[1]);
+
+        Assert.Equal("SET app.mode TO " + expected, setting.Setting.ToSql());
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("+true")]
+    [InlineData("-'x'")]
+    [InlineData("+")]
+    [InlineData("-null")]
+    public void RoutineSettings_RejectSignsWithoutNumericValues(string value)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(
+            $"CREATE FUNCTION f() RETURNS INT LANGUAGE sql SET app.mode TO {value} AS $$body$$"));
+
+        Assert.Contains("number", error.Message);
+    }
+
+    [Theory]
+    [InlineData("ROWS 7 AS $$body$$ LANGUAGE sql")]
+    [InlineData("AS $$body$$ LANGUAGE sql ROWS 7")]
+    public void ScalarFunctions_RejectRowsOnEitherSideOfBody(string tail)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE FUNCTION f() RETURNS INT " + tail));
+
+        Assert.Contains("set-returning function for ROWS", error.Message);
+    }
+
     private static string Format(IWriteSql statement)
     {
         var names = new FunctionNameProvider();
