@@ -1,37 +1,21 @@
-using TcfOss.DatabaseManager.Core.Errors;
+using NonSqlComponent = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
 namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 /// <summary>
-/// Non-SQL text that appears along-side SQL: comments and whitespace.
+/// Non-SQL text that appears along-side SQL: a comment or a run of one kind of whitespace.
 /// </summary>
-/// <param name="nonSqlType"></param>
-/// <param name="value"></param>
-public sealed class NonSql(NonSqlType nonSqlType, string? value = null) : Token, IEquatable<NonSql>
+/// <param name="value">The parsed non-SQL component.</param>
+/// <param name="length">Number of source characters covered.</param>
+public sealed class NonSql(NonSqlComponent value, int length) : Token, IEquatable<NonSql>
 {
-    public NonSqlType NonSqlType { get; } = nonSqlType;
-    public string? Value { get; } = value;
-    public string? Prefix { get; init; }
+    public NonSqlComponent Value { get; } = value;
 
-    public override int Length
-    {
-        get
-        {
-            return NonSqlType switch
-            {
-                NonSqlType.Space => 1,
-                NonSqlType.Tab => 1,
-                NonSqlType.Newline => 1,
-                NonSqlType.InlineComment => (Value?.Length ?? 0) + (Prefix?.Length ?? 0),
-                NonSqlType.BlockComment => (Value?.Length ?? 0) + 4,
-                _ => throw new DefensiveGuardException(true, "non-SQL token type", NonSqlType.ToString())
-            };
-        }
-    }
+    public override int Length => length;
 
     private bool Equals(NonSql? other)
     {
-        return other != null && NonSqlType == other.NonSqlType && Value == other.Value && Prefix == other.Prefix;
+        return other != null && Value == other.Value;
     }
 
     public override bool Equals(object? obj)
@@ -46,7 +30,7 @@ public sealed class NonSql(NonSqlType nonSqlType, string? value = null) : Token,
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(NonSqlType, Value, Prefix);
+        return Value.GetHashCode();
     }
 
     bool IEquatable<NonSql>.Equals(NonSql? other)

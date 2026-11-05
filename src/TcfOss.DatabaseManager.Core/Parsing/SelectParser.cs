@@ -285,8 +285,8 @@ public class SelectParser
         SimpleSelectItem item = ParseSimpleSelectItem(state);
         if (token.PreNonSql.SafeAny())
         {
-            item.Meta.PreNonSql = token.PreNonSql!.ToStatementNonSql();
-            item.Meta.Start = token.PreNonSql!.First().Location.Position;
+            item.Meta.PreNonSql = token.PreNonSql!.Items;
+            item.Meta.Start = token.PreNonSql!.Start;
         }
         else
         {
@@ -297,7 +297,7 @@ public class SelectParser
         item.Meta.End = upcoming.Location.Position;
         if (upcoming is Comma or Eof)
         {
-            item.Meta.PostNonSql = upcoming.PreNonSql?.ToStatementNonSql();
+            item.Meta.PostNonSql = upcoming.PreNonSql?.Items;
             item.Meta.End += upcoming.Length;
         }
         return item;

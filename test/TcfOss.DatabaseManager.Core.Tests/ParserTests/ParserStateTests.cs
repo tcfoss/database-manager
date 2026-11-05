@@ -69,8 +69,9 @@ public static class ParserStateTests
     public static void Trailing_Trivia_Is_Only_Exposed_On_Eof(int tokenCount)
     {
         Token[] expected = TokenSet1[..tokenCount];
-        var whitespace = new NonSql(NonSqlType.Newline) { Location = new Lexing.Location() { Line = 1, Column = 9, Position = 8 } };
-        var trivia = new NonSqlContainer([whitespace]) { Location = whitespace.Location };
+        var whitespace = new NonSqlList { Start = 8, End = 9 };
+        whitespace.Add(new Core.Statements.Components.NonSql.Newlines(1));
+        var trivia = new NonSqlContainer(whitespace) { Location = new Lexing.Location() { Line = 1, Column = 9, Position = 8 } };
         Token[] tokens = [.. expected, trivia];
         var s = new ParserState(tokens, sourceId: 7);
 

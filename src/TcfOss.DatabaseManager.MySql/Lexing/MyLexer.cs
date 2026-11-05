@@ -39,11 +39,17 @@ public class MyLexer : Lexer<MyRunState>
         {
             if (token is StringLiteral sl)
             {
-                List<NonSql>? nonSql = runState.MaybeCharset.PreNonSql;
+                NonSqlList? nonSql = runState.MaybeCharset.PreNonSql;
                 if (token.PreNonSql != null)
                 {
-                    nonSql ??= [];
-                    nonSql.AddRange(token.PreNonSql);
+                    if (nonSql == null)
+                    {
+                        nonSql = token.PreNonSql;
+                    }
+                    else
+                    {
+                        nonSql.Append(token.PreNonSql);
+                    }
                 }
 
                 token = new StringLiteral(sl.Value)

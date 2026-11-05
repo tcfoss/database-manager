@@ -1,6 +1,7 @@
 using System.Collections;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using Xunit.Sdk;
+using NonSqlComponent = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.LexerTests.TokenEquatability.MyTerminatorSerializer), typeof(MyTerminator))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.LexerTests.TokenEquatability.NumericLiteralSerializer), typeof(NumericLiteral))]
@@ -117,8 +118,8 @@ public class TokenEquatability
     [Fact]
     public void NonSql_Equality_InlineComment()
     {
-        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
-        var token2 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(4, 5, 6) };
+        var token1 = new NonSql(new NonSqlComponent.LineComment("comment", "--"), 9) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(new NonSqlComponent.LineComment("comment", "--"), 9) { Location = new Lexing.Location(4, 5, 6) };
 
         Assert.Equal(token1, token2);
         Assert.Equal(token1, (object)token2);
@@ -129,8 +130,8 @@ public class TokenEquatability
     [Fact]
     public void NonSql_Inequality_InlineComment_Comment()
     {
-        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
-        var token2 = new NonSql(NonSqlType.InlineComment, "different") { Prefix = "--", Location = new Lexing.Location(4, 5, 6) };
+        var token1 = new NonSql(new NonSqlComponent.LineComment("comment", "--"), 9) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(new NonSqlComponent.LineComment("different", "--"), 11) { Location = new Lexing.Location(4, 5, 6) };
 
         Assert.NotEqual(token1, token2);
         Assert.NotEqual(token1, (object)token2);
@@ -143,8 +144,8 @@ public class TokenEquatability
     [Fact]
     public void NonSql_Inequality_InlineComment_Prefix()
     {
-        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
-        var token2 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "#", Location = new Lexing.Location(4, 5, 6) };
+        var token1 = new NonSql(new NonSqlComponent.LineComment("comment", "--"), 9) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(new NonSqlComponent.LineComment("comment", "#"), 8) { Location = new Lexing.Location(4, 5, 6) };
 
         Assert.NotEqual(token1, token2);
         Assert.NotEqual(token1, (object)token2);
@@ -157,8 +158,8 @@ public class TokenEquatability
     [Fact]
     public void NonSql_Equality_BlockComment()
     {
-        var token1 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(1, 2, 3) };
-        var token2 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(4, 5, 6) };
+        var token1 = new NonSql(new NonSqlComponent.BlockComment("comment"), 11) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(new NonSqlComponent.BlockComment("comment"), 11) { Location = new Lexing.Location(4, 5, 6) };
 
         Assert.Equal(token1, token2);
         Assert.Equal(token1, (object)token2);
@@ -169,8 +170,8 @@ public class TokenEquatability
     [Fact]
     public void NonSql_Inequality_BlockComment()
     {
-        var token1 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(1, 2, 3) };
-        var token2 = new NonSql(NonSqlType.BlockComment, "different") { Location = new Lexing.Location(4, 5, 6) };
+        var token1 = new NonSql(new NonSqlComponent.BlockComment("comment"), 11) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(new NonSqlComponent.BlockComment("different"), 13) { Location = new Lexing.Location(4, 5, 6) };
 
         Assert.NotEqual(token1, token2);
         Assert.NotEqual(token1, (object)token2);
@@ -183,8 +184,8 @@ public class TokenEquatability
     [Fact]
     public void NonSql_Inequality_InlineComment_BlockComment()
     {
-        var token1 = new NonSql(NonSqlType.InlineComment, "comment") { Prefix = "--", Location = new Lexing.Location(1, 2, 3) };
-        var token2 = new NonSql(NonSqlType.BlockComment, "comment") { Location = new Lexing.Location(4, 5, 6) };
+        var token1 = new NonSql(new NonSqlComponent.LineComment("comment", "--"), 9) { Location = new Lexing.Location(1, 2, 3) };
+        var token2 = new NonSql(new NonSqlComponent.BlockComment("comment"), 11) { Location = new Lexing.Location(4, 5, 6) };
 
         Assert.NotEqual(token1, token2);
         Assert.NotEqual(token1, (object)token2);

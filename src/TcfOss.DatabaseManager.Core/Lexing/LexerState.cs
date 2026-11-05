@@ -12,6 +12,8 @@ public ref struct LexerState
     public int Position { get; private set; } = 0;
     public string? IdentifierTerminator { get; set; }
 
+    public readonly bool IsAtEnd => Position >= _characters.Length;
+
     public readonly Location Location
     {
         get
@@ -99,6 +101,19 @@ public ref struct LexerState
         }
         _column += Position - start;
         return Position - start;
+    }
+
+    public int AdvanceWhileTrustNoNewLines(char character)
+    {
+        ReadOnlySpan<char> remaining = _characters[Position..];
+        int count = remaining.IndexOfAnyExcept(character);
+        if (count < 0)
+        {
+            count = remaining.Length;
+        }
+        Position += count;
+        _column += count;
+        return count;
     }
 
     public void AdvanceToEndOfLine()

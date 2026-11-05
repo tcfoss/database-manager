@@ -40,7 +40,7 @@ public class MsLexer : Lexer<MsRunState>
 
         if (token is NonSql ns)
         {
-            if (ns.NonSqlType == NonSqlType.Newline)
+            if (ns.Value is Core.Statements.Components.NonSql.Newlines)
             {
                 runState.AtLineStart = true;
             }

@@ -117,8 +117,8 @@ public class Parser : IParser
 
         if (token.PreNonSql.SafeAny())
         {
-            statement.Meta.PreNonSql = token.PreNonSql.ToStatementNonSql();
-            statement.Meta.Start = token.PreNonSql.First().Location.Position;
+            statement.Meta.PreNonSql = token.PreNonSql.Items;
+            statement.Meta.Start = token.PreNonSql.Start;
         }
         else
         {
@@ -129,7 +129,7 @@ public class Parser : IParser
         Token upcoming = state.Peek();
         if (upcoming is Semicolon or Eof && upcoming.PreNonSql.SafeAny())
         {
-            statement.Meta.PostNonSql = upcoming.PreNonSql.ToStatementNonSql();
+            statement.Meta.PostNonSql = upcoming.PreNonSql.Items;
         }
 
         int end = upcoming.Location.Position;
@@ -146,8 +146,8 @@ public class Parser : IParser
             statement = new LabeledStatement(statement, label.Identifier);
             if (label.PreNonSql.SafeAny())
             {
-                statement.Meta.PreNonSql = label.PreNonSql.ToStatementNonSql();
-                statement.Meta.Start = label.PreNonSql.First().Location.Position;
+                statement.Meta.PreNonSql = label.PreNonSql.Items;
+                statement.Meta.Start = label.PreNonSql.Start;
             }
             else
             {
