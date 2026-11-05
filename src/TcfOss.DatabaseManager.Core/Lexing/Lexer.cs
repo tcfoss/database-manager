@@ -626,14 +626,9 @@ public class Lexer<TRunState> : ILexer
             return new string(state.SpanFrom(startPosition)) + CharSymbols.EndOfFile;
         }
 
-        bool isEof = state.Next() == CharSymbols.EndOfFile;
-
-        string content = new(state.SpanFrom(startPosition));
-        if (isEof)
-        {
-            return content + CharSymbols.EndOfFile;
-        }
-        return content;
+        // Consume the newline, or an embedded NUL, which stays in the body as-is.
+        state.Next();
+        return new string(state.SpanFrom(startPosition));
     }
 
     private string ExtractString(ref LexerState state, char quoteChar = CharSymbols.SingleQuote)
@@ -697,7 +692,7 @@ public class Lexer<TRunState> : ILexer
                     }
                 }
             }
-            else if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
+            else if (curr == CharSymbols.Backslash) // If backslash-escapes are off, state.AdvanceThroughOrdinaryStringCharacters will eat it
             {
                 state.Next();
                 escapeNext = true;

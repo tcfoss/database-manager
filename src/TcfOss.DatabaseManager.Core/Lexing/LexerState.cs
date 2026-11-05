@@ -283,10 +283,6 @@ public ref struct LexerState
 
     public readonly ReadOnlySpan<char> SpanFrom(int start)
     {
-        if (Position > _characters.Length)
-        {
-            return _characters[start..];
-        }
         return _characters[start..Position];
     }
 

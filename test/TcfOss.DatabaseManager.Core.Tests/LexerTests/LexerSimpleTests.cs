@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Collections;
+using System.Reflection;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -663,6 +664,19 @@ public class LexerSimpleTests : LexerTestBase
         Assert.Equal(commentBody.Length, actual[0].Length);
     }
 
+    [Fact]
+    public void LineComment_Embedded_Nul_Ends_Comment_And_Lexing_Continues()
+    {
+        List<Token> tokens = new GenericLexer().Tokenize("--a\0b");
+
+        var word = Assert.IsType<Word>(Assert.Single(tokens));
+        Assert.Equal("b", word.Value);
+        Assert.Equal(new Location(1, 5, 4), word.Location);
+        Assert.NotNull(word.PreNonSql);
+        Assert.Equal(new NonSqlComponent.LineComment("a\0"), Assert.Single(word.PreNonSql));
+        Assert.Equal(4, word.PreNonSql.Length);
+    }
+
     [Theory]
     [InlineData("", 0)]
     [InlineData("text", 4)]
@@ -943,6 +957,52 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void NonSqlList_Append_Comment_At_Boundary_Does_Not_Merge(bool commentLast, bool commentFirst)
+    {
+        NonSqlComponent last = commentLast ? new NonSqlComponent.BlockComment("c") : new NonSqlComponent.Spaces(1);
+        NonSqlComponent first = commentFirst ? new NonSqlComponent.BlockComment("c") : new NonSqlComponent.Spaces(1);
+        var list = new NonSqlList { Start = 0, End = 1 };
+        list.Add(last);
+        var other = new NonSqlList { Start = 1, End = 2 };
+        other.Add(first);
+
+        list.Append(other);
+
+        Assert.Equal<NonSqlComponent>([last, first], list);
+        Assert.Equal(2, list.End);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NonSqlList_Append_With_Empty_List(bool thisEmpty)
+    {
+        var list = new NonSqlList { Start = 0, End = 0 };
+        var other = new NonSqlList { Start = 0, End = 1 };
+        (thisEmpty ? other : list).Add(new NonSqlComponent.Spaces(1));
+
+        list.Append(other);
+
+        Assert.Equal<NonSqlComponent>([new NonSqlComponent.Spaces(1)], list);
+        Assert.Equal(1, list.End);
+    }
+
+    [Fact]
+    public void NonSqlList_NonGeneric_Enumeration_Yields_Items()
+    {
+        var list = new NonSqlList { Start = 0, End = 1 };
+        list.Add(new NonSqlComponent.Spaces(1));
+
+        IEnumerator enumerator = ((IEnumerable)list).GetEnumerator();
+
+        Assert.True(enumerator.MoveNext());
+        Assert.Equal(new NonSqlComponent.Spaces(1), enumerator.Current);
+        Assert.False(enumerator.MoveNext());
+    }
+
+    [Theory]
     [InlineData("x")]
     [InlineData("xyz")]
     [InlineData("Xyz")]
@@ -1142,6 +1202,8 @@ public class LexerSimpleTests : LexerTestBase
         { "\t\t\t", new NonSqlComponent.Tabs(3) },
         { "    ", new NonSqlComponent.Spaces(4) },
         { new string(' ', 40), new NonSqlComponent.Spaces(40) },
+        { new string('\t', 40), new NonSqlComponent.Tabs(40) },
+        { new string('\n', 40), new NonSqlComponent.Newlines(40) },
     };
 
     private delegate void LexerStateAction(ref LexerState state);
