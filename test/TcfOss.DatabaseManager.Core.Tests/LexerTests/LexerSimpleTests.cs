@@ -832,16 +832,29 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Theory]
-    [MemberData(nameof(WhitespaceData))]
-    public void Whitespace(string sql, NonSqlComponent expected)
+    [InlineData("\n", 1, typeof(NonSqlComponent.Newlines), 1)]
+    [InlineData("\r", 1, typeof(NonSqlComponent.Newlines), 1)]
+    [InlineData("\r\n", 1, typeof(NonSqlComponent.Newlines), 1)]
+    [InlineData("\n\r", 1, typeof(NonSqlComponent.Newlines), 2)]
+    [InlineData("\r\r\n\n", 1, typeof(NonSqlComponent.Newlines), 3)]
+    [InlineData("\t", 1, typeof(NonSqlComponent.Tabs), 1)]
+    [InlineData("\t", 3, typeof(NonSqlComponent.Tabs), 3)]
+    [InlineData(" ", 4, typeof(NonSqlComponent.Spaces), 4)]
+    [InlineData(" ", 40, typeof(NonSqlComponent.Spaces), 40)]
+    [InlineData("\t", 40, typeof(NonSqlComponent.Tabs), 40)]
+    [InlineData("\n", 40, typeof(NonSqlComponent.Newlines), 40)]
+    public void Whitespace(string unit, int repeat, Type expectedType, int expectedNumber)
     {
+        string sql = string.Concat(Enumerable.Repeat(unit, repeat));
         var lexer = new GenericLexer();
         List<Token> tokens = lexer.Tokenize(sql);
 
         var first = Assert.IsType<NonSqlContainer>(Assert.Single(tokens));
+        var actual = Assert.IsType<NonSqlComponent.Whitespace>(Assert.Single(first.SubTokens), exactMatch: false);
 
         Assert.Equal(sql.Length, first.Length);
-        Assert.Equal(expected, Assert.Single(first.SubTokens));
+        Assert.Equal(expectedType, actual.GetType());
+        Assert.Equal(expectedNumber, actual.Number);
     }
 
     [Fact]
@@ -1190,21 +1203,6 @@ public class LexerSimpleTests : LexerTestBase
 
         Assert.Equal(before, state.Location);
     }
-
-    public static TheoryData<string, NonSqlComponent> WhitespaceData => new()
-    {
-        { "\n", new NonSqlComponent.Newlines(1) },
-        { "\r", new NonSqlComponent.Newlines(1) },
-        { "\r\n", new NonSqlComponent.Newlines(1) },
-        { "\n\r", new NonSqlComponent.Newlines(2) },
-        { "\r\r\n\n", new NonSqlComponent.Newlines(3) },
-        { "\t", new NonSqlComponent.Tabs(1) },
-        { "\t\t\t", new NonSqlComponent.Tabs(3) },
-        { "    ", new NonSqlComponent.Spaces(4) },
-        { new string(' ', 40), new NonSqlComponent.Spaces(40) },
-        { new string('\t', 40), new NonSqlComponent.Tabs(40) },
-        { new string('\n', 40), new NonSqlComponent.Newlines(40) },
-    };
 
     private delegate void LexerStateAction(ref LexerState state);
 

@@ -1,4 +1,5 @@
-﻿using TcfOss.DatabaseManager.Core.Errors;
+﻿using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Tests.LexerTests;
@@ -72,6 +73,31 @@ public class MyLexerTests : LexerTestBase
         };
 
         Compare(expected, actual);
+    }
+
+    [Fact]
+    public void Leading_Charset_Takes_Whitespace_From_String()
+    {
+        List<Token> tokens = new MyLexer().Tokenize("_utf8 'blah'");
+
+        var literal = Assert.IsType<StringLiteral>(Assert.Single(tokens));
+        Assert.Equal("_utf8", literal.CharSet);
+        Assert.Equal(0, literal.Location.Position);
+        Assert.NotNull(literal.PreNonSql);
+        Assert.Equal(new Core.Statements.Components.NonSql.Spaces(1), Assert.Single(literal.PreNonSql));
+        Assert.Equal(5, literal.PreNonSql.Start);
+        Assert.Equal(6, literal.PreNonSql.End);
+    }
+
+    [Theory]
+    [InlineData("@_var", "_var")]
+    [InlineData("@$var", "$var")]
+    public void User_Variable_May_Start_With_Underscore_Or_Dollar(string sql, string expected)
+    {
+        var word = Assert.IsType<Word>(Assert.Single(new MyLexer().Tokenize(sql)));
+
+        Assert.Equal(expected, word.Value);
+        Assert.Equal(SigilKind.Variable, word.Sigil);
     }
 
     [Fact]
