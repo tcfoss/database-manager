@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
@@ -161,17 +162,99 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return types;
     }
 
-    private PgRoutineOptions? NormalizeRoutineOptions(PgRoutineOptions? options, Statement body)
+    private PgRoutineOptions? NormalizeRoutineOptions(SqlValueList<PgStatementRoutineOption>? beforeBody,
+        SqlValueList<PgStatementRoutineOption>? afterBody, Statement body, ObjectIdentifier routine, SourceRef sourceRef,
+        FunctionReturn? returnType)
     {
-        if (options == null && body is BeginAtomic or Return)
-        {
-            options = new PgRoutineOptions(new Identifier("sql", QuoteStyle.None));
-        }
-        if (options == null)
+        PgStatementRoutineOption[] statements = [.. beforeBody ?? [], .. afterBody ?? []];
+        if (statements.Length == 0 && body is not (BeginAtomic or Return))
         {
             return null;
         }
-        return new PgRoutineOptions(ComponentNormalizer.NormalizeSingleIdentifier(options.Language));
+        var language = new Identifier("sql", QuoteStyle.None);
+        SecurityContext security = SecurityContext.Invoker;
+        SqlValueList<PgRoutineSetting> settings = [];
+        PgRoutineVolatility volatility = PgRoutineVolatility.Volatile;
+        bool strict = false;
+        PgRoutineParallel parallel = PgRoutineParallel.Unsafe;
+        float? cost = null;
+        float? rows = null;
+        foreach (PgStatementRoutineOption statement in statements)
+        {
+            switch (statement)
+            {
+                case PgStatementRoutineOption.Language languageOption:
+                    language = languageOption.Name;
+                    break;
+                case PgStatementRoutineOption.Security securityOption:
+                    security = securityOption.Context;
+                    break;
+                case PgStatementRoutineOption.RoutineSetting setting:
+                    PgRoutineSetting canonicalSetting = setting.Setting switch
+                    {
+                        PgRoutineSetting.ToValues values => values with { Values = [.. values.Values] },
+                        PgRoutineSetting.FromCurrent current => throw new DefinitionException.RoutineSettingFromCurrent(routine, current.Name, sourceRef),
+                        _ => throw new DefensiveGuardException("routine setting type", setting.Setting.GetType())
+                    };
+                    settings.Add(canonicalSetting);
+                    break;
+                default:
+                    if (returnType == null)
+                    {
+                        throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"procedure option {statement.UniqueName}", sourceRef);
+                    }
+                    switch (statement)
+                    {
+                        case PgStatementRoutineOption.Volatility volatilityOption:
+                            volatility = volatilityOption.Mode;
+                            break;
+                        case PgStatementRoutineOption.NullHandling nullHandling:
+                            strict = nullHandling.Mode != PgRoutineNullHandling.CalledOnNullInput;
+                            break;
+                        case PgStatementRoutineOption.Parallel parallelOption:
+                            parallel = parallelOption.Mode;
+                            break;
+                        case PgStatementRoutineOption.Cost costOption:
+                            cost = NormalizeRoutineEstimate(costOption.Value, costOption.UniqueName, sourceRef);
+                            break;
+                        case PgStatementRoutineOption.Rows rowsOption:
+                            rows = NormalizeRoutineEstimate(rowsOption.Value, rowsOption.UniqueName, sourceRef);
+                            break;
+                        default:
+                            throw new DefensiveGuardException("routine option type", statement.GetType());
+                    }
+                    break;
+            }
+        }
+        language = ComponentNormalizer.NormalizeSingleIdentifier(language);
+        if (returnType == null)
+        {
+            return new PgRoutineOptions.Procedure(language) { Security = security, Settings = settings };
+        }
+        bool returnsSet = returnType is FunctionReturn.SetOf or FunctionReturn.Table;
+        if (rows.HasValue && !returnsSet)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "ROWS on a function that does not return a set", sourceRef);
+        }
+        return new PgRoutineOptions.Function(language, cost ?? (language.Name is "c" or "internal" ? 1 : 100),
+            rows ?? (returnsSet ? 1000 : 0))
+        {
+            Security = security,
+            Settings = settings,
+            Volatility = volatility,
+            Strict = strict,
+            Parallel = parallel
+        };
+    }
+
+    private static float NormalizeRoutineEstimate(Value.Number number, string option, SourceRef sourceRef)
+    {
+        if (!float.TryParse(number.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float estimate)
+            || !float.IsFinite(estimate) || estimate <= 0)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"{option} {number.Value}", sourceRef);
+        }
+        return estimate;
     }
 
     private FunctionReturn ResolveFunctionReturn(StatementFunctionReturn? returnType, SqlValueList<RoutineParameter.Postgres> parameters,
@@ -259,11 +342,12 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             Declaration<CreateFunction> item = declaration.Value;
             SqlValueList<RoutineParameter.Postgres> parameters = ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager);
+            FunctionReturn returnType = ResolveFunctionReturn(item.Statement.ReturnType, parameters, item.Name, item.SourceRef, manager);
             functions.Add(declaration.Key, new PgStoredFunction(item.Name,
-                parameters,
-                ResolveFunctionReturn(item.Statement.ReturnType, parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
+                parameters, returnType, item.Statement.Body)
             {
-                Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
+                Options = (PgRoutineOptions.Function?)NormalizeRoutineOptions(item.Statement.PgOptionsBeforeBody,
+                    item.Statement.PgOptionsAfterBody, item.Statement.Body, item.Name, item.SourceRef, returnType),
                 RawBodyText = SourceManager.GetText(item.SourceRef,
                     item.Statement.RoutineTailMeta.Start != null ? item.Statement.RoutineTailMeta : item.Statement.Body.Meta)
             });
@@ -275,7 +359,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             procedures.Add(key, new PgStoredProcedure(item.Name,
                 ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
             {
-                Options = NormalizeRoutineOptions(item.Statement.PgOptions, item.Statement.Body),
+                Options = (PgRoutineOptions.Procedure?)NormalizeRoutineOptions(item.Statement.PgOptionsBeforeBody,
+                    item.Statement.PgOptionsAfterBody, item.Statement.Body, item.Name, item.SourceRef, null),
                 RawBodyText = SourceManager.GetText(item.SourceRef,
                     item.Statement.RoutineTailMeta.Start != null ? item.Statement.RoutineTailMeta : item.Statement.Body.Meta)
             });

@@ -638,7 +638,8 @@ public class DdlParser
         SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: true);
 
         StatementFunctionReturn? returnType = null;
-        if (state.ParseKeyword(Keyword.RETURNS))
+        if (!state.PeekKeywordsAllEqual(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
+            && state.ParseKeyword(Keyword.RETURNS))
         {
             returnType = ParseFunctionReturn(state);
         }
@@ -647,6 +648,12 @@ public class DdlParser
             throw state.ExpectedException("RETURNS");
         }
         ParsedRoutineTail tail = ParseRoutineTail(state, isFunction: true);
+        if ((tail.PgOptionsBeforeBody?.Any(option => option is PgStatementRoutineOption.Rows) == true
+                || tail.PgOptionsAfterBody?.Any(option => option is PgStatementRoutineOption.Rows) == true)
+            && returnType is not (StatementFunctionReturn.SetOf or StatementFunctionReturn.Table))
+        {
+            throw state.ExpectedException("set-returning function for ROWS");
+        }
 
         return new CreateFunction(name, parameters, returnType, tail.Body)
         {
@@ -655,7 +662,8 @@ public class DdlParser
             Aggregate = aggregate,
             MyCharacteristic = tail.MyCharacteristic,
             MsOptions = tail.MsOptions,
-            PgOptions = tail.PgOptions,
+            PgOptionsBeforeBody = tail.PgOptionsBeforeBody,
+            PgOptionsAfterBody = tail.PgOptionsAfterBody,
             RoutineTailMeta = tail.Meta,
             UseAsBeforeBody = tail.UseAsBeforeBody,
             IfNotExists = ifNotExists
@@ -721,7 +729,8 @@ public class DdlParser
             CreateOrLabel = createOrLabel,
             MyCharacteristic = tail.MyCharacteristic,
             MsOptions = tail.MsOptions,
-            PgOptions = tail.PgOptions,
+            PgOptionsBeforeBody = tail.PgOptionsBeforeBody,
+            PgOptionsAfterBody = tail.PgOptionsAfterBody,
             RoutineTailMeta = tail.Meta,
             UseAsBeforeBody = tail.UseAsBeforeBody,
             IfNotExists = ifNotExists
@@ -732,18 +741,34 @@ public class DdlParser
     {
         public MyRoutineCharacteristic? MyCharacteristic { get; init; }
         public MsRoutineWithOptions? MsOptions { get; init; }
-        public PgRoutineOptions? PgOptions { get; init; }
+        public SqlValueList<PgStatementRoutineOption>? PgOptionsBeforeBody { get; init; }
+        public SqlValueList<PgStatementRoutineOption>? PgOptionsAfterBody { get; init; }
         public MetaData Meta { get; init; } = new();
     }
 
     protected virtual bool UseSqlRoutineTail(ParserState state)
     {
+        if (state.PeekKeyword(Keyword.LANGUAGE))
+        {
+            return state.PeekNth(2) is Word
+            {
+                Keyword: Keyword.AS or Keyword.RETURN
+                or Keyword.IMMUTABLE or Keyword.STABLE or Keyword.VOLATILE or Keyword.STRICT
+                or Keyword.CALLED or Keyword.SECURITY or Keyword.EXTERNAL or Keyword.PARALLEL or Keyword.COST
+                or Keyword.ROWS or Keyword.SET or Keyword.RETURNS
+            }
+                || (state.PeekNth(2) is Word { Keyword: Keyword.BEGIN }
+                    && state.PeekNth(3) is Word { Keyword: Keyword.ATOMIC });
+        }
         return state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC)
             || (state.PeekKeyword(Keyword.AS) && state.PeekNth(1) is StringLiteral or DollarQuotedStringLiteral)
-            || (state.PeekKeyword(Keyword.LANGUAGE)
-                && (state.PeekNth(2) is Word { Keyword: Keyword.AS }
-                    || (state.PeekNth(2) is Word { Keyword: Keyword.BEGIN }
-                        && state.PeekNth(3) is Word { Keyword: Keyword.ATOMIC })));
+            || state.Peek() is Word
+            {
+                Keyword: Keyword.IMMUTABLE or Keyword.STABLE
+                or Keyword.VOLATILE or Keyword.STRICT or Keyword.CALLED or Keyword.SECURITY
+                or Keyword.EXTERNAL or Keyword.PARALLEL or Keyword.COST or Keyword.ROWS or Keyword.SET
+            }
+            || state.PeekKeywordsAllEqual(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT);
     }
 
     protected virtual ParsedRoutineTail ParseRoutineTail(ParserState state, bool isFunction)
@@ -770,23 +795,174 @@ public class DdlParser
         };
     }
 
-    protected virtual PgRoutineOptions? ParseOptionalPgRoutineOptions(ParserState state)
+    private void ParseRoutineOptions(ParserState state, SqlValueList<PgStatementRoutineOption> options, HashSet<string> seenOptions, bool isFunction)
     {
-        if (!state.ParseKeyword(Keyword.LANGUAGE))
+        while (true)
+        {
+            Location location = state.Peek().Location;
+            PgStatementRoutineOption? option = ParseNextRoutineOption(state, isFunction);
+            if (option == null)
+            {
+                return;
+            }
+            if (!seenOptions.Add(option.UniqueName))
+            {
+                throw new ParseException.Duplicate(option.UniqueName, location);
+            }
+            options.Add(option);
+        }
+    }
+
+    protected virtual PgStatementRoutineOption? ParseNextRoutineOption(ParserState state, bool isFunction)
+    {
+        if (state.ParseKeyword(Keyword.LANGUAGE))
+        {
+            return new PgStatementRoutineOption.Language(_parseIdentifier(state));
+        }
+
+        if (state.ParseKeyword(Keyword.SET))
+        {
+            ObjectName key = _parseObjectName(state);
+            if (state.ParseKeywordsAll(Keyword.FROM, Keyword.CURRENT))
+            {
+                return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.FromCurrent(key));
+            }
+            bool equalSign;
+            if (state.ConsumeTokenIs<Equal>())
+            {
+                equalSign = true;
+            }
+            else if (state.ParseKeyword(Keyword.TO))
+            {
+                equalSign = false;
+            }
+            else
+            {
+                throw state.ExpectedException("=", "TO");
+            }
+            SqlValueList<Value> values = state.ParseCommaSeparated(ParseRoutineSettingValue);
+            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToValues(key, values)) { UseEqualSign = equalSign };
+
+        }
+
+        List<Keyword> securityMatch = state.ParseKeywordSequence(KeywordSearchCondition.Optional(Keyword.EXTERNAL), Keyword.SECURITY);
+        if (securityMatch.Count > 0)
+        {
+            bool external = securityMatch[0] == Keyword.EXTERNAL;
+            SecurityContext context;
+            if (state.ParseKeyword(Keyword.DEFINER))
+            {
+                context = SecurityContext.Definer;
+            }
+            else if (state.ParseKeyword(Keyword.INVOKER))
+            {
+                context = SecurityContext.Invoker;
+            }
+            else
+            {
+                throw state.ExpectedException("DEFINER", "INVOKER");
+            }
+            return new PgStatementRoutineOption.Security(context) { External = external };
+        }
+
+        if (!isFunction)
         {
             return null;
         }
-        return new PgRoutineOptions(_parseIdentifier(state));
+
+        if (state.ParseKeyword(Keyword.PARALLEL))
+        {
+            PgRoutineParallel parallelMode;
+            if (state.ParseKeyword(Keyword.UNSAFE))
+            {
+                parallelMode = PgRoutineParallel.Unsafe;
+            }
+            else if (state.ParseKeyword(Keyword.RESTRICTED))
+            {
+                parallelMode = PgRoutineParallel.Restricted;
+            }
+            else if (state.ParseKeyword(Keyword.SAFE))
+            {
+                parallelMode = PgRoutineParallel.Safe;
+            }
+            else
+            {
+                throw state.ExpectedException("UNSAFE", "RESTRICTED", "SAFE");
+            }
+            return new PgStatementRoutineOption.Parallel(parallelMode);
+        }
+
+        if (state.ParseKeyword(Keyword.STRICT))
+        {
+            return new PgStatementRoutineOption.NullHandling(PgRoutineNullHandling.Strict);
+        }
+        if (state.ParseKeywordsAll(Keyword.CALLED, Keyword.ON, Keyword.NULL, Keyword.INPUT))
+        {
+            return new PgStatementRoutineOption.NullHandling(PgRoutineNullHandling.CalledOnNullInput);
+        }
+        if (state.ParseKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT))
+        {
+            return new PgStatementRoutineOption.NullHandling(PgRoutineNullHandling.ReturnsNullOnNullInput);
+        }
+
+        if (state.ParseKeyword(Keyword.COST))
+        {
+            return new PgStatementRoutineOption.Cost(ParsePositiveRoutineNumber(state));
+        }
+
+        if (state.ParseKeyword(Keyword.ROWS))
+        {
+            return new PgStatementRoutineOption.Rows(ParsePositiveRoutineNumber(state));
+        }
+
+        Keyword volatility = state.ParseKeywordsAny(Keyword.IMMUTABLE, Keyword.STABLE, Keyword.VOLATILE);
+        if (volatility != Keyword.undefined)
+        {
+            return new PgStatementRoutineOption.Volatility(PgRoutineVolatility.Parse(volatility.ToString()));
+        }
+
+        return null;
+    }
+
+    private static Value.Number ParsePositiveRoutineNumber(ParserState state)
+    {
+        state.ConsumeTokenIs<Plus>();
+        Token token = state.Next();
+        if (token is NumericLiteral { IsLong: false } number
+            && double.TryParse(number.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
+            && double.IsFinite(value) && value > 0)
+        {
+            return new Value.Number(number.Value, false);
+        }
+        throw ParserState.ExpectedException("positive number", token);
+    }
+
+    private static Value ParseRoutineSettingValue(ParserState state)
+    {
+        if (state.Peek() is Plus or Minus)
+        {
+            Token sign = state.Next();
+            Token token = state.Next();
+            if (token is NumericLiteral number)
+            {
+                return new Value.Number($"{sign}{number.Value}", number.IsLong);
+            }
+            throw ParserState.ExpectedException("number", token);
+        }
+        if (state.Peek() is Word { Keyword: not (Keyword.TRUE or Keyword.FALSE or Keyword.NULL) })
+        {
+            return new Value.SingleQuotedString(ValueParser.ParseLiteralStringOptionalQuotes(state));
+        }
+        return ValueParser.ParseValue(state);
     }
 
     protected ParsedRoutineTail ParseSqlRoutineTail(ParserState state, bool isFunction)
     {
         int start = state.Peek().Location.Position;
-        PgRoutineOptions? options = ParseOptionalPgRoutineOptions(state);
-        if (options != null && state.PeekKeyword(Keyword.LANGUAGE))
-        {
-            throw new ParseException.Duplicate("LANGUAGE", state.Peek().Location);
-        }
+        SqlValueList<PgStatementRoutineOption> beforeBody = [];
+        SqlValueList<PgStatementRoutineOption> afterBody = [];
+        var seenOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ParseRoutineOptions(state, beforeBody, seenOptions, isFunction);
         bool useAsBeforeBody = state.ParseKeyword(Keyword.AS);
         Statement body;
         if (useAsBeforeBody)
@@ -816,35 +992,26 @@ public class DdlParser
             throw state.ExpectedException(isFunction ? ["AS string literal", "BEGIN ATOMIC", "RETURN"] : ["AS string literal", "BEGIN ATOMIC"]);
         }
 
-        if (state.PeekKeyword(Keyword.LANGUAGE))
-        {
-            if (options != null)
-            {
-                throw new ParseException.Duplicate("LANGUAGE", state.Peek().Location);
-            }
-            options = ParseOptionalPgRoutineOptions(state);
-        }
-        if (state.PeekKeyword(Keyword.LANGUAGE))
-        {
-            throw new ParseException.Duplicate("LANGUAGE", state.Peek().Location);
-        }
+        ParseRoutineOptions(state, afterBody, seenOptions, isFunction);
+        Identifier? language = beforeBody.Concat(afterBody).OfType<PgStatementRoutineOption.Language>().SingleOrDefault()?.Name;
         if (body is RoutineBodyLiteral)
         {
-            if (options == null)
+            if (language == null)
             {
                 throw state.ExpectedException("LANGUAGE");
             }
         }
-        else if (options != null && options.Language.Name != "sql"
-            && (options.Language.QuoteStyle != QuoteStyle.None
-                || !string.Equals(options.Language.Name, "sql", StringComparison.OrdinalIgnoreCase)))
+        else if (language != null && language.Name != "sql"
+            && (language.QuoteStyle != QuoteStyle.None
+                || !string.Equals(language.Name, "sql", StringComparison.OrdinalIgnoreCase)))
         {
             throw state.ExpectedException("LANGUAGE SQL");
         }
 
         return new ParsedRoutineTail(body, useAsBeforeBody)
         {
-            PgOptions = options,
+            PgOptionsBeforeBody = beforeBody,
+            PgOptionsAfterBody = afterBody,
             Meta = new MetaData { Start = start, End = state.Peek().Location.Position }
         };
     }

@@ -103,6 +103,12 @@ public class DefinitionException(string message, SourceRef? sourceRef = null) : 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Def_ObjectNoSecurityContext);
     }
 
+    public class RoutineSettingFromCurrent(ObjectIdentifier routine, ObjectName setting, SourceRef? sourceRef = null)
+        : DefinitionException(s_compositeFormat.Apply(routine, setting), sourceRef)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Def_RoutineSettingFromCurrent);
+    }
+
     public class TriggerOrderViaPrecedes(string triggerName, SourceRef? sourceRef = null)
         : DefinitionException(s_compositeFormat.Apply(triggerName), sourceRef)
     {

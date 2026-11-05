@@ -155,7 +155,7 @@ public class TableParser
         return options;
     }
 
-    public StatementColumnOption? ParseNextColumnOption(ParserState state)
+    public virtual StatementColumnOption? ParseNextColumnOption(ParserState state)
     {
         Identifier? constraintName = null;
         Location? constraintLocation = null;
@@ -195,11 +195,30 @@ public class TableParser
                 Name = constraintName
             };
         }
-        if (state.ParseKeywordsAll(Keyword.GENERATED, Keyword.ALWAYS, Keyword.AS))
+        if (state.ParseKeyword(Keyword.GENERATED))
         {
             if (constraintName != null)
             {
                 throw new ParseException.ColumnComponentInvalidName("GENERATED", constraintName, constraintLocation);
+            }
+            bool always = state.ParseKeyword(Keyword.ALWAYS);
+            if (!always)
+            {
+                state.ExpectKeywordsAll(Keyword.BY, Keyword.DEFAULT);
+            }
+            state.ExpectKeyword(Keyword.AS);
+            if (state.PeekKeyword(Keyword.IDENTITY))
+            {
+                if (!_p.SupportsPostgresIdentitySyntax)
+                {
+                    throw state.ExpectedException("generated expression");
+                }
+                state.Next();
+                return new StatementColumnOption.Generated.PgIdentity(always, ParsePostgresIdentityOptions(state));
+            }
+            if (!always)
+            {
+                throw state.ExpectedException("IDENTITY");
             }
             return ParseGenerated(state, true);
         }
@@ -320,6 +339,64 @@ public class TableParser
         }
 
         return new StatementColumnOption.Identity.Specified(values[0], values[1]);
+    }
+
+    private SqlValueList<PgStatementSequenceOption>? ParsePostgresIdentityOptions(ParserState state)
+    {
+        if (!state.ConsumeTokenIs<ParenOpen>())
+        {
+            return null;
+        }
+        SqlValueList<PgStatementSequenceOption> options = [];
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        while (!state.PeekIs<ParenClose>())
+        {
+            Location location = state.Peek().Location;
+            PgStatementSequenceOption option = ParseNextPostgresIdentityOption(state);
+            if (!used.Add(option.UniqueName))
+            {
+                throw new ParseException.Duplicate(option.UniqueName, location);
+            }
+            options.Add(option);
+        }
+        if (options.Count == 0)
+        {
+            throw state.ExpectedException("identity sequence option");
+        }
+        state.ExpectRightParen();
+        return options;
+    }
+
+    protected virtual PgStatementSequenceOption ParseNextPostgresIdentityOption(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.START))
+        {
+            bool useWith = state.ParseKeyword(Keyword.WITH);
+            return new PgStatementSequenceOption.Start(ValueParser.ParseLiteralLong(state)) { UseWith = useWith };
+        }
+        if (state.ParseKeyword(Keyword.INCREMENT))
+        {
+            bool useBy = state.ParseKeyword(Keyword.BY);
+            return new PgStatementSequenceOption.Increment(ValueParser.ParseLiteralLong(state)) { UseBy = useBy };
+        }
+        bool no = state.ParseKeyword(Keyword.NO);
+        if (state.ParseKeyword(Keyword.MINVALUE))
+        {
+            return new PgStatementSequenceOption.MinValue(no ? null : ValueParser.ParseLiteralLong(state));
+        }
+        if (state.ParseKeyword(Keyword.MAXVALUE))
+        {
+            return new PgStatementSequenceOption.MaxValue(no ? null : ValueParser.ParseLiteralLong(state));
+        }
+        if (state.ParseKeyword(Keyword.CYCLE))
+        {
+            return new PgStatementSequenceOption.Cycle(!no);
+        }
+        if (!no && state.ParseKeyword(Keyword.CACHE))
+        {
+            return new PgStatementSequenceOption.Cache(ValueParser.ParseLiteralLong(state));
+        }
+        throw state.ExpectedException("identity sequence option");
     }
 
     public StatementTableConstraint? ParseOptionalTableConstraint(ParserState state)

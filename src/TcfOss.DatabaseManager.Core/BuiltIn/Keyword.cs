@@ -149,6 +149,7 @@ public enum Keyword
     COPY_OPTIONS,
     CORR,
     CORRESPONDING,
+    COST,
     COUNT,
     COVAR_POP,
     COVAR_SAMP,

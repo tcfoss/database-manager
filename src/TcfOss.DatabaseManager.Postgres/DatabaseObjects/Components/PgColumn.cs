@@ -11,6 +11,7 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
 {
     public ColumnOption.Nullability? Nullability { get; init; }
     public ColumnOption.ColumnDefault? Default { get; init; }
+    public ColumnOption.Generated? Generated { get; init; }
 
     public StatementColumn.Typed ToStatementColumn(DifferFormatManager? manager = null)
     {
@@ -31,6 +32,15 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
         else if (Default is ColumnOption.ColumnDefault.DefaultExpression expression)
         {
             options.Add(new StatementColumnOption.Default.DefaultExpression(expression.Expression, expression.Name));
+        }
+
+        if (Generated is ColumnOption.Generated.AsExpression generated)
+        {
+            options.Add(new StatementColumnOption.Generated.AsExpression(generated.Expression, generated.Mode, true, true, false));
+        }
+        else if (Generated is ColumnOption.Generated.PgIdentity identity)
+        {
+            options.Add(new StatementColumnOption.Generated.PgIdentity(identity.Always, identity.Options.ToStatementOptions()));
         }
 
         return new StatementColumn.Typed(Name.ToSimpleIdentifier(),

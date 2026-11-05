@@ -219,6 +219,9 @@
     <data name="Err_Def_ObjectNoSecurityContext" xml:space="preserve">
         <value>The definition of {0} '{1}' must have an explicit SQL SECURITY specification.</value>
     </data>
+    <data name="Err_Def_RoutineSettingFromCurrent" xml:space="preserve">
+        <value>The definition of routine '{0}' must specify an explicit value for setting '{1}'. SET FROM CURRENT depends on the execution environment and is not supported.</value>
+    </data>
     <data name="Err_Def_Table_UniqueOnColumn" xml:space="preserve">
         <value>Column '{0}' is designated as UNIQUE. Use a table-level constraint instead.</value>
     </data>
