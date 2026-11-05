@@ -12,6 +12,9 @@ public ref struct LexerState
     public int Position { get; private set; } = 0;
     public string? IdentifierTerminator { get; set; }
 
+    public readonly bool IsAtEnd => Position >= _characters.Length;
+    private readonly ReadOnlySpan<char> Remaining => Position >= _characters.Length ? [] : _characters[Position..];
+
     public readonly Location Location
     {
         get
@@ -99,6 +102,62 @@ public ref struct LexerState
         }
         _column += Position - start;
         return Position - start;
+    }
+
+    public int AdvanceWhileTrustNoNewLines(char character)
+    {
+        ReadOnlySpan<char> remaining = _characters[Position..];
+        int count = remaining.IndexOfAnyExcept(character);
+        if (count < 0)
+        {
+            count = remaining.Length;
+        }
+        Position += count;
+        _column += count;
+        return count;
+    }
+
+    /// <summary>
+    /// Advance to the next <paramref name="quoteChar"/>, backslash (if <paramref name="backslashEscapes"/>), or end of input.
+    /// </summary>
+    public void AdvanceThroughOrdinaryStringCharacters(char quoteChar, bool backslashEscapes)
+    {
+        ReadOnlySpan<char> remaining = Remaining;
+        int index = backslashEscapes
+            ? remaining.IndexOfAny(quoteChar, CharSymbols.Backslash, CharSymbols.EndOfFile)
+            : remaining.IndexOfAny(quoteChar, CharSymbols.EndOfFile);
+        AdvanceBy(index < 0 ? remaining.Length : index);
+    }
+
+    public void AdvanceThroughNonQuote(char quoteChar)
+    {
+        ReadOnlySpan<char> remaining = Remaining;
+        int index = remaining.IndexOfAny(quoteChar, CharSymbols.EndOfFile);
+        AdvanceBy(index < 0 ? remaining.Length : index);
+    }
+
+
+
+    // Tracks line/column exactly as repeated Next() calls would.
+    private void AdvanceBy(int count)
+    {
+        // Next() does not update line/column when consuming the final character.
+        int trackedEnd = Math.Min(Position + count, _characters.Length - 1);
+        if (trackedEnd > Position)
+        {
+            ReadOnlySpan<char> skipped = _characters[Position..trackedEnd];
+            int lastNewLine = skipped.LastIndexOf(CharSymbols.NewLine);
+            if (lastNewLine < 0)
+            {
+                _column += skipped.Length;
+            }
+            else
+            {
+                _line += skipped.Count(CharSymbols.NewLine);
+                _column = skipped.Length - lastNewLine;
+            }
+        }
+        Position += count;
     }
 
     public void AdvanceToEndOfLine()
@@ -224,10 +283,6 @@ public ref struct LexerState
 
     public readonly ReadOnlySpan<char> SpanFrom(int start)
     {
-        if (Position > _characters.Length)
-        {
-            return _characters[start..];
-        }
         return _characters[start..Position];
     }
 

@@ -3,7 +3,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
-using TcfOss.DataStructures.ValueCollections;
+using NonSqlComponent = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
 namespace TcfOss.DatabaseManager.Core.Lexing;
 
@@ -29,7 +29,8 @@ public class Lexer<TRunState> : ILexer
     public virtual List<Token> Tokenize(ReadOnlySpan<char> sql)
     {
         List<Token> tokens = [];
-        ValueList<NonSql> nonSql = [];
+        NonSqlList? nonSql = null;
+        Location nonSqlLocation = default;
         var state = new LexerState(sql);
         TRunState runState = CreateRunState();
 
@@ -38,23 +39,29 @@ public class Lexer<TRunState> : ILexer
         {
             if (curr is NonSql ns)
             {
-                nonSql.Add(ns);
+                if (nonSql == null)
+                {
+                    nonSql = new NonSqlList { Start = ns.Location.Position };
+                    nonSqlLocation = ns.Location;
+                }
+                nonSql.Add(ns.Value);
+                nonSql.End = ns.Location.Position + ns.Length;
                 continue;
             }
 
-            if (nonSql.Count > 0)
+            if (nonSql != null)
             {
                 curr.PreNonSql = nonSql;
-                nonSql = [];
+                nonSql = null;
             }
             PostProcessToken(curr, tokens, ref runState);
         }
 
         PostProcessStream(tokens, ref runState);
 
-        if (nonSql.Count > 0)
+        if (nonSql != null)
         {
-            tokens.Add(new NonSqlContainer(nonSql) { Location = nonSql[0].Location });
+            tokens.Add(new NonSqlContainer(nonSql) { Location = nonSqlLocation });
         }
 
         return tokens;
@@ -81,10 +88,9 @@ public class Lexer<TRunState> : ILexer
 
         return character switch
         {
-            CharSymbols.Space => TokenizeSingleCharacter(ref state, new NonSql(NonSqlType.Space) { Location = state.Location }),
-            CharSymbols.Tab => TokenizeSingleCharacter(ref state, new NonSql(NonSqlType.Tab) { Location = state.Location }),
-            CharSymbols.NewLine => TokenizeSingleCharacter(ref state, new NonSql(NonSqlType.Newline) { Location = state.Location }),
-            CharSymbols.CarriageReturn => TokenizeCarriageReturn(ref state),
+            CharSymbols.Space => TokenizeSpaces(ref state),
+            CharSymbols.Tab => TokenizeTabs(ref state),
+            CharSymbols.NewLine or CharSymbols.CarriageReturn => TokenizeNewlines(ref state),
 
             CharSymbols.SquareBracketOpen when SupportBracketQuotedIdentifiers => TokenizeQuotedIdentifier(ref state),
             CharSymbols.SquareBracketOpen => TokenizeSingleCharacter(ref state, new BracketOpen() { Location = state.Location }),
@@ -97,7 +103,7 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.SingleQuote => TokenizeStringLiteral(ref state),
 
-            _ when char.IsAsciiDigit(character) || character == CharSymbols.Dot => TokenizeNumber(ref state),
+            >= '0' and <= '9' or CharSymbols.Dot => TokenizeNumber(ref state),
 
             CharSymbols.ParenOpen => TokenizeSingleCharacter(ref state, new ParenOpen() { Location = state.Location }),
             CharSymbols.ParenClose => TokenizeSingleCharacter(ref state, new ParenClose() { Location = state.Location }),
@@ -145,15 +151,46 @@ public class Lexer<TRunState> : ILexer
         return token;
     }
 
-    private static NonSql TokenizeCarriageReturn(ref LexerState state)
+    private static NonSql TokenizeSpaces(ref LexerState state)
     {
         Location location = state.Location;
-        state.Next();
-        if (state.Peek() == CharSymbols.NewLine)
+        int count = state.AdvanceWhileTrustNoNewLines(CharSymbols.Space);
+        return new NonSql(WhitespaceCache.Spaces(count), count) { Location = location };
+    }
+
+    private static NonSql TokenizeTabs(ref LexerState state)
+    {
+        Location location = state.Location;
+        int count = state.AdvanceWhileTrustNoNewLines(CharSymbols.Tab);
+        return new NonSql(WhitespaceCache.Tabs(count), count) { Location = location };
+    }
+
+    private static NonSql TokenizeNewlines(ref LexerState state)
+    {
+        Location location = state.Location;
+        int count = 0;
+        while (true)
         {
-            state.Next();
+            char curr = state.Peek();
+            if (curr == CharSymbols.NewLine)
+            {
+                state.Next();
+            }
+            else if (curr == CharSymbols.CarriageReturn)
+            {
+                state.Next();
+                if (state.Peek() == CharSymbols.NewLine)
+                {
+                    state.Next();
+                }
+            }
+            else
+            {
+                break;
+            }
+            count++;
         }
-        return new NonSql(NonSqlType.Newline) { Location = location };
+        return new NonSql(WhitespaceCache.Newlines(count), state.Position - location.Position) { Location = location };
     }
 
     private static Label? MaybeTokenizeLabel(ref LexerState state, string word, Location initialLocation, QuoteStyle? quoteStyle = null)
@@ -192,29 +229,22 @@ public class Lexer<TRunState> : ILexer
                 throw new DefensiveGuardException("identifier quote character", quoteStart.ToString());
         }
 
-        char? lastChar = null;
         int startPosition = state.Position;
 
-        char curr;
-        do
+        while (true)
         {
-            curr = state.Peek();
-            state.Next();
-
-            if (curr == quoteEnd && state.Peek() == quoteEnd)
+            state.AdvanceThroughNonQuote(quoteEnd);
+            if (state.Peek() == CharSymbols.EndOfFile)
             {
-                state.Next();
+                throw new LexException.UnterminatedQuotedIdentifier(quoteEnd, initialLocation);
             }
-            else if (curr == quoteEnd)
+
+            state.Next();
+            if (state.Peek() != quoteEnd)
             {
-                lastChar = quoteEnd;
                 break;
             }
-        } while (curr != CharSymbols.EndOfFile);
-
-        if (lastChar != quoteEnd)
-        {
-            throw new LexException.UnterminatedQuotedIdentifier(quoteEnd, initialLocation);
+            state.Next();
         }
 
         string word = new(state.SpanFrom(startPosition, state.Position - 1));
@@ -511,7 +541,7 @@ public class Lexer<TRunState> : ILexer
 
         if (state.Peek() != CharSymbols.SingleQuote)
         {
-            return new Word(ExtractWordTrustNoNewLines(ref state)) { Location = state.Location };
+            return new Word(ExtractWordTrustNoNewLines(ref state)) { Location = initialLocation };
         }
 
         string hex = ExtractString(ref state);
@@ -547,7 +577,7 @@ public class Lexer<TRunState> : ILexer
         state.Next(); // Consume the second '-'
 
         string comment = ExtractLineComment(ref state);
-        return new NonSql(NonSqlType.InlineComment, comment) { Prefix = "--", Location = startLocation };
+        return new NonSql(new NonSqlComponent.LineComment(comment, "--"), state.Position - startLocation.Position) { Location = startLocation };
     }
 
     private static NonSql TokenizeBlockComment(ref LexerState state, Location startLocation)
@@ -577,8 +607,8 @@ public class Lexer<TRunState> : ILexer
                     nested--;
                     if (nested == 0)
                     {
-                        // state.Next();
-                        return new NonSql(NonSqlType.BlockComment, new string(state.SpanFrom(startPosition, state.Position - 2))) { Location = startLocation };
+                        string body = new(state.SpanFrom(startPosition, state.Position - 2));
+                        return new NonSql(new NonSqlComponent.BlockComment(body), state.Position - startLocation.Position) { Location = startLocation };
                     }
                     break;
             }
@@ -591,14 +621,14 @@ public class Lexer<TRunState> : ILexer
         int startPosition = state.Position;
         state.AdvanceToEndOfLine();
 
-        bool isEof = state.Next() == CharSymbols.EndOfFile;
-
-        string content = new(state.SpanFrom(startPosition));
-        if (isEof)
+        if (state.IsAtEnd)
         {
-            return content + CharSymbols.EndOfFile;
+            return new string(state.SpanFrom(startPosition)) + CharSymbols.EndOfFile;
         }
-        return content;
+
+        // Consume the newline, or an embedded NUL, which stays in the body as-is.
+        state.Next();
+        return new string(state.SpanFrom(startPosition));
     }
 
     private string ExtractString(ref LexerState state, char quoteChar = CharSymbols.SingleQuote)
@@ -609,41 +639,30 @@ public class Lexer<TRunState> : ILexer
 
         // Try allocation-free search first.
         int startPosition = state.Position;
-        while (true)
+        state.AdvanceThroughOrdinaryStringCharacters(quoteChar, SupportBackslashQuoteEscape);
+        char first = state.Peek();
+
+        if (first == CharSymbols.EndOfFile)
         {
-            char curr = state.Peek();
-
-            if (curr == CharSymbols.EndOfFile)
-            {
-                throw new LexException.UnterminatedString(startLocation);
-            }
-
-            if (curr == quoteChar)
-            {
-                if (state.PeekNth(1) == quoteChar)
-                {
-                    // Escaped quote. Have to do it the slower way.
-                    break;
-                }
-
-                // String was closed without any escaping. Return it.
-                string result = new(state.SpanFrom(startPosition));
-                state.Next(); // Consume the closing quotation mark.
-                return result;
-            }
-
-            if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
-            {
-                // String contains backslash escapes. Have to do it the slower way.
-                break;
-            }
-
-            state.Next();
+            throw new LexException.UnterminatedString(startLocation);
         }
 
+        if (first == quoteChar && state.PeekNth(1) != quoteChar)
+        {
+            // String was closed without any escaping. Return it.
+            string result = new(state.SpanFrom(startPosition));
+            state.Next(); // Consume the closing quotation mark.
+            return result;
+        }
+
+        // Escaped quote or backslash. Have to do it the slower way.
         bool escapeNext = false;
         while (true)
         {
+            if (!escapeNext)
+            {
+                state.AdvanceThroughOrdinaryStringCharacters(quoteChar, SupportBackslashQuoteEscape);
+            }
             char curr = state.Peek();
 
             if (curr == CharSymbols.EndOfFile)
@@ -673,7 +692,7 @@ public class Lexer<TRunState> : ILexer
                     }
                 }
             }
-            else if (SupportBackslashQuoteEscape && curr == CharSymbols.Backslash)
+            else if (curr == CharSymbols.Backslash) // If backslash-escapes are off, state.AdvanceThroughOrdinaryStringCharacters will eat it
             {
                 state.Next();
                 escapeNext = true;

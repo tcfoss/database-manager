@@ -3,7 +3,7 @@ namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 public abstract class Token : IEquatable<Token>
 {
     public required Location Location { get; init; }
-    public List<NonSql>? PreNonSql { get; set; }
+    public NonSqlList? PreNonSql { get; set; }
     public virtual int Length => 1;
 
     public abstract bool Equals(Token? other);

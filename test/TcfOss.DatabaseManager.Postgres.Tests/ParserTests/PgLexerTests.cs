@@ -139,4 +139,18 @@ public class PgLexerTests
         Assert.Equal(new Location(2, position - sql.LastIndexOf('\n'), position), Assert.IsType<Semicolon>(tokens[1]).Location);
         Assert.Equal(2, tokens.Count);
     }
+
+    [Fact]
+    public void Square_Brackets_Are_Symbol_Tokens()
+    {
+        List<Token> tokens = new PgLexer().Tokenize("a[1]");
+
+        Assert.Equal(4, tokens.Count);
+        var open = Assert.IsType<BracketOpen>(tokens[1]);
+        var close = Assert.IsType<BracketClose>(tokens[3]);
+        Assert.Equal(BracketOpen.TypeSymbol, open.ToString());
+        Assert.Equal(BracketClose.TypeSymbol, close.ToString());
+        Assert.Equal(new Location(1, 2, 1), open.Location);
+        Assert.Equal(new Location(1, 4, 3), close.Location);
+    }
 }

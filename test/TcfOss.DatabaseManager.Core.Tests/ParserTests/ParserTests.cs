@@ -377,7 +377,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var first = tokens[0] as Lexing.Tokens.NonSqlContainer;
         Assert.NotNull(first);
 
-        var asStatement = first.SubTokens.ToStatementNonSql();
+        var asStatement = first.SubTokens;
 
         var expected = new List<NonSql>()
         {
@@ -406,7 +406,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var first = tokens[0] as Lexing.Tokens.NonSqlContainer;
         Assert.NotNull(first);
 
-        var asStatement = first.SubTokens.ToStatementNonSql();
+        var asStatement = first.SubTokens;
 
         var expected = new List<NonSql>()
         {

@@ -1,9 +1,11 @@
-﻿using System.Reflection;
+﻿using System.Collections;
+using System.Reflection;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
+using NonSqlComponent = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
 namespace TcfOss.DatabaseManager.Core.Tests.LexerTests;
 
@@ -644,20 +646,35 @@ public class LexerSimpleTests : LexerTestBase
     [InlineData("my inline comment\r\n", "--")]
     public void Comment(string body, string? prefix)
     {
-        NonSqlType nonSqlType = prefix is null ? NonSqlType.BlockComment : NonSqlType.InlineComment;
         string commentBody = prefix is null ? $"/*{body}*/" : $"{prefix}{body}";
         var terminator = prefix is not null && !body.EndsWith('\n') ? StringSymbols.EndOfFile : null;
+        NonSqlComponent component = prefix is null
+            ? new NonSqlComponent.BlockComment(body)
+            : new NonSqlComponent.LineComment($"{body}{terminator}", prefix);
+        var subTokens = new NonSqlList { Start = 0, End = commentBody.Length };
+        subTokens.Add(component);
 
         var actual = new GenericLexer().Tokenize(commentBody);
         var expected = new List<Token>()
         {
-            new NonSqlContainer(
-            [
-                new(nonSqlType, $"{body}{terminator}") { Prefix = prefix, Location = new Location() }
-            ]) { Location = new Location() }
+            new NonSqlContainer(subTokens) { Location = new Location() }
         };
 
         Compare(expected, actual);
+        Assert.Equal(commentBody.Length, actual[0].Length);
+    }
+
+    [Fact]
+    public void LineComment_Embedded_Nul_Ends_Comment_And_Lexing_Continues()
+    {
+        List<Token> tokens = new GenericLexer().Tokenize("--a\0b");
+
+        var word = Assert.IsType<Word>(Assert.Single(tokens));
+        Assert.Equal("b", word.Value);
+        Assert.Equal(new Location(1, 5, 4), word.Location);
+        Assert.NotNull(word.PreNonSql);
+        Assert.Equal(new NonSqlComponent.LineComment("a\0"), Assert.Single(word.PreNonSql));
+        Assert.Equal(4, word.PreNonSql.Length);
     }
 
     [Theory]
@@ -815,29 +832,45 @@ public class LexerSimpleTests : LexerTestBase
     }
 
     [Theory]
-    [InlineData("\n", 1, NonSqlType.Newline)]
-    [InlineData("\r", 1, NonSqlType.Newline)]
-    [InlineData("\r\n", 1, NonSqlType.Newline)]
-    [InlineData("\n\r", 2, NonSqlType.Newline)]
-    [InlineData("\t", 1, NonSqlType.Tab)]
-    [InlineData("    ", 4, NonSqlType.Space)]
-    public void Whitespace(string sql, int length, NonSqlType expectedType)
+    [InlineData("\n", 1, typeof(NonSqlComponent.Newlines), 1)]
+    [InlineData("\r", 1, typeof(NonSqlComponent.Newlines), 1)]
+    [InlineData("\r\n", 1, typeof(NonSqlComponent.Newlines), 1)]
+    [InlineData("\n\r", 1, typeof(NonSqlComponent.Newlines), 2)]
+    [InlineData("\r\r\n\n", 1, typeof(NonSqlComponent.Newlines), 3)]
+    [InlineData("\t", 1, typeof(NonSqlComponent.Tabs), 1)]
+    [InlineData("\t", 3, typeof(NonSqlComponent.Tabs), 3)]
+    [InlineData(" ", 4, typeof(NonSqlComponent.Spaces), 4)]
+    [InlineData(" ", 40, typeof(NonSqlComponent.Spaces), 40)]
+    [InlineData("\t", 40, typeof(NonSqlComponent.Tabs), 40)]
+    [InlineData("\n", 40, typeof(NonSqlComponent.Newlines), 40)]
+    public void Whitespace(string unit, int repeat, Type expectedType, int expectedNumber)
     {
+        string sql = string.Concat(Enumerable.Repeat(unit, repeat));
         var lexer = new GenericLexer();
         List<Token> tokens = lexer.Tokenize(sql);
 
-        var first = Assert.Single(tokens) as NonSqlContainer;
-        Assert.NotNull(first);
+        var first = Assert.IsType<NonSqlContainer>(Assert.Single(tokens));
+        var actual = Assert.IsType<NonSqlComponent.Whitespace>(Assert.Single(first.SubTokens), exactMatch: false);
 
-        Assert.Equal(length, first.Length);
+        Assert.Equal(sql.Length, first.Length);
+        Assert.Equal(expectedType, actual.GetType());
+        Assert.Equal(expectedNumber, actual.Number);
+    }
 
-        var subTokens = first.SubTokens;
-        Assert.Equal(length, subTokens.Count);
+    [Fact]
+    public void Whitespace_Runs_Advance_Location()
+    {
+        var lexer = new GenericLexer();
+        List<Token> tokens = lexer.Tokenize("  \t\r\n\n  a");
 
-        foreach (var token in subTokens)
-        {
-            Assert.Equal(expectedType, token.NonSqlType);
-        }
+        var word = Assert.IsType<Word>(Assert.Single(tokens));
+        Assert.Equal(new Location(3, 3, 8), word.Location);
+        Assert.NotNull(word.PreNonSql);
+        Assert.Equal(0, word.PreNonSql.Start);
+        Assert.Equal(8, word.PreNonSql.End);
+        Assert.Equal<NonSqlComponent>(
+            [new NonSqlComponent.Spaces(2), new NonSqlComponent.Tabs(1), new NonSqlComponent.Newlines(2), new NonSqlComponent.Spaces(2)],
+            word.PreNonSql);
     }
 
     [Fact]
@@ -850,8 +883,8 @@ public class LexerSimpleTests : LexerTestBase
         Assert.NotNull(first);
 
         var subTokens = first.SubTokens;
-        Assert.Equal(13, subTokens.Count);
-        Assert.Equal(13, first.Length);
+        Assert.Equal(9, subTokens.Count);
+        Assert.Equal(14, first.Length);
 
         // Newline and Carriage Return + Newline are Equivalent
         var otherTokens = lexer.Tokenize("\n \t\r\n    \n\t  \r\n");
@@ -861,7 +894,7 @@ public class LexerSimpleTests : LexerTestBase
 
         Assert.Equal(first, other);
         Assert.Equal(first.GetHashCode(), other.GetHashCode());
-        Assert.Equal(first.Length, other.Length);
+        Assert.Equal(15, other.Length);
 
         Assert.True(first.Equals(other));
         Assert.True(first.Equals((object)other));
@@ -904,33 +937,95 @@ public class LexerSimpleTests : LexerTestBase
         Assert.Equal(expectedLength, token.Length);
     }
 
-    [Theory]
-    [InlineData("comment", "--", 9)]
-    [InlineData("comment", "#", 8)]
-    [InlineData(null, "--", 2)]
-    [InlineData(null, "#", 1)]
-    [InlineData("comment", null, 7)]
-    [InlineData(null, null, 0)]
-    public void NonSql_InlineComment_Length(string? comment, string? prefix, int expectedLength)
+    [Fact]
+    public void NonSqlList_Append_Merges_Boundary_Whitespace()
     {
-        var commentToken = new NonSql(NonSqlType.InlineComment, comment)
-        {
-            Prefix = prefix,
-            Location = new Location()
-        };
-        Assert.Equal(expectedLength, commentToken.Length);
+        var list = new NonSqlList { Start = 0, End = 2 };
+        list.Add(new NonSqlComponent.BlockComment(""));
+        list.Add(new NonSqlComponent.Spaces(1));
+        var other = new NonSqlList { Start = 5, End = 8 };
+        other.Add(new NonSqlComponent.Spaces(2));
+        other.Add(new NonSqlComponent.Tabs(1));
+
+        list.Append(other);
+
+        Assert.Equal<NonSqlComponent>(
+            [new NonSqlComponent.BlockComment(""), new NonSqlComponent.Spaces(3), new NonSqlComponent.Tabs(1)],
+            list);
+        Assert.Equal(0, list.Start);
+        Assert.Equal(8, list.End);
+    }
+
+    [Fact]
+    public void NonSqlList_Append_Keeps_Different_Whitespace_Separate()
+    {
+        var list = new NonSqlList { Start = 0, End = 1 };
+        list.Add(new NonSqlComponent.Spaces(1));
+        var other = new NonSqlList { Start = 1, End = 2 };
+        other.Add(new NonSqlComponent.Tabs(1));
+
+        list.Append(other);
+
+        Assert.Equal<NonSqlComponent>([new NonSqlComponent.Spaces(1), new NonSqlComponent.Tabs(1)], list);
     }
 
     [Theory]
-    [InlineData("comment", 11)]
-    [InlineData(null, 4)]
-    public void NonSql_BlockComment_Length(string? comment, int expectedLength)
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void NonSqlList_Append_Comment_At_Boundary_Does_Not_Merge(bool commentLast, bool commentFirst)
     {
-        var commentToken = new NonSql(NonSqlType.BlockComment, comment)
-        {
-            Location = new Location()
-        };
-        Assert.Equal(expectedLength, commentToken.Length);
+        NonSqlComponent last = commentLast ? new NonSqlComponent.BlockComment("c") : new NonSqlComponent.Spaces(1);
+        NonSqlComponent first = commentFirst ? new NonSqlComponent.BlockComment("c") : new NonSqlComponent.Spaces(1);
+        var list = new NonSqlList { Start = 0, End = 1 };
+        list.Add(last);
+        var other = new NonSqlList { Start = 1, End = 2 };
+        other.Add(first);
+
+        list.Append(other);
+
+        Assert.Equal<NonSqlComponent>([last, first], list);
+        Assert.Equal(2, list.End);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NonSqlList_Append_With_Empty_List(bool thisEmpty)
+    {
+        var list = new NonSqlList { Start = 0, End = 0 };
+        var other = new NonSqlList { Start = 0, End = 1 };
+        (thisEmpty ? other : list).Add(new NonSqlComponent.Spaces(1));
+
+        list.Append(other);
+
+        Assert.Equal<NonSqlComponent>([new NonSqlComponent.Spaces(1)], list);
+        Assert.Equal(1, list.End);
+    }
+
+    [Fact]
+    public void NonSqlList_NonGeneric_Enumeration_Yields_Items()
+    {
+        var list = new NonSqlList { Start = 0, End = 1 };
+        list.Add(new NonSqlComponent.Spaces(1));
+
+        IEnumerator enumerator = ((IEnumerable)list).GetEnumerator();
+
+        Assert.True(enumerator.MoveNext());
+        Assert.Equal(new NonSqlComponent.Spaces(1), enumerator.Current);
+        Assert.False(enumerator.MoveNext());
+    }
+
+    [Theory]
+    [InlineData("x")]
+    [InlineData("xyz")]
+    [InlineData("Xyz")]
+    public void Word_Starting_With_X_Has_Start_Location(string word)
+    {
+        List<Token> tokens = new GenericLexer().Tokenize($"  {word}");
+
+        var actual = Assert.IsType<Word>(Assert.Single(tokens));
+        Assert.Equal(word, actual.Value);
+        Assert.Equal(new Location(1, 3, 2), actual.Location);
     }
 
     // === Round out LexerState coverage ===
@@ -1058,5 +1153,79 @@ public class LexerSimpleTests : LexerTestBase
         Assert.Equal(2, location.Line);
         Assert.Equal(3, location.Column);
         Assert.Equal(8, location.Position);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("`")]
+    [InlineData("a`")]
+    [InlineData("abc")]
+    [InlineData("a\nb`c")]
+    [InlineData("a\n`")]
+    [InlineData("a\n")]
+    [InlineData("\n\nab\r\ncd\n`x")]
+    [InlineData("ab\0c`")]
+    [InlineData("a\\b`")]
+    public void LexerState_AdvanceThroughNonQuote_Matches_Repeated_Next(string input)
+    {
+        AssertAdvanceMatchesRepeatedNext(
+            input,
+            (ref state) => state.AdvanceThroughNonQuote('`'),
+            c => c is '`' or CharSymbols.EndOfFile);
+    }
+
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("abc", true)]
+    [InlineData("a\nb'c", true)]
+    [InlineData("a\\b'", true)]
+    [InlineData("a\\b'", false)]
+    [InlineData("\n\nab\r\ncd\n\\x", true)]
+    [InlineData("\n\nab\r\ncd\n\\x", false)]
+    [InlineData("ab\0c'", true)]
+    public void LexerState_AdvanceThroughOrdinaryStringCharacters_Matches_Repeated_Next(string input, bool backslashEscapes)
+    {
+        AssertAdvanceMatchesRepeatedNext(
+            input,
+            (ref state) => state.AdvanceThroughOrdinaryStringCharacters('\'', backslashEscapes),
+            c => c is '\'' or CharSymbols.EndOfFile || (backslashEscapes && c == '\\'));
+    }
+
+    [Fact]
+    public void LexerState_AdvanceThroughNonQuote_Past_End_Is_NoOp()
+    {
+        var state = new LexerState("a");
+        state.Next();
+        state.Next();
+        Location before = state.Location;
+
+        state.AdvanceThroughNonQuote('`');
+
+        Assert.Equal(before, state.Location);
+    }
+
+    private delegate void LexerStateAction(ref LexerState state);
+
+    private static void AssertAdvanceMatchesRepeatedNext(string input, LexerStateAction advance, Func<char, bool> isStop)
+    {
+        for (int start = 0; start <= input.Length; start++)
+        {
+            var expected = new LexerState(input);
+            var actual = new LexerState(input);
+            for (int i = 0; i < start; i++)
+            {
+                expected.Next();
+                actual.Next();
+            }
+            while (!isStop(expected.Peek()))
+            {
+                expected.Next();
+            }
+
+            advance(ref actual);
+
+            Assert.Equal(expected.Location, actual.Location);
+            Assert.Equal(expected.Peek(), actual.Peek());
+        }
     }
 }

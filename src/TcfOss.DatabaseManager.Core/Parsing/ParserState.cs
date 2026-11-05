@@ -34,7 +34,7 @@ public class ParserState
         else if (tokens[^1] is NonSqlContainer nsc)
         {
             _tokenCount = tokens.Length - 1;
-            _finalEof = new Eof() { Location = nsc.Location, PreNonSql = [.. nsc.SubTokens] };
+            _finalEof = new Eof() { Location = nsc.Location, PreNonSql = nsc.SubTokens };
         }
         else if (tokens[^1] is Semicolon or Eof)
         {

@@ -1,12 +1,10 @@
-using TcfOss.DataStructures.ValueCollections;
-
 namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
-public sealed class NonSqlContainer(ValueList<NonSql> subTokens) : Token
+public sealed class NonSqlContainer(NonSqlList subTokens) : Token
 {
-    public ValueList<NonSql> SubTokens { get; } = subTokens;
+    public NonSqlList SubTokens { get; } = subTokens;
 
-    public override int Length => SubTokens.Sum(x => x.Length);
+    public override int Length => SubTokens.Length;
 
     private bool Equals(NonSqlContainer? other)
     {
@@ -25,6 +23,11 @@ public sealed class NonSqlContainer(ValueList<NonSql> subTokens) : Token
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(SubTokens);
+        var hash = new HashCode();
+        foreach (Statements.Components.NonSql item in SubTokens)
+        {
+            hash.Add(item);
+        }
+        return hash.ToHashCode();
     }
 }

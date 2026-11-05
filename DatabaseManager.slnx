@@ -19,7 +19,8 @@
     <Project Path="test/TcfOss.DatabaseManager.Postgres.Tests/TcfOss.DatabaseManager.Postgres.Tests.csproj" />
     <Project Path="test/TcfOss.DatabaseManager.Hosting.Tests/TcfOss.DatabaseManager.Hosting.Tests.csproj" />
   </Folder>
-  <Folder Name="/benchmark/" />
+  <Folder Name="/benchmark/">
+  </Folder>
   <Folder Name="/integration-test/">
     <Project Path="test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj" />
     <Project Path="test/TcfOss.DatabaseManager.Core.IntegrationTests/TcfOss.DatabaseManager.Core.IntegrationTests.csproj" />
