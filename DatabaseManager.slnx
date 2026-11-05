@@ -20,7 +20,6 @@
     <Project Path="test/TcfOss.DatabaseManager.Hosting.Tests/TcfOss.DatabaseManager.Hosting.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmark/">
-    <Project Path="benchmark/ParserBenchmarks/ParserBenchmarks.csproj" />
   </Folder>
   <Folder Name="/integration-test/">
     <Project Path="test/TcfOss.DatabaseManager.App.IntegrationTests/TcfOss.DatabaseManager.App.IntegrationTests.csproj" />
