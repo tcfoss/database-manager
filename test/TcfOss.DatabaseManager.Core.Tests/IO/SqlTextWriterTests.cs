@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Globalization;
+using System.Text;
 using FluentAssertions;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -6,6 +7,7 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Tests.IO;
 
@@ -221,5 +223,85 @@ public class SqlTextWriterTests
         var actual = writer.ToString();
         var expected = $"\"table1\",{sep}\"table2\",{sep}\"table3\"";
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SqlInterpolation_UsesInvariantNumbersAndPreservesOtherDispatch(bool indented)
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NumberDecimalSeparator = ",";
+        culture.NumberFormat.NegativeSign = "~";
+        try
+        {
+            CultureInfo.CurrentCulture = culture;
+            using var writer = new SqlTextWriter(new StringBuilder(), new Indenter(4, false));
+            writer.Indenter.IncreaseIndent();
+            decimal decimalNumber = 1.25m;
+            float singleNumber = 1.5f;
+            int? nullableNumber = 12;
+            object? missing = null;
+            var literal = new Value.SingleQuotedString("it's");
+            var raw = new StringBuilder("raw");
+            if (indented)
+            {
+                writer.WriteSqlI($"{decimalNumber}|{singleNumber}|{long.MinValue}|{nullableNumber}|{missing}|{literal}|{raw}|text|");
+            }
+            else
+            {
+                writer.WriteSql($"{decimalNumber}|{singleNumber}|{long.MinValue}|{nullableNumber}|{missing}|{literal}|{raw}|text|");
+            }
+
+            string indent = indented ? "    " : "";
+            Assert.Equal(indent + "1.25|1.5|-9223372036854775808|12||'it''s'|raw|text|", writer.ToString());
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void SequenceOptionFormatting_DelegatesToSqlAndUsesInvariantNumbers()
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NegativeSign = "~";
+        try
+        {
+            CultureInfo.CurrentCulture = culture;
+            PgStatementSequenceOption[] options =
+            [
+                new PgStatementSequenceOption.Start(-1),
+                new PgStatementSequenceOption.Start(-1) { UseWith = true },
+                new PgStatementSequenceOption.Increment(-2),
+                new PgStatementSequenceOption.Increment(-2) { UseBy = true },
+                new PgStatementSequenceOption.MinValue(long.MinValue),
+                new PgStatementSequenceOption.MinValue(null),
+                new PgStatementSequenceOption.MaxValue(-1),
+                new PgStatementSequenceOption.MaxValue(null),
+                new PgStatementSequenceOption.Cache(2),
+                new PgStatementSequenceOption.Cycle(true),
+                new PgStatementSequenceOption.Cycle(false)
+            ];
+            string[] expected =
+            [
+                "START -1", "START WITH -1", "INCREMENT -2", "INCREMENT BY -2",
+                "MINVALUE -9223372036854775808", "NO MINVALUE", "MAXVALUE -1",
+                "NO MAXVALUE", "CACHE 2", "CYCLE", "NO CYCLE"
+            ];
+            for (int index = 0; index < options.Length; index++)
+            {
+                using var writer = new SqlTextWriter(new StringBuilder());
+                options[index].FormatSql(writer, GetFormatManager());
+                Assert.Equal(expected[index], writer.ToString());
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 }

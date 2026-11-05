@@ -156,7 +156,7 @@ their own identities and are not flattened into their underlying types.
 `PgColumn` uses shared `ColumnOption.Nullability` and `ColumnOption.ColumnDefault`
 records, keeping constraint names with their options, distinguishing absent
 nullability from explicit `NULL`, and preserving literal/expression defaults.
-A source sketch adds shared generated-expression and PG identity components to
+Shared generated-expression and PG identity components are retained in
 `PgColumn.Generated`. Identity supports ALWAYS/BY DEFAULT and standard sequence
 options. Parsed identity options are ordered `PgStatementSequenceOption` variants,
 preserving optional WITH/BY and NO forms, with single-option parsing and category
@@ -172,7 +172,8 @@ back to explicit statement variants for SQL emission. Numeric interpolation uses
 invariant culture in both Core SQL handlers, so option printers need no explicit
 culture argument; custom `IWriteSql` and string dispatch remain unchanged.
 Generated expressions support STORED/VIRTUAL, including PG 18's default VIRTUAL
-mode. Source review and dedicated tests for this slice are pending; sequence
+mode. Unit tests cover identity syntax/defaults/bounds and generated-expression
+storage, conflicts, and round-trips; sequence
 name/logging options and full server-level generated-expression validation
 remain deferred.
 Default conversion is shared with MySQL through Core's protected
@@ -226,14 +227,14 @@ before the body in a fixed order. The formatter handles both option lists;
 bodies do not contain language clauses or duplicate `AS` flags. `RoutineTailMeta` preserves
 the tail's source range for raw-text generation without expanding `Body.Meta`.
 Dollar-quoted tokens retain tag and content and also work as SQL values in
-expressions and column defaults. A source sketch extends options with volatility,
+expressions and column defaults. Options include volatility,
 null-input behavior, security mode, PARALLEL, COST, ROWS, and per-routine SET,
 including ordering around quoted bodies and duplicate/conflict checks. Parsed
 language may be omitted for structured bodies; canonical options supply SQL.
-These additions await source review and dedicated tests. Four existing test
-assertions need migration from statement `PgOptions` to the ordered-list API,
-and two constructors must use concrete canonical variants before the PostgreSQL
-test project can build. Overload identity,
+Unit tests cover option spelling/order/placement, duplicate categories,
+function/procedure restrictions, effective defaults, float4 normalization,
+SET FROM CURRENT rejection, and canonical round-trips. Existing assertions have
+been migrated to the ordered-list API and concrete canonical variants. Overload identity,
 less common routine attributes, and broader PL/pgSQL grammar remain deferred.
 Unit tests cover dollar-string lexing and values, routine body validation,
 scope restoration, formatting, source ranges, and definition round-trips.

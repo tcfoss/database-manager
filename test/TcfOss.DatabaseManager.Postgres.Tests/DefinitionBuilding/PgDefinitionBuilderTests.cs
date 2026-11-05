@@ -471,9 +471,12 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE FUNCTION f() RETURNS INT " + tail), GetSchema(), 0);
         PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
-        Assert.Equal(language, function.Options?.Language.Name);
+        Assert.NotNull(function.Options);
+        Assert.Equal(language, function.Options.Language.Name);
         CreateFunction generated = function.ToCreateStatement(true);
-        Assert.Same(function.Options, generated.PgOptions);
+        Assert.Equal(function.Options.ToStatementOptions(), generated.PgOptionsBeforeBody);
+        Assert.NotNull(generated.PgOptionsAfterBody);
+        Assert.Empty(generated.PgOptionsAfterBody);
         Assert.Equal(function.Body is RoutineBodyLiteral, generated.UseAsBeforeBody);
 
         var rebuilt = CreateBuilder();
@@ -481,7 +484,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgStoredFunction roundTrip = Assert.Single(rebuilt.ToDefinition().Functions).Value;
         Assert.Equal(function, roundTrip);
         Assert.Equal(function.GetHashCode(), roundTrip.GetHashCode());
-        Assert.NotEqual(function, function with { Options = new PgRoutineOptions(new Identifier("other")) });
+        Assert.NotEqual(function, function with { Options = function.Options with { Language = new Identifier("other") } });
     }
 
     [Theory]
@@ -496,12 +499,14 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgStoredProcedure procedure = Assert.Single(builder.ToDefinition().Procedures).Value;
         Assert.NotNull(procedure.Options);
         CreateProcedure generated = procedure.ToCreateStatement(true);
-        Assert.Same(procedure.Options, generated.PgOptions);
+        Assert.Equal(procedure.Options.ToStatementOptions(), generated.PgOptionsBeforeBody);
+        Assert.NotNull(generated.PgOptionsAfterBody);
+        Assert.Empty(generated.PgOptionsAfterBody);
         Assert.Equal(procedure.Body is RoutineBodyLiteral, generated.UseAsBeforeBody);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(generated.ToSql()), GetSchema(), 0);
         Assert.Equal(procedure, Assert.Single(rebuilt.ToDefinition().Procedures).Value);
-        Assert.NotEqual(procedure, procedure with { Options = new PgRoutineOptions(new Identifier("other")) });
+        Assert.NotEqual(procedure, procedure with { Options = procedure.Options with { Language = new Identifier("other") } });
 
         string rawTail = SourceManager.GetText(sql, parsed.RoutineTailMeta)!;
         var withRaw = procedure with { RawBodyText = rawTail };
@@ -551,6 +556,169 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgStoredFunction definition = Assert.Single(functionBuilder.ToDefinition().Functions).Value;
         Assert.Null(definition.Options);
         Assert.Same(function.Body, definition.Body);
+    }
+
+    [Theory]
+    [InlineData("INT", "RETURN 1", "sql", 100f, 0f)]
+    [InlineData("INT", "LANGUAGE SQL RETURN 1", "sql", 100f, 0f)]
+    [InlineData("INT", "LANGUAGE c AS 'symbol'", "c", 1f, 0f)]
+    [InlineData("INT", "LANGUAGE internal AS 'symbol'", "internal", 1f, 0f)]
+    [InlineData("INT", "LANGUAGE plpgsql AS $$body$$", "plpgsql", 100f, 0f)]
+    [InlineData("SETOF INT", "LANGUAGE sql AS $$body$$", "sql", 100f, 1000f)]
+    [InlineData("TABLE(value INT)", "LANGUAGE sql AS $$body$$", "sql", 100f, 1000f)]
+    public void FunctionOptions_ResolveEffectiveDefaults(string returnType, string tail, string language, float cost, float rows)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE FUNCTION f() RETURNS {returnType} {tail}"), GetSchema(), 0);
+        PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
+
+        Assert.NotNull(function.Options);
+        Assert.Equal(language, function.Options.Language.Name);
+        Assert.Equal(PgRoutineVolatility.Volatile, function.Options.Volatility);
+        Assert.False(function.Options.Strict);
+        Assert.Equal(SecurityContext.Invoker, function.Options.Security);
+        Assert.Equal(PgRoutineParallel.Unsafe, function.Options.Parallel);
+        Assert.Equal(cost, function.Options.Cost);
+        Assert.Equal(rows, function.Options.Rows);
+        Assert.Empty(function.Options.Settings);
+        Assert.Equal(rows > 0, function.Options.ToStatementOptions().OfType<PgStatementRoutineOption.Rows>().Any());
+
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(function.ToCreateStatement(true).ToSql()), GetSchema(), 1);
+        Assert.Equal(function, Assert.Single(rebuilt.ToDefinition().Functions).Value);
+    }
+
+    [Theory]
+    [InlineData("LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER PARALLEL SAFE COST 2.5 ROWS 7 SET app.mode TO 'x'", "")]
+    [InlineData("IMMUTABLE RETURNS NULL ON NULL INPUT EXTERNAL SECURITY DEFINER", "LANGUAGE sql PARALLEL SAFE COST 2.500 ROWS 7.0 SET app.mode = 'x'")]
+    public void FunctionOptions_DiscardEquivalentSyntaxAndNormalizeEstimates(string before, string after)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE FUNCTION f() RETURNS SETOF INT {before} AS $$body$$ {after}"), GetSchema(), 0);
+        PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
+        Assert.NotNull(function.Options);
+        Assert.Equal(PgRoutineVolatility.Immutable, function.Options.Volatility);
+        Assert.True(function.Options.Strict);
+        Assert.Equal(SecurityContext.Definer, function.Options.Security);
+        Assert.Equal(PgRoutineParallel.Safe, function.Options.Parallel);
+        Assert.Equal(2.5f, function.Options.Cost);
+        Assert.Equal(7f, function.Options.Rows);
+        Assert.IsType<PgRoutineSetting.ToValues>(Assert.Single(function.Options.Settings));
+
+        var plainBuilder = CreateBuilder();
+        plainBuilder.ProcessStatements(ParseStatements("CREATE FUNCTION f() RETURNS SETOF INT LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER PARALLEL SAFE COST 2.5 ROWS 7 SET app.mode TO 'x' AS $$body$$"), GetSchema(), 0);
+        Assert.Equal(Assert.Single(plainBuilder.ToDefinition().Functions).Value, function);
+        string sql = function.ToCreateStatement(true).ToSql();
+        Assert.DoesNotContain("EXTERNAL", sql);
+        Assert.Contains("SET app.mode TO 'x'", sql);
+        Assert.DoesNotContain("RETURNS NULL ON NULL INPUT", sql);
+    }
+
+    [Theory]
+    [InlineData("BEGIN ATOMIC SELECT 1; END")]
+    [InlineData("LANGUAGE sql SECURITY INVOKER BEGIN ATOMIC SELECT 1; END")]
+    public void ProcedureOptions_HaveOnlyEffectiveCommonAttributes(string tail)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE PROCEDURE p() " + tail), GetSchema(), 0);
+        PgStoredProcedure procedure = Assert.Single(builder.ToDefinition().Procedures).Value;
+
+        Assert.NotNull(procedure.Options);
+        Assert.Equal(SecurityContext.Invoker, procedure.Options.Security);
+        Assert.Empty(procedure.Options.Settings);
+        Assert.Collection(procedure.Options.ToStatementOptions(),
+            option => Assert.IsType<PgStatementRoutineOption.Language>(option),
+            option => Assert.IsType<PgStatementRoutineOption.Security>(option));
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void RoutineSettings_RejectFromCurrentDuringDefinitionConstruction(bool function, bool beforeBody)
+    {
+        string header = function ? "CREATE FUNCTION f() RETURNS INT" : "CREATE PROCEDURE p()";
+        string tail = beforeBody ? "SET app.mode FROM CURRENT AS $$body$$" : "AS $$body$$ SET app.mode FROM CURRENT";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"{header} LANGUAGE sql {tail}"), GetSchema(), 7);
+
+        var error = Assert.Throws<DefinitionException.RoutineSettingFromCurrent>(builder.ToDefinition);
+        Assert.NotNull(error.ObjectSourceRef);
+        Assert.Equal(7, error.ObjectSourceRef.Value.SourceId);
+        Assert.Contains("app.mode", error.Message);
+        Assert.Contains(function ? "f" : "p", error.Message);
+    }
+
+    [Fact]
+    public void NullHandlingClause_DoesNotBecomeAnExplicitReturnType()
+    {
+        var statement = Assert.IsType<CreateFunction>(ParseStatement(
+            "CREATE FUNCTION f(OUT value INT) RETURNS NULL ON NULL INPUT LANGUAGE sql AS $$body$$"));
+        Assert.Null(statement.ReturnType);
+        var builder = CreateBuilder();
+        builder.ProcessStatements([statement], GetSchema(), 0);
+        PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
+
+        var returnType = Assert.IsType<FunctionReturn.DataTypeReturn>(function.ReturnType);
+        Assert.IsType<DataType.Int>(returnType.DataType);
+        Assert.NotNull(function.Options);
+        Assert.True(function.Options.Strict);
+        Assert.Equal(0f, function.Options.Rows);
+    }
+
+    [Theory]
+    [InlineData("0", false)]
+    [InlineData("-1", false)]
+    [InlineData("NaN", false)]
+    [InlineData("Infinity", false)]
+    [InlineData("not-a-number", false)]
+    [InlineData("1e40", false)]
+    [InlineData("1e-50", false)]
+    [InlineData("0", true)]
+    [InlineData("-1", true)]
+    [InlineData("NaN", true)]
+    [InlineData("1e40", true)]
+    public void RoutineEstimates_RejectInvalidManualNumericValues(string value, bool rows)
+    {
+        var statement = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS SETOF INT RETURN 1"));
+        var number = new Value.Number(value, false);
+        PgStatementRoutineOption option = rows
+            ? new PgStatementRoutineOption.Rows(number)
+            : new PgStatementRoutineOption.Cost(number);
+        statement = statement with { PgOptionsBeforeBody = [option] };
+        var builder = CreateBuilder();
+        builder.ProcessStatements([statement], GetSchema(), 0);
+
+        Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+    }
+
+    [Fact]
+    public void RoutineOptions_RejectInapplicableManualAstOptions()
+    {
+        var scalar = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1")) with
+        {
+            PgOptionsBeforeBody = [new PgStatementRoutineOption.Rows(new Value.Number("1", false))]
+        };
+        var scalarBuilder = CreateBuilder();
+        scalarBuilder.ProcessStatements([scalar], GetSchema(), 0);
+        Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(scalarBuilder.ToDefinition);
+
+        PgStatementRoutineOption[] functionOnly =
+        [
+            new PgStatementRoutineOption.Volatility(PgRoutineVolatility.Stable),
+            new PgStatementRoutineOption.NullHandling(PgRoutineNullHandling.Strict),
+            new PgStatementRoutineOption.Parallel(PgRoutineParallel.Safe),
+            new PgStatementRoutineOption.Cost(new Value.Number("1", false)),
+            new PgStatementRoutineOption.Rows(new Value.Number("1", false))
+        ];
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement("CREATE PROCEDURE p() BEGIN ATOMIC SELECT 1; END"));
+        foreach (PgStatementRoutineOption option in functionOnly)
+        {
+            var builder = CreateBuilder();
+            builder.ProcessStatements([procedure with { PgOptionsAfterBody = [option] }], GetSchema(), 0);
+            Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+        }
     }
 
     [Fact]
