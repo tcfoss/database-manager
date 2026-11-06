@@ -513,4 +513,12 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(sql, comment.ToSql());
     }
+
+    [Theory]
+    [InlineData("COMMENT ON FUNCTION f(arg INT READONLY) IS 'text'")]
+    [InlineData("COMMENT ON FUNCTION f(arg INT OUTPUT) IS 'text'")]
+    public void CommentSignatures_RejectSqlServerParameterOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

@@ -57,7 +57,7 @@ public class PgCommentResolutionManager(PgConfig config, PgDefinition definition
     {
         if (target.ObjectType == PgCommentObjectType.View || target.ObjectType == PgCommentObjectType.Sequence)
         {
-            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "definition construction for COMMENT ON " + target.ObjectType, source);
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "definition construction for COMMENT ON " + target.ObjectType.ToString(), source);
         }
         foreach (ObjectHandle candidate in _config.GetCandidateHandles(target.Name, schema))
         {

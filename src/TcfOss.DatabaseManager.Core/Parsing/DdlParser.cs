@@ -64,9 +64,8 @@ public class DdlParser
             {
                 SqlValueList<StatementRoutineParameter>? parameters = state.PeekIs<ParenOpen>()
                     ? ParseRoutineParameterList(state, kind == Keyword.FUNCTION) : null;
-                if (parameters != null && parameters.Any(parameter => parameter.ParameterDefault != null
-                    || parameter is StatementRoutineParameter.Undirected
-                    || parameter is StatementRoutineParameter.General { Options: not null }))
+                if (parameters != null && parameters.Cast<StatementRoutineParameter.General>().Any(parameter => parameter.ParameterDefault != null
+                    || parameter.Options != null))
                 {
                     throw state.ExpectedException("routine signature without defaults or SQL Server options");
                 }

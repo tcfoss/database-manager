@@ -1,7 +1,9 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -41,5 +43,20 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     public void InvalidComments_AreRejected(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void Comments_UnqualifiedColumnTargetsDoNotInventObjectReferences()
+    {
+        var target = new PgStatementCommentTarget.Column(new ObjectName(new Identifier("id")));
+        var comment = new CommentOn(target, new Value.Null());
+
+        Assert.Empty(comment.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void Comments_UnsupportedTargetKindsAreRejected()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("COMMENT ON unsupported_kind items IS 'text'"));
     }
 }

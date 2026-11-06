@@ -2243,6 +2243,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("VARCHAR(20)", "VARCHAR")]
     [InlineData("NUMERIC(10,2)", "DECIMAL")]
     [InlineData("CHAR(10)", "BPCHAR")]
+    [InlineData("BIT(8)", "BIT")]
+    [InlineData("BIT VARYING(8)", "BIT VARYING")]
+    [InlineData("TIME", "TIME WITHOUT TIME ZONE")]
+    [InlineData("TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH TIME ZONE")]
     [InlineData("TIMESTAMP(3)", "TIMESTAMP WITHOUT TIME ZONE")]
     [InlineData("TIME(3) WITH TIME ZONE", "TIME WITH TIME ZONE")]
     [InlineData("INTERVAL DAY TO SECOND(3)", "INTERVAL")]
@@ -2351,6 +2355,86 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(45, exception.ObjectSourceRef?.SourceId);
     }
 
+    [Fact]
+    public void ToDefinition_ResolvesCommentsOnTableRowTypesAndIndexesPastOtherEntries()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE INDEX first_ix ON items (id); CREATE INDEX second_ix ON items (id); COMMENT ON TYPE items IS 'row type'; COMMENT ON INDEX second_ix IS 'index'"), GetSchema(), 46);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        var type = Assert.IsType<PgCommentTarget.DatabaseObject>(Assert.Single(definition.Comments, comment => comment.Value == "row type").Key);
+        Assert.Equal(PgCommentObjectType.Type, type.ObjectType);
+        Assert.Equal("items", type.Name.Name);
+        var index = Assert.IsType<PgCommentTarget.DatabaseObject>(Assert.Single(definition.Comments, comment => comment.Value == "index").Key);
+        Assert.Equal(PgCommentObjectType.Index, index.ObjectType);
+        Assert.Equal("second_ix", index.Name.Name);
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE absent IS 'missing'")]
+    [InlineData("COMMENT ON COLUMN id IS 'unqualified'")]
+    [InlineData("COMMENT ON INDEX missing_ix IS 'missing'")]
+    [InlineData("COMMENT ON DOMAIN mood IS 'not a domain'")]
+    [InlineData("COMMENT ON TRIGGER absent ON items IS 'missing'")]
+    public void ToDefinition_RejectsUnresolvedCommentTargetsAfterSearchingExistingObjects(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id); CREATE TYPE mood AS ENUM ('happy'); CREATE FUNCTION fire() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION fire()"), GetSchema(), 47);
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 48);
+
+        var exception = Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(builder.ToDefinition);
+
+        Assert.Equal(48, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Fact]
+    public void CommentTargets_EmitCanonicalTriggerTargets()
+    {
+        var target = new PgCommentTarget.Trigger(ObjectIdentifier.FromStrings("catalog", "app", "items", QuoteStyle.Ansi),
+            new Identifier("Audit", QuoteStyle.Ansi));
+
+        var statementTarget = Assert.IsType<PgStatementCommentTarget.Trigger>(target.ToStatementTarget());
+
+        Assert.Equal("TRIGGER \"Audit\" ON \"app\".\"items\"", statementTarget.ToSql());
+        Assert.Equal("COMMENT ON TRIGGER \"Audit\" ON \"app\".\"items\" IS 'trigger'",
+            new CommentOn(statementTarget, new Value.SingleQuotedString("trigger")).ToSql());
+    }
+
+    [Fact]
+    public void ToDefinition_RejectsUnknownManualCommentTargetWithoutInventingReferences()
+    {
+        var parsed = Assert.IsType<CommentOn>(ParseStatement("COMMENT ON TABLE items IS NULL"));
+        var comment = parsed with { Target = new UnknownCommentTarget() };
+        var builder = CreateBuilder();
+        builder.ProcessStatements([comment], GetSchema(), 50);
+
+        Assert.Empty(comment.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+
+        Assert.Equal(50, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Fact]
+    public void ToDefinition_CommentSignaturesFlattenNestedManualArrayReferences()
+    {
+        var parsed = Assert.IsType<CommentOn>(ParseStatement("COMMENT ON FUNCTION f(INT[]) IS 'array routine'"));
+        var target = Assert.IsType<PgStatementCommentTarget.Routine>(parsed.Target);
+        var parameter = Assert.IsType<StatementRoutineParameter.General>(Assert.Single(target.Parameters!));
+        var arrayReference = Assert.IsType<DataTypeReference.Array>(parameter.DataType);
+        var nested = new DataTypeReference.Array(arrayReference, arrayReference.Dimensions);
+        var comment = parsed with { Target = target with { Parameters = [parameter with { DataType = nested }] } };
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE FUNCTION f(value INT[]) RETURNS INT LANGUAGE SQL AS 'opaque'"), GetSchema(), 51);
+        builder.ProcessStatements([comment], GetSchema(), 52);
+
+        var routine = Assert.IsType<PgCommentTarget.Routine>(Assert.Single(builder.ToDefinition().Comments).Key);
+
+        var array = Assert.IsType<PgDataType.Array>(Assert.Single(routine.ArgumentTypes));
+        Assert.IsType<DataType.Int>(array.ElementType);
+        Assert.Equal("FUNCTION \"public\".\"f\"(INT[])", routine.ToStatementTarget().ToSql());
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));
@@ -2372,6 +2456,19 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             QuoteStyle = QuoteStyle.Ansi,
             NameHandling = NameHandling.LowercaseUnlessQuoted,
         };
+    }
+
+    private sealed record UnknownCommentTarget : PgStatementCommentTarget
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed record UnknownTriggerEvent : TriggerEvent

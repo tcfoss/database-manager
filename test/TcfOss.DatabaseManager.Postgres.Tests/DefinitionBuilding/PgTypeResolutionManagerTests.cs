@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Configuration;
@@ -206,6 +207,26 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
         var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(missing, activeSchema));
         Assert.Equal(["Missing", "public"], exception.SearchedSchemas.Select(schema => schema.Name));
         Assert.Equal(QuoteStyle.Ansi, exception.SearchedSchemas[0].QuoteStyle);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Resolve_MissingTypeUsesNameLocationOrStatementFallback(bool hasNameSource, bool hasStatementSource)
+    {
+        var config = CreateConfig();
+        var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
+        SourceRef? nameSource = hasNameSource ? new SourceRef(0, 5, 12) : null;
+        SourceRef? statementSource = hasStatementSource ? new SourceRef(49, 0, 20) : null;
+        var reference = new DataTypeReference.Named(new ObjectName(new Identifier("missing") { Source = nameSource }));
+
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(reference,
+            new SchemaIdentifier("public", config.Catalog), statementSource));
+
+        SourceRef? expected = nameSource is { } location && statementSource is { } statement
+            ? location with { SourceId = statement.SourceId } : statementSource;
+        Assert.Equal(expected, exception.ObjectSourceRef);
     }
 
     private static PgConfig CreateConfig()
