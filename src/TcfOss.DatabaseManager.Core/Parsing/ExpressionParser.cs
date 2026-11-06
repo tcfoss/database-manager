@@ -31,6 +31,13 @@ public class ExpressionParser
 
     public Expression ParseExpr(ParserState state)
     {
+        using ParserState.Scope scope = state.EnterContext(disable: ParseContext.DefaultExpression);
+        return ParseSubExpression(state, 0);
+    }
+
+    public Expression ParseDefaultExpr(ParserState state)
+    {
+        using ParserState.Scope scope = state.EnterContext(ParseContext.DefaultExpression);
         return ParseSubExpression(state, 0);
     }
 
@@ -40,6 +47,10 @@ public class ExpressionParser
 
         while (true)
         {
+            if (state.Context.HasFlag(ParseContext.DefaultExpression) && state.PeekKeyword(Keyword.COLLATE))
+            {
+                break;
+            }
             short nextPrecedence = _pm.GetNextPrecedence(state);
             if (precedence >= nextPrecedence)
             {
@@ -79,7 +90,7 @@ public class ExpressionParser
             Word { Keyword: Keyword.INTERVAL } => ParseInterval(state),
             Word { Keyword: Keyword.CONVERT } => ParseConvert(state),
             Word { Keyword: Keyword.CAST } => ParseCast(state),
-            Word { Keyword: Keyword.VALUE } when state.IsDomainCheck => ParseDomainValue(state),
+            Word { Keyword: Keyword.VALUE } when state.Context.HasFlag(ParseContext.DomainCheck) => ParseDomainValue(state),
             Minus or Plus => ParseUnaryExpr(state),
             NumericLiteral
                 or StringLiteral
@@ -171,6 +182,14 @@ public class ExpressionParser
     {
         Keyword keyword = word.Keyword;
 
+        if (keyword == Keyword.COLLATE)
+        {
+            if (!_p.SupportsPostgresExpressionCollationSyntax)
+            {
+                throw ParserState.ExpectedException("expression operator", word);
+            }
+            return new Collate(left, _p.ComponentParser.ParseObjectName(state));
+        }
         if (keyword == Keyword.IS)
         {
             return ParseAfterIs(state, left);
@@ -521,7 +540,7 @@ public class ExpressionParser
         {
             UnaryOperatorOp op = token is Plus ? UnaryOperatorOp.Plus : UnaryOperatorOp.Minus;
             return new UnaryOperatorExp(
-                ParseSubExpression(state, _pm.GetPrecedence(Precedence.MultiplyDivide)),
+                ParseSubExpression(state, _pm.GetPrecedence(Precedence.UnarySign)),
                 op
             );
         }
@@ -724,7 +743,7 @@ public class ExpressionParser
 
     public Expression ParseDomainCheckExpr(ParserState state)
     {
-        using ParserState.DomainCheckScope scope = state.EnterDomainCheck();
+        using ParserState.Scope scope = state.EnterContext(ParseContext.DomainCheck);
         state.ExpectLeftParen();
         Expression expression = ParseExpr(state);
         state.ExpectRightParen();

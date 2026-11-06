@@ -1166,14 +1166,14 @@ public class DdlParser
             {
                 throw state.ExpectedException("string literal");
             }
-            using (state.EnterStringLiteralAsStatement())
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement))
             {
                 body = _p.ParseStatement(state);
             }
         }
         else if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            using (state.EnterBeginAtomic())
+            using (state.EnterContext(ParseContext.BeginAtomic))
             {
                 body = _p.ParseStatement(state);
             }
@@ -1528,7 +1528,7 @@ public class DdlParser
                 {
                     throw new ParseException.Duplicate("default", currentLocation);
                 }
-                defaultExpression = _p.ExpressionParser.ParseExpr(state);
+                defaultExpression = _p.ExpressionParser.ParseDefaultExpr(state);
             }
             else
             {

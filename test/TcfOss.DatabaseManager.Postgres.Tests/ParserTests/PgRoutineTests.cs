@@ -245,25 +245,25 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     public void LiteralScope_RestoresNestedStateAndExceptions()
     {
         ParserState state = GetState("'body'");
-        Assert.False(state.AllowStringLiteralAsStatement);
-        using (state.EnterStringLiteralAsStatement())
+        Assert.Equal(ParseContext.None, state.Context);
+        using (state.EnterContext(ParseContext.StringLiteralAsStatement))
         {
-            using (state.EnterStringLiteralAsStatement())
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement))
             {
-                Assert.True(state.AllowStringLiteralAsStatement);
+                Assert.Equal(ParseContext.StringLiteralAsStatement, state.Context);
             }
-            Assert.True(state.AllowStringLiteralAsStatement);
+            Assert.Equal(ParseContext.StringLiteralAsStatement, state.Context);
             Assert.IsType<RoutineBodyLiteral>(new PgParser().ParseStatement(state));
         }
-        Assert.False(state.AllowStringLiteralAsStatement);
+        Assert.Equal(ParseContext.None, state.Context);
         Assert.Throws<InvalidOperationException>((Action)(() =>
         {
-            using (state.EnterStringLiteralAsStatement())
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement))
             {
                 throw new InvalidOperationException();
             }
         }));
-        Assert.False(state.AllowStringLiteralAsStatement);
+        Assert.Equal(ParseContext.None, state.Context);
     }
 
     [Fact]

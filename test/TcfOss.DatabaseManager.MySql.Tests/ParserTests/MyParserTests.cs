@@ -562,4 +562,10 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void PostgresExpressionCollations_AreRejectedByMySqlAndMariaDbParser()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("SELECT label COLLATE app.locale FROM items"));
+    }
 }

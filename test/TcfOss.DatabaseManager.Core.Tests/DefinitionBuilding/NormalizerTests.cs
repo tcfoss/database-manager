@@ -949,4 +949,54 @@ public class NormalizerTests
         var actual = GetNormalizedIdentifier(givenText, quoteStyle, identifierQuotationHandling);
         Assert.Equal(expectedIdentifier, actual.ToSql());
     }
+
+    [Fact]
+    public void ExpressionCollations_NormalizeOperandReferencesAndFlattenGrouping()
+    {
+        Select actual = GetNormalizedSelect("SELECT (full_title || description) COLLATE app.locale AS title FROM book");
+        SimpleSelect query = Assert.IsType<SelectBody.SimpleSelectQuery>(actual.Body).Query;
+        Expression expression = Assert.IsType<SimpleSelectItem.ExpressionWithAlias>(Assert.Single(query.Selections)).Expression;
+        var collate = Assert.IsType<Collate>(expression);
+        var operand = Assert.IsType<Expressions.BinaryOperator>(collate.Expression);
+
+        Assert.Equal("`library_catalog`.`book`.`full_title`", operand.Left.ToSql());
+        Assert.Equal("`library_catalog`.`book`.`description`", operand.Right.ToSql());
+        Assert.Equal("`app`.`locale`", collate.Collation.ToSql());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExpressionCollations_FollowRequestedFlattening(bool flatten)
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new GenericLexer().Tokenize("(full_title || description) COLLATE app.locale")]);
+        Expression expression = parser.ExpressionParser.ParseExpr(state);
+        var normalizationSettings = new Core.Configuration.Parsing.NormalizationSettings
+        {
+            IdentifierQuotationHandling = IdentifierQuotationHandling.Always
+        };
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
+        var componentNormalizer = new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider());
+        var normalizer = new Normalizer(config, componentNormalizer);
+
+        Expression actual = flatten
+            ? normalizer.NormalizeExpression(expression)
+            : normalizer.NormalizeExpressionNoFlatten(expression);
+
+        var collate = Assert.IsType<Collate>(actual);
+        Expression operand = flatten ? collate.Expression : Assert.IsType<Nested>(collate.Expression).Expression;
+        var binary = Assert.IsType<Expressions.BinaryOperator>(operand);
+        Assert.Equal("`full_title`", binary.Left.ToSql());
+        Assert.Equal("`description`", binary.Right.ToSql());
+        Assert.Equal("`app`.`locale`", collate.Collation.ToSql());
+        if (!flatten)
+        {
+            Assert.Equal("(`full_title` || `description`) COLLATE `app`.`locale`", actual.ToSql());
+        }
+        else
+        {
+            Assert.Equal("`full_title` || `description` COLLATE `app`.`locale`", actual.ToSql());
+        }
+    }
 }

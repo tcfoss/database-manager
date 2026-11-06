@@ -5,13 +5,15 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 #pragma warning disable CA1822 // Mark members as static
 
-public class PrecedenceManager(bool treatDoublePipeAsOr = false)
+public class PrecedenceManager(bool treatDoublePipeAsOr = false, bool usePostgresUnaryPrecedence = true)
 {
     public short GetPrecedence(Precedence precedence)
     {
         return precedence switch
         {
             Precedence.DoubleColon => 50,
+            Precedence.UnarySign => usePostgresUnaryPrecedence ? (short)45 : (short)40,
+            Precedence.Collate => 43,
             Precedence.AtTimezone => 41,
             Precedence.MultiplyDivide => 40,
             Precedence.AddSubtract => 30,
@@ -41,6 +43,7 @@ public class PrecedenceManager(bool treatDoublePipeAsOr = false)
             Word { Keyword: Keyword.AND } => GetPrecedence(Precedence.And),
             Word { Keyword: Keyword.XOR } => GetPrecedence(Precedence.Xor),
             Word { Keyword: Keyword.AT } => GetAtPrecedence(state),
+            Word { Keyword: Keyword.COLLATE } => GetPrecedence(Precedence.Collate),
             Word { Keyword: Keyword.NOT } => GetNotPrecedence(state),
             Word { Keyword: Keyword.IS } => GetPrecedence(Precedence.Is),
             Word { Keyword: Keyword.IN or Keyword.BETWEEN or Keyword.OPERATOR } => GetPrecedence(Precedence.Between),

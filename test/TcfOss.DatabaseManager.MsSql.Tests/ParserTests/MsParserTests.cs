@@ -303,4 +303,10 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void PostgresExpressionCollations_AreRejected()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("SELECT label COLLATE app.locale FROM items"));
+    }
 }

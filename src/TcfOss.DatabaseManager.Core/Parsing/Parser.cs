@@ -29,6 +29,7 @@ public class Parser : IParser
     public virtual bool SupportsPostgresRegexOperators => true;
     public virtual bool SupportsPostgresIdentitySyntax => true;
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
+    public virtual bool SupportsPostgresExpressionCollationSyntax => true;
     protected virtual bool SupportsCommentOn => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }
@@ -174,10 +175,10 @@ public class Parser : IParser
                 return ParseKeywordStatement(state, word, label);
             case ParenOpen:
                 return SelectParser.ParseSelect(state, null);
-            case StringLiteral literal when state.AllowStringLiteralAsStatement:
+            case StringLiteral literal when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
                 state.Next();
                 return new RoutineBodyLiteral(literal.Value.Replace("''", "'", StringComparison.Ordinal));
-            case DollarQuotedStringLiteral literal when state.AllowStringLiteralAsStatement:
+            case DollarQuotedStringLiteral literal when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
                 state.Next();
                 return new RoutineBodyLiteral(literal.Value) { DollarQuoteTag = literal.Tag };
             default:
@@ -375,11 +376,11 @@ public class Parser : IParser
     {
         if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            if (!state.AllowBeginAtomic)
+            if (!state.Context.HasFlag(ParseContext.BeginAtomic))
             {
                 throw state.ExpectedException("SQL statement");
             }
-            using (state.EnterBeginAtomic(allow: false))
+            using (state.EnterContext(disable: ParseContext.BeginAtomic))
             {
                 return ControlFlowParser.ParseBeginAtomic(state);
             }

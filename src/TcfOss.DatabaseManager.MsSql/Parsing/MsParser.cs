@@ -24,11 +24,12 @@ public class MsParser : Parser
     public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
+    public override bool SupportsPostgresExpressionCollationSyntax => false;
     protected override bool SupportsCommentOn => false;
 
     public MsParser()
     {
-        PrecedenceManager = new PrecedenceManager();
+        PrecedenceManager = new PrecedenceManager(usePostgresUnaryPrecedence: false);
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MsFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MsDataTypeParser(this);

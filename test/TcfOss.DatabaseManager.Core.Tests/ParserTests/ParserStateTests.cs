@@ -909,4 +909,78 @@ public static class ParserStateTests
         var expectedLocation = new Lexing.Location(0, 0, 0);
         Assert.Equal(expectedLocation, peeked.Location);
     }
+
+    [Theory]
+    [InlineData(ParseContext.None)]
+    [InlineData(ParseContext.DomainCheck)]
+    [InlineData(ParseContext.DefaultExpression)]
+    [InlineData(ParseContext.StringLiteralAsStatement)]
+    [InlineData(ParseContext.BeginAtomic)]
+    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.BeginAtomic)]
+    public static void EnterContext_RestoresNestedEnablingAndDisabling(ParseContext context)
+    {
+        var state = new ParserState([]);
+        Assert.Equal(ParseContext.None, state.Context);
+
+        using (state.EnterContext(context))
+        {
+            Assert.Equal(context, state.Context);
+            using (state.EnterContext(context))
+            {
+                Assert.Equal(context, state.Context);
+                using (state.EnterContext(disable: context))
+                {
+                    Assert.Equal(ParseContext.None, state.Context);
+                }
+                Assert.Equal(context, state.Context);
+            }
+            Assert.Equal(context, state.Context);
+        }
+
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Fact]
+    public static void EnterContext_UpdatesOnlyRequestedFlags()
+    {
+        var state = new ParserState([]);
+        const ParseContext outer = ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.BeginAtomic;
+        using (state.EnterContext(outer))
+        {
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression | ParseContext.BeginAtomic))
+            {
+                Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
+                using (state.EnterContext())
+                {
+                    Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
+                }
+                Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
+            }
+            Assert.Equal(outer, state.Context);
+        }
+
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData(ParseContext.None, ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
+    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression, ParseContext.DomainCheck | ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
+    public static void EnterContext_RestoresPreviousContextOnException(ParseContext initial, ParseContext inner)
+    {
+        var state = new ParserState([]);
+        using (state.EnterContext(initial))
+        {
+            Assert.Throws<InvalidOperationException>((Action)(() =>
+            {
+                using (state.EnterContext(ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression))
+                {
+                    Assert.Equal(inner, state.Context);
+                    throw new InvalidOperationException();
+                }
+            }));
+            Assert.Equal(initial, state.Context);
+        }
+
+        Assert.Equal(ParseContext.None, state.Context);
+    }
 }

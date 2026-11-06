@@ -296,7 +296,7 @@ public class TableParser
 
         return state.PeekIs<ParenOpen>()
             ? new StatementColumnOption.Default.DefaultExpression(state.ParseParenthesized(_p.ExpressionParser.ParseExpr), constraintName)
-            : new StatementColumnOption.Default.DefaultExpression(_p.ExpressionParser.ParseExpr(state), constraintName);
+            : new StatementColumnOption.Default.DefaultExpression(_p.ExpressionParser.ParseDefaultExpr(state), constraintName);
     }
 
     private static GenerationMode? ParseGenerationMode(Keyword? generationModeKeyword)

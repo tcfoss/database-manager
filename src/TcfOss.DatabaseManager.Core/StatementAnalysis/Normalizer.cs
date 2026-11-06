@@ -195,6 +195,11 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             UnaryOperator uo => new UnaryOperator(NormalizeExpression(uo.Expression, inSelect: inSelect, flatten: flatten), uo.Operator),
             FunctionCall fun => NormalizeFunctionCall(fun, inSelect: inSelect, flatten: flatten),
             Cast cast => NormalizeCast(cast, inSelect: inSelect, flatten: flatten),
+            Collate collate => collate with
+            {
+                Expression = NormalizeExpression(collate.Expression, inSelect, flatten),
+                Collation = ComponentNormalizer.NormalizeObjectName(collate.Collation)
+            },
             IsNull isNull => NormalizeIsNull(isNull, inSelect: inSelect, flatten: flatten),
             IsTrue check => check with { Expression = NormalizeExpression(check.Expression, inSelect, flatten) },
             IsUnknown check => check with { Expression = NormalizeExpression(check.Expression, inSelect, flatten) },
@@ -245,11 +250,13 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         };
     }
 
+    /// <inheritdoc />
     public Expression NormalizeExpression(Expression expr)
     {
         return NormalizeExpression(expr, inSelect: false, flatten: true);
     }
 
+    /// <inheritdoc />
     public Expression NormalizeExpressionNoFlatten(Expression expr)
     {
         return NormalizeExpression(expr, inSelect: false, flatten: false);
@@ -606,6 +613,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return select;
     }
 
+    /// <inheritdoc />
     public Select NormalizeSelect(Select selectStatement, SchemaIdentifier? activeSchema = null, PseudoTableSet? pseudoTables = null, ObjectIdentifier? name = null, SourceRef? sourceRef = null)
     {
         _name = name;

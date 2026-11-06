@@ -137,4 +137,17 @@ public class FormatComponentsTests
 
         Assert.Contains("COLLATE " + expected, actual);
     }
+
+    [Theory]
+    [InlineData("app.locale", "\"app\".\"locale\"")]
+    [InlineData("\"C\"", "\"C\"")]
+    [InlineData("\"App\".\"Locale\"", "\"App\".\"Locale\"")]
+    public void ExpressionCollations_FormatOperandAndCollationNames(string collation, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted($"SELECT (items.label || 'suffix') COLLATE {collation} FROM items");
+
+        Assert.Contains("(\"items\".\"label\" || 'suffix') COLLATE " + expected, actual);
+    }
 }
