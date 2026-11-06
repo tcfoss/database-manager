@@ -56,6 +56,22 @@ public abstract record Value() : IWriteSql
         }
     }
 
+    public record EscapeString(string Value) : StringBasedValue(Value)
+    {
+        /// <summary>
+        /// Decodes the raw literal contents, interpreting numeric byte escapes as UTF-8.
+        /// </summary>
+        public string Decode()
+        {
+            return PgEscapeString.Decode(Value);
+        }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"E'{Value}'");
+        }
+    }
+
     public record DollarQuotedString(string Value) : StringBasedValue(Value)
     {
         public string Tag { get; init; } = "";

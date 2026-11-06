@@ -140,4 +140,75 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseExpression(sql));
     }
+
+    [Theory]
+    [InlineData("E''")]
+    [InlineData("E'it\\'s'")]
+    [InlineData("E'it''s'")]
+    [InlineData("E'\\\\'")]
+    [InlineData("E'line\\nnext'")]
+    public void EscapeStrings_ParseAndRoundTrip(string sql)
+    {
+        var expression = Assert.IsType<LiteralValue>(ParseExpression(sql));
+        Assert.IsType<Core.Common.Value.EscapeString>(expression.Value);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("SELECT E'it\\'s'")]
+    [InlineData("CREATE TABLE items (label TEXT DEFAULT E'line\\nnext')")]
+    [InlineData("CREATE DOMAIN label AS TEXT DEFAULT E'line\\nnext'")]
+    [InlineData("COMMENT ON TABLE items IS E'it\\'s'")]
+    public void EscapeStrings_ParseInStatementsAndRoundTrip(string sql)
+    {
+        var statement = ParseStatement(sql);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement.ToSql(), ParseStatement(statement.ToSql()).ToSql());
+    }
+
+    [Theory]
+    [InlineData("E'\\u123'")]
+    [InlineData("E'\\uZZZZ'")]
+    [InlineData("E'\\U00110000'")]
+    [InlineData("E'\\UFFFFFFFF'")]
+    [InlineData("E'\\uD800'")]
+    [InlineData("E'\\uDC00'")]
+    [InlineData("E'\\uD800\\u0041'")]
+    [InlineData("E'\\0'")]
+    [InlineData("E'\\x00'")]
+    [InlineData("E'\\u0000'")]
+    [InlineData("E'\\xFF'")]
+    public void InvalidEscapeStrings_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseExpression(sql));
+    }
+
+    [Fact]
+    public void EscapeStrings_SerializeInsideExpressionCollections()
+    {
+        Expression[] expressions = [ParseExpression("E'it\\'s \\u00e9 \\\\'")];
+
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void EscapeStrings_LiteralStringConsumersReceiveDecodedText()
+    {
+        var state = new ParserState([.. new PgLexer().Tokenize("E'line\\n\\u00e9'")]);
+        Assert.Equal("line\n\u00e9", ValueParser.ParseLiteralString(state));
+
+        state = new ParserState([.. new PgLexer().Tokenize("E'\\x41'")]);
+        Assert.Equal("A", ValueParser.ParseLiteralStringOptionalQuotes(state));
+    }
+
+    [Fact]
+    public void EscapeStrings_AreAcceptedByKitchenSinkLexerAndParser()
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize("E'it\\'s'")]);
+
+        var expression = Assert.IsType<LiteralValue>(parser.ExpressionParser.ParseExpr(state));
+        Assert.Equal("it's", Assert.IsType<Core.Common.Value.EscapeString>(expression.Value).Decode());
+    }
 }

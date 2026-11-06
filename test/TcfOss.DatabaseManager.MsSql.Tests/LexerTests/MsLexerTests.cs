@@ -200,4 +200,15 @@ public class MsLexerTests : LexerTestBase
         var sql = "SELECT '" + contents + "'";
         Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
     }
+    [Theory]
+    [InlineData("E")]
+    [InlineData("e")]
+    public void EscapeStringPrefixes_RemainSeparateIdentifierAndString(string prefix)
+    {
+        List<Token> tokens = new MsLexer().Tokenize(prefix + "'body'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal("body", Assert.IsType<StringLiteral>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
 }

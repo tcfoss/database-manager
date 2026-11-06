@@ -13,6 +13,7 @@ public class MsLexer : Lexer<MsRunState>
 
     protected override bool SupportBackslashQuoteEscape => false;
     protected override bool SupportDollarQuotedStrings => false;
+    protected override bool SupportEscapeStringLiterals => false;
     protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
 
     protected override bool IsIdentifierPart(char character)

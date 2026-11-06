@@ -24,6 +24,7 @@ public class ValueParser
             },
             NumericLiteral n => new Value.Number(n.Value, n.IsLong),
             StringLiteral sl => new Value.SingleQuotedString(sl.Value),
+            EscapeStringLiteral sl => ParseEscapeString(sl),
             DollarQuotedStringLiteral sl => new Value.DollarQuotedString(sl.Value) { Tag = sl.Tag },
             NationalStringLiteral nsl => new Value.NationalStringLiteral(nsl.Value),
             HexStringLiteral hsl => new Value.HexString(hsl.Value),
@@ -38,6 +39,7 @@ public class ValueParser
         return token switch
         {
             StringLiteral s => s.Value,
+            EscapeStringLiteral s => ParseEscapeString(s).Decode(),
             DollarQuotedStringLiteral s => s.Value,
             _ => throw ParserState.ExpectedCategoryException("literal_string", token)
         };
@@ -51,9 +53,24 @@ public class ValueParser
         {
             Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word => word.Value,
             StringLiteral s => s.Value,
+            EscapeStringLiteral s => ParseEscapeString(s).Decode(),
             DollarQuotedStringLiteral s => s.Value,
             _ => throw ParserState.ExpectedCategoryException("literal_string", token)
         };
+    }
+
+    private static Value.EscapeString ParseEscapeString(EscapeStringLiteral token)
+    {
+        var value = new Value.EscapeString(token.Value);
+        try
+        {
+            value.Decode();
+        }
+        catch (FormatException)
+        {
+            throw ParserState.ExpectedCategoryException("escape_string", token);
+        }
+        return value;
     }
 
     private static (string Text, Token Start) ParseIntegerText(ParserState state, string category)

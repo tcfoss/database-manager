@@ -14,6 +14,7 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool SupportBackslashQuoteEscape => true;
     protected virtual bool SupportBracketQuotedIdentifiers => true;
     protected virtual bool SupportDollarQuotedStrings => true;
+    protected virtual bool SupportEscapeStringLiterals => true;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -100,6 +101,7 @@ public class Lexer<TRunState> : ILexer
 
             'N' or 'n' => TokenizeNationalStringLiteral(ref state),
             'X' or 'x' => TokenizeHex(ref state),
+            'E' or 'e' when SupportEscapeStringLiterals && state.PeekNth(1) == CharSymbols.SingleQuote => TokenizeEscapeStringLiteral(ref state),
 
             CharSymbols.SingleQuote => TokenizeStringLiteral(ref state),
 
@@ -517,9 +519,16 @@ public class Lexer<TRunState> : ILexer
     {
         Location initialLocation = state.Location;
 
-        string contents = ExtractString(ref state);
+        string contents = ExtractString(ref state, SupportBackslashQuoteEscape);
 
         return new StringLiteral(contents) { Location = initialLocation };
+    }
+
+    private static EscapeStringLiteral TokenizeEscapeStringLiteral(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        return new EscapeStringLiteral(ExtractString(ref state, true, supportBackslashEscape: true)) { Location = initialLocation };
     }
 
     private Token TokenizeNationalStringLiteral(ref LexerState state)
@@ -529,7 +538,7 @@ public class Lexer<TRunState> : ILexer
         state.Next();
         return state.Peek() switch
         {
-            CharSymbols.SingleQuote => new NationalStringLiteral(ExtractString(ref state)) { Location = initialLocation },
+            CharSymbols.SingleQuote => new NationalStringLiteral(ExtractString(ref state, SupportBackslashQuoteEscape)) { Location = initialLocation },
             _ => new Word(ExtractWordTrustNoNewLines(ref state)) { Location = initialLocation }
         };
     }
@@ -544,7 +553,7 @@ public class Lexer<TRunState> : ILexer
             return new Word(ExtractWordTrustNoNewLines(ref state)) { Location = initialLocation };
         }
 
-        string hex = ExtractString(ref state);
+        string hex = ExtractString(ref state, SupportBackslashQuoteEscape);
         return new HexStringLiteral(hex) { Location = initialLocation };
     }
 
@@ -631,7 +640,7 @@ public class Lexer<TRunState> : ILexer
         return new string(state.SpanFrom(startPosition));
     }
 
-    private string ExtractString(ref LexerState state, char quoteChar = CharSymbols.SingleQuote)
+    private static string ExtractString(ref LexerState state, bool supportBackslashQuoteEscape, char quoteChar = CharSymbols.SingleQuote, bool supportBackslashEscape = false)
     {
         Location startLocation = state.Location;
 
@@ -639,7 +648,7 @@ public class Lexer<TRunState> : ILexer
 
         // Try allocation-free search first.
         int startPosition = state.Position;
-        state.AdvanceThroughOrdinaryStringCharacters(quoteChar, SupportBackslashQuoteEscape);
+        state.AdvanceThroughOrdinaryStringCharacters(quoteChar, supportBackslashQuoteEscape);
         char first = state.Peek();
 
         if (first == CharSymbols.EndOfFile)
@@ -661,7 +670,7 @@ public class Lexer<TRunState> : ILexer
         {
             if (!escapeNext)
             {
-                state.AdvanceThroughOrdinaryStringCharacters(quoteChar, SupportBackslashQuoteEscape);
+                state.AdvanceThroughOrdinaryStringCharacters(quoteChar, supportBackslashQuoteEscape);
             }
             char curr = state.Peek();
 
@@ -692,7 +701,7 @@ public class Lexer<TRunState> : ILexer
                     }
                 }
             }
-            else if (curr == CharSymbols.Backslash) // If backslash-escapes are off, state.AdvanceThroughOrdinaryStringCharacters will eat it
+            else if (curr == CharSymbols.Backslash && (!supportBackslashEscape || !escapeNext)) // If backslash-escapes are off, state.AdvanceThroughOrdinaryStringCharacters will eat it
             {
                 state.Next();
                 escapeNext = true;

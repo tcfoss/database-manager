@@ -2065,15 +2065,20 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(new SourceRef(29, original.Meta.Start!.Value, original.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
-    [Fact]
-    public void ToDefinition_ResolvesDollarQuotedTriggerArguments()
+    [Theory]
+    [InlineData("$arg$it's unchanged$arg$", "it's unchanged")]
+    [InlineData("E'it\\'s\\n\\u00e9'", "it's\n\u00e9")]
+    public void ToDefinition_ResolvesQuotedTriggerArguments(string literal, string expected)
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION audit_fn($arg$it's unchanged$arg$)"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION audit_fn({literal})"), GetSchema(), 0);
 
         PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
 
-        Assert.Equal(["it's unchanged"], trigger.Arguments);
+        Assert.Equal([expected], trigger.Arguments);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; " + trigger.ToCreateStatement(includeSchema: true).ToSql()), GetSchema(), 0);
+        Assert.Equal(trigger.Arguments, Assert.Single(Assert.Single(rebuilt.ToDefinition().Triggers.Values).Values).Arguments);
     }
 
     [Theory]
@@ -2222,6 +2227,28 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(" ", Assert.Single(definition.Comments).Value);
         Assert.IsType<PgCommentTarget.Column>(Assert.Single(definition.Comments).Key);
+    }
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("it\\'s\\n\\xC3\\xA9", "it's\n\u00e9")]
+    [InlineData("it\\'; DROP TABLE items; --", "it'; DROP TABLE items; --")]
+    public void ToDefinition_ResolvesEscapeStringComments(string raw, string expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); COMMENT ON TABLE items IS E'{raw}'"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Single(definition.Tables.Values);
+        if (expected.Length == 0)
+        {
+            Assert.Empty(definition.Comments);
+        }
+        else
+        {
+            Assert.Equal(expected, Assert.Single(definition.Comments).Value);
+        }
     }
 
     [Fact]

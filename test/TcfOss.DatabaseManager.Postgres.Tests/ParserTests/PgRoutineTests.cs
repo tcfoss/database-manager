@@ -266,6 +266,21 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(ParseContext.None, state.Context);
     }
 
+    [Theory]
+    [InlineData("FUNCTION f() RETURNS INT", true)]
+    [InlineData("PROCEDURE p()", false)]
+    public void EscapeStringBodies_AreDecodedAndRemainOpaque(string declaration, bool isFunction)
+    {
+        var statement = ParseStatement($"CREATE {declaration} LANGUAGE plpgsql AS E'BEGIN\\nRAISE NOTICE \\'it\\\\s\\';\\nEND'");
+        IWriteSql body = isFunction ? Assert.IsType<CreateFunction>(statement).Body : Assert.IsType<CreateProcedure>(statement).Body;
+        var literal = Assert.IsType<RoutineBodyLiteral>(body);
+
+        Assert.Equal("BEGIN\nRAISE NOTICE 'it\\s';\nEND", literal.Value);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+        Assert.Empty(literal.GetReferencedItems(new ReferencedItemsManager()));
+    }
+
     [Fact]
     public void AtomicScope_IsRestoredAfterFailedBodyParsing()
     {

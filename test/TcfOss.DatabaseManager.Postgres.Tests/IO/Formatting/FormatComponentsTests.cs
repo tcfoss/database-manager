@@ -150,4 +150,16 @@ public class FormatComponentsTests
 
         Assert.Contains("(\"items\".\"label\" || 'suffix') COLLATE " + expected, actual);
     }
+
+    [Theory]
+    [InlineData("E'it\\'s\\n\\\\'")]
+    [InlineData("E'\\u00e9'")]
+    public void EscapeStrings_FormattingPreservesRawLiteral(string literal)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted("SELECT " + literal);
+
+        Assert.Contains(literal, actual);
+    }
 }

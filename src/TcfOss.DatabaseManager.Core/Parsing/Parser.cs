@@ -181,6 +181,8 @@ public class Parser : IParser
             case DollarQuotedStringLiteral literal when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
                 state.Next();
                 return new RoutineBodyLiteral(literal.Value) { DollarQuoteTag = literal.Tag };
+            case EscapeStringLiteral when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
+                return new RoutineBodyLiteral(((Value.EscapeString)ValueParser.ParseValue(state)).Decode());
             default:
                 throw ParserState.ExpectedException("SQL statement".Italic(), token);
         }

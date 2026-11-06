@@ -153,4 +153,99 @@ public class PgLexerTests
         Assert.Equal(new Location(1, 2, 1), open.Location);
         Assert.Equal(new Location(1, 4, 3), close.Location);
     }
+
+    [Theory]
+    [InlineData("E''", "")]
+    [InlineData("e'plain'", "plain")]
+    [InlineData("E'it\\'s'", "it\\'s")]
+    [InlineData("E'it''s'", "it''s")]
+    [InlineData("E'\\\\'", "\\\\")]
+    [InlineData("E'line\\nnext'", "line\\nnext")]
+    public void EscapeStrings_PreserveRawContentAndSourceLength(string literal, string value)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        var token = Assert.IsType<EscapeStringLiteral>(tokens[0]);
+
+        Assert.Equal(value, token.Value);
+        Assert.Equal("E'" + value + "'", token.ToString());
+        Assert.Equal(literal.Length, token.Length);
+        Assert.Equal(new Location(2, 1, 2), token.Location);
+        Assert.Equal(literal.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("E'")]
+    [InlineData("E'body")]
+    [InlineData("E'body\\'")]
+    public void UnterminatedEscapeStrings_AreRejected(string sql)
+    {
+        var lexer = new PgLexer();
+        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
+        Assert.Equal("ok", Assert.IsType<EscapeStringLiteral>(lexer.Tokenize("E'ok'")[0]).Value);
+    }
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("it\\'s", "it's")]
+    [InlineData("it''s", "it's")]
+    [InlineData("\\\\", "\\")]
+    [InlineData("\\b\\f\\n\\r\\t", "\b\f\n\r\t")]
+    [InlineData("\\q\\v\\x", "qvx")]
+    [InlineData("\\101\\x42\\x4Z", "AB\u0004Z")]
+    [InlineData("\\1234", "S4")]
+    [InlineData("\\303\\251", "\u00e9")]
+    [InlineData("\\xC3\\xA9", "\u00e9")]
+    [InlineData("\\u00e9", "\u00e9")]
+    [InlineData("\\U0001F600", "\uD83D\uDE00")]
+    [InlineData("\\uD83D\\uDE00", "\uD83D\uDE00")]
+    [InlineData("\\uD83D\\U0000DE00", "\uD83D\uDE00")]
+    [InlineData("caf\u00e9\\n", "caf\u00e9\n")]
+    public void EscapeValues_DecodePostgresEscapes(string raw, string decoded)
+    {
+        var value = new Value.EscapeString(raw);
+
+        Assert.Equal(decoded, value.Decode());
+        Assert.Equal("E'" + raw + "'", value.ToSql());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(224)]
+    [InlineData(225)]
+    [InlineData(1024)]
+    public void LongEscapeStrings_PreserveRawTextAndFollowingLocation(int prefixLength)
+    {
+        string contents = new string('a', prefixLength) + "\\'line\n" + new string('b', 1024) + "\\\\";
+        string sql = "E'" + contents + "';";
+        List<Token> tokens = new PgLexer().Tokenize(sql);
+
+        Assert.Equal(contents, Assert.IsType<EscapeStringLiteral>(tokens[0]).Value);
+        int position = sql.Length - 1;
+        Assert.Equal(new Location(2, position - sql.LastIndexOf('\n'), position), Assert.IsType<Semicolon>(tokens[1]).Location);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Fact]
+    public void EscapeTokens_CompareRawContentButNotLocation()
+    {
+        var token = new EscapeStringLiteral("\\n") { Location = new Location() };
+        var same = new EscapeStringLiteral("\\n") { Location = new Location(2, 3, 4) };
+
+        Assert.True(token.Equals((object)same));
+        Assert.True(token.Equals((Token)same));
+        Assert.Equal(token.GetHashCode(), same.GetHashCode());
+        Assert.False(token.Equals((object?)null));
+        Assert.False(token.Equals((Token)new StringLiteral("\\n") { Location = new Location() }));
+        Assert.False(token.Equals(new EscapeStringLiteral("other") { Location = new Location() }));
+    }
+
+    [Theory]
+    [InlineData("example")]
+    [InlineData("e$tag$body$tag$")]
+    [InlineData("E")]
+    public void EscapePrefix_OnlyAppliesImmediatelyBeforeQuote(string identifier)
+    {
+        Assert.Equal(identifier, Assert.IsType<Word>(Assert.Single(new PgLexer().Tokenize(identifier))).Value);
+    }
 }

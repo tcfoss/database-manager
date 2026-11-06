@@ -241,4 +241,25 @@ public class MyLexerTests : LexerTestBase
         Assert.False(token1.Equals(null));
 #pragma warning restore xUnit2000 // Constants and literals should be the expected argument
     }
+    [Theory]
+    [InlineData("E")]
+    [InlineData("e")]
+    public void EscapeStringPrefixes_RemainSeparateIdentifierAndString(string prefix)
+    {
+        List<Token> tokens = new MyLexer().Tokenize(prefix + "'body'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal("body", Assert.IsType<StringLiteral>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Fact]
+    public void BackslashPairs_RetainExistingQuoteEscaping()
+    {
+        List<Token> tokens = new MyLexer().Tokenize("'\\\\'tail';");
+
+        Assert.Equal("\\\\'tail", Assert.IsType<StringLiteral>(tokens[0]).Value);
+        Assert.IsType<Semicolon>(tokens[1]);
+        Assert.Equal(2, tokens.Count);
+    }
 }

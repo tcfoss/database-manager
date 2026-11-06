@@ -94,6 +94,7 @@ public class ExpressionParser
             Minus or Plus => ParseUnaryExpr(state),
             NumericLiteral
                 or StringLiteral
+                or EscapeStringLiteral
                 or DollarQuotedStringLiteral
                 or NationalStringLiteral => ParseValueExpr(state),
             Word => ParseMultipart(state),
