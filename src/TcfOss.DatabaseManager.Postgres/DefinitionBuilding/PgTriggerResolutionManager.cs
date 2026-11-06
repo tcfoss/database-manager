@@ -209,22 +209,9 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
         };
     }
 
-    private IEnumerable<ObjectHandle> GetCandidates(ObjectName name, SchemaIdentifier activeSchema)
-    {
-        if (name.Values.Count > 1)
-        {
-            yield return ObjectHandle.Create(name, activeSchema, _config.NameHandling);
-            yield break;
-        }
-        foreach (Identifier schema in _config.SearchPath)
-        {
-            yield return ObjectHandle.Create(name, new SchemaIdentifier(schema.Name, activeSchema.Catalog, schema.QuoteStyle), _config.NameHandling);
-        }
-    }
-
     private PgTable ResolveTable(ObjectName name, SchemaIdentifier schema, SourceRef source)
     {
-        foreach (ObjectHandle candidate in GetCandidates(name, schema))
+        foreach (ObjectHandle candidate in _config.GetCandidateHandles(name, schema))
         {
             if (_tables.TryGetValue(candidate, out PgTable? table))
             {
@@ -236,7 +223,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
 
     private PgStoredFunction ResolveFunction(ObjectName name, SchemaIdentifier schema, SourceRef source)
     {
-        foreach (ObjectHandle candidate in GetCandidates(name, schema))
+        foreach (ObjectHandle candidate in _config.GetCandidateHandles(name, schema))
         {
             if (_functions.TryGetValue(candidate, out PgStoredFunction? function))
             {

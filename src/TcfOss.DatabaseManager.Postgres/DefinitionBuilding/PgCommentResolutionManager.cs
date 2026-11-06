@@ -59,7 +59,7 @@ public class PgCommentResolutionManager(PgConfig config, PgDefinition definition
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "definition construction for COMMENT ON " + target.ObjectType, source);
         }
-        foreach (ObjectHandle candidate in GetCandidates(target.Name, schema))
+        foreach (ObjectHandle candidate in _config.GetCandidateHandles(target.Name, schema))
         {
             if (target.ObjectType == PgCommentObjectType.Table && _definition.Tables.TryGetValue(candidate, out PgTable? table))
             {
@@ -98,7 +98,7 @@ public class PgCommentResolutionManager(PgConfig config, PgDefinition definition
         SqlValueList<DataType>? requestedTypes = target.Parameters == null ? null :
             [.. target.Parameters.Where(parameter => parameter.Direction != RoutineParameterDirection.Out)
                 .Select(parameter => NormalizeIdentityType(_types.Resolve(parameter.DataType, schema, source)))];
-        foreach (ObjectHandle candidate in GetCandidates(target.Name, schema))
+        foreach (ObjectHandle candidate in _config.GetCandidateHandles(target.Name, schema))
         {
             ObjectIdentifier name;
             SqlValueList<RoutineParameter.Postgres> parameters;
@@ -155,7 +155,7 @@ public class PgCommentResolutionManager(PgConfig config, PgDefinition definition
 
     private PgTable ResolveTable(ObjectName name, SchemaIdentifier schema, SourceRef source)
     {
-        foreach (ObjectHandle candidate in GetCandidates(name, schema))
+        foreach (ObjectHandle candidate in _config.GetCandidateHandles(name, schema))
         {
             if (_definition.Tables.TryGetValue(candidate, out PgTable? table))
             {
@@ -163,18 +163,5 @@ public class PgCommentResolutionManager(PgConfig config, PgDefinition definition
             }
         }
         throw new SqlSyntaxException.SelectIdentifierNotFound(name.ToSql(), source);
-    }
-
-    private IEnumerable<ObjectHandle> GetCandidates(ObjectName name, SchemaIdentifier schema)
-    {
-        if (name.Values.Count > 1)
-        {
-            yield return ObjectHandle.Create(name, schema, _config.NameHandling);
-            yield break;
-        }
-        foreach (Identifier searchSchema in _config.SearchPath)
-        {
-            yield return ObjectHandle.Create(name, new SchemaIdentifier(searchSchema.Name, schema.Catalog, searchSchema.QuoteStyle), _config.NameHandling);
-        }
     }
 }
