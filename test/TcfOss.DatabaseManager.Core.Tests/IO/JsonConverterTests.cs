@@ -3,7 +3,9 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.IO.JsonConverters;
+using TcfOss.DataStructures.Enums;
 
 namespace TcfOss.DatabaseManager.Core.Tests.IO;
 
@@ -179,6 +181,50 @@ public class JsonConverterTests
         Assert.Equal("null", output.ToString());
     }
 
+    [Fact]
+    public void Serialization_StringEnumWithoutExplicitRegistration_RoundTrips()
+    {
+        string json = Serialization.ToJson(PgRoutineParallel.Safe);
+
+        Assert.Equal("\"SAFE\"", json);
+        Assert.Equal(PgRoutineParallel.Safe, Serialization.FromJson<PgRoutineParallel>(json));
+    }
+
+    [Theory]
+    [InlineData(typeof(PgRoutineParallel), true)]
+    [InlineData(typeof(ReferentialAction), true)]
+    [InlineData(typeof(string), false)]
+    [InlineData(typeof(DayOfWeek), false)]
+    [InlineData(typeof(List<ReferentialAction>), false)]
+    [InlineData(typeof(IStringEnum<ReferentialAction>), false)]
+    public void StringEnumConverterFactory_OnlyAcceptsSelfTypedStringEnums(Type type, bool expected)
+    {
+        Assert.Equal(expected, new StringEnumConverterFactory().CanConvert(type));
+    }
+
+    [Fact]
+    public void StringEnumConverterFactory_ReadAndWriteNull()
+    {
+        var converter = new StringEnumConverterFactory();
+        var serializer = JsonSerializer.Create(GetSettings());
+        using var reader = new JsonTextReader(new StringReader("null"));
+        Assert.True(reader.Read());
+        Assert.Null(converter.ReadJson(reader, typeof(PgRoutineParallel), null, serializer));
+
+        var output = new StringBuilder();
+        using var textWriter = new StringWriter(output);
+        using var writer = new JsonTextWriter(textWriter);
+        converter.WriteJson(writer, null, serializer);
+        Assert.Equal("null", output.ToString());
+    }
+
+    [Theory]
+    [MemberData(nameof(StringEnumTestHelpers.StringEnumTypes), typeof(ReferentialAction), MemberType = typeof(StringEnumTestHelpers))]
+    public void Serialization_AllCoreStringEnumValues_RoundTrip(Type enumType)
+    {
+        StringEnumTestHelpers.AssertStringEnumRoundTrips(enumType);
+    }
+
     private static JsonSerializerSettings GetSettings()
     {
         return new JsonSerializerSettings
@@ -194,7 +240,7 @@ public class JsonConverterTests
                 new IdentifierConverter(),
                 new DatabaseComponentDictConverter(),
                 new DatabaseObjectDictConverter(),
-                new StringEnumConverter<ReferentialAction>(),
+                new StringEnumConverterFactory(),
             }
         };
     }

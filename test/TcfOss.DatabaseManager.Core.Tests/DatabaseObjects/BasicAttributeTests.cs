@@ -1,4 +1,5 @@
-﻿using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+﻿using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.IO;
 using Xunit.Sdk;
 
@@ -9,7 +10,6 @@ using Xunit.Sdk;
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<RoutineParameterDirection>), typeof(RoutineParameterDirection))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<SecurityContext>), typeof(SecurityContext))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<SqlDataRelation>), typeof(SqlDataRelation))]
-[assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<TriggerEvent>), typeof(TriggerEvent))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<TriggerOrderPosition>), typeof(TriggerOrderPosition))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<TriggerTime>), typeof(TriggerTime))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<ViewAlgorithm>), typeof(ViewAlgorithm))]
@@ -119,11 +119,32 @@ public class BasicAttributeTests
     }
 
     [Theory]
-    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<TriggerEvent>))]
-    public void Test_Trigger_Event_From_Text(string text, TriggerEvent expected)
+    [InlineData("INSERT", typeof(TriggerEvent.Insert), "INSERT")]
+    [InlineData("insert", typeof(TriggerEvent.Insert), "INSERT")]
+    [InlineData("UPDATE", typeof(TriggerEvent.Update), "UPDATE")]
+    [InlineData("update", typeof(TriggerEvent.Update), "UPDATE")]
+    [InlineData("DELETE", typeof(TriggerEvent.Delete), "DELETE")]
+    [InlineData("delete", typeof(TriggerEvent.Delete), "DELETE")]
+    [InlineData("TRUNCATE", typeof(TriggerEvent.Truncate), "TRUNCATE")]
+    [InlineData("truncate", typeof(TriggerEvent.Truncate), "TRUNCATE")]
+    public void Test_Trigger_Event_From_Text(string text, Type expectedType, string expectedSql)
     {
         var result = TriggerEvent.Parse(text);
-        Assert.Equal(expected.ToSql(), result.ToSql());
+        Assert.IsType(expectedType, result);
+        Assert.Equal(expectedSql, result.ToSql());
+        TriggerEvent[] events = [result];
+        Assert.Equal(result, Assert.Single(Serialization.FromJson<TriggerEvent[]>(Serialization.ToJson(events))));
+    }
+
+    [Fact]
+    public void Trigger_Update_Event_PreservesColumnListAndSerialization()
+    {
+        var update = new TriggerEvent.Update([new Identifier("first"), new Identifier("Second", QuoteStyle.Ansi)]);
+
+        Assert.Equal("UPDATE OF first, \"Second\"", update.ToSql());
+        Assert.NotEqual(new TriggerEvent.Update(), update);
+        TriggerEvent[] events = [update];
+        Assert.Equal(update, Assert.Single(Serialization.FromJson<TriggerEvent[]>(Serialization.ToJson(events))));
     }
 
     [Fact]

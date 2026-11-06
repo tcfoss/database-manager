@@ -68,9 +68,9 @@ public class DdlParser
         Keyword? next = (state.Next() as Word)?.Keyword;
         return next switch
         {
-            Keyword.INSERT => TriggerEvent.Insert,
-            Keyword.UPDATE => TriggerEvent.Update,
-            Keyword.DELETE => TriggerEvent.Delete,
+            Keyword.INSERT => new TriggerEvent.Insert(),
+            Keyword.UPDATE => new TriggerEvent.Update(),
+            Keyword.DELETE => new TriggerEvent.Delete(),
             _ => throw state.ExpectedException("INSERT", "UPDATE", "DELETE")
         };
     }

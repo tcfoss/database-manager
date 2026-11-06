@@ -284,6 +284,30 @@ public class SqlTextWriterTests
     }
 
     [Fact]
+    public void TriggerArguments_PreserveIdentifierAndLiteralSpelling()
+    {
+        PgStatementTriggerArgument[] arguments =
+        [
+            new PgStatementTriggerArgument.Named(new Identifier("plain")),
+            new PgStatementTriggerArgument.Named(new Identifier("Quoted", QuoteStyle.Ansi)),
+            new PgStatementTriggerArgument.Literal(new Value.Number("1", false)),
+            new PgStatementTriggerArgument.Literal(new Value.SingleQuotedString("1")),
+            new PgStatementTriggerArgument.Literal(new Value.SingleQuotedString("it's"))
+        ];
+        string[] expected = ["plain", "\"Quoted\"", "1", "'1'", "'it''s'"];
+        for (int index = 0; index < arguments.Length; index++)
+        {
+            using var writer = new SqlTextWriter(new StringBuilder());
+            arguments[index].FormatSql(writer, GetFormatManager());
+
+            Assert.Equal(expected[index], writer.ToString());
+            Assert.Equal(expected[index], arguments[index].ToSql());
+        }
+        var execute = new PgTriggerExecute(new ObjectName(new Identifier("fire")), [.. arguments], false);
+        Assert.Equal("EXECUTE FUNCTION fire(plain, \"Quoted\", 1, '1', 'it''s')", execute.ToSql());
+    }
+
+    [Fact]
     public void SequenceOptionFormatting_DelegatesToSqlAndUsesInvariantNumbers()
     {
         CultureInfo originalCulture = CultureInfo.CurrentCulture;

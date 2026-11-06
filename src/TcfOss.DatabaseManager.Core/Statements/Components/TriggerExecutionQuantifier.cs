@@ -14,9 +14,11 @@ public abstract record TriggerExecutionQuantifier : IWriteSql
 
     public record ForEach(TriggerForEachType Type) : TriggerExecutionQuantifier
     {
+        public bool UseEach { get; init; } = true;
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"FOR EACH {Type}");
+            writer.WriteSql($"FOR{(UseEach ? " EACH" : "")} {Type}");
         }
     }
 }

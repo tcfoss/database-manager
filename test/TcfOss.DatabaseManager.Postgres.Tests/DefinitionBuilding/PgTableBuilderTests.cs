@@ -685,8 +685,17 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.AddColumn(Assert.Single(table.Columns), null);
         StatementTableConstraint constraint = Assert.Single(table.Constraints);
         var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)"));
-        Action addConstraint = () => builder.AddIndexOrConstraint(constraint, null);
-        Action addIndex = () => builder.AddIndex(index, null);
+
+        void addConstraint()
+        {
+            builder.AddIndexOrConstraint(constraint, null);
+        }
+
+        void addIndex()
+        {
+            builder.AddIndex(index, null);
+        }
+
         if (indexFirst)
         {
             addIndex();

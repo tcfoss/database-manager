@@ -23,6 +23,7 @@ public record CreateTrigger(
     public bool TableNameBeforeTimeAndEvent { get; init; }
     public TriggerExecutionQuantifier? ExecutionQuantifier { get; init; }
     public bool TriggerBodyStartsWithAs { get; init; }
+    public PgStatementTriggerOptions? PgOptions { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
@@ -40,7 +41,7 @@ public record CreateTrigger(
         {
             writer.WriteSql($" {Definer}");
         }
-        writer.Write(" TRIGGER");
+        writer.Write(PgOptions?.ConstraintOptions != null ? " CONSTRAINT TRIGGER" : " TRIGGER");
         if (IfNotExists)
         {
             writer.Write(" IF NOT EXISTS");
@@ -53,7 +54,8 @@ public record CreateTrigger(
             writer.WriteSql($" ON {TableName}");
         }
 
-        writer.WriteSql($" {TriggerTime} {Events}");
+        writer.WriteSql($" {TriggerTime} ");
+        WriteEvents(writer);
 
         if (!TableNameBeforeTimeAndEvent)
         {
@@ -61,9 +63,16 @@ public record CreateTrigger(
             writer.WriteSql($" ON {TableName}");
         }
 
+        WritePgClauses(writer);
+
         if (ExecutionQuantifier != null)
         {
             writer.WriteSql($" {ExecutionQuantifier}");
+        }
+
+        if (PgOptions?.When != null)
+        {
+            writer.WriteSql($" WHEN ({PgOptions.When})");
         }
 
         if (Order != null)
@@ -94,7 +103,7 @@ public record CreateTrigger(
         Meta.FormatPreNonSql(writer, manager);
         RoutineFormatter.FormatCreateAndDefiner(writer, manager, CreateOrLabel, Definer);
         writer.WriteLine();
-        writer.WriteSqlI("TRIGGER ");
+        writer.WriteSqlI(PgOptions?.ConstraintOptions != null ? "CONSTRAINT TRIGGER " : "TRIGGER ");
         if (IfNotExists)
         {
             writer.Write("IF NOT EXISTS ");
@@ -107,18 +116,31 @@ public record CreateTrigger(
             writer.WriteSqlI("ON ");
             TableName.FormatSql(writer, manager);
             writer.WriteLine();
-            writer.WriteSqlI($"{TriggerTime} {Events}");
+            writer.WriteSqlI($"{TriggerTime} ");
+            WriteEvents(writer);
         }
         else
         {
-            writer.WriteSqlI($"{TriggerTime} {Events} ON ");
+            writer.WriteSqlI($"{TriggerTime} ");
+            WriteEvents(writer);
+            writer.Write(" ON ");
             TableName.FormatSql(writer, manager);
         }
+
+        WritePgClauses(writer);
 
         if (ExecutionQuantifier != null)
         {
             writer.WriteLine();
             ExecutionQuantifier.FormatSql(writer, manager);
+        }
+
+        if (PgOptions?.When != null)
+        {
+            writer.WriteLine();
+            writer.WriteSqlI("WHEN (");
+            PgOptions.When.FormatSql(writer, manager);
+            writer.Write(")");
         }
 
         if (Order != null)
@@ -140,6 +162,41 @@ public record CreateTrigger(
         Meta.FormatPostNonSql(writer, manager);
     }
 
+    private void WriteEvents(SqlTextWriter writer)
+    {
+        for (int index = 0; index < Events.Count; index++)
+        {
+            if (index > 0)
+            {
+                writer.Write(PgOptions?.EventsUseOr == true ? " OR " : ", ");
+            }
+            writer.WriteSql($"{Events[index]}");
+        }
+    }
+
+    private void WritePgClauses(SqlTextWriter writer)
+    {
+        if (PgOptions?.ConstraintOptions is { } constraint)
+        {
+            if (constraint.FromTable != null)
+            {
+                writer.WriteSql($" FROM {constraint.FromTable}");
+            }
+            if (constraint.Deferrable != null)
+            {
+                writer.Write(constraint.Deferrable.Value ? " DEFERRABLE" : " NOT DEFERRABLE");
+            }
+            if (constraint.InitiallyDeferred != null)
+            {
+                writer.Write(constraint.InitiallyDeferred.Value ? " INITIALLY DEFERRED" : " INITIALLY IMMEDIATE");
+            }
+        }
+        if (PgOptions?.TransitionRelations != null)
+        {
+            writer.WriteSql($" REFERENCING {PgOptions.TransitionRelations.ToSqlDelimited(" ")}");
+        }
+    }
+
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
         using (context.Enter(ReferencedItemsContext.CreateTriggerTable))
@@ -148,6 +205,14 @@ public record CreateTrigger(
             if (item != null)
             {
                 yield return item;
+            }
+            if (PgOptions?.ConstraintOptions?.FromTable != null)
+            {
+                ItemRef? fromTable = context.CreateObjectRef(PgOptions.ConstraintOptions.FromTable);
+                if (fromTable != null)
+                {
+                    yield return fromTable;
+                }
             }
         }
 
