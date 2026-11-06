@@ -10,7 +10,9 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -1618,6 +1620,360 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
         Assert.Equal("PostgreSQL", exception.Dialect);
         Assert.Contains("function return shape", exception.Clause);
+    }
+
+    [Fact]
+    public void TriggerModel_EmitsCanonicalFunctionAndStringArguments()
+    {
+        ObjectIdentifier table = ObjectIdentifier.FromStrings("catalog", "app", "items");
+        var trigger = new PgTrigger(ObjectIdentifier.FromStrings("catalog", "app", "audit"), table,
+            TriggerTime.After, [new TriggerEvent.Insert()], ObjectIdentifier.FromStrings("catalog", "app", "audit_fn"), ["named", "1", "it's ok"]);
+
+        Assert.Equal("CREATE TRIGGER audit AFTER INSERT ON app.items FOR EACH STATEMENT EXECUTE FUNCTION app.audit_fn('named', '1', 'it''s ok')",
+            trigger.ToCreateStatement(true).ToSql());
+        Assert.Equal("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH STATEMENT EXECUTE FUNCTION audit_fn('named', '1', 'it''s ok')",
+            trigger.ToCreateStatement(false).ToSql());
+        Assert.Equal(trigger, Serialization.FromJson<PgTrigger>(Serialization.ToJson(trigger)));
+    }
+
+    [Fact]
+    public void ToDefinition_ResolvesForwardTriggerReferencesAndDefaults()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TRIGGER audit AFTER INSERT ON app.items EXECUTE PROCEDURE app.audit_fn(Named, \"Quoted\", 01, 1.5, 'it''s ok'); CREATE TABLE app.items (id INT); CREATE FUNCTION app.audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'"), GetSchema(), 8);
+
+        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+
+        Assert.Equal("app", trigger.Name.Schema.Name);
+        Assert.Equal("items", trigger.OnTable.Name);
+        Assert.Equal("audit_fn", trigger.FunctionName.Name);
+        Assert.Equal(TriggerForEachType.Statement, trigger.ForEachType);
+        Assert.Equal(["named", "Quoted", "1", "1.5", "it's ok"], trigger.Arguments);
+        Assert.Null(trigger.ConstraintOptions);
+        var body = Assert.IsType<PgTriggerExecute>(trigger.ToCreateStatement(true).Body);
+        Assert.False(body.UseProcedure);
+    }
+
+    [Theory]
+    [InlineData("EXISTS (SELECT 1)")]
+    [InlineData("NEW.id IN (SELECT 1)")]
+    [InlineData("NEW.id = (SELECT 1)")]
+    [InlineData("OLD.id > 0")]
+    [InlineData("NEW.missing > 0")]
+    [InlineData("other.id > 0")]
+    [InlineData("NEW.id > 0 AND EXISTS (SELECT 1)")]
+    [InlineData("coalesce((SELECT 1), 0) > 0")]
+    [InlineData("EXISTS (SELECT 1 LIMIT 1) IS FALSE")]
+    [InlineData("(EXISTS (SELECT 1)) IS TRUE")]
+    [InlineData("(EXISTS (SELECT 1)) IS UNKNOWN")]
+    [InlineData("NEW.id IS DISTINCT FROM (SELECT 1)")]
+    [InlineData("NEW.id::INT = (SELECT 1)")]
+    [InlineData("(NEW.id, (SELECT 1)) IS NOT NULL")]
+    [InlineData("CASE WHEN TRUE THEN EXISTS (SELECT 1) ELSE FALSE END")]
+    [InlineData("NEW.id = ANY((SELECT 1))")]
+    [InlineData("NEW.id LIKE OLD.id")]
+    [InlineData("NEW.id ILIKE OLD.id")]
+    [InlineData("NEW.id SIMILAR TO OLD.id")]
+    [InlineData("NEW.id AT TIME ZONE OLD.id IS NOT NULL")]
+    [InlineData("POSITION(OLD.id IN NEW.id) > 0")]
+    [InlineData("allowed(*)")]
+    [InlineData("allowed(OLD.*)")]
+    public void ToDefinition_RejectsInvalidTriggerWhenWithSource(string when)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items FOR ROW WHEN ({when}) EXECUTE FUNCTION audit_fn()"), GetSchema(), 12);
+
+        var exception = Assert.Throws<SqlSyntaxException.InvalidTrigger>(builder.ToDefinition);
+
+        Assert.Contains("WHEN", exception.Clause);
+        Assert.Equal(12, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Fact]
+    public void ToDefinition_ResolvesAndNormalizesTriggerWhenRows()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER UPDATE ON items FOR EACH ROW WHEN (NEW.ID IS DISTINCT FROM OLD.ID) EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+
+        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+        var when = Assert.IsType<IsDistinctFrom>(trigger.When);
+
+        Assert.Equal(["new", "id"], Assert.IsType<CompoundIdentifier>(when.Left).Identifiers.Select(identifier => identifier.Name));
+        Assert.Equal(["old", "id"], Assert.IsType<CompoundIdentifier>(when.Right).Identifiers.Select(identifier => identifier.Name));
+    }
+
+    [Theory]
+    [InlineData("NOW() IS NOT NULL", "NOW() IS NOT NULL")]
+    [InlineData("NEW.ID::INT > 0", "\"new\".\"id\"::INT > 0")]
+    [InlineData("CAST(NEW.ID AS INT) > 0", "CAST(\"new\".\"id\" AS INT) > 0")]
+    [InlineData("(NEW.ID + 1) > 0", "(\"new\".\"id\" + 1) > 0")]
+    [InlineData("NEW.ID IS TRUE", "\"new\".\"id\" IS TRUE")]
+    [InlineData("NEW.ID IS UNKNOWN", "\"new\".\"id\" IS UNKNOWN")]
+    [InlineData("NEW.ID = ANY(NEW.ID)", "\"new\".\"id\" = ANY(\"new\".\"id\")")]
+    [InlineData("(NEW.ID, NEW.ID) IS NOT NULL", "(\"new\".\"id\", \"new\".\"id\") IS NOT NULL")]
+    [InlineData("allowed(NEW.*)", "allowed(\"new\".*)")]
+    public void ToDefinition_NormalizesTriggerWhenUsingSharedTraversal(string expression, string expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items FOR ROW WHEN ({expression}) EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+
+        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+
+        Assert.Equal(expected, trigger.When!.ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER audit BEFORE INSERT ON items EXECUTE FUNCTION audit_fn()")]
+    [InlineData("CREATE TRIGGER audit AFTER TRUNCATE ON items EXECUTE FUNCTION audit_fn()")]
+    [InlineData("CREATE TRIGGER audit AFTER UPDATE OF id ON items FOR ROW EXECUTE PROCEDURE audit_fn()")]
+    [InlineData("CREATE TRIGGER audit AFTER UPDATE ON items REFERENCING NEW TABLE new_rows OLD TABLE old_rows FOR STATEMENT EXECUTE FUNCTION audit_fn()")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items REFERENCING NEW TABLE new_rows FOR ROW EXECUTE FUNCTION audit_fn()")]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER UPDATE ON items FOR EACH ROW EXECUTE FUNCTION audit_fn()")]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER UPDATE ON items FROM other INITIALLY DEFERRED FOR ROW EXECUTE PROCEDURE audit_fn()")]
+    public void ToDefinition_CanonicalTriggersResolveIdempotently(string sql)
+    {
+        const string declarations = "CREATE TABLE items (id INT); CREATE TABLE other (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; ";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(declarations + sql), GetSchema(), 0);
+        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+        var reloaded = CreateBuilder();
+
+        reloaded.ProcessStatements(ParseStatements(declarations + trigger.ToCreateStatement(true).ToSql()), GetSchema(), 0);
+
+        Assert.Equal(trigger, Assert.Single(reloaded.ToDefinition().Triggers));
+        Assert.Equal(trigger, Assert.Single(builder.ToDefinition().Triggers));
+    }
+
+    [Theory]
+    [InlineData("INSTEAD OF INSERT ON items FOR ROW")]
+    [InlineData("AFTER TRUNCATE ON items FOR ROW")]
+    [InlineData("AFTER INSERT ON items REFERENCING OLD TABLE old_rows")]
+    [InlineData("AFTER DELETE ON items REFERENCING NEW TABLE new_rows")]
+    [InlineData("AFTER TRUNCATE ON items REFERENCING NEW TABLE new_rows")]
+    [InlineData("BEFORE INSERT ON items REFERENCING NEW TABLE new_rows")]
+    [InlineData("AFTER INSERT OR UPDATE ON items REFERENCING NEW TABLE new_rows")]
+    [InlineData("AFTER UPDATE OF id ON items REFERENCING NEW TABLE new_rows")]
+    [InlineData("AFTER UPDATE ON items REFERENCING OLD TABLE same_rows NEW TABLE same_rows")]
+    [InlineData("AFTER UPDATE ON items REFERENCING OLD TABLE old_rows OLD TABLE other_rows")]
+    [InlineData("AFTER UPDATE ON items REFERENCING NEW TABLE new_rows NEW TABLE other_rows")]
+    [InlineData("AFTER UPDATE OF missing ON items")]
+    [InlineData("AFTER INSERT ON items WHEN (NEW.id > 0)")]
+    [InlineData("AFTER DELETE ON items FOR ROW WHEN (NEW.id > 0)")]
+    [InlineData("BEFORE INSERT ON items FOR ROW WHEN (NEW.ctid IS NOT NULL)")]
+    [InlineData("BEFORE INSERT ON items FOR ROW WHEN (NEW.generated > 0)")]
+    [InlineData("BEFORE INSERT ON items FOR ROW WHEN (NEW IS NOT NULL)")]
+    [InlineData("AFTER INSERT ON items FOR ROW WHEN (TRUE IN (SELECT TRUE))")]
+    [InlineData("AFTER UPDATE ON items FOR ROW WHEN (sum(NEW.id) OVER () > 0)")]
+    public void ToDefinition_RejectsInvalidTriggerCombinations(string clauses)
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements("CREATE TABLE items (id INT, generated INT GENERATED ALWAYS AS (id + 1) STORED); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit " + clauses + " EXECUTE FUNCTION audit_fn()");
+        builder.ProcessStatements(statements, GetSchema(), 21);
+
+        var exception = Assert.Throws<SqlSyntaxException.InvalidTrigger>(builder.ToDefinition);
+
+        Assert.Equal("audit", exception.Trigger.Name);
+        Assert.Equal(new SourceRef(21, statements[^1].Meta.Start!.Value, statements[^1].Meta.End!.Value), exception.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("BEFORE INSERT ON items FOR ROW")]
+    [InlineData("AFTER INSERT ON items")]
+    [InlineData("AFTER TRUNCATE ON items FOR ROW")]
+    [InlineData("AFTER UPDATE ON items NOT DEFERRABLE INITIALLY DEFERRED FOR ROW")]
+    [InlineData("AFTER UPDATE ON items REFERENCING NEW TABLE new_rows FOR ROW")]
+    public void ToDefinition_RejectsInvalidConstraintTriggers(string clauses)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE CONSTRAINT TRIGGER audit " + clauses + " EXECUTE FUNCTION audit_fn()"), GetSchema(), 22);
+
+        var exception = Assert.Throws<SqlSyntaxException.InvalidTrigger>(builder.ToDefinition);
+
+        Assert.Equal(22, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Theory]
+    [InlineData("AFTER INSERT OR INSERT ON items")]
+    [InlineData("AFTER UPDATE OF id, ID ON items")]
+    public void ToDefinition_RejectsDuplicateTriggerAttributes(string clauses)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit " + clauses + " EXECUTE FUNCTION audit_fn()"), GetSchema(), 23);
+
+        var exception = Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(builder.ToDefinition);
+
+        Assert.Equal(23, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Fact]
+    public void ToDefinition_TriggerNamesAreScopedToTablesNotSchemas()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE audit (id INT); CREATE TABLE other (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON audit EXECUTE FUNCTION audit_fn(); CREATE TRIGGER audit AFTER INSERT ON other EXECUTE FUNCTION audit_fn(); CREATE TRIGGER \"Audit\" AFTER INSERT ON audit EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(3, definition.Triggers.Count);
+        Assert.Equal(2, definition.Triggers.Count(trigger => trigger.Name.Name == "audit"));
+        Assert.Single(definition.Triggers, trigger => trigger.Name.Name == "Audit");
+    }
+
+    [Fact]
+    public void ToDefinition_RejectsDuplicateTriggerNamesOnSameTable()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION audit_fn(); CREATE TRIGGER AUDIT AFTER UPDATE ON items EXECUTE FUNCTION audit_fn()"), GetSchema(), 24);
+
+        var exception = Assert.Throws<SqlSyntaxException.DuplicateObject>(builder.ToDefinition);
+
+        Assert.Equal(24, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Theory]
+    [InlineData("CREATE FUNCTION audit_fn() RETURNS INT RETURN 1")]
+    [InlineData("CREATE FUNCTION audit_fn(value INT) RETURNS trigger LANGUAGE plpgsql AS 'opaque'")]
+    [InlineData("CREATE FUNCTION audit_fn() RETURNS SETOF trigger LANGUAGE plpgsql AS 'opaque'")]
+    public void ToDefinition_RejectsInvalidTriggerFunctionSignatures(string function)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); " + function + "; CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION audit_fn()"), GetSchema(), 25);
+
+        Assert.Throws<SqlSyntaxException.InvalidTrigger>(builder.ToDefinition);
+    }
+
+    [Fact]
+    public void ToDefinition_ReportsMissingTriggerFunctionWithLocation()
+    {
+        const string sql = "CREATE TABLE items (id INT); CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION missing()";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 26);
+
+        var exception = Assert.Throws<SqlSyntaxException.TriggerFunctionNotFound>(builder.ToDefinition);
+
+        Assert.Equal("missing", exception.Function.ToSql());
+        Assert.Equal(26, exception.ObjectSourceRef?.SourceId);
+        Assert.Equal(sql.IndexOf("missing", StringComparison.Ordinal), exception.ObjectSourceRef?.Start);
+    }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON missing EXECUTE FUNCTION audit_fn()")]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER INSERT ON items FROM missing FOR ROW EXECUTE FUNCTION audit_fn()")]
+    public void ToDefinition_ReportsMissingTriggerRelationsWithLocation(string trigger)
+    {
+        string sql = "CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; " + trigger;
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 27);
+
+        var exception = Assert.Throws<SqlSyntaxException.TriggerRelationNotFound>(builder.ToDefinition);
+
+        Assert.Equal("missing", exception.Relation.ToSql());
+        Assert.Equal(27, exception.ObjectSourceRef?.SourceId);
+        Assert.Equal(sql.IndexOf("missing", StringComparison.Ordinal), exception.ObjectSourceRef?.Start);
+    }
+
+    [Fact]
+    public void ToDefinition_TriggersFollowConfiguredSearchPathAndQuotedCase()
+    {
+        var config = CreateConfig() with { SearchPath = [new Identifier("app"), new Identifier("public")] };
+        var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        builder.ProcessStatements(ParseStatements("CREATE TABLE public.items (other INT); CREATE TABLE app.items (id INT); CREATE FUNCTION public.audit_fn() RETURNS INT RETURN 1; CREATE FUNCTION app.audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER \"Audit\" AFTER UPDATE OF id ON items EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+
+        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+
+        Assert.Equal("Audit", trigger.Name.Name);
+        Assert.Equal("app", trigger.Name.Schema.Name);
+        Assert.Equal("app", trigger.OnTable.Schema.Name);
+        Assert.Equal("app", trigger.FunctionName.Schema.Name);
+    }
+
+    [Fact]
+    public void ToDefinition_ConstraintTriggerResolvesDefaultDeferrability()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE CONSTRAINT TRIGGER immediate AFTER UPDATE ON items FOR EACH ROW EXECUTE FUNCTION audit_fn(); CREATE CONSTRAINT TRIGGER deferred AFTER UPDATE ON items INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(new PgTriggerConstraintOptions(null, false, false), definition.Triggers[0].ConstraintOptions);
+        Assert.Equal(new PgTriggerConstraintOptions(null, true, true), definition.Triggers[1].ConstraintOptions);
+    }
+
+    [Fact]
+    public void ToDefinition_TriggerArgumentQuotingIsLosslessAndSafe()
+    {
+        ObjectIdentifier table = ObjectIdentifier.FromStrings("catalog", "public", "items");
+        string[] arguments = ["", "''", "x'); DROP TABLE items; --", "a\\'b", "MixedCase"];
+        var original = new PgTrigger(ObjectIdentifier.FromStrings("catalog", "public", "audit"), table,
+            TriggerTime.After, [new TriggerEvent.Insert()], ObjectIdentifier.FromStrings("catalog", "public", "audit_fn"), [.. arguments]);
+        var builder = CreateBuilder();
+        var statements = ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; " + original.ToCreateStatement(true).ToSql());
+
+        builder.ProcessStatements(statements, GetSchema(), 0);
+
+        Assert.Equal(3, statements.Count);
+        Assert.Equal(arguments, Assert.Single(builder.ToDefinition().Triggers).Arguments);
+    }
+
+    [Theory]
+    [InlineData("empty events")]
+    [InlineData("empty UPDATE OF")]
+    [InlineData("empty REFERENCING")]
+    [InlineData("OR REPLACE CONSTRAINT")]
+    [InlineData("OR ALTER")]
+    [InlineData("wrong body")]
+    [InlineData("qualified name")]
+    [InlineData("IF NOT EXISTS")]
+    [InlineData("long argument")]
+    [InlineData("boolean argument")]
+    public void ToDefinition_ValidatesManuallyConstructedTriggerSyntax(string scenario)
+    {
+        var statements = ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION audit_fn()");
+        var original = Assert.IsType<CreateTrigger>(statements[^1]);
+        var execute = Assert.IsType<PgTriggerExecute>(original.Body);
+        CreateTrigger trigger = scenario switch
+        {
+            "empty events" => original with { Events = [] },
+            "empty UPDATE OF" => original with { Events = [new TriggerEvent.Update([])] },
+            "empty REFERENCING" => original with { PgOptions = new PgStatementTriggerOptions { TransitionRelations = [] } },
+            "OR REPLACE CONSTRAINT" => original with
+            {
+                PgOptions = new PgStatementTriggerOptions { ConstraintOptions = new PgTriggerConstraint(null, null, null) },
+                CreateOrLabel = CreateOrLabel.OrReplace,
+                ExecutionQuantifier = new TriggerExecutionQuantifier.ForEach(TriggerForEachType.Row)
+            },
+            "OR ALTER" => original with { CreateOrLabel = CreateOrLabel.OrAlter },
+            "wrong body" => original with { Body = new Return(new LiteralValue(new Value.Number("1", false))) },
+            "qualified name" => original with { Name = new ObjectName([new Identifier("public"), new Identifier("audit")]) },
+            "IF NOT EXISTS" => original with { IfNotExists = true },
+            "long argument" => original with { Body = execute with { Arguments = [new PgStatementTriggerArgument.Literal(new Value.Number("1", true))] } },
+            "boolean argument" => original with { Body = execute with { Arguments = [new PgStatementTriggerArgument.Literal(new Value.Boolean(true))] } },
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
+        statements[^1] = trigger;
+        var builder = CreateBuilder();
+        builder.ProcessStatements(statements, GetSchema(), 28);
+
+        var exception = Assert.Throws<SqlSyntaxException.InvalidTrigger>(builder.ToDefinition);
+
+        Assert.Equal(28, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Fact]
+    public void TriggerModel_ReportsRelationAndFunctionDependenciesWithoutPseudoRows()
+    {
+        ObjectIdentifier table = ObjectIdentifier.FromStrings("catalog", "public", "items");
+        var trigger = new PgTrigger(ObjectIdentifier.FromStrings("catalog", "public", "audit"), table,
+            TriggerTime.After, [new TriggerEvent.Update()], ObjectIdentifier.FromStrings("catalog", "public", "audit_fn"), [])
+        {
+            ForEachType = TriggerForEachType.Row,
+            ConstraintOptions = new PgTriggerConstraintOptions(ObjectIdentifier.FromStrings("catalog", "public", "parent"), false, false),
+            When = ParseExpression("util.allowed(NEW.id)")
+        };
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        var references = trigger.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>().ToArray();
+
+        Assert.Equal(["public.items", "public.parent", "public.audit_fn", "util.allowed"], references.Select(reference => reference.Name.ToSql()));
     }
 
     private static SchemaIdentifier GetSchema()

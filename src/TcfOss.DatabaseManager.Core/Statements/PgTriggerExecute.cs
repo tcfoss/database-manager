@@ -24,7 +24,7 @@ public record PgTriggerExecute(ObjectName FunctionName, SqlValueList<PgStatement
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
-        ItemRef? item = context.CreateObjectRef(FunctionName);
+        ItemRef? item = context.CreateFunctionOrProcRef(FunctionName);
         if (item != null)
         {
             yield return item;

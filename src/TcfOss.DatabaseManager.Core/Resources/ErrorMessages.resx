@@ -126,6 +126,15 @@
     <data name="Err_Syntax" xml:space="preserve">
         <value>Syntax Error</value>
     </data>
+    <data name="Err_Syntax_InvalidTrigger" xml:space="preserve">
+        <value>The clause '{1}' is not valid for PostgreSQL trigger '{0}'.</value>
+    </data>
+    <data name="Err_Syntax_TriggerRelationNotFound" xml:space="preserve">
+        <value>The trigger relation '{0}' was not found.</value>
+    </data>
+    <data name="Err_Syntax_TriggerFunctionNotFound" xml:space="preserve">
+        <value>The trigger function '{0}' was not found.</value>
+    </data>
     <data name="Err_Syntax_DuplicateObject" xml:space="preserve">
         <value>The database object name '{0}' is used more than once.</value>
     </data>

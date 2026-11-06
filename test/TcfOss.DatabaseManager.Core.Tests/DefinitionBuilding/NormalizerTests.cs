@@ -420,7 +420,7 @@ public class NormalizerTests
     }
 
     [Fact]
-    public void NowFunction_IsConvertedToCurrentTimestamp()
+    public void NowFunction_IsPreserved()
     {
         var text = """
         SELECT
@@ -431,12 +431,12 @@ public class NormalizerTests
         """;
 
         var actual = GetActualSelectText(text);
-        Assert.Contains("CURRENT_TIMESTAMP()", actual);
-        Assert.DoesNotContain("NOW()", actual);
+        Assert.Contains("NOW()", actual);
+        Assert.DoesNotContain("CURRENT_TIMESTAMP()", actual);
     }
 
     [Fact]
-    public void ExistsWithLimit_LimitIsStripped()
+    public void ExistsWithLimit_LimitIsPreserved()
     {
         var text = """
         SELECT
@@ -446,11 +446,11 @@ public class NormalizerTests
         """;
 
         var actual = GetActualSelectText(text);
-        Assert.DoesNotContain("LIMIT", actual);
+        Assert.Contains("LIMIT 1", actual);
     }
 
     [Fact]
-    public void ExistsIsFalse_IsCanonicalizedToNotExists_AndLimitIsStripped()
+    public void ExistsIsFalse_IsPreservedWithLimit()
     {
         var text = """
         SELECT
@@ -460,9 +460,9 @@ public class NormalizerTests
         """;
 
         var actual = GetActualSelectText(text);
-        Assert.Contains("NOT EXISTS", actual);
-        Assert.DoesNotContain("IS FALSE", actual);
-        Assert.DoesNotContain("LIMIT", actual);
+        Assert.Contains("EXISTS", actual);
+        Assert.Contains("IS FALSE", actual);
+        Assert.Contains("LIMIT 1", actual);
     }
 
     [Fact]
@@ -605,6 +605,29 @@ public class NormalizerTests
 
         var actual = GetActualSelectText(text);
         Assert.Contains("NOT `library_catalog`.`book`.`publication_year` > 2000", actual);
+    }
+
+    [Theory]
+    [InlineData("a IS TRUE", "`a` IS TRUE")]
+    [InlineData("a IS UNKNOWN", "`a` IS UNKNOWN")]
+    [InlineData("a IS DISTINCT FROM b", "`a` IS DISTINCT FROM `b`")]
+    [InlineData("a AT TIME ZONE b", "`a` AT TIME ZONE `b`")]
+    [InlineData("a LIKE b", "`a` LIKE `b`")]
+    [InlineData("a ILIKE b", "`a` ILIKE `b`")]
+    [InlineData("a SIMILAR TO b", "`a` SIMILAR TO `b`")]
+    [InlineData("a REGEXP b", "`a` REGEXP `b`")]
+    [InlineData("a = ANY(b)", "`a` = ANY(`b`)")]
+    [InlineData("a.*", "`a`.*")]
+    [InlineData("INTERVAL a DAY", "INTERVAL `a` DAY")]
+    [InlineData("(SELECT a AS x)", "(SELECT `a` AS `x`)")]
+    [InlineData("(a, b)", "(`a`, `b`)")]
+    [InlineData("POSITION(a IN b)", "POSITION(`a` IN `b`)")]
+    [InlineData("CAST(a AS INT)", "CAST(`a` AS INT)")]
+    [InlineData("a::INT", "`a`::INT")]
+    [InlineData("f(a) OVER (PARTITION BY b ORDER BY c)", "f(`a`) OVER (PARTITION BY `b` ORDER BY `c`)")]
+    public void NormalizeExpression_TraversesAdditionalExpressionTypes(string sql, string expected)
+    {
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
     }
 
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)

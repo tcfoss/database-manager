@@ -30,6 +30,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     private readonly Dictionary<ObjectHandle, Declaration<CreateProcedure>> _procedures = [];
     private readonly Dictionary<ObjectHandle, PgTableBuilder> _tableBuilders = [];
     private readonly List<(CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingIndexes = [];
+    private readonly List<(CreateTrigger Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingTriggers = [];
     private int _appliedIndexCount;
 
     public override void ProcessStatements(IEnumerable<Statement> statements, SchemaIdentifier activeSchemaId, int sourceId)
@@ -79,6 +80,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     break;
                 case CreateIndex index:
                     _pendingIndexes.Add((index, activeSchemaId, sourceRef));
+                    break;
+                case CreateTrigger trigger:
+                    _pendingTriggers.Add((trigger, activeSchemaId, sourceRef));
                     break;
                 default:
                     throw new DefinitionException($"{statement.GetType().Name} statement", sourceRef);
@@ -366,12 +370,26 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             });
         }
 
+        var triggerResolver = new PgTriggerResolutionManager(Config, ComponentNormalizer, tables, functions);
+        SqlValueList<PgTrigger> triggers = [];
+        var triggerNames = new HashSet<(ObjectHandle Table, Handle Name)>();
+        foreach ((CreateTrigger Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingTriggers)
+        {
+            PgTrigger trigger = triggerResolver.Resolve(pending.Statement, pending.Schema, pending.Source);
+            if (!triggerNames.Add((ObjectHandle.Create(trigger.OnTable, Config.NameHandling), Handle.Create(trigger.Name, Config.NameHandling))))
+            {
+                throw new SqlSyntaxException.DuplicateObject(trigger.Name.Name + " ON " + trigger.OnTable, pending.Source);
+            }
+            triggers.Add(trigger);
+        }
+
         var definition = new PgDefinition
         {
             Tables = tables,
             CustomTypes = types,
             Functions = functions,
-            Procedures = procedures
+            Procedures = procedures,
+            Triggers = triggers
         };
 
         manager.ValidateDependencies(definition, SourceManager);

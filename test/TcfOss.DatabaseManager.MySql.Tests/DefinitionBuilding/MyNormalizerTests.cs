@@ -2,6 +2,10 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.MySql.Lexing;
+using TcfOss.DatabaseManager.MySql.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.StatementAnalysis;
@@ -76,5 +80,21 @@ public class MyNormalizerTests
             Assert.Equal(dataType, Assert.IsType<DataTypeReference.BuiltIn>(actual.DataType).DataType);
         }
         Assert.Equal(cast.Expression, actual.Expression);
+    }
+
+    [Theory]
+    [InlineData("NOW()", "CURRENT_TIMESTAMP()")]
+    [InlineData("app.NOW()", "app.NOW()")]
+    [InlineData("EXISTS (SELECT 1 LIMIT 1)", "EXISTS (SELECT 1)")]
+    [InlineData("EXISTS (SELECT 1 LIMIT 1) IS FALSE", "NOT EXISTS (SELECT 1)")]
+    [InlineData("1 IS FALSE", "1 IS FALSE")]
+    public void NormalizeExpression_MySqlSpecificRewrites(string sql, string expected)
+    {
+        var config = TestConfig.GetMyTestConfig();
+        var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
+        var parser = new MyParser();
+        Expression expression = parser.ExpressionParser.ParseExpr(new ParserState([.. new MyLexer().Tokenize(sql)]));
+
+        Assert.Equal(expected, normalizer.NormalizeExpression(expression).ToSql());
     }
 }

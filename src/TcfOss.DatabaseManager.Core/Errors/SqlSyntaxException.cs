@@ -11,6 +11,28 @@ namespace TcfOss.DatabaseManager.Core.Errors;
 public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         : SourcedException(GetMessage(message), sourceRef)
 {
+    public class InvalidTrigger(ObjectIdentifier trigger, string clause, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(trigger, clause), sourceRef)
+    {
+        public ObjectIdentifier Trigger { get; } = trigger;
+        public string Clause { get; } = clause;
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_InvalidTrigger);
+    }
+
+    public class TriggerRelationNotFound(ObjectName relation, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(relation), sourceRef)
+    {
+        public ObjectName Relation { get; } = relation;
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_TriggerRelationNotFound);
+    }
+
+    public class TriggerFunctionNotFound(ObjectName function, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(function), sourceRef)
+    {
+        public ObjectName Function { get; } = function;
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_TriggerFunctionNotFound);
+    }
+
     public class UnsupportedDialectClause(string dialect, string clause, SourceRef? sourceRef = null)
         : SqlSyntaxException(s_compositeFormat.Apply(dialect, clause), sourceRef)
     {

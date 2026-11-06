@@ -37,14 +37,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return new Normalizer(Config, ComponentNormalizer);
     }
 
-    private FunctionArgumentExpression NormalizeFunctionArgumentExpression(FunctionArgumentExpression expr, bool inSelect = false, bool flatten = false)
+    protected virtual FunctionArgumentExpression NormalizeFunctionArgumentExpression(FunctionArgumentExpression expression, bool inSelect = false, bool flatten = false)
     {
-        return expr switch
+        return expression switch
         {
-            FunctionArgumentExpression.Wildcard => expr,
+            FunctionArgumentExpression.Wildcard => expression,
             FunctionArgumentExpression.QualifiedWildcard qw => new FunctionArgumentExpression.QualifiedWildcard(ComponentNormalizer.NormalizeObjectName(qw.Name)),
             FunctionArgumentExpression.FunctionExpression fe => new FunctionArgumentExpression.FunctionExpression(NormalizeExpression(fe.Expression, inSelect: inSelect, flatten: flatten)),
-            _ => throw new DefensiveGuardException(true, "function argument expression type", expr.GetType())
+            _ => throw new DefensiveGuardException(true, "function argument expression type", expression.GetType())
         };
     }
 
@@ -90,41 +90,55 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return args;
     }
 
-    private static ObjectName NormalizeFunctionName(ObjectName name)
+    protected virtual FunctionCall NormalizeFunctionCall(FunctionCall functionCall, bool inSelect = false, bool flatten = false)
     {
-        if (name.Values.Count == 1 && name.Values[0].Name.Equals("NOW", StringComparison.OrdinalIgnoreCase))
-        {
-            return new ObjectName([new Identifier("CURRENT_TIMESTAMP")]);
-        }
-        return name;
-    }
-
-    private FunctionCall NormalizeFunctionCall(FunctionCall functionCall, bool inSelect = false, bool flatten = false)
-    {
-        ObjectName funcName = NormalizeFunctionName(functionCall.Name);
         FunctionArguments newArgs = NormalizeFunctionArguments(functionCall.Arguments, inSelect: inSelect, flatten: flatten);
-        return new FunctionCall(funcName)
+        return functionCall with
         {
             Arguments = newArgs,
+            Over = functionCall.Over is { } window ? window with
+            {
+                PartitionBy = window.PartitionBy == null ? null : [.. window.PartitionBy.Select(expression => NormalizeExpression(expression, inSelect, flatten))],
+                OrderBy = NormalizeSelectOrderBy(window.OrderBy, inSelect, flatten)
+            } : null
         };
     }
 
-    private Exists NormalizeExists(Exists exists, bool flatten = false)
+    protected virtual Exists NormalizeExists(Exists exists, bool flatten = false)
     {
-        Select subquery = exists.Subquery;
-        if (subquery.Limit != null)
-        {
-            subquery = subquery with { Limit = null };
-        }
-
-        Select newSubquery = NormalizeSelectInternal(subquery, false, flatten: flatten);
+        Select newSubquery = NormalizeSelectInternal(exists.Subquery, false, flatten: flatten);
         return new Exists(newSubquery, exists.Negated);
     }
 
-    private static InSubquery NormalizeInSubquery(InSubquery inSubquery)
+    protected virtual InSubquery NormalizeInSubquery(InSubquery inSubquery)
     {
         // TODO: Implement full IN-subquery normalization.
         return inSubquery;
+    }
+
+    protected virtual Subquery NormalizeSubquery(Subquery subquery, bool flatten = false)
+    {
+        return subquery with { Query = NormalizeSelectInternal(subquery.Query, false, flatten) };
+    }
+
+    protected virtual Expression NormalizeIdentifier(CompoundIdentifier identifier, bool inSelect = false)
+    {
+        return inSelect ? NormalizeSelectableIdentifier(identifier) : ComponentNormalizer.NormalizeIdentifier(identifier);
+    }
+
+    protected virtual Expression NormalizeIdentifier(SingleIdentifier identifier, bool inSelect = false)
+    {
+        return inSelect ? NormalizeSelectableIdentifier(identifier) : ComponentNormalizer.NormalizeIdentifier(identifier);
+    }
+
+    protected virtual Expression NormalizeQualifiedWildcard(QualifiedWildcard wildcard)
+    {
+        return wildcard with { Qualifier = ComponentNormalizer.NormalizeObjectName(wildcard.Qualifier) };
+    }
+
+    protected virtual Expression NormalizeOtherExpression(Expression expression)
+    {
+        return expression;
     }
 
     private BinaryOperator NormalizeBinaryOperator(BinaryOperator binaryOperator, bool inSelect = false, bool flatten = false)
@@ -141,9 +155,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return new IsNull(NormalizeExpression(isNull.Expression, inSelect: inSelect, flatten: flatten), isNull.Negated);
     }
 
+    protected virtual Expression NormalizeIsFalse(IsFalse isFalse, bool inSelect = false, bool flatten = false)
+    {
+        return isFalse with { Expression = NormalizeExpression(isFalse.Expression, inSelect: inSelect, flatten: flatten) };
+    }
+
     protected virtual Expression NormalizeCast(Cast cast, bool inSelect = false, bool flatten = false)
     {
-        return new Cast(NormalizeExpression(cast.Expression, inSelect: inSelect, flatten: flatten), cast.DataType);
+        return cast with { Expression = NormalizeExpression(cast.Expression, inSelect: inSelect, flatten: flatten) };
     }
 
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
@@ -163,24 +182,66 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Operand = ca.Operand != null ? NormalizeExpression(ca.Operand, inSelect: inSelect, flatten: flatten) : null,
                 ElseResult = ca.ElseResult != null ? NormalizeExpression(ca.ElseResult, inSelect: inSelect, flatten: flatten) : null
             },
-            CompoundIdentifier ci when inSelect => NormalizeSelectableIdentifier(ci),
-            CompoundIdentifier ci => ComponentNormalizer.NormalizeIdentifier(ci),
+            CompoundIdentifier ci => NormalizeIdentifier(ci, inSelect),
+            QualifiedWildcard wildcard => NormalizeQualifiedWildcard(wildcard),
             Exists ex => NormalizeExists(ex, flatten: flatten),
-            // EXISTS(...) IS FALSE is how MySQL/MariaDB stores NOT EXISTS(...) in INFORMATION_SCHEMA.
-            // Canonicalize to Exists(negated: true) so both sides compare equal.
-            IsFalse { Negated: false, Expression: Exists { Negated: false } innerExists } => NormalizeExists(innerExists with { Negated = true }, flatten: flatten),
-            IsFalse isFalse => new IsFalse(NormalizeExpression(isFalse.Expression, inSelect: inSelect, flatten: flatten), isFalse.Negated),
+            IsFalse isFalse => NormalizeIsFalse(isFalse, inSelect: inSelect, flatten: flatten),
             InList il => new InList(NormalizeExpression(il.Expression, inSelect: inSelect, flatten: flatten), [.. il.Items.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))], il.Negated),
             InSubquery isub => NormalizeInSubquery(isub),
+            Subquery subquery => NormalizeSubquery(subquery, flatten),
             Nested nes when flatten => NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten),
             Nested nes => new Nested(NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten)),
-            SingleIdentifier id when inSelect => NormalizeSelectableIdentifier(id),
-            SingleIdentifier id => ComponentNormalizer.NormalizeIdentifier(id),
+            SingleIdentifier id => NormalizeIdentifier(id, inSelect),
             UnaryOperator uo => new UnaryOperator(NormalizeExpression(uo.Expression, inSelect: inSelect, flatten: flatten), uo.Operator),
             FunctionCall fun => NormalizeFunctionCall(fun, inSelect: inSelect, flatten: flatten),
             Cast cast => NormalizeCast(cast, inSelect: inSelect, flatten: flatten),
             IsNull isNull => NormalizeIsNull(isNull, inSelect: inSelect, flatten: flatten),
-            _ => expr
+            IsTrue check => check with { Expression = NormalizeExpression(check.Expression, inSelect, flatten) },
+            IsUnknown check => check with { Expression = NormalizeExpression(check.Expression, inSelect, flatten) },
+            IsDistinctFrom distinct => distinct with
+            {
+                Left = NormalizeExpression(distinct.Left, inSelect, flatten),
+                Right = NormalizeExpression(distinct.Right, inSelect, flatten)
+            },
+            AtTimeZone zone => zone with
+            {
+                Timestamp = NormalizeExpression(zone.Timestamp, inSelect, flatten),
+                Timezone = NormalizeExpression(zone.Timezone, inSelect, flatten)
+            },
+            Like like => like with
+            {
+                Expression = NormalizeExpression(like.Expression, inSelect, flatten),
+                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten)
+            },
+            ILike like => like with
+            {
+                Expression = NormalizeExpression(like.Expression, inSelect, flatten),
+                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten)
+            },
+            SimilarTo similar => similar with
+            {
+                Expression = NormalizeExpression(similar.Expression, inSelect, flatten),
+                Pattern = NormalizeExpression(similar.Pattern, inSelect, flatten)
+            },
+            Regexp regexp => regexp with
+            {
+                Expression = NormalizeExpression(regexp.Expression, inSelect, flatten),
+                Pattern = NormalizeExpression(regexp.Pattern, inSelect, flatten)
+            },
+            QuantifiedBinaryOperator quantified => quantified with
+            {
+                Left = NormalizeExpression(quantified.Left, inSelect, flatten),
+                Right = NormalizeExpression(quantified.Right, inSelect, flatten)
+            },
+            Expressions.Tuple tuple => tuple with { Expressions = [.. tuple.Expressions.Select(expression => NormalizeExpression(expression, inSelect, flatten))] },
+            Position position => position with
+            {
+                Expression = NormalizeExpression(position.Expression, inSelect, flatten),
+                In = NormalizeExpression(position.In, inSelect, flatten)
+            },
+            Interval interval => interval with { Value = NormalizeExpression(interval.Value, inSelect, flatten) },
+            LiteralValue or TypedString => expr,
+            _ => NormalizeOtherExpression(expr)
         };
     }
 

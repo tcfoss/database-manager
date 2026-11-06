@@ -8,4 +8,5 @@ public class PgDefinition
     public DatabaseObjectDict<PgCustomType> CustomTypes { get; init; } = [];
     public DatabaseObjectDict<PgStoredFunction> Functions { get; init; } = [];
     public DatabaseObjectDict<PgStoredProcedure> Procedures { get; init; } = [];
+    public SqlValueList<PgTrigger> Triggers { get; init; } = [];
 }
