@@ -308,7 +308,6 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
         Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(GetState(sql)));
     }
 
-
     private sealed class ModifierParser() : DataTypeParser(new Parser())
     {
         public static long Parse(ParserState state, long minimum, long maximum)
@@ -326,6 +325,4 @@ public class DataTypeTests : ParserTestsBase<GenericLexer, Parser>
             return ParseBoundedUInt(state, minimum, maximum, "length");
         }
     }
-
-
 }

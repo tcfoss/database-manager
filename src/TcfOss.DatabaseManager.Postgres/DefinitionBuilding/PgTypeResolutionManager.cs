@@ -27,14 +27,6 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
         return _names[handle];
     }
 
-    public ObjectIdentifier GetName(ObjectIdentifier name)
-    {
-        ObjectHandle handle = name.OriginalIdentifiers != null
-            ? ObjectHandle.Create(name.OriginalIdentifiers, name.Schema, _config.NameHandling)
-            : ObjectHandle.Create(name, _config.NameHandling);
-        return GetName(handle);
-    }
-
     public DataType Resolve(DataTypeReference reference, SchemaIdentifier activeSchema, SourceRef? sourceRef = null)
     {
         if (reference is DataTypeReference.Array array)
