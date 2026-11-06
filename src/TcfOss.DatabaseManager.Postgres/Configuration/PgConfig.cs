@@ -6,5 +6,5 @@ namespace TcfOss.DatabaseManager.Postgres.Configuration;
 
 public record PgConfig : ConfigWithSchemaMapsBase<PgSchemaMapping>
 {
-    public SqlValueList<Identifier> SearchPath { get; init; } = [new Identifier("public")];
+    public SqlValueList<Identifier> SearchPath { get; init; } = [new("public")];
 }

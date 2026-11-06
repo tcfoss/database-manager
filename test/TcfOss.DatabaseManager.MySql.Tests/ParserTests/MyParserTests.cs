@@ -537,4 +537,13 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS 'table'")]
+    [InlineData("COMMENT ON COLUMN items.id IS NULL")]
+    [InlineData("COMMENT ON FUNCTION f(INT) IS 'function'")]
+    public void PostgresCommentSyntax_IsRejectedByMySqlAndMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

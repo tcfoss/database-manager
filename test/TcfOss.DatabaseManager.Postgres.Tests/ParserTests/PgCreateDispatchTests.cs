@@ -198,4 +198,49 @@ public class PgCreateDispatchTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(TriggerForEachType.Statement, quantifier.Type);
         Assert.False(quantifier.UseEach);
     }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE app.items IS 'it''s a table'", "it''s a table")]
+    [InlineData("COMMENT ON COLUMN app.items.id IS ''", "")]
+    [InlineData("COMMENT ON TABLE app.items IS NULL", null)]
+    [InlineData("COMMENT ON FUNCTION app.f(IN value INT, OUT result TEXT) IS 'function'", "function")]
+    [InlineData("COMMENT ON FUNCTION app.f() IS 'empty signature'", "empty signature")]
+    [InlineData("COMMENT ON PROCEDURE app.p IS 'procedure'", "procedure")]
+    [InlineData("COMMENT ON TRIGGER audit ON app.items IS 'trigger'", "trigger")]
+    [InlineData("COMMENT ON INDEX app.ix IS 'index'", "index")]
+    [InlineData("COMMENT ON TYPE app.kind IS 'type'", "type")]
+    [InlineData("COMMENT ON DOMAIN app.label IS 'domain'", "domain")]
+    [InlineData("COMMENT ON VIEW app.v IS 'view'", "view")]
+    [InlineData("COMMENT ON SEQUENCE app.seq IS 'sequence'", "sequence")]
+    [InlineData("COMMENT ON TABLE app.items IS 'it''''s'", "it''''s")]
+    [InlineData("COMMENT ON TABLE app.items IS 'x''; DROP TABLE items; --'", "x''; DROP TABLE items; --")]
+    public void Comments_RoundTrip(string sql, string? expected)
+    {
+        var comment = Assert.IsType<CommentOn>(ParseStatement(sql));
+
+        if (expected == null)
+        {
+            Assert.IsType<Value.Null>(comment.Comment);
+        }
+        else
+        {
+            Assert.Equal(expected, Assert.IsType<Value.SingleQuotedString>(comment.Comment).Value);
+        }
+        Assert.Equal(sql, comment.ToSql());
+        Assert.Equal(comment, ParseStatement(comment.ToSql()));
+        Assert.Equal(comment, Serialization.FromJson<CommentOn>(Serialization.ToJson(comment)));
+    }
+
+    [Fact]
+    public void Comments_DollarQuotedTextPreservesTagAndApostrophes()
+    {
+        var comment = Assert.IsType<CommentOn>(ParseStatement("COMMENT ON TABLE items IS $tag$it''s; opaque$tag$"));
+
+        var literal = Assert.IsType<Value.DollarQuotedString>(comment.Comment);
+        Assert.Equal("it''s; opaque", literal.Value);
+        Assert.Equal("tag", literal.Tag);
+        Assert.Equal("COMMENT ON TABLE items IS $tag$it''s; opaque$tag$", comment.ToSql());
+        Assert.Equal(comment, ParseStatement(comment.ToSql()));
+        Assert.Equal("tag", Assert.IsType<Value.DollarQuotedString>(Serialization.FromJson<CommentOn>(Serialization.ToJson(comment))!.Comment).Tag);
+    }
 }

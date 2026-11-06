@@ -2133,6 +2133,224 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(30, exception.ObjectSourceRef?.SourceId);
     }
 
+    [Fact]
+    public void ToDefinition_ResolvesCommentsAfterTheirTargetsAcrossFiles()
+    {
+        var builder = CreateBuilder();
+        string body1 = """
+        COMMENT ON TABLE items IS 'table';
+        COMMENT ON COLUMN items.id IS 'column';
+        COMMENT ON FUNCTION f(IN arg INTEGER, OUT result TEXT) IS 'function';
+        COMMENT ON PROCEDURE p() IS 'procedure';
+        COMMENT ON INDEX ix IS 'index';
+        COMMENT ON TYPE mood IS 'type';
+        COMMENT ON DOMAIN label IS 'domain';
+        COMMENT ON TRIGGER audit ON items IS 'trigger'
+        """;
+        builder.ProcessStatements(ParseStatements(body1), GetSchema(), 31);
+        string body2 = """
+        CREATE TABLE items (id INT);
+        CREATE INDEX ix ON items (id);
+        CREATE TYPE mood AS ENUM ('happy');
+        CREATE DOMAIN label AS TEXT;
+        CREATE FUNCTION f(IN arg INT, OUT result TEXT) LANGUAGE SQL AS 'opaque';
+        CREATE PROCEDURE p() LANGUAGE SQL AS 'opaque';
+        CREATE FUNCTION fire() RETURNS trigger LANGUAGE plpgsql AS 'opaque';
+        CREATE TRIGGER audit AFTER INSERT ON items EXECUTE FUNCTION fire()
+        """;
+        builder.ProcessStatements(ParseStatements(body2), GetSchema(), 32);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(8, definition.Comments.Count);
+        KeyValuePair<PgCommentTarget, string> column = Assert.Single(definition.Comments, comment => comment.Key is PgCommentTarget.Column);
+        Assert.Equal("column", column.Value);
+        Assert.Equal("COMMENT ON COLUMN \"public\".\"items\".\"id\" IS 'column'", new CommentOn(column.Key.ToStatementTarget(), new Value.SingleQuotedString(column.Value)).ToSql());
+        Assert.Equal(definition.Comments, builder.ToDefinition().Comments);
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS 'one'", "COMMENT ON TABLE public.items IS 'two'")]
+    [InlineData("COMMENT ON COLUMN items.id IS 'one'", "COMMENT ON COLUMN public.items.id IS 'one'")]
+    [InlineData("COMMENT ON TABLE items IS NULL", "COMMENT ON TABLE items IS 'two'")]
+    [InlineData("COMMENT ON TABLE items IS NULL", "COMMENT ON TABLE public.items IS NULL")]
+    [InlineData("COMMENT ON TABLE items IS ''", "COMMENT ON TABLE public.items IS NULL")]
+    [InlineData("COMMENT ON TABLE items IS ''", "COMMENT ON TABLE items IS 'two'")]
+    [InlineData("COMMENT ON FUNCTION f IS 'one'", "COMMENT ON FUNCTION public.f(INT) IS 'two'")]
+    [InlineData("COMMENT ON DOMAIN label IS 'one'", "COMMENT ON TYPE label IS 'two'")]
+    public void ToDefinition_RejectsDuplicateResolvedCommentTargets(string first, string second)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION f(arg INT) RETURNS INT RETURN arg; CREATE DOMAIN label AS TEXT; " + first), GetSchema(), 33);
+        builder.ProcessStatements(ParseStatements(second), GetSchema(), 34);
+
+        var exception = Assert.Throws<SqlSyntaxException.DuplicateObject>(builder.ToDefinition);
+
+        Assert.Equal(34, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE absent IS NULL")]
+    [InlineData("COMMENT ON TABLE absent IS ''")]
+    [InlineData("COMMENT ON COLUMN items.absent IS 'missing'")]
+    [InlineData("COMMENT ON COLUMN absent.id IS 'missing'")]
+    [InlineData("COMMENT ON FUNCTION absent() IS 'missing'")]
+    [InlineData("COMMENT ON FUNCTION f(TEXT) IS 'wrong signature'")]
+    [InlineData("COMMENT ON PROCEDURE f(INT) IS 'wrong kind'")]
+    [InlineData("COMMENT ON TYPE absent IS 'missing'")]
+    [InlineData("COMMENT ON DOMAIN items IS 'wrong kind'")]
+    [InlineData("COMMENT ON INDEX absent IS 'missing'")]
+    [InlineData("COMMENT ON TRIGGER absent ON items IS 'missing'")]
+    public void ToDefinition_RejectsMissingCommentTargetsWithSource(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION f(arg INT) RETURNS INT RETURN arg;"), GetSchema(), 35);
+        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 36);
+
+        var exception = Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(builder.ToDefinition);
+
+        Assert.Equal(36, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Fact]
+    public void ToDefinition_NullAndEmptyCommentsAreAbsentButWhitespaceIsPreserved()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("COMMENT ON TABLE items IS NULL; COMMENT ON COLUMN items.id IS ''; COMMENT ON COLUMN items.label IS ' '; CREATE TABLE items (id INT, label TEXT)"), GetSchema(), 37);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(" ", Assert.Single(definition.Comments).Value);
+        Assert.IsType<PgCommentTarget.Column>(Assert.Single(definition.Comments).Key);
+    }
+
+    [Fact]
+    public void ToDefinition_CommentsFollowSearchPathAndPreserveQuotedCase()
+    {
+        var config = CreateConfig() with { SearchPath = [new Identifier("app"), new Identifier("public")] };
+        var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        builder.ProcessStatements(ParseStatements("COMMENT ON TABLE items IS 'app'; COMMENT ON TABLE public.items IS 'public'; COMMENT ON COLUMN items.ID IS 'lower'; COMMENT ON COLUMN items.\"ID\" IS 'upper'; CREATE TABLE public.items (other INT); CREATE TABLE app.items (id INT, \"ID\" INT)"), GetSchema(), 38);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(4, definition.Comments.Count);
+        Assert.Equal("app", Assert.IsType<PgCommentTarget.DatabaseObject>(Assert.Single(definition.Comments, comment => comment.Value == "app").Key).Name.Schema.Name);
+        Assert.Equal("id", Assert.IsType<PgCommentTarget.Column>(Assert.Single(definition.Comments, comment => comment.Value == "lower").Key).Name.Name);
+        Assert.Equal("ID", Assert.IsType<PgCommentTarget.Column>(Assert.Single(definition.Comments, comment => comment.Value == "upper").Key).Name.Name);
+    }
+
+    [Theory]
+    [InlineData("VARCHAR(20)", "VARCHAR")]
+    [InlineData("NUMERIC(10,2)", "DECIMAL")]
+    [InlineData("CHAR(10)", "BPCHAR")]
+    [InlineData("TIMESTAMP(3)", "TIMESTAMP WITHOUT TIME ZONE")]
+    [InlineData("TIME(3) WITH TIME ZONE", "TIME WITH TIME ZONE")]
+    [InlineData("INTERVAL DAY TO SECOND(3)", "INTERVAL")]
+    [InlineData("INT[][]", "INT[]")]
+    [InlineData("label[]", "public.label[]")]
+    public void ToDefinition_CommentRoutineSignaturesUseInputTypeIdentity(string declared, string requested)
+    {
+        string statements = $"""
+        COMMENT ON FUNCTION f(IN ignored {requested}, OUT ignored TEXT) IS 'routine';
+        CREATE DOMAIN label AS INT;
+        CREATE FUNCTION f(IN value {declared}, OUT result TEXT)
+        LANGUAGE SQL AS 'opaque'
+        """;
+        var builder = CreateBuilder();
+
+        builder.ProcessStatements(ParseStatements(statements), GetSchema(), 39);
+
+        KeyValuePair<PgCommentTarget, string> comment = Assert.Single(builder.ToDefinition().Comments);
+
+        var routine = Assert.IsType<PgCommentTarget.Routine>(comment.Key);
+        Assert.Single(routine.ArgumentTypes);
+        var roundTripBuilder = CreateBuilder();
+        roundTripBuilder.ProcessStatements(ParseStatements($"CREATE DOMAIN label AS INT; CREATE FUNCTION f(IN value {declared}, OUT result TEXT) LANGUAGE SQL AS 'opaque'; " + new CommentOn(routine.ToStatementTarget(), new Value.SingleQuotedString(comment.Value)).ToSql()), GetSchema(), 40);
+        Assert.Equal(builder.ToDefinition().Comments, roundTripBuilder.ToDefinition().Comments);
+    }
+
+    [Fact]
+    public void ToDefinition_CommentsOnSameNamedTriggersOnDifferentTablesAreDistinct()
+    {
+        string statements = """
+        COMMENT ON TRIGGER audit ON first IS 'first';
+        COMMENT ON TRIGGER audit ON second IS 'second';
+
+        CREATE TABLE first (id INT);
+        CREATE TABLE second (id INT);
+
+        CREATE FUNCTION fire()
+            RETURNS trigger LANGUAGE plpgsql AS 'opaque';
+        CREATE TRIGGER audit
+            AFTER INSERT ON first
+            EXECUTE FUNCTION fire();
+        CREATE TRIGGER audit
+            AFTER INSERT ON second
+            EXECUTE FUNCTION fire()
+        """;
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(statements), GetSchema(), 41);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(2, definition.Comments.Count);
+        Assert.All(definition.Comments, comment => Assert.Equal(comment.Value, Assert.IsType<PgCommentTarget.Trigger>(comment.Key).Table.Name));
+    }
+
+    [Theory]
+    [InlineData("VIEW")]
+    [InlineData("SEQUENCE")]
+    public void ToDefinition_UnsupportedCommentTargetsAreDiagnosed(string kind)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"COMMENT ON {kind} object_name IS 'text'"), GetSchema(), 42);
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+
+        Assert.Equal(42, exception.ObjectSourceRef?.SourceId);
+    }
+
+    [Theory]
+    [InlineData("'it''s'", "it's")]
+    [InlineData("'it''''s'", "it''s")]
+    [InlineData("$tag$it''s; opaque$tag$", "it''s; opaque")]
+    [InlineData("$$NULL$$", "NULL")]
+    [InlineData("$$text$$", "text")]
+    public void ToDefinition_DecodesCommentLiteralValues(string literal, string expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"COMMENT ON TABLE items IS {literal}; CREATE TABLE items (id INT)"), GetSchema(), 43);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(expected, Assert.Single(definition.Comments).Value);
+    }
+
+    [Theory]
+    [InlineData("number")]
+    [InlineData("boolean")]
+    [InlineData("national string")]
+    [InlineData("hex string")]
+    public void ToDefinition_RejectsInvalidManualCommentValues(string scenario)
+    {
+        Value value = scenario switch
+        {
+            "number" => new Value.Number("1", false),
+            "boolean" => new Value.Boolean(true),
+            "national string" => new Value.NationalStringLiteral("text"),
+            "hex string" => new Value.HexString("1234"),
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
+        var comment = Assert.IsType<CommentOn>(ParseStatement("COMMENT ON TABLE items IS NULL")) with { Comment = value };
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT)"), GetSchema(), 44);
+        builder.ProcessStatements([comment], GetSchema(), 45);
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
+
+        Assert.Equal(45, exception.ObjectSourceRef?.SourceId);
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));

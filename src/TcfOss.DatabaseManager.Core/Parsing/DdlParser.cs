@@ -36,6 +36,55 @@ public class DdlParser
         _parseIdentifier = _p.ComponentParser.ParseIdentifier;
     }
 
+    public CommentOn ParseCommentOn(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.COMMENT, Keyword.ON);
+        PgStatementCommentTarget target;
+        if (state.ParseKeyword(Keyword.COLUMN))
+        {
+            target = new PgStatementCommentTarget.Column(_parseObjectName(state));
+        }
+        else if (state.ParseKeyword(Keyword.TRIGGER))
+        {
+            Identifier name = _parseIdentifier(state);
+            state.ExpectKeyword(Keyword.ON);
+            target = new PgStatementCommentTarget.Trigger(name, _parseObjectName(state));
+        }
+        else
+        {
+            Keyword kind = state.ParseKeywordsAny(Keyword.TABLE, Keyword.VIEW, Keyword.INDEX,
+                Keyword.TYPE, Keyword.DOMAIN, Keyword.SEQUENCE, Keyword.FUNCTION, Keyword.PROCEDURE);
+            if (kind == Keyword.undefined)
+            {
+                throw state.ExpectedException("TABLE", "COLUMN", "VIEW", "INDEX", "TYPE", "DOMAIN", "SEQUENCE", "FUNCTION", "PROCEDURE", "TRIGGER");
+            }
+            PgCommentObjectType objectType = PgCommentObjectType.Parse(kind.ToString());
+            ObjectName name = _parseObjectName(state);
+            if (kind is Keyword.FUNCTION or Keyword.PROCEDURE)
+            {
+                SqlValueList<StatementRoutineParameter>? parameters = state.PeekIs<ParenOpen>()
+                    ? ParseRoutineParameterList(state, kind == Keyword.FUNCTION) : null;
+                if (parameters != null && parameters.Any(parameter => parameter.ParameterDefault != null
+                    || parameter is StatementRoutineParameter.Undirected
+                    || parameter is StatementRoutineParameter.General { Options: not null }))
+                {
+                    throw state.ExpectedException("routine signature without defaults or SQL Server options");
+                }
+                target = new PgStatementCommentTarget.Routine(objectType, name, parameters);
+            }
+            else
+            {
+                target = new PgStatementCommentTarget.DatabaseObject(objectType, name);
+            }
+        }
+        state.ExpectKeyword(Keyword.IS);
+        if (state.Peek() is not (StringLiteral or DollarQuotedStringLiteral or Word { Keyword: Keyword.NULL }))
+        {
+            throw state.ExpectedException("string literal", "NULL");
+        }
+        return new CommentOn(target, ValueParser.ParseValue(state));
+    }
+
     /// <summary>
     /// Parses a trigger time keyword. Core accepts all four variants
     /// (<c>BEFORE</c>, <c>AFTER</c>, <c>INSTEAD OF</c>, <c>FOR</c>); dialects

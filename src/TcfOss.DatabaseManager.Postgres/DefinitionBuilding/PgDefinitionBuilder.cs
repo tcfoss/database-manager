@@ -8,6 +8,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -31,6 +32,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     private readonly Dictionary<ObjectHandle, PgTableBuilder> _tableBuilders = [];
     private readonly List<(CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingIndexes = [];
     private readonly List<(CreateTrigger Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingTriggers = [];
+    private readonly List<(CommentOn Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingComments = [];
     private int _appliedIndexCount;
 
     public override void ProcessStatements(IEnumerable<Statement> statements, SchemaIdentifier activeSchemaId, int sourceId)
@@ -83,6 +85,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     break;
                 case CreateTrigger trigger:
                     _pendingTriggers.Add((trigger, activeSchemaId, sourceRef));
+                    break;
+                case CommentOn comment:
+                    _pendingComments.Add((comment, activeSchemaId, sourceRef));
                     break;
                 default:
                     throw new DefinitionException($"{statement.GetType().Name} statement", sourceRef);
@@ -396,6 +401,28 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             Procedures = procedures,
             Triggers = triggers
         };
+
+        var commentResolver = new PgCommentResolutionManager(Config, definition, manager);
+        var commentTargets = new HashSet<PgCommentTarget>();
+        foreach ((CommentOn Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingComments)
+        {
+            PgCommentTarget target = commentResolver.Resolve(pending.Statement.Target, pending.Schema, pending.Source);
+            if (!commentTargets.Add(target))
+            {
+                throw new SqlSyntaxException.DuplicateObject("COMMENT ON " + target.ToStatementTarget().ToSql(), pending.Source);
+            }
+            string? comment = pending.Statement.Comment switch
+            {
+                Value.SingleQuotedString literal => literal.Value.Replace("''", "'", StringComparison.Ordinal),
+                Value.DollarQuotedString literal => literal.Value,
+                Value.Null => null,
+                _ => throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "non-string COMMENT ON value", pending.Source)
+            };
+            if (comment is { Length: > 0 })
+            {
+                definition.Comments.Add(target, comment);
+            }
+        }
 
         manager.ValidateDependencies(definition, SourceManager);
         List<SourcedException> errors = ValidateDefinition(definition);

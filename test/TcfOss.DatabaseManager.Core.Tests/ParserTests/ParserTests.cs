@@ -502,4 +502,15 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.ThrowsAny<ParseException>(() => new Parser().Parse(GetTokens(sql)));
     }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS 'table'")]
+    [InlineData("COMMENT ON COLUMN items.id IS NULL")]
+    [InlineData("COMMENT ON FUNCTION f(INT) IS 'function'")]
+    public void Comments_AreAcceptedByKitchenSinkParser(string sql)
+    {
+        var comment = Assert.IsType<CommentOn>(ParseStatement(sql));
+
+        Assert.Equal(sql, comment.ToSql());
+    }
 }

@@ -313,7 +313,7 @@ public class MyDataTypeTests
     {
         var lexer = new MyLexer();
         var parser = new MyParser();
-        var state = new Core.Parsing.ParserState([.. lexer.Tokenize(text)]);
+        var state = new ParserState([.. lexer.Tokenize(text)]);
         return parser.DataTypeParser.ParseDataType(state);
     }
 

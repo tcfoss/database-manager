@@ -23,6 +23,7 @@ public class MsParser : Parser
     public override bool SupportsPostgresCastSyntax => false;
     public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
+    protected override bool SupportsCommentOn => false;
 
     public MsParser()
     {

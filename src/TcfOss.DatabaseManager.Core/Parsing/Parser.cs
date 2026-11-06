@@ -28,6 +28,7 @@ public class Parser : IParser
     public virtual bool SupportsPostgresCastSyntax => true;
     public virtual bool SupportsPostgresRegexOperators => true;
     public virtual bool SupportsPostgresIdentitySyntax => true;
+    protected virtual bool SupportsCommentOn => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }
 
@@ -194,6 +195,7 @@ public class Parser : IParser
             Keyword.DELETE => DmlParser.ParseDelete(state, null),
             Keyword.WITH => ParseCteQuery(state),
             Keyword.CREATE => ParseCreate(state),
+            Keyword.COMMENT when SupportsCommentOn => DdlParser.ParseCommentOn(state),
             Keyword.ALTER => ParseAlter(state),
             Keyword.DROP => DdlParser.ParseDropObject(state),
             Keyword.IF => ControlFlowParser.ParseIf(state),
