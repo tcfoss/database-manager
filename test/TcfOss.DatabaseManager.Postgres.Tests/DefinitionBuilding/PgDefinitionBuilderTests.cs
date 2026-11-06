@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
@@ -1642,7 +1643,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TRIGGER audit AFTER INSERT ON app.items EXECUTE PROCEDURE app.audit_fn(Named, \"Quoted\", 01, 1.5, 'it''s ok'); CREATE TABLE app.items (id INT); CREATE FUNCTION app.audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'"), GetSchema(), 8);
 
-        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+        PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
 
         Assert.Equal("app", trigger.Name.Schema.Name);
         Assert.Equal("items", trigger.OnTable.Name);
@@ -1693,9 +1694,19 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void ToDefinition_ResolvesAndNormalizesTriggerWhenRows()
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER UPDATE ON items FOR EACH ROW WHEN (NEW.ID IS DISTINCT FROM OLD.ID) EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements("""
+        CREATE TABLE items (id INT);
 
-        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+        CREATE FUNCTION audit_fn()
+            RETURNS trigger LANGUAGE plpgsql AS 'opaque';
+
+        CREATE TRIGGER audit
+            AFTER UPDATE ON items
+            FOR EACH ROW WHEN (NEW.ID IS DISTINCT FROM OLD.ID)
+            EXECUTE FUNCTION audit_fn()
+        """), GetSchema(), 0);
+
+        PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
         var when = Assert.IsType<IsDistinctFrom>(trigger.When);
 
         Assert.Equal(["new", "id"], Assert.IsType<CompoundIdentifier>(when.Left).Identifiers.Select(identifier => identifier.Name));
@@ -1715,9 +1726,21 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void ToDefinition_NormalizesTriggerWhenUsingSharedTraversal(string expression, string expected)
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit AFTER INSERT ON items FOR ROW WHEN ({expression}) EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements($"""
+            CREATE TABLE items (id INT);
 
-        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+            CREATE FUNCTION audit_fn()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS 'opaque';
+
+            CREATE TRIGGER audit
+                AFTER INSERT ON items
+                FOR ROW WHEN ({expression})
+                EXECUTE FUNCTION audit_fn()
+            """), GetSchema(), 0);
+
+        PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
 
         Assert.Equal(expected, trigger.When!.ToSql());
     }
@@ -1735,13 +1758,13 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         const string declarations = "CREATE TABLE items (id INT); CREATE TABLE other (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; ";
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(declarations + sql), GetSchema(), 0);
-        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+        PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
         var reloaded = CreateBuilder();
 
         reloaded.ProcessStatements(ParseStatements(declarations + trigger.ToCreateStatement(true).ToSql()), GetSchema(), 0);
 
-        Assert.Equal(trigger, Assert.Single(reloaded.ToDefinition().Triggers));
-        Assert.Equal(trigger, Assert.Single(builder.ToDefinition().Triggers));
+        Assert.Equal(trigger, Assert.Single(Assert.Single(reloaded.ToDefinition().Triggers.Values).Values));
+        Assert.Equal(trigger, Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values));
     }
 
     [Theory]
@@ -1813,9 +1836,38 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         PgDefinition definition = builder.ToDefinition();
 
-        Assert.Equal(3, definition.Triggers.Count);
-        Assert.Equal(2, definition.Triggers.Count(trigger => trigger.Name.Name == "audit"));
-        Assert.Single(definition.Triggers, trigger => trigger.Name.Name == "Audit");
+        Assert.Equal(2, definition.Triggers.Count);
+        ObjectIdentifier auditTable = Assert.Single(definition.Tables.Values, table => table.Name.Name == "audit").Name;
+        ObjectIdentifier otherTable = Assert.Single(definition.Tables.Values, table => table.Name.Name == "other").Name;
+        DatabaseComponentDict<PgTrigger> auditTriggers = definition.Triggers[auditTable];
+        Assert.Same(auditTriggers, definition.Triggers[new ObjectIdentifier("AUDIT", auditTable.Schema, QuoteStyle.None)]);
+        Assert.Equal(2, auditTriggers.Count);
+        Assert.Equal("audit", auditTriggers[new Identifier("AUDIT")].Name.Name);
+        Assert.Equal("Audit", auditTriggers[new Identifier("Audit", QuoteStyle.Ansi)].Name.Name);
+        Assert.Equal("audit", Assert.Single(definition.Triggers[otherTable].Values).Name.Name);
+    }
+
+    [Fact]
+    public void ToDefinition_TriggerGroupsAreOrderIndependentAndOmitTablesWithoutTriggers()
+    {
+        const string declarations = "CREATE TABLE items (id INT); CREATE TABLE other (id INT); CREATE TABLE unused (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; ";
+        string[] statements =
+        [
+            "CREATE TRIGGER first AFTER INSERT ON items EXECUTE FUNCTION audit_fn()",
+            "CREATE TRIGGER second AFTER UPDATE ON items EXECUTE FUNCTION audit_fn()",
+            "CREATE TRIGGER first AFTER INSERT ON other EXECUTE FUNCTION audit_fn()"
+        ];
+        var builder = CreateBuilder();
+        var reversed = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(declarations + string.Join("; ", statements)), GetSchema(), 0);
+        reversed.ProcessStatements(ParseStatements(declarations + string.Join("; ", statements.Reverse())), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(definition.Triggers, reversed.ToDefinition().Triggers);
+        Assert.Equal(2, definition.Triggers.Count);
+        ObjectIdentifier unusedTable = Assert.Single(definition.Tables.Values, table => table.Name.Name == "unused").Name;
+        Assert.False(definition.Triggers.ContainsKey(unusedTable));
     }
 
     [Fact]
@@ -1878,7 +1930,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
         builder.ProcessStatements(ParseStatements("CREATE TABLE public.items (other INT); CREATE TABLE app.items (id INT); CREATE FUNCTION public.audit_fn() RETURNS INT RETURN 1; CREATE FUNCTION app.audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER \"Audit\" AFTER UPDATE OF id ON items EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
 
-        PgTrigger trigger = Assert.Single(builder.ToDefinition().Triggers);
+        PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
 
         Assert.Equal("Audit", trigger.Name.Name);
         Assert.Equal("app", trigger.Name.Schema.Name);
@@ -1894,8 +1946,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         PgDefinition definition = builder.ToDefinition();
 
-        Assert.Equal(new PgTriggerConstraintOptions(null, false, false), definition.Triggers[0].ConstraintOptions);
-        Assert.Equal(new PgTriggerConstraintOptions(null, true, true), definition.Triggers[1].ConstraintOptions);
+        DatabaseComponentDict<PgTrigger> triggers = Assert.Single(definition.Triggers.Values);
+        Assert.Equal(new PgTriggerConstraintOptions(null, false, false), triggers[new Identifier("immediate")].ConstraintOptions);
+        Assert.Equal(new PgTriggerConstraintOptions(null, true, true), triggers[new Identifier("deferred")].ConstraintOptions);
     }
 
     [Fact]
@@ -1911,7 +1964,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(statements, GetSchema(), 0);
 
         Assert.Equal(3, statements.Count);
-        Assert.Equal(arguments, Assert.Single(builder.ToDefinition().Triggers).Arguments);
+        Assert.Equal(arguments, Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values).Arguments);
     }
 
     [Theory]

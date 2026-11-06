@@ -371,16 +371,21 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         }
 
         var triggerResolver = new PgTriggerResolutionManager(Config, ComponentNormalizer, tables, functions);
-        SqlValueList<PgTrigger> triggers = [];
-        var triggerNames = new HashSet<(ObjectHandle Table, Handle Name)>();
+        var triggers = new DatabaseObjectDict<DatabaseComponentDict<PgTrigger>>(Config.NameHandling);
         foreach ((CreateTrigger Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingTriggers)
         {
             PgTrigger trigger = triggerResolver.Resolve(pending.Statement, pending.Schema, pending.Source);
-            if (!triggerNames.Add((ObjectHandle.Create(trigger.OnTable, Config.NameHandling), Handle.Create(trigger.Name, Config.NameHandling))))
+            if (!triggers.TryGetValue(trigger.OnTable, out DatabaseComponentDict<PgTrigger>? tableTriggers))
+            {
+                tableTriggers = new DatabaseComponentDict<PgTrigger>(Config.NameHandling);
+                triggers.Add(trigger.OnTable, tableTriggers);
+            }
+            Handle triggerName = Handle.Create(trigger.Name, Config.NameHandling);
+            if (tableTriggers.ContainsKey(triggerName))
             {
                 throw new SqlSyntaxException.DuplicateObject(trigger.Name.Name + " ON " + trigger.OnTable, pending.Source);
             }
-            triggers.Add(trigger);
+            tableTriggers.Add(triggerName, trigger);
         }
 
         var definition = new PgDefinition
