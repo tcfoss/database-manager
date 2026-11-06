@@ -514,4 +514,27 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
         Assert.Contains("RETURNS", error.Message);
     }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW SET NEW.id = 1")]
+    [InlineData("CREATE TRIGGER audit BEFORE UPDATE ON items FOR EACH ROW FOLLOWS other SELECT 1")]
+    public void Triggers_RetainMySqlMariaDbSyntax(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER INSERT ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER TRUNCATE ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER UPDATE OF id ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT OR UPDATE ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT, UPDATE ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items REFERENCING NEW TABLE new_rows FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW WHEN (NEW.id > 0) SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW EXECUTE FUNCTION audit()")]
+    public void PostgresTriggerSyntax_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

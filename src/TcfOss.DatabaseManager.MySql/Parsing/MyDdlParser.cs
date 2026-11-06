@@ -11,6 +11,7 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     protected override bool SupportsIndexMethodAfterTableName => false;
     protected override bool UseSqlRoutineTail(ParserState state) => false;
     protected override bool SupportsOmittedFunctionReturn => false;
+    protected override bool SupportsPostgresTriggerSyntax => false;
 
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
     {
@@ -33,8 +34,9 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
         return false;
     }
 
-    protected override SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state)
+    protected override SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state, out bool eventsUseOr)
     {
+        eventsUseOr = false;
         // MySQL requires exactly one trigger event, whereas T-SQL allows multiple.
         return [ParseTriggerEvent(state)];
     }

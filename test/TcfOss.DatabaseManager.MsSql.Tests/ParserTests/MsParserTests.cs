@@ -263,4 +263,27 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
     }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT, UPDATE, DELETE AS SELECT 1")]
+    [InlineData("CREATE OR ALTER TRIGGER audit ON items INSTEAD OF INSERT AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items FOR UPDATE AS SELECT 1")]
+    public void Triggers_RetainMsSqlSyntax(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit ON items AFTER INSERT AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER TRUNCATE AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER UPDATE OF id AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT OR UPDATE AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT FOR ROW AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT REFERENCING NEW TABLE new_rows AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT WHEN (id > 0) AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT EXECUTE FUNCTION audit()")]
+    public void PostgresTriggerSyntax_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

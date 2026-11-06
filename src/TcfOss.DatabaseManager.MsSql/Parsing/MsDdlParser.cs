@@ -15,6 +15,7 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     protected override bool UseSqlRoutineTail(ParserState state) => false;
 
     protected override bool SupportsOmittedFunctionReturn => false;
+    protected override bool SupportsPostgresTriggerSyntax => false;
 
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
     {

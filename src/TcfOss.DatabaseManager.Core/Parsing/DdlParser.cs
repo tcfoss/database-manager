@@ -21,6 +21,9 @@ public class DdlParser
     protected virtual bool SupportsIndexMethodAfterTableName => true;
     protected virtual RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction) => RoutineParamsSupportStyle.KitchenSink;
     protected virtual bool SupportsOmittedFunctionReturn => true;
+    protected virtual bool SupportsPostgresTriggerSyntax => true;
+    protected virtual bool SupportsCommaSeparatedTriggerEvents => true;
+    protected virtual bool SupportsQualifiedTriggerNames => true;
 
     private readonly Parser _p;
     private readonly Func<ParserState, ObjectName> _parseObjectName;
@@ -60,24 +63,44 @@ public class DdlParser
     }
 
     /// <summary>
-    /// Parses a single trigger event keyword (<c>INSERT</c>, <c>UPDATE</c>,
-    /// <c>DELETE</c>).
+    /// Parses a trigger event, including PostgreSQL <c>UPDATE OF</c> columns
+    /// and <c>TRUNCATE</c> when supported by the dialect.
     /// </summary>
-    protected static TriggerEvent ParseTriggerEvent(ParserState state)
+    protected virtual TriggerEvent ParseTriggerEvent(ParserState state)
     {
         Keyword? next = (state.Next() as Word)?.Keyword;
         return next switch
         {
             Keyword.INSERT => new TriggerEvent.Insert(),
-            Keyword.UPDATE => new TriggerEvent.Update(),
+            Keyword.UPDATE => new TriggerEvent.Update(SupportsPostgresTriggerSyntax && state.ParseKeyword(Keyword.OF)
+                ? state.ParseCommaSeparated(_parseIdentifier) : null),
             Keyword.DELETE => new TriggerEvent.Delete(),
-            _ => throw state.ExpectedException("INSERT", "UPDATE", "DELETE")
+            Keyword.TRUNCATE when SupportsPostgresTriggerSyntax => new TriggerEvent.Truncate(),
+            _ => throw (SupportsPostgresTriggerSyntax
+                ? state.ExpectedException("INSERT", "UPDATE", "DELETE", "TRUNCATE")
+                : state.ExpectedException("INSERT", "UPDATE", "DELETE"))
         };
     }
 
-    protected virtual SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state)
+    protected virtual SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state, out bool eventsUseOr)
     {
-        return state.ParseCommaSeparated(ParseTriggerEvent);
+        List<TriggerEvent> events = [ParseTriggerEvent(state)];
+        eventsUseOr = SupportsPostgresTriggerSyntax && state.ParseKeyword(Keyword.OR);
+        if (eventsUseOr)
+        {
+            do
+            {
+                events.Add(ParseTriggerEvent(state));
+            } while (state.ParseKeyword(Keyword.OR));
+        }
+        else if (SupportsCommaSeparatedTriggerEvents)
+        {
+            while (state.ConsumeTokenIs<Comma>())
+            {
+                events.Add(ParseTriggerEvent(state));
+            }
+        }
+        return [.. events];
     }
 
 
@@ -161,29 +184,33 @@ public class DdlParser
 
     public virtual CreateTrigger ParseCreateTrigger(ParserState state, CreateOrLabel? createOrLabel = null, Definer? definer = null)
     {
+        bool isConstraint = SupportsPostgresTriggerSyntax && state.ParseKeyword(Keyword.CONSTRAINT);
         state.ExpectKeyword(Keyword.TRIGGER);
 
-        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+        bool ifNotExists = ParseOptionalTriggerIfNotExists(state);
 
-        ObjectName name = _parseObjectName(state);
+        ObjectName name = ParseTriggerName(state);
 
         ObjectName? tableName = ParseOptionalTriggerOnTableBeforeTime(state);
         bool tableNameBeforeTimeAndEvent = tableName != null;
 
         TriggerTime triggerTime = ParseTriggerTime(state);
-        SqlValueList<TriggerEvent> events = ParseTriggerEvents(state);
+        SqlValueList<TriggerEvent> events = ParseTriggerEvents(state, out bool eventsUseOr);
 
         if (!tableNameBeforeTimeAndEvent)
         {
             tableName = ParseTriggerOnTable(state);
         }
 
+        PgTriggerConstraint? constraint = isConstraint ? ParseTriggerConstraint(state) : null;
+        SqlValueList<PgTriggerTransitionRelation>? transitionRelations = ParseOptionalTriggerTransitionRelations(state);
         TriggerExecutionQuantifier? executionQuantifier = ParseOptionalTriggerExecutionQuantifier(state);
+        Expression? when = ParseOptionalTriggerWhen(state);
         TriggerOrder? order = ParseOptionalTriggerOrder(state);
 
         bool triggerStartsWithAs = ParseTriggerBodyStartsWithAs(state);
 
-        Statement body = _p.ParseStatement(state);
+        Statement body = ParseTriggerBody(state);
 
         return new CreateTrigger(name, triggerTime, events, tableName!, body)
         {
@@ -193,8 +220,119 @@ public class DdlParser
             IfNotExists = ifNotExists,
             TableNameBeforeTimeAndEvent = tableNameBeforeTimeAndEvent,
             ExecutionQuantifier = executionQuantifier,
-            TriggerBodyStartsWithAs = triggerStartsWithAs
+            TriggerBodyStartsWithAs = triggerStartsWithAs,
+            PgOptions = eventsUseOr || constraint != null || transitionRelations != null || when != null
+                ? new PgStatementTriggerOptions
+                {
+                    EventsUseOr = eventsUseOr,
+                    ConstraintOptions = constraint,
+                    TransitionRelations = transitionRelations,
+                    When = when
+                } : null
         };
+    }
+
+    protected virtual bool ParseOptionalTriggerIfNotExists(ParserState state)
+    {
+        return state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+    }
+
+    protected virtual ObjectName ParseTriggerName(ParserState state)
+    {
+        return SupportsQualifiedTriggerNames ? _parseObjectName(state) : new ObjectName(_parseIdentifier(state));
+    }
+
+    private PgTriggerConstraint ParseTriggerConstraint(ParserState state)
+    {
+        ObjectName? fromTable = state.ParseKeyword(Keyword.FROM) ? _parseObjectName(state) : null;
+        bool? deferrable = null;
+        if (state.ParseKeyword(Keyword.DEFERRABLE))
+        {
+            deferrable = true;
+        }
+        else if (state.ParseKeywordsAll(Keyword.NOT, Keyword.DEFERRABLE))
+        {
+            deferrable = false;
+        }
+
+        bool? initiallyDeferred = null;
+        if (state.ParseKeyword(Keyword.INITIALLY))
+        {
+            initiallyDeferred = state.ParseKeywordsAny(Keyword.DEFERRED, Keyword.IMMEDIATE) switch
+            {
+                Keyword.DEFERRED => true,
+                Keyword.IMMEDIATE => false,
+                _ => throw state.ExpectedException("DEFERRED", "IMMEDIATE")
+            };
+        }
+        return new PgTriggerConstraint(fromTable, deferrable, initiallyDeferred);
+    }
+
+    protected virtual SqlValueList<PgTriggerTransitionRelation>? ParseOptionalTriggerTransitionRelations(ParserState state)
+    {
+        if (!SupportsPostgresTriggerSyntax || !state.ParseKeyword(Keyword.REFERENCING))
+        {
+            return null;
+        }
+        List<PgTriggerTransitionRelation> relations = [];
+        do
+        {
+            bool isNew = state.ParseKeywordsAny(Keyword.OLD, Keyword.NEW) switch
+            {
+                Keyword.OLD => false,
+                Keyword.NEW => true,
+                _ => throw state.ExpectedException("OLD", "NEW")
+            };
+            state.ExpectKeyword(Keyword.TABLE);
+            bool useAs = state.ParseKeyword(Keyword.AS);
+            relations.Add(new PgTriggerTransitionRelation(isNew, _parseIdentifier(state), useAs));
+        } while (state.PeekKeyword(Keyword.OLD) || state.PeekKeyword(Keyword.NEW));
+        return [.. relations];
+    }
+
+    protected virtual Expression? ParseOptionalTriggerWhen(ParserState state)
+    {
+        if (!SupportsPostgresTriggerSyntax || !state.ParseKeyword(Keyword.WHEN))
+        {
+            return null;
+        }
+        return state.ParseParenthesized(_p.ExpressionParser.ParseExpr);
+    }
+
+    protected virtual Statement ParseTriggerBody(ParserState state)
+    {
+        if (SupportsPostgresTriggerSyntax && state.PeekKeyword(Keyword.EXECUTE)
+            && state.PeekNth(1) is Word { Keyword: Keyword.FUNCTION or Keyword.PROCEDURE })
+        {
+            return ParseTriggerExecute(state);
+        }
+        return _p.ParseStatement(state);
+    }
+
+    protected PgTriggerExecute ParseTriggerExecute(ParserState state)
+    {
+        Token token = state.Peek();
+        state.ExpectKeyword(Keyword.EXECUTE);
+        bool useProcedure = state.ParseKeywordsAny(Keyword.FUNCTION, Keyword.PROCEDURE) switch
+        {
+            Keyword.FUNCTION => false,
+            Keyword.PROCEDURE => true,
+            _ => throw state.ExpectedException("FUNCTION", "PROCEDURE")
+        };
+        ObjectName functionName = _parseObjectName(state);
+        SqlValueList<PgStatementTriggerArgument> arguments = state.ParseParenthesizedCommaSeparated(ParseTriggerArgument, allowEmpty: true);
+        var statement = new PgTriggerExecute(functionName, arguments, useProcedure);
+        Parser.AttachStatementMetadata(statement, token, state);
+        return statement;
+    }
+
+    protected virtual PgStatementTriggerArgument ParseTriggerArgument(ParserState state)
+    {
+        if (state.Peek() is Word)
+        {
+            return new PgStatementTriggerArgument.Named(_parseIdentifier(state));
+        }
+        return new PgStatementTriggerArgument.Literal(ValueParser.ParseValue(state));
     }
 
     protected virtual ObjectName? ParseOptionalTriggerOnTableBeforeTime(ParserState state)
@@ -212,15 +350,24 @@ public class DdlParser
         return _parseObjectName(state);
     }
 
-    private static TriggerExecutionQuantifier.ForEach? ParseOptionalTriggerExecutionQuantifier(ParserState state)
+    protected virtual TriggerExecutionQuantifier.ForEach? ParseOptionalTriggerExecutionQuantifier(ParserState state)
     {
-        if (!state.ParseKeywordsAll(Keyword.FOR, Keyword.EACH))
+        if (!SupportsPostgresTriggerSyntax)
+        {
+            if (!state.ParseKeywordsAll(Keyword.FOR, Keyword.EACH))
+            {
+                return null;
+            }
+            return new TriggerExecutionQuantifier.ForEach(ParseTriggerForEachType(state));
+        }
+        if (!state.ParseKeyword(Keyword.FOR))
         {
             return null;
         }
 
+        bool useEach = state.ParseKeyword(Keyword.EACH);
         TriggerForEachType type = ParseTriggerForEachType(state);
-        return new TriggerExecutionQuantifier.ForEach(type);
+        return new TriggerExecutionQuantifier.ForEach(type) { UseEach = useEach };
     }
 
     private static TriggerForEachType ParseTriggerForEachType(ParserState state)
