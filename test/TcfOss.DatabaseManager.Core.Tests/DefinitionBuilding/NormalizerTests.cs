@@ -560,19 +560,26 @@ public class NormalizerTests
         Assert.Equal(expected, GetActualSelectText(sql, usePseudoTables: false));
     }
 
-    [Fact]
-    public void FunctionCall_NullArguments_ArePreserved()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FunctionCall_NullArguments_ArePreserved(bool withoutList)
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
         var expression = new FunctionCall(new ObjectName([new Identifier("schema"), new Identifier("NOW")]))
         {
-            Arguments = new FunctionArguments.List(),
+            Arguments = withoutList ? new FunctionArguments.None() : new FunctionArguments.List(),
         };
 
         var actual = Assert.IsType<FunctionCall>(normalizer.NormalizeExpression(expression));
 
         Assert.Equal(expression.Name, actual.Name);
+        if (withoutList)
+        {
+            Assert.Same(expression.Arguments, actual.Arguments);
+            return;
+        }
         var arguments = Assert.IsType<FunctionArguments.List>(actual.Arguments);
         Assert.Null(arguments.Arguments);
         Assert.Null(arguments.Clauses);
@@ -625,9 +632,24 @@ public class NormalizerTests
     [InlineData("CAST(a AS INT)", "CAST(`a` AS INT)")]
     [InlineData("a::INT", "`a`::INT")]
     [InlineData("f(a) OVER (PARTITION BY b ORDER BY c)", "f(`a`) OVER (PARTITION BY `b` ORDER BY `c`)")]
+    [InlineData("f(a) OVER ()", "f(`a`) OVER ()")]
+    [InlineData("f(a) OVER (ORDER BY b)", "f(`a`) OVER (ORDER BY `b`)")]
     public void NormalizeExpression_TraversesAdditionalExpressionTypes(string sql, string expected)
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NormalizeExpression_PreservesNonRecursiveNodes(bool typedString)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        Expression expression = typedString ? new TypedString("1", new DataType.Int()) : new Wildcard();
+
+        Assert.Same(expression, normalizer.NormalizeExpression(expression));
+        Assert.Same(expression, normalizer.NormalizeExpressionNoFlatten(expression));
     }
 
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
@@ -876,6 +898,38 @@ public class NormalizerTests
     {
         var actual = GetActualSelectText("SELECT 1 AS x");
         Assert.Equal("SELECT 1 AS `x`", actual);
+    }
+
+    [Fact]
+    public void RepeatedlyNestedJoin_IsFlattened()
+    {
+        string actual = GetActualSelectText("SELECT b.book_id FROM ((book AS b INNER JOIN book_author AS ba ON b.book_id = ba.book_id))");
+
+        Assert.DoesNotContain("(", actual);
+        Assert.Contains("INNER JOIN `library_catalog`.`book_author` AS `ba`", actual);
+    }
+
+    [Fact]
+    public void PseudoTableWithoutObjectIdentifier_IsNormalized()
+    {
+        _selectableSources.AddExternalSource("temporary", new PseudoTable("temporary", null, ["id"], PseudoTableType.CommonTableExpression));
+
+        string actual = GetActualSelectText("SELECT id FROM temporary");
+
+        Assert.Contains("FROM `temporary`", actual);
+        Assert.Contains("AS `id`", actual);
+    }
+
+    [Fact]
+    public void CteFromIdentifier_IsNormalized()
+    {
+        Select select = GetNormalizedSelect("WITH recent AS (SELECT book_id FROM book) SELECT book_id FROM recent", usePseudoTables: false);
+        CommonTableExpression cte = select.CommonTableExpression!;
+        select = select with { CommonTableExpression = cte with { Tables = [Assert.Single(cte.Tables) with { From = new Identifier("source") }] } };
+
+        Select actual = GetNormalizedSelect(select, usePseudoTables: false);
+
+        Assert.Equal("`source`", Assert.Single(actual.CommonTableExpression!.Tables).From!.ToSql());
     }
 
     [Theory]

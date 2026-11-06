@@ -29,15 +29,15 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
         ObjectIdentifier name = _normalizer.NormalizeObjectIdentifier(new ObjectIdentifier(statement.Name.Values[0].Name,
             table.Name.Schema, statement.Name.Values[0].QuoteStyle));
 
-        void Reject(string clause)
+        SqlSyntaxException.InvalidTrigger Invalid(string clause)
         {
-            throw new SqlSyntaxException.InvalidTrigger(name, clause, source);
+            return new SqlSyntaxException.InvalidTrigger(name, clause, source);
         }
 
         if (statement.Name.Values.Count != 1 || statement.IfNotExists || statement.Definer != null
             || statement.Order != null || statement.TableNameBeforeTimeAndEvent || statement.TriggerBodyStartsWithAs)
         {
-            Reject("non-PostgreSQL trigger syntax");
+            throw Invalid("non-PostgreSQL trigger syntax");
         }
 
         if (statement.Body is not PgTriggerExecute execute)
@@ -48,7 +48,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
         PgStoredFunction function = ResolveFunction(execute.FunctionName, activeSchema, source);
         if (function.Parameters.Count != 0 || function.ReturnType is not FunctionReturn.PseudoType returnType || returnType.Type != PgPseudoType.Trigger)
         {
-            Reject("a function with parameters or a return type other than trigger");
+            throw Invalid("a function with parameters or a return type other than trigger");
         }
 
         TriggerForEachType quantifier = statement.ExecutionQuantifier switch
@@ -60,11 +60,11 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
 
         if (statement.TriggerTime != TriggerTime.Before && statement.TriggerTime != TriggerTime.After)
         {
-            Reject("timing other than BEFORE or AFTER on a table");
+            throw Invalid("timing other than BEFORE or AFTER on a table");
         }
         if (statement.CreateOrLabel != null && statement.CreateOrLabel != CreateOrLabel.OrReplace)
         {
-            Reject("OR ALTER");
+            throw Invalid("OR ALTER");
         }
 
         var eventTypes = new HashSet<Type>();
@@ -83,7 +83,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
                     {
                         if (update.Columns.Count == 0)
                         {
-                            Reject("empty UPDATE OF");
+                            throw Invalid("empty UPDATE OF");
                         }
                         columns = [.. update.Columns.Select(_normalizer.NormalizeSingleIdentifier).OrderBy(column => column.Name, StringComparer.Ordinal)];
                         var columnNames = new HashSet<string>();
@@ -95,7 +95,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
                             }
                             if (!table.Columns.Any(tableColumn => tableColumn.Name.Name == column.Name))
                             {
-                                Reject("UPDATE OF " + column.Name);
+                                throw Invalid("UPDATE OF " + column.Name);
                             }
                         }
                     }
@@ -104,7 +104,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
                 case TriggerEvent.Truncate:
                     if (quantifier != TriggerForEachType.Statement)
                     {
-                        Reject("TRUNCATE FOR ROW");
+                        throw Invalid("TRUNCATE FOR ROW");
                     }
                     events.Add(triggerEvent);
                     break;
@@ -112,14 +112,13 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
                     events.Add(triggerEvent);
                     break;
                 default:
-                    Reject("unknown trigger event");
-                    break;
+                    throw Invalid("unknown trigger event");
             }
         }
 
         if (events.Count == 0)
         {
-            Reject("empty event list");
+            throw Invalid("empty event list");
         }
 
         events = [.. events.OrderBy(triggerEvent => triggerEvent switch
@@ -135,13 +134,13 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
         {
             if (statement.TriggerTime != TriggerTime.After || quantifier != TriggerForEachType.Row || statement.CreateOrLabel != null)
             {
-                Reject("CONSTRAINT without AFTER ROW, or with OR REPLACE");
+                throw Invalid("CONSTRAINT without AFTER ROW, or with OR REPLACE");
             }
             bool initiallyDeferred = constraintStatement.InitiallyDeferred ?? false;
             bool deferrable = constraintStatement.Deferrable ?? initiallyDeferred;
             if (!deferrable && initiallyDeferred)
             {
-                Reject("NOT DEFERRABLE INITIALLY DEFERRED");
+                throw Invalid("NOT DEFERRABLE INITIALLY DEFERRED");
             }
             constraint = new PgTriggerConstraintOptions(constraintStatement.FromTable != null
                 ? ResolveTable(constraintStatement.FromTable, activeSchema, source).Name : null, deferrable, initiallyDeferred);
@@ -154,7 +153,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
             if (relations.Count == 0 || statement.TriggerTime != TriggerTime.After || constraint != null || events.Count != 1
                 || events.OfType<TriggerEvent.Update>().Any(update => update.Columns != null))
             {
-                Reject("REFERENCING with incompatible timing, events, UPDATE OF or CONSTRAINT");
+                throw Invalid("REFERENCING with incompatible timing, events, UPDATE OF or CONSTRAINT");
             }
             foreach (PgTriggerTransitionRelation relation in relations)
             {
@@ -163,7 +162,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
                 {
                     if (newTable != null || !events.Any(triggerEvent => triggerEvent is TriggerEvent.Insert or TriggerEvent.Update))
                     {
-                        Reject("NEW TABLE");
+                        throw Invalid("NEW TABLE");
                     }
                     newTable = relationName;
                 }
@@ -171,14 +170,14 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
                 {
                     if (oldTable != null || !events.Any(triggerEvent => triggerEvent is TriggerEvent.Delete or TriggerEvent.Update))
                     {
-                        Reject("OLD TABLE");
+                        throw Invalid("OLD TABLE");
                     }
                     oldTable = relationName;
                 }
             }
             if (oldTable?.Name == newTable?.Name)
             {
-                Reject("identical OLD TABLE and NEW TABLE names");
+                throw Invalid("identical OLD TABLE and NEW TABLE names");
             }
         }
 

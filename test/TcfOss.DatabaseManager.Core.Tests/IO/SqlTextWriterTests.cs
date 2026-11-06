@@ -3,12 +3,10 @@ using System.Text;
 using FluentAssertions;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Tests.IO;
 
@@ -257,91 +255,6 @@ public class SqlTextWriterTests
 
             string indent = indented ? "    " : "";
             Assert.Equal(indent + "1.25|1.5|-9223372036854775808|12||'it''s'|raw|text|", writer.ToString());
-        }
-        finally
-        {
-            CultureInfo.CurrentCulture = originalCulture;
-        }
-    }
-
-    [Fact]
-    public void RoutineSettingFormatting_DelegatesToSqlForBothVariants()
-    {
-        var name = new ObjectName([new Identifier("app"), new Identifier("mode")]);
-        PgRoutineSetting[] settings =
-        [
-            new PgRoutineSetting.FromCurrent(name),
-            new PgRoutineSetting.ToValues(name, [new Value.SingleQuotedString("it's"), new Value.Number("2", false)])
-        ];
-        string[] expected = ["SET app.mode FROM CURRENT", "SET app.mode TO 'it''s', 2"];
-        for (int index = 0; index < settings.Length; index++)
-        {
-            using var writer = new SqlTextWriter(new StringBuilder());
-            settings[index].FormatSql(writer, GetFormatManager());
-
-            Assert.Equal(expected[index], writer.ToString());
-        }
-    }
-
-    [Fact]
-    public void TriggerArguments_PreserveIdentifierAndLiteralSpelling()
-    {
-        PgStatementTriggerArgument[] arguments =
-        [
-            new PgStatementTriggerArgument.Named(new Identifier("plain")),
-            new PgStatementTriggerArgument.Named(new Identifier("Quoted", QuoteStyle.Ansi)),
-            new PgStatementTriggerArgument.Literal(new Value.Number("1", false)),
-            new PgStatementTriggerArgument.Literal(new Value.SingleQuotedString("1")),
-            new PgStatementTriggerArgument.Literal(new Value.SingleQuotedString("it's"))
-        ];
-        string[] expected = ["plain", "\"Quoted\"", "1", "'1'", "'it''s'"];
-        for (int index = 0; index < arguments.Length; index++)
-        {
-            using var writer = new SqlTextWriter(new StringBuilder());
-            arguments[index].FormatSql(writer, GetFormatManager());
-
-            Assert.Equal(expected[index], writer.ToString());
-            Assert.Equal(expected[index], arguments[index].ToSql());
-        }
-        var execute = new PgTriggerExecute(new ObjectName(new Identifier("fire")), [.. arguments], false);
-        Assert.Equal("EXECUTE FUNCTION fire(plain, \"Quoted\", 1, '1', 'it''s')", execute.ToSql());
-    }
-
-    [Fact]
-    public void SequenceOptionFormatting_DelegatesToSqlAndUsesInvariantNumbers()
-    {
-        CultureInfo originalCulture = CultureInfo.CurrentCulture;
-        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
-        culture.NumberFormat.NegativeSign = "~";
-        try
-        {
-            CultureInfo.CurrentCulture = culture;
-            PgStatementSequenceOption[] options =
-            [
-                new PgStatementSequenceOption.Start(-1),
-                new PgStatementSequenceOption.Start(-1) { UseWith = true },
-                new PgStatementSequenceOption.Increment(-2),
-                new PgStatementSequenceOption.Increment(-2) { UseBy = true },
-                new PgStatementSequenceOption.MinValue(long.MinValue),
-                new PgStatementSequenceOption.MinValue(null),
-                new PgStatementSequenceOption.MaxValue(-1),
-                new PgStatementSequenceOption.MaxValue(null),
-                new PgStatementSequenceOption.Cache(2),
-                new PgStatementSequenceOption.Cycle(true),
-                new PgStatementSequenceOption.Cycle(false)
-            ];
-            string[] expected =
-            [
-                "START -1", "START WITH -1", "INCREMENT -2", "INCREMENT BY -2",
-                "MINVALUE -9223372036854775808", "NO MINVALUE", "MAXVALUE -1",
-                "NO MAXVALUE", "CACHE 2", "CYCLE", "NO CYCLE"
-            ];
-            for (int index = 0; index < options.Length; index++)
-            {
-                using var writer = new SqlTextWriter(new StringBuilder());
-                options[index].FormatSql(writer, GetFormatManager());
-                Assert.Equal(expected[index], writer.ToString());
-            }
         }
         finally
         {

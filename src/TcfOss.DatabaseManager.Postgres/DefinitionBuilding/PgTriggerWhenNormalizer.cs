@@ -111,7 +111,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
         {
             throw Invalid(identifier.Name + "." + column.Name);
         }
-        if (isNew && time == TriggerTime.Before && (systemColumn || resolved?.Generated is ColumnOption.Generated.AsExpression))
+        if (isNew && time == TriggerTime.Before && (systemColumn || resolved!.Generated is ColumnOption.Generated.AsExpression))
         {
             throw Invalid("NEW." + column.Name + " before generation");
         }

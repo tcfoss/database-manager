@@ -4,10 +4,10 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
-using TcfOss.DatabaseManager.MySql.Lexing;
-using TcfOss.DatabaseManager.MySql.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
+using TcfOss.DatabaseManager.MySql.Lexing;
+using TcfOss.DatabaseManager.MySql.Parsing;
 using TcfOss.DatabaseManager.MySql.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.MySql.Tests.DefinitionBuilding;
