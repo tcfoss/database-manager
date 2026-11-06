@@ -9,6 +9,7 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
 public record PgColumn(ColumnIdentifier Name, DataType DataType)
 {
+    public ObjectName? Collation { get; init; }
     public ColumnOption.Nullability? Nullability { get; init; }
     public ColumnOption.ColumnDefault? Default { get; init; }
     public ColumnOption.Generated? Generated { get; init; }
@@ -16,6 +17,10 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
     public StatementColumn.Typed ToStatementColumn(DifferFormatManager? manager = null)
     {
         SqlValueList<StatementColumnOption> options = [];
+        if (Collation != null)
+        {
+            options.Add(new StatementColumnOption.PgCollation(Collation));
+        }
         if (Nullability is ColumnOption.Nullability.Null nullable)
         {
             options.Add(new StatementColumnOption.Nullability.Null(nullable.Name));

@@ -51,6 +51,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         ColumnOption.ColumnDefault? defaultValue = null;
         ColumnOption.Generated? generated = null;
         StatementColumnOption.Generated.PgIdentity? identity = null;
+        ObjectName? collation = null;
         var seenOptions = new HashSet<string>();
         foreach (StatementColumnOption option in typedColumn.Options)
         {
@@ -86,6 +87,9 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
                 case StatementColumnOption.Generated.PgIdentity identityOption:
                     identity = identityOption;
                     break;
+                case StatementColumnOption.PgCollation collationOption:
+                    collation = ComponentNormalizer.NormalizeObjectName(collationOption.Name);
+                    break;
                 default:
                     throw new NotImplementedException($"PostgreSQL column option {option.GetType().Name} is not implemented.");
             }
@@ -110,7 +114,8 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
             defaultValue, nullability is ColumnOption.Nullability.NotNull)
         {
             Generated = generated,
-            Identity = identity
+            Identity = identity,
+            Collation = collation
         }));
     }
 
@@ -485,6 +490,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
             DataType dataType = manager.Resolve(column.DataType, Name.Schema, SourceRef);
             return new PgColumn(column.Name, dataType)
             {
+                Collation = column.Collation,
                 Nullability = column.Nullability,
                 Default = column.Default,
                 Generated = column.Identity is { } identity
@@ -713,6 +719,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     public sealed record PreColumn(ColumnIdentifier Name, DataTypeReference DataType,
         ColumnOption.Nullability? Nullability, ColumnOption.ColumnDefault? Default, bool NotNull)
     {
+        public ObjectName? Collation { get; init; }
         public ColumnOption.Generated? Generated { get; init; }
         public StatementColumnOption.Generated.PgIdentity? Identity { get; init; }
     }

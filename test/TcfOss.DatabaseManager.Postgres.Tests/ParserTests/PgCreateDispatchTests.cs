@@ -243,4 +243,47 @@ public class PgCreateDispatchTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(comment, ParseStatement(comment.ToSql()));
         Assert.Equal("tag", Assert.IsType<Value.DollarQuotedString>(Serialization.FromJson<CommentOn>(Serialization.ToJson(comment))!.Comment).Tag);
     }
+
+    [Theory]
+    [InlineData("locale")]
+    [InlineData("app.locale")]
+    [InlineData("\"C\"")]
+    [InlineData("\"App\".\"Locale\"")]
+    public void ColumnCollations_PreserveNamesAndRoundTrip(string collation)
+    {
+        string sql = $"CREATE TABLE items (label TEXT COLLATE {collation} NOT NULL)";
+
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(statement.Columns));
+        var option = Assert.IsType<StatementColumnOption.PgCollation>(column.Options[0]);
+        Assert.Equal(collation, option.Name.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, Serialization.FromJson<CreateTable>(Serialization.ToJson(statement)));
+    }
+
+    [Fact]
+    public void ColumnCollations_EscapeEmbeddedIdentifierQuotesInSql()
+    {
+        const string sql = "CREATE TABLE items (label TEXT COLLATE \"Locale\"\"Name\")";
+
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("COLLATE")]
+    [InlineData("COLLATE 'C'")]
+    [InlineData("COLLATE 1")]
+    [InlineData("COLLATE = locale")]
+    [InlineData("COLLATE app.")]
+    [InlineData("COLLATE \"C\" COLLATE \"POSIX\"")]
+    [InlineData("CONSTRAINT named COLLATE \"C\"")]
+    public void ColumnCollations_RejectInvalidDeclarations(string clause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE items (label TEXT {clause})"));
+    }
 }

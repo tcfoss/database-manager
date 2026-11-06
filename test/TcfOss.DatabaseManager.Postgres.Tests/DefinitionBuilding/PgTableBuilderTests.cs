@@ -14,6 +14,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Configuration;
+using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -776,6 +777,43 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal("identity sequence option TEST", error.Clause);
         Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("locale", "\"locale\"")]
+    [InlineData("App.Locale", "\"app\".\"locale\"")]
+    [InlineData("\"C\"", "\"C\"")]
+    [InlineData("\"App\".\"Locale\"", "\"App\".\"Locale\"")]
+    public void ColumnCollations_PreserveNormalizedNamesAndRoundTrip(string collation, string expected)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (label TEXT COLLATE {collation} NOT NULL DEFAULT 'text')"));
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(statement);
+
+        PgColumn column = Assert.Single(builder.ToTable(CreateManager()).Columns);
+
+        Assert.Equal(expected, column.Collation?.ToSql());
+        StatementColumn.Typed canonical = column.ToStatementColumn();
+        Assert.IsType<StatementColumnOption.PgCollation>(canonical.Options[0]);
+        var rebuilt = CreateBuilder();
+        var reparsed = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({canonical.ToSql()})"));
+        rebuilt.ApplyCreateTable(reparsed);
+        Assert.Equal(column.Collation, Assert.Single(rebuilt.ToTable(CreateManager()).Columns).Collation);
+    }
+
+    [Fact]
+    public void ColumnCollations_RejectDuplicateManualOptionsWithSource()
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (label TEXT COLLATE \"C\")"));
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(statement.Columns));
+        StatementColumnOption option = Assert.Single(column.Options);
+        var source = new SourceRef(18, 0, 10);
+        var builder = CreateBuilder();
+
+        var exception = Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() =>
+            builder.AddColumn(column with { Options = [option, option] }, source));
+
+        Assert.Equal(source, exception.ObjectSourceRef);
     }
 
     private static PgTypeResolutionManager CreateManager()

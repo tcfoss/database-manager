@@ -645,4 +645,15 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         var expected = string.Format(expectedTemplate, "RESTRICT | CASCADE | SET NULL | NO ACTION | SET DEFAULT", "DOUNKNOWNTHING");
         Assert.Equal(expected, exception.Message);
     }
+
+    [Theory]
+    [InlineData("locale")]
+    [InlineData("app.locale")]
+    [InlineData("`App`.`Locale`")]
+    public void ColumnCollations_AreAcceptedByKitchenSinkParser(string collation)
+    {
+        string sql = $"CREATE TABLE items (label VARCHAR(20) COLLATE {collation} NOT NULL)";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
 }

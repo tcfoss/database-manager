@@ -124,4 +124,17 @@ public class FormatComponentsTests
             CultureInfo.CurrentCulture = originalCulture;
         }
     }
+
+    [Theory]
+    [InlineData("app.locale", "\"app\".\"locale\"")]
+    [InlineData("\"App\".\"Locale\"", "\"App\".\"Locale\"")]
+    [InlineData("\"C\"", "\"C\"")]
+    public void ColumnCollations_FormatNamesUsingIdentifierSettings(string collation, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted($"CREATE TABLE items (label TEXT COLLATE {collation} NOT NULL)");
+
+        Assert.Contains("COLLATE " + expected, actual);
+    }
 }

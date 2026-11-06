@@ -230,6 +230,14 @@ public class TableParser
             }
             return ParseGenerated(state, false);
         }
+        if (_p.SupportsPostgresColumnCollationSyntax && state.ParseKeyword(Keyword.COLLATE))
+        {
+            if (constraintName != null)
+            {
+                throw new ParseException.ColumnComponentInvalidName("COLLATE", constraintName, constraintLocation);
+            }
+            return new StatementColumnOption.PgCollation(_objname(state));
+        }
         if (state.ParseKeyword(Keyword.COMMENT))
         {
             if (constraintName != null)

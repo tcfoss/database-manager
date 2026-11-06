@@ -178,6 +178,22 @@ public abstract record StatementColumnOption() : IWriteSql
         }
     }
 
+    public record PgCollation(ObjectName Name) : StatementColumnOption
+    {
+        public override string DuplicateCheckKey => "COLLATE";
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"COLLATE {Name}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("COLLATE ");
+            Name.FormatSql(writer, manager);
+        }
+    }
+
     public record ColumnComment(Comment Comment) : StatementColumnOption
     {
         public override string DuplicateCheckKey => "COMMENT";

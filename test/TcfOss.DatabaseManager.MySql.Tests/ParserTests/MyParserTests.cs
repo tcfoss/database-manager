@@ -546,4 +546,20 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void ColumnCollations_RetainSharedMySqlMariaDbSyntax()
+    {
+        const string sql = "CREATE TABLE items (label VARCHAR(20) COLLATE utf8mb4_bin NOT NULL)";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (label VARCHAR(20) COLLATE app.locale)")]
+    [InlineData("CREATE TABLE items (label VARCHAR(20) NOT NULL COLLATE app.locale)")]
+    public void PostgresColumnCollations_AreRejectedByMySqlAndMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

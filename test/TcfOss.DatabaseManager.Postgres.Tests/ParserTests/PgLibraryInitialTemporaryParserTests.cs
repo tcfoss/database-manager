@@ -14,11 +14,6 @@ public class PgLibraryInitialTemporaryParserTests : ParserTestsBase<PgLexer, PgP
     [MemberData(nameof(SqlFiles))]
     public void InitialFixtureFiles_Parse(string relativePath)
     {
-        if (relativePath.EndsWith("site_user.sql"))
-        {
-            return;
-        }
-
         string sql = File.ReadAllText(Path.Combine(GetFixtureDirectory(), relativePath));
 
         Assert.NotEmpty(ParseStatements(sql));
