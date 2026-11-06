@@ -32,13 +32,14 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
 
     public override void AddColumn(StatementColumn column, SourceRef? sourceRef)
     {
+        sourceRef ??= SourceRef;
         if (column is not StatementColumn.Typed typedColumn)
         {
             throw new NotImplementedException("PostgreSQL column construction currently supports typed declarations only.");
         }
         if (!ColumnNames.Add(Handle.GetNamePart(typedColumn.Name, NameHandling)))
         {
-            throw new SqlSyntaxException.DuplicateColumn(typedColumn.Name.Name, Name, sourceRef ?? SourceRef);
+            throw new SqlSyntaxException.DuplicateColumn(typedColumn.Name.Name, Name, sourceRef);
         }
         Identifier normalizedName = ComponentNormalizer.NormalizeSingleIdentifier(typedColumn.Name);
         var columnName = new ColumnIdentifier(normalizedName.Name, Name, normalizedName.QuoteStyle)
@@ -48,23 +49,26 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         };
         ColumnOption.Nullability? nullability = null;
         ColumnOption.ColumnDefault? defaultValue = null;
+        ColumnOption.Generated? generated = null;
+        StatementColumnOption.Generated.PgIdentity? identity = null;
+        ObjectName? collation = null;
         var seenOptions = new HashSet<string>();
         foreach (StatementColumnOption option in typedColumn.Options)
         {
             if (!seenOptions.Add(option.DuplicateCheckKey))
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef ?? SourceRef);
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef);
             }
             switch (option)
             {
                 case StatementColumnOption.PrimaryKey primaryKey:
-                    AddColumnPrimaryKey(typedColumn.Name, primaryKey, sourceRef ?? SourceRef);
+                    AddColumnPrimaryKey(typedColumn.Name, primaryKey, sourceRef);
                     break;
                 case StatementColumnOption.Unique unique:
-                    AddColumnUnique(typedColumn.Name, unique, sourceRef ?? SourceRef);
+                    AddColumnUnique(typedColumn.Name, unique, sourceRef);
                     break;
                 case StatementColumnOption.CheckConstraint check:
-                    AddColumnCheck(check, sourceRef ?? SourceRef);
+                    AddColumnCheck(check, sourceRef);
                     break;
                 case StatementColumnOption.Nullability nullabilityOption:
                     Identifier? nullabilityName = ComponentNormalizer.NormalizeSingleIdentifierNullable(nullabilityOption.Name);
@@ -75,12 +79,44 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
                 case StatementColumnOption.Default defaultOption:
                     defaultValue = NormalizeDefault(defaultOption);
                     break;
+                case StatementColumnOption.Generated.AsExpression expression:
+                    Expression normalized = GetNormalizedExpression(expression.Expression);
+                    ValidateExpressionScope(normalized, sourceRef);
+                    generated = new ColumnOption.Generated.AsExpression(normalized, expression.Mode);
+                    break;
+                case StatementColumnOption.Generated.PgIdentity identityOption:
+                    identity = identityOption;
+                    break;
+                case StatementColumnOption.PgCollation collationOption:
+                    collation = ComponentNormalizer.NormalizeObjectName(collationOption.Name);
+                    break;
                 default:
                     throw new NotImplementedException($"PostgreSQL column option {option.GetType().Name} is not implemented.");
             }
         }
+        if (generated != null && defaultValue != null)
+        {
+            throw new SqlSyntaxException.MutuallyExclusive("GENERATED", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
+        }
+        if (identity != null && defaultValue != null)
+        {
+            throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
+        }
+        if (identity != null)
+        {
+            if (nullability is ColumnOption.Nullability.Null)
+            {
+                throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "NULL", "column", typedColumn.Name.Name, sourceRef);
+            }
+            nullability ??= new ColumnOption.Nullability.NotNull();
+        }
         _columns.Add(ApplyPrimaryKeyNullability(new PreColumn(columnName, NormalizeDataTypeReference(typedColumn.DataType), nullability,
-            defaultValue, nullability is ColumnOption.Nullability.NotNull)));
+            defaultValue, nullability is ColumnOption.Nullability.NotNull)
+        {
+            Generated = generated,
+            Identity = identity,
+            Collation = collation
+        }));
     }
 
     private static DataTypeReference NormalizeDataTypeReference(DataTypeReference reference)
@@ -268,17 +304,18 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             throw new DefinitionException.TableConstraintNameRequired("INDEX", Name, sourceRef);
         }
+        Identifier name = statement.Name;
         switch (statement)
         {
             case CreateIndex.Standard standard:
                 ValidateConstraintIndexOptions(standard.Comment, sourceRef, organization: standard.IndexOrganization,
                     options: standard.Options, storageLocation: standard.StorageLocation);
-                AddIndexDeclaration(standard.Name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter, sourceRef, standard.IncludedColumns);
+                AddIndexDeclaration(name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter, sourceRef, standard.IncludedColumns);
                 break;
             case CreateIndex.Unique unique:
                 ValidateConstraintIndexOptions(unique.Comment, sourceRef, organization: unique.IndexOrganization,
                     options: unique.Options, storageLocation: unique.StorageLocation);
-                AddIndexDeclaration(unique.Name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter, sourceRef, unique.IncludedColumns);
+                AddIndexDeclaration(name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter, sourceRef, unique.IncludedColumns);
                 break;
             default:
                 throw new NotSupportedException("Only basic PostgreSQL standard and unique indexes are supported.");
@@ -301,13 +338,9 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         }
     }
 
-    private void AddIndexDeclaration(Identifier? name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
+    private void AddIndexDeclaration(Identifier name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
         Expression? predicate, SourceRef? sourceRef, IncludedColumns? includedColumns = null)
     {
-        if (name == null)
-        {
-            throw new DefinitionException.TableConstraintNameRequired(unique ? "UNIQUE constraint" : "INDEX", Name, sourceRef);
-        }
         name = ComponentNormalizer.NormalizeSingleIdentifier(name);
         if (_indexes.ContainsKey(name) || _uniqueConstraints.ContainsKey(name))
         {
@@ -376,14 +409,95 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     }
 
 
+    private PgIdentityOptions ResolveIdentityOptions(StatementColumnOption.Generated.PgIdentity identity,
+        DataType dataType, ColumnIdentifier column)
+    {
+        (long typeMinimum, long typeMaximum) = dataType switch
+        {
+            PgDataType.PgSmallInt => (short.MinValue, short.MaxValue),
+            DataType.Int => (int.MinValue, int.MaxValue),
+            DataType.BigInt => (long.MinValue, long.MaxValue),
+            _ => throw new SqlSyntaxException.AutoIncrementIntegerOnly(column.ToSimpleIdentifier(), Name, SourceRef)
+        };
+        long? start = null;
+        long increment = 1;
+        long? minimum = null;
+        long? maximum = null;
+        long cache = 1;
+        bool cycle = false;
+        var seenOptions = new HashSet<string>(StringComparer.Ordinal);
+        foreach (PgStatementSequenceOption option in identity.Options ?? [])
+        {
+            if (!seenOptions.Add(option.UniqueName))
+            {
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.UniqueName, "column", column.ToSimpleIdentifier(), SourceRef);
+            }
+            switch (option)
+            {
+                case PgStatementSequenceOption.Start startOption:
+                    start = startOption.Value;
+                    break;
+                case PgStatementSequenceOption.Increment incrementOption:
+                    increment = incrementOption.Value;
+                    break;
+                case PgStatementSequenceOption.MinValue minimumOption:
+                    minimum = minimumOption.Value;
+                    break;
+                case PgStatementSequenceOption.MaxValue maximumOption:
+                    maximum = maximumOption.Value;
+                    break;
+                case PgStatementSequenceOption.Cache cacheOption:
+                    cache = cacheOption.Value;
+                    break;
+                case PgStatementSequenceOption.Cycle cycleOption:
+                    cycle = cycleOption.Enabled;
+                    break;
+                default:
+                    throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"identity sequence option {option.UniqueName}", SourceRef);
+            }
+        }
+        if (increment == 0)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "zero identity sequence increment", SourceRef);
+        }
+        if (cache <= 0)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "nonpositive identity sequence cache", SourceRef);
+        }
+        long effectiveMinimum = minimum ?? (increment > 0 ? 1 : typeMinimum);
+        long effectiveMaximum = maximum ?? (increment > 0 ? typeMaximum : -1);
+        if (effectiveMinimum < typeMinimum || effectiveMinimum > typeMaximum
+            || effectiveMaximum < typeMinimum || effectiveMaximum > typeMaximum)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "identity sequence bounds outside the integer type range", SourceRef);
+        }
+        if (effectiveMinimum >= effectiveMaximum)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "identity sequence MINVALUE not less than MAXVALUE", SourceRef);
+        }
+        long effectiveStart = start ?? (increment > 0 ? effectiveMinimum : effectiveMaximum);
+        if (effectiveStart < effectiveMinimum || effectiveStart > effectiveMaximum)
+        {
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "identity sequence start outside its bounds", SourceRef);
+        }
+        return new PgIdentityOptions(effectiveStart, increment, effectiveMinimum, effectiveMaximum, cache, cycle);
+    }
+
     public PgTable ToTable(PgTypeResolutionManager manager)
     {
         SqlValueList<PgColumn> columns = [.. _columns.Select(column =>
-            new PgColumn(column.Name, manager.Resolve(column.DataType, Name.Schema, SourceRef))
+        {
+            DataType dataType = manager.Resolve(column.DataType, Name.Schema, SourceRef);
+            return new PgColumn(column.Name, dataType)
             {
+                Collation = column.Collation,
                 Nullability = column.Nullability,
-                Default = column.Default
-            })];
+                Default = column.Default,
+                Generated = column.Identity is { } identity
+                    ? new ColumnOption.Generated.PgIdentity(identity.Always, ResolveIdentityOptions(identity, dataType, column.Name))
+                    : column.Generated
+            };
+        })];
         if (_primaryKey != null)
         {
             ValidateColumnReferences(_primaryKey.Columns, _primaryKey.Name?.Name ?? "PRIMARY KEY", SourceRef);
@@ -423,6 +537,13 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         foreach (PgTableConstraint.Check check in _checks.Values)
         {
             ValidateExpressionColumns(check.Expression, result, NameHandling, SourceRef);
+        }
+        foreach (PgColumn column in result.Columns)
+        {
+            if (column.Generated is ColumnOption.Generated.AsExpression expression)
+            {
+                ValidateExpressionColumns(expression.Expression, result, NameHandling, SourceRef);
+            }
         }
         foreach (IndexDeclaration declaration in _indexes.Values)
         {
@@ -596,7 +717,12 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     }
 
     public sealed record PreColumn(ColumnIdentifier Name, DataTypeReference DataType,
-        ColumnOption.Nullability? Nullability, ColumnOption.ColumnDefault? Default, bool NotNull);
+        ColumnOption.Nullability? Nullability, ColumnOption.ColumnDefault? Default, bool NotNull)
+    {
+        public ObjectName? Collation { get; init; }
+        public ColumnOption.Generated? Generated { get; init; }
+        public StatementColumnOption.Generated.PgIdentity? Identity { get; init; }
+    }
 
     private sealed record PreForeignKey(Identifier Name, SqlValueList<Identifier> Columns, ObjectName ReferencedTable,
         SqlValueList<Identifier> ReferencedColumns, ReferentialAction? OnDelete, ReferentialAction? OnUpdate, SourceRef? SourceRef);

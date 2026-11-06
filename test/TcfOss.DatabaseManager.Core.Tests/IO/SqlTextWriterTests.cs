@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Globalization;
+using System.Text;
 using FluentAssertions;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -221,5 +222,43 @@ public class SqlTextWriterTests
         var actual = writer.ToString();
         var expected = $"\"table1\",{sep}\"table2\",{sep}\"table3\"";
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SqlInterpolation_UsesInvariantNumbersAndPreservesOtherDispatch(bool indented)
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NumberDecimalSeparator = ",";
+        culture.NumberFormat.NegativeSign = "~";
+        try
+        {
+            CultureInfo.CurrentCulture = culture;
+            using var writer = new SqlTextWriter(new StringBuilder(), new Indenter(4, false));
+            writer.Indenter.IncreaseIndent();
+            decimal decimalNumber = 1.25m;
+            float singleNumber = 1.5f;
+            int? nullableNumber = 12;
+            object? missing = null;
+            var literal = new Value.SingleQuotedString("it's");
+            var raw = new StringBuilder("raw");
+            if (indented)
+            {
+                writer.WriteSqlI($"{decimalNumber}|{singleNumber}|{long.MinValue}|{nullableNumber}|{missing}|{literal}|{raw}|text|");
+            }
+            else
+            {
+                writer.WriteSql($"{decimalNumber}|{singleNumber}|{long.MinValue}|{nullableNumber}|{missing}|{literal}|{raw}|text|");
+            }
+
+            string indent = indented ? "    " : "";
+            Assert.Equal(indent + "1.25|1.5|-9223372036854775808|12||'it''s'|raw|text|", writer.ToString());
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 }

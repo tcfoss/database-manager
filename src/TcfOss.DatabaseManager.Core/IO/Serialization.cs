@@ -5,16 +5,11 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
-using TcfOss.DatabaseManager.Core.Expressions.Attributes;
 using TcfOss.DatabaseManager.Core.IO.JsonConverters;
 using TcfOss.DatabaseManager.Core.IO.YamlConverters;
 using TcfOss.DatabaseManager.Core.Lexing;
-using TcfOss.DatabaseManager.Core.Statements.Attributes;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
-using GenerationMode = TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes.GenerationMode;
 
 namespace TcfOss.DatabaseManager.Core.IO;
 
@@ -34,34 +29,7 @@ public static partial class Serialization
             new SchemaIdentifierConverter(),
             new IdentifierConverter(),
             new StringEnumConverter(),
-            new StringEnumConverter<GenerationMode>(),
-            new StringEnumConverter<BinaryOperator>(),
-            new StringEnumConverter<UnaryOperator>(),
-            new StringEnumConverter<ReferentialAction>(),
-            new StringEnumConverter<SecurityContext>(),
-            new StringEnumConverter<ViewAlgorithm>(),
-            new StringEnumConverter<ViewCheckOption>(),
-            new StringEnumConverter<TriggerTime>(),
-            new StringEnumConverter<TriggerEvent>(),
-            new StringEnumConverter<TriggerOrderPosition>(),
-            new StringEnumConverter<AggregateQuantifier>(),
-            new StringEnumConverter<DateTimeUnit>(),
-            new StringEnumConverter<Direction>(),
-            new StringEnumConverter<IndexMethod>(),
-            new StringEnumConverter<RoutineParameterDirection>(),
-            new StringEnumConverter<SqlDataRelation>(),
-            new StringEnumConverter<HandlerAction>(),
-            new StringEnumConverter<DuplicateTreatment>(),
-            new StringEnumConverter<SetOperator>(),
-            new StringEnumConverter<DroppableObject>(),
-            new StringEnumConverter<SetQuantifier>(),
-            new StringEnumConverter<UseObject>(),
-            new StringEnumConverter<CreateOrLabel>(),
-            new StringEnumConverter<MySqlNumericAttribute>(),
-            new StringEnumConverter<SignalPropertyName>(),
-            new StringEnumConverter<MatchAgainstModifier>(),
-            new StringEnumConverter<DeallocatePrepareLabel>(),
-            new StringEnumConverter<EventEnabledStatus>(),
+            new StringEnumConverterFactory(),
         }
     };
 

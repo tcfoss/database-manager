@@ -12,14 +12,15 @@ public record PgStoredFunction(ObjectIdentifier Name, SqlValueList<RoutineParame
     FunctionReturn ReturnType, Statement Body)
     : StoredFunction<RoutineParameter.Postgres>(Name, Parameters, ReturnType, Body)
 {
-    public PgRoutineOptions? Options { get; init; }
+    public PgRoutineOptions.Function? Options { get; init; }
 
     public override CreateFunction ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
         return new CreateFunction(Name.ToObjectName(includeSchema ? 2 : 1),
             [.. Parameters.Select(parameter => parameter.ToStatementParameter())], ReturnType.ToStatementReturn(), Body)
         {
-            PgOptions = Options,
+            PgOptionsBeforeBody = Options?.ToStatementOptions(),
+            PgOptionsAfterBody = [],
             UseAsBeforeBody = Body is RoutineBodyLiteral,
             Meta = new MetaData { RawText = RawBodyText }
         };

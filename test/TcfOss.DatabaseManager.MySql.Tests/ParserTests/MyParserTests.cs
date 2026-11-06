@@ -506,4 +506,60 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements("CREATE FUNCTION f(value INT = 1) RETURNS INT RETURN value"));
     }
+
+    [Fact]
+    public void FunctionReturn_CannotBeOmittedInSharedMySqlMariaDbParser()
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE FUNCTION f() RETURN 1"));
+
+        Assert.Contains("RETURNS", error.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW SET NEW.id = 1")]
+    [InlineData("CREATE TRIGGER audit BEFORE UPDATE ON items FOR EACH ROW FOLLOWS other SELECT 1")]
+    public void Triggers_RetainMySqlMariaDbSyntax(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER INSERT ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER TRUNCATE ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER UPDATE OF id ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT OR UPDATE ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT, UPDATE ON items FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items REFERENCING NEW TABLE new_rows FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW WHEN (NEW.id > 0) SELECT 1")]
+    [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW EXECUTE FUNCTION audit()")]
+    public void PostgresTriggerSyntax_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS 'table'")]
+    [InlineData("COMMENT ON COLUMN items.id IS NULL")]
+    [InlineData("COMMENT ON FUNCTION f(INT) IS 'function'")]
+    public void PostgresCommentSyntax_IsRejectedByMySqlAndMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void ColumnCollations_RetainSharedMySqlMariaDbSyntax()
+    {
+        const string sql = "CREATE TABLE items (label VARCHAR(20) COLLATE utf8mb4_bin NOT NULL)";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (label VARCHAR(20) COLLATE app.locale)")]
+    [InlineData("CREATE TABLE items (label VARCHAR(20) NOT NULL COLLATE app.locale)")]
+    public void PostgresColumnCollations_AreRejectedByMySqlAndMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

@@ -126,6 +126,15 @@
     <data name="Err_Syntax" xml:space="preserve">
         <value>Syntax Error</value>
     </data>
+    <data name="Err_Syntax_InvalidTrigger" xml:space="preserve">
+        <value>The clause '{1}' is not valid for PostgreSQL trigger '{0}'.</value>
+    </data>
+    <data name="Err_Syntax_TriggerRelationNotFound" xml:space="preserve">
+        <value>The trigger relation '{0}' was not found.</value>
+    </data>
+    <data name="Err_Syntax_TriggerFunctionNotFound" xml:space="preserve">
+        <value>The trigger function '{0}' was not found.</value>
+    </data>
     <data name="Err_Syntax_DuplicateObject" xml:space="preserve">
         <value>The database object name '{0}' is used more than once.</value>
     </data>
@@ -134,6 +143,9 @@
     </data>
     <data name="Err_Syntax_AttributeSpecifiedMultipleTimes" xml:space="preserve">
         <value>The attribute '{0}' is specified multiple times on {1} {2}.</value>
+    </data>
+    <data name="Err_Syntax_MutuallyExclusive" xml:space="preserve">
+        <value>The attributes '{0}' and '{1}' are mutually exclusive on {2} {3}.</value>
     </data>
     <data name="Err_Syntax_TriggerSupportsOnlyOneEvent" xml:space="preserve">
         <value>Dialect '{0}' requires that triggers have one and only one event. Trigger '{1}' specifies {2} events.</value>
@@ -218,6 +230,9 @@
     </data>
     <data name="Err_Def_ObjectNoSecurityContext" xml:space="preserve">
         <value>The definition of {0} '{1}' must have an explicit SQL SECURITY specification.</value>
+    </data>
+    <data name="Err_Def_RoutineSettingFromCurrent" xml:space="preserve">
+        <value>The definition of routine '{0}' must specify an explicit value for setting '{1}'. SET FROM CURRENT depends on the execution environment and is not supported.</value>
     </data>
     <data name="Err_Def_Table_UniqueOnColumn" xml:space="preserve">
         <value>Column '{0}' is designated as UNIQUE. Use a table-level constraint instead.</value>

@@ -14,14 +14,15 @@ public record PgStoredProcedure(
     Statement Body)
     : StoredProcedure<RoutineParameter.Postgres>(Name, Parameters, Body)
 {
-    public PgRoutineOptions? Options { get; init; }
+    public PgRoutineOptions.Procedure? Options { get; init; }
 
     public override CreateProcedure ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
     {
         return new CreateProcedure(Name.ToObjectName(includeSchema ? 2 : 1),
             [.. Parameters.Select(parameter => parameter.ToStatementParameter())], Body)
         {
-            PgOptions = Options,
+            PgOptionsBeforeBody = Options?.ToStatementOptions(),
+            PgOptionsAfterBody = [],
             UseAsBeforeBody = Body is RoutineBodyLiteral,
             Meta = new MetaData { RawText = RawBodyText }
         };

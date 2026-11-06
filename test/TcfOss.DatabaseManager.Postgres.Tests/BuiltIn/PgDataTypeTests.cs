@@ -7,6 +7,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Lexing;
@@ -586,6 +587,13 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(int.MaxValue, exception.Maximum);
         var formatted = new ParseException.WithText(exception, "types.sql", sql);
         Assert.Contains("line 1, column 5", formatted.Message);
+    }
+
+    [Theory]
+    [MemberData(nameof(StringEnumTestHelpers.StringEnumTypes), typeof(PgIntervalField), MemberType = typeof(StringEnumTestHelpers))]
+    public void Serialization_AllPostgresStringEnumValues_RoundTrip(Type enumType)
+    {
+        StringEnumTestHelpers.AssertStringEnumRoundTrips(enumType);
     }
 
     private static DataType ParseColumnType(string sql)

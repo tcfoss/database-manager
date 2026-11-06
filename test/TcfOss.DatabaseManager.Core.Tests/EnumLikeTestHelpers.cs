@@ -1,10 +1,48 @@
-﻿using TcfOss.DataStructures.Enums;
+﻿using System.Reflection;
+using Newtonsoft.Json;
+using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DataStructures.Enums;
 using Xunit.Sdk;
 
 namespace TcfOss.DatabaseManager.Core.Tests;
 
 public static class StringEnumTestHelpers
 {
+    public static IEnumerable<TheoryDataRow<Type>> StringEnumTypes(Type assemblyAnchor)
+    {
+        foreach (Type type in assemblyAnchor.Assembly.GetTypes().OrderBy(type => type.FullName))
+        {
+            if (!type.IsAbstract && type.GetInterfaces().Any(interfaceType => interfaceType.IsGenericType
+                && interfaceType.GetGenericTypeDefinition() == typeof(IStringEnum<>)))
+            {
+                yield return new TheoryDataRow<Type>(type);
+            }
+        }
+    }
+
+    public static void AssertStringEnumRoundTrips(Type enumType)
+    {
+        MethodInfo write = typeof(Serialization).GetMethods().Single(method => method.Name == nameof(Serialization.ToJson)
+            && method.GetParameters().Length == 1).MakeGenericMethod(enumType);
+        MethodInfo writeWithSettings = typeof(Serialization).GetMethods().Single(method => method.Name == nameof(Serialization.ToJson)
+            && method.GetParameters().Length == 2).MakeGenericMethod(enumType);
+        MethodInfo read = typeof(Serialization).GetMethod(nameof(Serialization.FromJson))!.MakeGenericMethod(enumType);
+        FieldInfo[] values = [.. enumType.GetFields(BindingFlags.Public | BindingFlags.Static).Where(field => field.FieldType == enumType)];
+        Assert.NotEmpty(values);
+        foreach (FieldInfo field in values)
+        {
+            object value = field.GetValue(null)!;
+            string json = (string)write.Invoke(null, [value])!;
+
+            Assert.Equal(JsonConvert.SerializeObject(value.ToString()), json);
+            Assert.Equal(json, (string)writeWithSettings.Invoke(null, [value, new SerializationSettings()])!);
+            Assert.Equal(value, read.Invoke(null, [json]));
+        }
+        Assert.Equal("null", (string)write.Invoke(null, [null])!);
+        Assert.Null(read.Invoke(null, ["null"]));
+    }
+
     public class StringEnumSerializer<T> : IXunitSerializer
         where T : IStringEnum<T>
     {

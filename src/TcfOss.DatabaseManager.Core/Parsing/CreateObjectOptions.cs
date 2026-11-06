@@ -13,5 +13,5 @@ public class CreateObjectOptions
     public bool Aggregate { get; init; }
     public bool Temporary { get; init; }
 
-    public string[] AllSupportedTypes { get; init; } = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX", "TYPE", "DOMAIN"];
+    public string[] AllSupportedTypes { get; init; } = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX", "TYPE", "DOMAIN"];
 }

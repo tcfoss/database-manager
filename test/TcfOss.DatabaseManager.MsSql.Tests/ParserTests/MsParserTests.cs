@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -75,6 +76,7 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("SELECT [Id], [Name] FROM [Users]", Label = "Bracketed columns")]
     public void BracketedIdentifiers_TextMatch(string text)
     {
+        Assert.Equal(QuoteStyle.Brackets, new MsParser().DefaultQuoteStyle);
         var (expected, actual) = GetExpectedActual(text, normalizeActualWhitespace: true, normalizeExpectedWhitespace: true);
         Assert.Equal(expected, actual);
     }
@@ -241,6 +243,17 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Theory]
+    [InlineData("ALWAYS")]
+    [InlineData("BY DEFAULT")]
+    public void PostgresIdentityColumns_AreRejected(string mode)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(
+            $"CREATE TABLE items (id INT GENERATED {mode} AS IDENTITY)"));
+
+        Assert.Contains("generated expression", error.Message);
+    }
+
     [Fact]
     public void PostgresOperators_AreNarrowed()
     {
@@ -249,5 +262,45 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.False(parser.SupportsPostgresRegexOperators);
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
+    }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT, UPDATE, DELETE AS SELECT 1")]
+    [InlineData("CREATE OR ALTER TRIGGER audit ON items INSTEAD OF INSERT AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items FOR UPDATE AS SELECT 1")]
+    public void Triggers_RetainMsSqlSyntax(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE CONSTRAINT TRIGGER audit ON items AFTER INSERT AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER TRUNCATE AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER UPDATE OF id AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT OR UPDATE AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT FOR ROW AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT REFERENCING NEW TABLE new_rows AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT WHEN (id > 0) AS SELECT 1")]
+    [InlineData("CREATE TRIGGER audit ON items AFTER INSERT EXECUTE FUNCTION audit()")]
+    public void PostgresTriggerSyntax_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS 'table'")]
+    [InlineData("COMMENT ON COLUMN items.id IS NULL")]
+    [InlineData("COMMENT ON FUNCTION f(INT) IS 'function'")]
+    public void PostgresCommentSyntax_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (label VARCHAR(20) COLLATE app.locale)")]
+    [InlineData("CREATE TABLE items (label VARCHAR(20) NOT NULL COLLATE app.locale)")]
+    public void PostgresColumnCollations_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

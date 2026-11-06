@@ -526,10 +526,10 @@ public class LexerSimpleTests : LexerTestBase
             "line\nbreak",
             "line\r\nbreak",
             "caf\u00e9",
-            new string('a', 16),
-            new string('a', 17),
-            new string('a', 64),
-            new string('a', 1024)
+            new('a', 16),
+            new('a', 17),
+            new('a', 64),
+            new('a', 1024)
         ];
         foreach (string value in values)
         {

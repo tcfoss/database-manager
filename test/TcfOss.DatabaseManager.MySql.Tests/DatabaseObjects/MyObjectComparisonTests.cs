@@ -84,7 +84,7 @@ public class MyObjectComparisonTests
             new ObjectIdentifier("mytrigger", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
             new ObjectIdentifier("mytable", new SchemaIdentifier("myschema", new CatalogIdentifier("def"))),
             TriggerTime.After,
-            TriggerEvent.Insert,
+            new TriggerEvent.Insert(),
             GetSelectStatement()
         )
         {
@@ -106,7 +106,7 @@ public class MyObjectComparisonTests
         Assert.NotEqual(trigger.GetHashCode(), otherTrigger.GetHashCode());
 
         // Change TriggerEvent
-        otherTrigger = trigger with { TriggerEvent = TriggerEvent.Update };
+        otherTrigger = trigger with { TriggerEvent = new TriggerEvent.Update() };
         Assert.NotEqual(trigger, otherTrigger);
         Assert.False(trigger.Equals(otherTrigger));
         Assert.NotEqual(trigger.GetHashCode(), otherTrigger.GetHashCode());

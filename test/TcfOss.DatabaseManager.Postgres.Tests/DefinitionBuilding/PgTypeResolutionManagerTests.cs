@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Configuration;
@@ -145,6 +146,7 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
         SchemaIdentifier searched = Assert.Single(exception.SearchedSchemas);
         Assert.Equal(catalog, searched.Catalog.Name);
         Assert.Equal(schema, searched.Name);
+        Assert.Equal(Assert.IsType<DataTypeReference.Named>(reference).Name.Values[^2].QuoteStyle, searched.QuoteStyle);
         Assert.Equal(0, exception.ObjectSourceRef?.Start);
         Assert.Equal(sql.Length, exception.ObjectSourceRef?.End);
     }
@@ -183,6 +185,48 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal("app", Assert.IsType<PgDataType.Custom>(resolved.ElementType).Name.Schema.Name);
         Assert.Equal("\"app\".\"mood\"[]", resolved.ToSql());
+    }
+
+    [Fact]
+    public void Resolve_UsesCurrentConfiguredSearchPathForLookupAndDiagnostics()
+    {
+        var config = CreateConfig();
+        var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>
+        {
+            [new ObjectHandle("catalog", "app", "mood")] = ObjectIdentifier.FromStrings("catalog", "app", "mood"),
+            [new ObjectHandle("catalog", "public", "mood")] = ObjectIdentifier.FromStrings("catalog", "public", "mood")
+        });
+        var activeSchema = new SchemaIdentifier("public", config.Catalog);
+        DataTypeReference reference = new PgParser().DataTypeParser.ParseDataTypeReference(GetState("mood"));
+        Assert.Equal("app", Assert.IsType<PgDataType.Custom>(manager.Resolve(reference, activeSchema)).Name.Schema.Name);
+
+        config.SearchPath[0] = new Identifier("Missing", QuoteStyle.Ansi);
+
+        Assert.Equal("public", Assert.IsType<PgDataType.Custom>(manager.Resolve(reference, activeSchema)).Name.Schema.Name);
+        DataTypeReference missing = new PgParser().DataTypeParser.ParseDataTypeReference(GetState("missing"));
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(missing, activeSchema));
+        Assert.Equal(["Missing", "public"], exception.SearchedSchemas.Select(schema => schema.Name));
+        Assert.Equal(QuoteStyle.Ansi, exception.SearchedSchemas[0].QuoteStyle);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Resolve_MissingTypeUsesNameLocationOrStatementFallback(bool hasNameSource, bool hasStatementSource)
+    {
+        var config = CreateConfig();
+        var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
+        SourceRef? nameSource = hasNameSource ? new SourceRef(0, 5, 12) : null;
+        SourceRef? statementSource = hasStatementSource ? new SourceRef(49, 0, 20) : null;
+        var reference = new DataTypeReference.Named(new ObjectName(new Identifier("missing") { Source = nameSource }));
+
+        var exception = Assert.Throws<SqlSyntaxException.TypeNotFound>(() => manager.Resolve(reference,
+            new SchemaIdentifier("public", config.Catalog), statementSource));
+
+        SourceRef? expected = nameSource is { } location && statementSource is { } statement
+            ? location with { SourceId = statement.SourceId } : statementSource;
+        Assert.Equal(expected, exception.ObjectSourceRef);
     }
 
     private static PgConfig CreateConfig()

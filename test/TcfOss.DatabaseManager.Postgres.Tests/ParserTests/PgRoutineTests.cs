@@ -171,7 +171,9 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(value, body.Value);
         Assert.Equal(tag, body.DollarQuoteTag);
         Assert.True(function.UseAsBeforeBody);
-        Assert.NotNull(function.PgOptions);
+        Assert.NotNull(function.PgOptionsBeforeBody);
+        Assert.NotNull(function.PgOptionsAfterBody);
+        Assert.Single(function.PgOptionsBeforeBody.Concat(function.PgOptionsAfterBody));
         Assert.Null(function.MyCharacteristic);
         Assert.Empty(body.GetReferencedItems(new ReferencedItemsManager()));
         Assert.Equal(tail, SourceManager.GetText(sql, function.RoutineTailMeta));
@@ -367,7 +369,8 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         if (tail is "AS RETURN 1" or "LANGUAGE sql SELECT 1" or "LANGUAGE sql BEGIN SELECT 1; END")
         {
             var statement = Assert.IsType<CreateFunction>(Assert.Single(parser.Parse([.. new PgLexer().Tokenize(sql)])));
-            Assert.Null(statement.PgOptions);
+            Assert.Null(statement.PgOptionsBeforeBody);
+            Assert.Null(statement.PgOptionsAfterBody);
         }
         else
         {
@@ -380,6 +383,138 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     {
         var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1")) with { Aggregate = true };
         Assert.Contains("AGGREGATE FUNCTION", Format(function));
+    }
+
+    [Theory]
+    [InlineData("IMMUTABLE RETURNS NULL ON NULL INPUT EXTERNAL SECURITY DEFINER PARALLEL SAFE COST 2.5 SET app.mode = 'x' LANGUAGE sql", "ROWS 7")]
+    [InlineData("SET app.mode TO 'x' STABLE CALLED ON NULL INPUT", "LANGUAGE sql PARALLEL RESTRICTED COST 3 ROWS 9 SECURITY INVOKER")]
+    [InlineData("", "LANGUAGE sql VOLATILE STRICT PARALLEL UNSAFE SET app.mode FROM CURRENT")]
+    public void RoutineOptionLists_PreserveOrderSpellingAndBodyPlacement(string before, string after)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f() RETURNS SETOF INT {before} AS $$body$$ {after}"));
+
+        Assert.NotNull(function.PgOptionsBeforeBody);
+        Assert.NotNull(function.PgOptionsAfterBody);
+        Assert.Equal(before, function.PgOptionsBeforeBody.ToSqlDelimited(" "));
+        Assert.Equal(after, function.PgOptionsAfterBody.ToSqlDelimited(" "));
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("SECURITY INVOKER", "EXTERNAL SECURITY DEFINER", "SECURITY")]
+    [InlineData("STRICT", "RETURNS NULL ON NULL INPUT", "STRICT")]
+    [InlineData("CALLED ON NULL INPUT", "STRICT", "STRICT")]
+    [InlineData("IMMUTABLE", "VOLATILE", "VOLATILITY")]
+    [InlineData("PARALLEL SAFE", "PARALLEL UNSAFE", "PARALLEL")]
+    [InlineData("COST 1", "COST 2", "COST")]
+    [InlineData("ROWS 1", "ROWS 2", "ROWS")]
+    [InlineData("SET app.mode TO 'x'", "SET APP.MODE = 'y'", "SET:app.mode")]
+    [InlineData("", "LANGUAGE plpgsql", "LANGUAGE")]
+    public void RoutineOptionLists_RejectDuplicateCategoriesAcrossBody(string before, string after, string category)
+    {
+        var error = Assert.Throws<ParseException.Duplicate>(() => ParseStatement(
+            $"CREATE FUNCTION f() RETURNS SETOF INT LANGUAGE sql {before} AS $$body$$ {after}"));
+
+        Assert.Contains(category, error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("IMMUTABLE")]
+    [InlineData("STRICT")]
+    [InlineData("RETURNS NULL ON NULL INPUT")]
+    [InlineData("CALLED ON NULL INPUT")]
+    [InlineData("PARALLEL SAFE")]
+    [InlineData("COST 1")]
+    [InlineData("ROWS 1")]
+    public void ProcedureOptions_RejectFunctionOnlyClauses(string option)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE PROCEDURE p() LANGUAGE sql {option} AS $$body$$"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE PROCEDURE p() LANGUAGE sql AS $$body$$ {option}"));
+    }
+
+    [Theory]
+    [InlineData("COST 0")]
+    [InlineData("COST -1")]
+    [InlineData("ROWS 0")]
+    [InlineData("ROWS -1")]
+    [InlineData("PARALLEL unknown")]
+    [InlineData("EXTERNAL SECURITY unknown")]
+    [InlineData("SET app.mode 'x'")]
+    [InlineData("SET app.mode FROM")]
+    public void RoutineOptions_RejectMalformedClauses(string option)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE FUNCTION f() RETURNS SETOF INT LANGUAGE sql {option} AS $$body$$"));
+    }
+
+    [Theory]
+    [InlineData("IMMUTABLE")]
+    [InlineData("STABLE")]
+    [InlineData("VOLATILE")]
+    [InlineData("STRICT")]
+    [InlineData("CALLED ON NULL INPUT")]
+    [InlineData("RETURNS NULL ON NULL INPUT")]
+    [InlineData("SECURITY DEFINER")]
+    [InlineData("EXTERNAL SECURITY INVOKER")]
+    [InlineData("PARALLEL SAFE")]
+    [InlineData("COST 2")]
+    [InlineData("ROWS 3")]
+    [InlineData("SET app.mode TO 'x'")]
+    public void CoreParser_KitchenSinkDispatch_AcceptsLeadingRoutineAttributes(string option)
+    {
+        var parser = new Parser();
+        foreach (string tail in new[] { $"{option} AS $$body$$ LANGUAGE sql", $"LANGUAGE sql {option} AS $$body$$" })
+        {
+            string sql = "CREATE FUNCTION f() RETURNS SETOF INT " + tail;
+            var function = Assert.IsType<CreateFunction>(Assert.Single(parser.Parse([.. new PgLexer().Tokenize(sql)])));
+
+            Assert.Equal(ParseStatement(sql), function);
+            Assert.Equal(function, Assert.Single(parser.Parse([.. new PgLexer().Tokenize(function.ToSql())])));
+        }
+    }
+
+    [Theory]
+    [InlineData("+2", "+2")]
+    [InlineData("-2", "-2")]
+    [InlineData("+1.5", "+1.5")]
+    [InlineData("-1.5", "-1.5")]
+    [InlineData("public", "'public'")]
+    [InlineData("true", "TRUE")]
+    [InlineData("false", "FALSE")]
+    [InlineData("null", "NULL")]
+    public void RoutineSettings_ParseSignedNumbersBareWordsAndSpecialValues(string value, string expected)
+    {
+        var function = Assert.IsType<CreateFunction>(ParseStatement(
+            $"CREATE FUNCTION f() RETURNS INT LANGUAGE sql SET app.mode TO {value} AS $$body$$"));
+        Assert.NotNull(function.PgOptionsBeforeBody);
+        var setting = Assert.IsType<PgStatementRoutineOption.RoutineSetting>(function.PgOptionsBeforeBody[1]);
+
+        Assert.Equal("SET app.mode TO " + expected, setting.Setting.ToSql());
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("+true")]
+    [InlineData("-'x'")]
+    [InlineData("+")]
+    [InlineData("-null")]
+    public void RoutineSettings_RejectSignsWithoutNumericValues(string value)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(
+            $"CREATE FUNCTION f() RETURNS INT LANGUAGE sql SET app.mode TO {value} AS $$body$$"));
+
+        Assert.Contains("number", error.Message);
+    }
+
+    [Theory]
+    [InlineData("ROWS 7 AS $$body$$ LANGUAGE sql")]
+    [InlineData("AS $$body$$ LANGUAGE sql ROWS 7")]
+    public void ScalarFunctions_RejectRowsOnEitherSideOfBody(string tail)
+    {
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE FUNCTION f() RETURNS INT " + tail));
+
+        Assert.Contains("set-returning function for ROWS", error.Message);
     }
 
     private static string Format(IWriteSql statement)

@@ -16,7 +16,7 @@ public class PgParser : Parser
         SelectParser = new SelectParser(this);
         DmlParser = new DmlParser(this);
         DdlParser = new PgDdlParser(this);
-        TableParser = new TableParser(this);
+        TableParser = new PgTableParser(this);
         ControlFlowParser = new ControlFlowParser(this);
     }
 
@@ -28,7 +28,7 @@ public class PgParser : Parser
         {
             CreateOrLabel = createOrLabel,
             Temporary = temporary,
-            AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
+            AllSupportedTypes = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
         };
     }
 
@@ -61,7 +61,7 @@ public class PgParser : Parser
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
             Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
-            Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel),
+            Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, false, options.CreateOrLabel, null),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, null),
             Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, null, null, null),

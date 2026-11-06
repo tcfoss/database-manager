@@ -37,8 +37,7 @@ public readonly record struct Handle
 
     public static Handle Create(Identifier identifier, NameHandling nameHandling)
     {
-        return new Handle(
-            GetNamePart(identifier, nameHandling));
+        return new Handle(GetNamePart(identifier, nameHandling));
     }
 
     public static bool operator <(Handle left, Handle right)

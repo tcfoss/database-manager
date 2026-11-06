@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace TcfOss.DatabaseManager.Core.IO;
@@ -36,7 +37,9 @@ public readonly ref struct IndentedSqlInterpolatedStringHandler
             default:
                 if (value != null)
                 {
-                    AppendFormatted(value.ToString());
+                    AppendFormatted(value is IFormattable formattable
+                        ? formattable.ToString(null, CultureInfo.InvariantCulture)
+                        : value.ToString());
                 }
                 break;
         }

@@ -17,7 +17,8 @@ public record CreateProcedure(ObjectName Name, SqlValueList<StatementRoutinePara
     public Definer? Definer { get; init; }
     public MyRoutineCharacteristic? MyCharacteristic { get; init; }
     public MsRoutineWithOptions? MsOptions { get; init; }
-    public PgRoutineOptions? PgOptions { get; init; }
+    public SqlValueList<PgStatementRoutineOption>? PgOptionsBeforeBody { get; init; }
+    public SqlValueList<PgStatementRoutineOption>? PgOptionsAfterBody { get; init; }
 
     /// <summary>
     /// PostgreSQL can have additional keywords after the statement body, pushing the real
@@ -69,19 +70,18 @@ public record CreateProcedure(ObjectName Name, SqlValueList<StatementRoutinePara
         }
         else
         {
-            if (PgOptions != null)
-            {
-                writer.WriteSql($" {PgOptions}");
-            }
+            RoutineFormatter.WritePgOptions(writer, PgOptionsBeforeBody);
             RoutineFormatter.WriteBody(writer, Body, UseAsBeforeBody);
+            RoutineFormatter.WritePgOptions(writer, PgOptionsAfterBody);
         }
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
-        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, "PROCEDURE", Name, Parameters, IfNotExists, null, MyCharacteristic, MsOptions, PgOptions);
+        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, "PROCEDURE", Name, Parameters, IfNotExists, null, MyCharacteristic, MsOptions, PgOptionsBeforeBody);
         RoutineFormatter.FormatBody(writer, manager, Body, UseAsBeforeBody);
+        RoutineFormatter.FormatPgOptions(writer, manager, PgOptionsAfterBody);
         Meta.FormatPostNonSql(writer, manager);
     }
 

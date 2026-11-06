@@ -1275,7 +1275,7 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.Equal("schema1", trigger.Name.Schema.Name);
 
         Assert.Equal("table1", trigger.OnTable.Name);
-        Assert.Equal(TriggerEvent.Insert, trigger.TriggerEvent);
+        Assert.IsType<TriggerEvent.Insert>(trigger.TriggerEvent);
         Assert.Equal(TriggerTime.Before, trigger.TriggerTime);
 
         Assert.Equal("BEGIN SET NEW.val = CONCAT(NEW.val, ' - modified'); END", trigger.Body.ToSql());
@@ -1318,7 +1318,7 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.Equal("my_trigger1", trigger1.Name.Name);
         Assert.Equal("schema1", trigger1.Name.Schema.Name);
         Assert.Equal("table1", trigger1.OnTable.Name);
-        Assert.Equal(TriggerEvent.Insert, trigger1.TriggerEvent);
+        Assert.IsType<TriggerEvent.Insert>(trigger1.TriggerEvent);
         Assert.Equal(TriggerTime.Before, trigger1.TriggerTime);
         Assert.Equal<uint>(1, trigger1.Order);
 
@@ -1327,7 +1327,7 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.Equal("my_trigger2", trigger2.Name.Name);
         Assert.Equal("schema1", trigger2.Name.Schema.Name);
         Assert.Equal("table1", trigger2.OnTable.Name);
-        Assert.Equal(TriggerEvent.Insert, trigger2.TriggerEvent);
+        Assert.IsType<TriggerEvent.Insert>(trigger2.TriggerEvent);
         Assert.Equal(TriggerTime.Before, trigger2.TriggerTime);
         Assert.Equal<uint>(2, trigger2.Order);
 
@@ -1352,7 +1352,7 @@ public abstract class MyDefinitionBuilderTestsBase
 
         var statements = TextParser.ParseText(statementText);
         var original = statements.OfType<CreateTrigger>().Single();
-        var multiEvent = original with { Events = [TriggerEvent.Insert, TriggerEvent.Update] };
+        var multiEvent = original with { Events = [new TriggerEvent.Insert(), new TriggerEvent.Update()] };
 
         Assert.Throws<SqlSyntaxException.TriggerSupportsOnlyOneEvent>(
             () => DefinitionBuilder.ProcessStatements([multiEvent], Schema, 0));

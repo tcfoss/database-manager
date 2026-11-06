@@ -15,6 +15,30 @@ public class MyNormalizer(MyConfig config, ComponentNormalizer componentNormaliz
         return new MyNormalizer((MyConfig)Config, ComponentNormalizer);
     }
 
+    protected override FunctionCall NormalizeFunctionCall(FunctionCall functionCall, bool inSelect = false, bool flatten = false)
+    {
+        FunctionCall normalized = base.NormalizeFunctionCall(functionCall, inSelect, flatten);
+        if (functionCall.Name.Values.Count == 1 && functionCall.Name.Values[0].Name.Equals("NOW", StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized with { Name = new ObjectName(new Identifier("CURRENT_TIMESTAMP")) };
+        }
+        return normalized;
+    }
+
+    protected override Exists NormalizeExists(Exists exists, bool flatten = false)
+    {
+        return base.NormalizeExists(exists with { Subquery = exists.Subquery with { Limit = null } }, flatten);
+    }
+
+    protected override Expression NormalizeIsFalse(IsFalse isFalse, bool inSelect = false, bool flatten = false)
+    {
+        if (isFalse is { Negated: false, Expression: Exists { Negated: false } exists })
+        {
+            return NormalizeExists(exists with { Negated = true }, flatten);
+        }
+        return base.NormalizeIsFalse(isFalse, inSelect, flatten);
+    }
+
     protected override Expression NormalizeCast(Cast cast, bool inSelect = false, bool flatten = false)
     {
         DataType dataType = ((DataTypeReference.BuiltIn)cast.DataType).DataType;

@@ -420,7 +420,7 @@ public class NormalizerTests
     }
 
     [Fact]
-    public void NowFunction_IsConvertedToCurrentTimestamp()
+    public void NowFunction_IsPreserved()
     {
         var text = """
         SELECT
@@ -431,12 +431,12 @@ public class NormalizerTests
         """;
 
         var actual = GetActualSelectText(text);
-        Assert.Contains("CURRENT_TIMESTAMP()", actual);
-        Assert.DoesNotContain("NOW()", actual);
+        Assert.Contains("NOW()", actual);
+        Assert.DoesNotContain("CURRENT_TIMESTAMP()", actual);
     }
 
     [Fact]
-    public void ExistsWithLimit_LimitIsStripped()
+    public void ExistsWithLimit_LimitIsPreserved()
     {
         var text = """
         SELECT
@@ -446,11 +446,11 @@ public class NormalizerTests
         """;
 
         var actual = GetActualSelectText(text);
-        Assert.DoesNotContain("LIMIT", actual);
+        Assert.Contains("LIMIT 1", actual);
     }
 
     [Fact]
-    public void ExistsIsFalse_IsCanonicalizedToNotExists_AndLimitIsStripped()
+    public void ExistsIsFalse_IsPreservedWithLimit()
     {
         var text = """
         SELECT
@@ -460,9 +460,9 @@ public class NormalizerTests
         """;
 
         var actual = GetActualSelectText(text);
-        Assert.Contains("NOT EXISTS", actual);
-        Assert.DoesNotContain("IS FALSE", actual);
-        Assert.DoesNotContain("LIMIT", actual);
+        Assert.Contains("EXISTS", actual);
+        Assert.Contains("IS FALSE", actual);
+        Assert.Contains("LIMIT 1", actual);
     }
 
     [Fact]
@@ -560,19 +560,26 @@ public class NormalizerTests
         Assert.Equal(expected, GetActualSelectText(sql, usePseudoTables: false));
     }
 
-    [Fact]
-    public void FunctionCall_NullArguments_ArePreserved()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FunctionCall_NullArguments_ArePreserved(bool withoutList)
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
         var expression = new FunctionCall(new ObjectName([new Identifier("schema"), new Identifier("NOW")]))
         {
-            Arguments = new FunctionArguments.List(),
+            Arguments = withoutList ? new FunctionArguments.None() : new FunctionArguments.List(),
         };
 
         var actual = Assert.IsType<FunctionCall>(normalizer.NormalizeExpression(expression));
 
         Assert.Equal(expression.Name, actual.Name);
+        if (withoutList)
+        {
+            Assert.Same(expression.Arguments, actual.Arguments);
+            return;
+        }
         var arguments = Assert.IsType<FunctionArguments.List>(actual.Arguments);
         Assert.Null(arguments.Arguments);
         Assert.Null(arguments.Clauses);
@@ -605,6 +612,44 @@ public class NormalizerTests
 
         var actual = GetActualSelectText(text);
         Assert.Contains("NOT `library_catalog`.`book`.`publication_year` > 2000", actual);
+    }
+
+    [Theory]
+    [InlineData("a IS TRUE", "`a` IS TRUE")]
+    [InlineData("a IS UNKNOWN", "`a` IS UNKNOWN")]
+    [InlineData("a IS DISTINCT FROM b", "`a` IS DISTINCT FROM `b`")]
+    [InlineData("a AT TIME ZONE b", "`a` AT TIME ZONE `b`")]
+    [InlineData("a LIKE b", "`a` LIKE `b`")]
+    [InlineData("a ILIKE b", "`a` ILIKE `b`")]
+    [InlineData("a SIMILAR TO b", "`a` SIMILAR TO `b`")]
+    [InlineData("a REGEXP b", "`a` REGEXP `b`")]
+    [InlineData("a = ANY(b)", "`a` = ANY(`b`)")]
+    [InlineData("a.*", "`a`.*")]
+    [InlineData("INTERVAL a DAY", "INTERVAL `a` DAY")]
+    [InlineData("(SELECT a AS x)", "(SELECT `a` AS `x`)")]
+    [InlineData("(a, b)", "(`a`, `b`)")]
+    [InlineData("POSITION(a IN b)", "POSITION(`a` IN `b`)")]
+    [InlineData("CAST(a AS INT)", "CAST(`a` AS INT)")]
+    [InlineData("a::INT", "`a`::INT")]
+    [InlineData("f(a) OVER (PARTITION BY b ORDER BY c)", "f(`a`) OVER (PARTITION BY `b` ORDER BY `c`)")]
+    [InlineData("f(a) OVER ()", "f(`a`) OVER ()")]
+    [InlineData("f(a) OVER (ORDER BY b)", "f(`a`) OVER (ORDER BY `b`)")]
+    public void NormalizeExpression_TraversesAdditionalExpressionTypes(string sql, string expected)
+    {
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NormalizeExpression_PreservesNonRecursiveNodes(bool typedString)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        Expression expression = typedString ? new TypedString("1", new DataType.Int()) : new Wildcard();
+
+        Assert.Same(expression, normalizer.NormalizeExpression(expression));
+        Assert.Same(expression, normalizer.NormalizeExpressionNoFlatten(expression));
     }
 
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
@@ -853,6 +898,38 @@ public class NormalizerTests
     {
         var actual = GetActualSelectText("SELECT 1 AS x");
         Assert.Equal("SELECT 1 AS `x`", actual);
+    }
+
+    [Fact]
+    public void RepeatedlyNestedJoin_IsFlattened()
+    {
+        string actual = GetActualSelectText("SELECT b.book_id FROM ((book AS b INNER JOIN book_author AS ba ON b.book_id = ba.book_id))");
+
+        Assert.DoesNotContain("(", actual);
+        Assert.Contains("INNER JOIN `library_catalog`.`book_author` AS `ba`", actual);
+    }
+
+    [Fact]
+    public void PseudoTableWithoutObjectIdentifier_IsNormalized()
+    {
+        _selectableSources.AddExternalSource("temporary", new PseudoTable("temporary", null, ["id"], PseudoTableType.CommonTableExpression));
+
+        string actual = GetActualSelectText("SELECT id FROM temporary");
+
+        Assert.Contains("FROM `temporary`", actual);
+        Assert.Contains("AS `id`", actual);
+    }
+
+    [Fact]
+    public void CteFromIdentifier_IsNormalized()
+    {
+        Select select = GetNormalizedSelect("WITH recent AS (SELECT book_id FROM book) SELECT book_id FROM recent", usePseudoTables: false);
+        CommonTableExpression cte = select.CommonTableExpression!;
+        select = select with { CommonTableExpression = cte with { Tables = [Assert.Single(cte.Tables) with { From = new Identifier("source") }] } };
+
+        Select actual = GetNormalizedSelect(select, usePseudoTables: false);
+
+        Assert.Equal("`source`", Assert.Single(actual.CommonTableExpression!.Tables).From!.ToSql());
     }
 
     [Theory]

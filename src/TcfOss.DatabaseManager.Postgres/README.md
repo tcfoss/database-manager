@@ -156,6 +156,26 @@ their own identities and are not flattened into their underlying types.
 `PgColumn` uses shared `ColumnOption.Nullability` and `ColumnOption.ColumnDefault`
 records, keeping constraint names with their options, distinguishing absent
 nullability from explicit `NULL`, and preserving literal/expression defaults.
+Shared generated-expression and PG identity components are retained in
+`PgColumn.Generated`. Identity supports ALWAYS/BY DEFAULT and standard sequence
+options. Parsed identity options are ordered `PgStatementSequenceOption` variants,
+preserving optional WITH/BY and NO forms, with single-option parsing and category
+duplicate checks in Core. `PgTableBuilder.PreColumn.Identity` retains syntax until
+the integer type is resolved. Canonical `PgIdentityOptions` then holds nonnullable
+start, increment, bounds, cache, and cycle, with no `IWriteSql` implementation.
+Defaults are increment 1, cache 1, and no cycle. Ascending bounds default to
+1/type maximum; descending bounds to type minimum/-1. Start defaults to the
+effective minimum or maximum according to direction. Construction validates
+nonzero increment, positive cache, type-compatible ordered bounds, and start
+within bounds, including manually assembled ASTs. Canonical options convert
+back to explicit statement variants for SQL emission. Numeric interpolation uses
+invariant culture in both Core SQL handlers, so option printers need no explicit
+culture argument; custom `IWriteSql` and string dispatch remain unchanged.
+Generated expressions support STORED/VIRTUAL, including PG 18's default VIRTUAL
+mode. Unit tests cover identity syntax/defaults/bounds and generated-expression
+storage, conflicts, and round-trips; sequence
+name/logging options and full server-level generated-expression validation
+remain deferred.
 Default conversion is shared with MySQL through Core's protected
 `TableBuilder.NormalizeDefault` helper. The base builder owns its injected
 `INormalizeComponents` as a protected property and uses it directly for value
@@ -186,15 +206,36 @@ one opaque `RoutineBodyLiteral`, retaining decoded content and optional dollar
 tag for reconstruction. Quoting does not affect literal-body equality and no
 references are inferred from opaque text.
 
-`PgRoutineOptions` is a nullable Core component on create statements and is
-retained independently of the body in PostgreSQL routine definitions. Language
-is normalized during definition construction, including the implicit SQL
-language of structured bodies. The header formatter emits options; bodies do
-not contain language clauses or duplicate `AS` flags. `RoutineTailMeta` preserves
+Create statements retain nullable ordered `PgStatementRoutineOption` lists in
+`PgOptionsBeforeBody` and `PgOptionsAfterBody`. Each option emits its syntax,
+preserving placement, null-input spelling, EXTERNAL SECURITY, and SET's `=`/TO
+delimiter. Definition construction converts both lists into canonical
+`PgRoutineOptions.Function` or `PgRoutineOptions.Procedure`, which are independent
+of the body and omit syntax-only differences. Both share nonnullable language
+and security plus local settings; procedures have no function-only attributes.
+Functions have nonnullable volatility, strictness, parallel mode, cost, and rows.
+Defaults are VOLATILE, non-strict, INVOKER, and UNSAFE. Cost defaults to 1 for
+c/internal or 100 otherwise; rows defaults to 1000 for resolved set/table returns
+or 0 otherwise. Cost/rows use finite positive `float` values for explicit clauses,
+matching pg_proc's float4 representation rather than retaining numeric spelling.
+Canonical emission omits ROWS when its stored value is 0. Definition construction
+rejects SET FROM CURRENT with a sourced `DefinitionException.RoutineSettingFromCurrent`,
+because its captured value depends on the execution environment. Canonical
+language is normalized, including implicit SQL for structured bodies. Canonical
+options convert to statement forms and do not implement `IWriteSql`. Generation emits options
+before the body in a fixed order. The formatter handles both option lists;
+bodies do not contain language clauses or duplicate `AS` flags. `RoutineTailMeta` preserves
 the tail's source range for raw-text generation without expanding `Body.Meta`.
 Dollar-quoted tokens retain tag and content and also work as SQL values in
-expressions and column defaults. Other PostgreSQL routine attributes, full
-option ordering, overload identity, and broader PL/pgSQL grammar remain deferred.
+expressions and column defaults. Options include volatility,
+null-input behavior, security mode, PARALLEL, COST, ROWS, and per-routine SET,
+including ordering around quoted bodies and duplicate/conflict checks. Parsed
+language may be omitted for structured bodies; canonical options supply SQL.
+Unit tests cover option spelling/order/placement, duplicate categories,
+function/procedure restrictions, effective defaults, float4 normalization,
+SET FROM CURRENT rejection, and canonical round-trips. Existing assertions have
+been migrated to the ordered-list API and concrete canonical variants. Overload identity,
+less common routine attributes, and broader PL/pgSQL grammar remain deferred.
 Unit tests cover dollar-string lexing and values, routine body validation,
 scope restoration, formatting, source ranges, and definition round-trips.
 Routine fixtures use PostgreSQL body forms rather than permissive Core syntax.

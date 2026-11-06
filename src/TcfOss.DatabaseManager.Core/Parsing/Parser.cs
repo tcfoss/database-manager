@@ -27,6 +27,9 @@ public class Parser : IParser
     public PrecedenceManager PrecedenceManager { get; protected init; }
     public virtual bool SupportsPostgresCastSyntax => true;
     public virtual bool SupportsPostgresRegexOperators => true;
+    public virtual bool SupportsPostgresIdentitySyntax => true;
+    public virtual bool SupportsPostgresColumnCollationSyntax => true;
+    protected virtual bool SupportsCommentOn => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }
 
@@ -114,7 +117,28 @@ public class Parser : IParser
         }
 
         Statement statement = ParseNormalStatement(state, token, label);
+        AttachStatementMetadata(statement, token, state);
 
+        if (label != null)
+        {
+            statement = new LabeledStatement(statement, label.Identifier);
+            if (label.PreNonSql.SafeAny())
+            {
+                statement.Meta.PreNonSql = label.PreNonSql.Items;
+                statement.Meta.Start = label.PreNonSql.Start;
+            }
+            else
+            {
+                statement.Meta.Start = label.Location.Position;
+            }
+            statement.Meta.End = state.Peek().Location.Position;
+        }
+
+        return statement;
+    }
+
+    internal static void AttachStatementMetadata(Statement statement, Token token, ParserState state)
+    {
         if (token.PreNonSql.SafeAny())
         {
             statement.Meta.PreNonSql = token.PreNonSql.Items;
@@ -140,23 +164,6 @@ public class Parser : IParser
         }
         statement.Meta.End = end;
         statement.Meta.EndPlusTerminatorLength = endPlusTerminatorLength;
-
-        if (label != null)
-        {
-            statement = new LabeledStatement(statement, label.Identifier);
-            if (label.PreNonSql.SafeAny())
-            {
-                statement.Meta.PreNonSql = label.PreNonSql.Items;
-                statement.Meta.Start = label.PreNonSql.Start;
-            }
-            else
-            {
-                statement.Meta.Start = label.Location.Position;
-            }
-            statement.Meta.End = end;
-        }
-
-        return statement;
     }
 
     protected virtual Statement ParseNormalStatement(ParserState state, Token token, Label? label)
@@ -189,6 +196,7 @@ public class Parser : IParser
             Keyword.DELETE => DmlParser.ParseDelete(state, null),
             Keyword.WITH => ParseCteQuery(state),
             Keyword.CREATE => ParseCreate(state),
+            Keyword.COMMENT when SupportsCommentOn => DdlParser.ParseCommentOn(state),
             Keyword.ALTER => ParseAlter(state),
             Keyword.DROP => DdlParser.ParseDropObject(state),
             Keyword.IF => ControlFlowParser.ParseIf(state),
@@ -319,7 +327,7 @@ public class Parser : IParser
         {
             throw state.ExpectedException("TABLE");
         }
-        if (options.CreateOrLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.TRIGGER or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.EVENT or Keyword.INDEX))
+        if (options.CreateOrLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.TRIGGER or Keyword.CONSTRAINT or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.EVENT or Keyword.INDEX))
         {
             throw state.ExpectedException("TABLE", "VIEW", "TRIGGER", "FUNCTION", "PROCEDURE", "EVENT", "INDEX");
         }
@@ -342,7 +350,7 @@ public class Parser : IParser
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
             Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
-            Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
+            Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
             Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),

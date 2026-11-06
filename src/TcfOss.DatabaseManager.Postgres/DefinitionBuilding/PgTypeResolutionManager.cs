@@ -15,7 +15,6 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
 {
     private readonly PgConfig _config = config;
     private readonly Dictionary<ObjectHandle, ObjectIdentifier> _names = names.ToDictionary(entry => entry.Key, entry => componentNormalizer.NormalizeObjectIdentifier(entry.Value));
-    private readonly Identifier[] _searchPath = [.. config.SearchPath];
 
     public PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<ObjectHandle, ObjectIdentifier> names)
         : this(config, names, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider(), config.NameHandling))
@@ -25,14 +24,6 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
     public ObjectIdentifier GetName(ObjectHandle handle)
     {
         return _names[handle];
-    }
-
-    public ObjectIdentifier GetName(ObjectIdentifier name)
-    {
-        ObjectHandle handle = name.OriginalIdentifiers != null
-            ? ObjectHandle.Create(name.OriginalIdentifiers, name.Schema, _config.NameHandling)
-            : ObjectHandle.Create(name, _config.NameHandling);
-        return GetName(handle);
     }
 
     public DataType Resolve(DataTypeReference reference, SchemaIdentifier activeSchema, SourceRef? sourceRef = null)
@@ -47,24 +38,11 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
         }
 
         var named = (DataTypeReference.Named)reference;
-        if (named.Name.Values.Count > 1)
+        foreach (ObjectHandle handle in _config.GetCandidateHandles(named.Name, activeSchema))
         {
-            ObjectHandle handle = ObjectHandle.Create(named.Name, activeSchema, _config.NameHandling);
             if (_names.TryGetValue(handle, out ObjectIdentifier? name))
             {
                 return new PgDataType.Custom(name);
-            }
-        }
-        else
-        {
-            foreach (Identifier schema in _searchPath)
-            {
-                var candidateSchema = new SchemaIdentifier(schema.Name, activeSchema.Catalog, schema.QuoteStyle);
-                ObjectHandle handle = ObjectHandle.Create(named.Name, candidateSchema, _config.NameHandling);
-                if (_names.TryGetValue(handle, out ObjectIdentifier? name))
-                {
-                    return new PgDataType.Custom(name);
-                }
             }
         }
 
@@ -73,9 +51,7 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
         {
             location = location.Value with { SourceId = sourceRef.Value.SourceId };
         }
-        SchemaIdentifier[] searchedSchemas = named.Name.Values.Count > 1
-            ? [SchemaIdentifier.FromObjectName(new ObjectName([.. named.Name.Values[..^1]]), activeSchema.Catalog, null)]
-            : [.. _searchPath.Select(schema => new SchemaIdentifier(schema.Name, activeSchema.Catalog, schema.QuoteStyle))];
+        SchemaIdentifier[] searchedSchemas = [.. _config.GetCandidateSchemas(named.Name, activeSchema)];
         throw new SqlSyntaxException.TypeNotFound(named.Name, searchedSchemas, location ?? sourceRef);
     }
 

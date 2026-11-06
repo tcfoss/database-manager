@@ -60,7 +60,7 @@ internal static class RoutineFormatter
         StatementFunctionReturn? returnType,
         MyRoutineCharacteristic? characteristic,
         MsRoutineWithOptions? msOptions,
-        PgRoutineOptions? pgOptions = null)
+        SqlValueList<PgStatementRoutineOption>? pgOptions = null)
     {
         // CREATE [OR REPLACE / OR ALTER] [Definer]
         FormatCreateAndDefiner(writer, manager, createOrLabel, definer);
@@ -140,10 +140,24 @@ internal static class RoutineFormatter
             manager.DecreaseIndent();
         }
 
-        if (pgOptions != null)
+        FormatPgOptions(writer, manager, pgOptions);
+    }
+
+    public static void WritePgOptions(SqlTextWriter writer, SqlValueList<PgStatementRoutineOption>? options)
+    {
+        foreach (PgStatementRoutineOption option in options ?? [])
+        {
+            writer.WriteSql($" {option}");
+        }
+    }
+
+    public static void FormatPgOptions(SqlTextWriter writer, FormatManager manager, SqlValueList<PgStatementRoutineOption>? options)
+    {
+        foreach (PgStatementRoutineOption option in options ?? [])
         {
             writer.WriteLine();
-            pgOptions.FormatSql(writer, manager);
+            writer.Write(manager.Indent);
+            option.FormatSql(writer, manager);
         }
     }
 

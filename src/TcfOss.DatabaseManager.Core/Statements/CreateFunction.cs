@@ -18,7 +18,8 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
     public bool Aggregate { get; init; }
     public MyRoutineCharacteristic? MyCharacteristic { get; init; }
     public MsRoutineWithOptions? MsOptions { get; init; }
-    public PgRoutineOptions? PgOptions { get; init; }
+    public SqlValueList<PgStatementRoutineOption>? PgOptionsBeforeBody { get; init; }
+    public SqlValueList<PgStatementRoutineOption>? PgOptionsAfterBody { get; init; }
 
     /// <summary>
     /// PostgreSQL can have additional keywords after the statement body, pushing the real
@@ -80,11 +81,9 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
         }
         else
         {
-            if (PgOptions != null)
-            {
-                writer.WriteSql($" {PgOptions}");
-            }
+            RoutineFormatter.WritePgOptions(writer, PgOptionsBeforeBody);
             RoutineFormatter.WriteBody(writer, Body, UseAsBeforeBody);
+            RoutineFormatter.WritePgOptions(writer, PgOptionsAfterBody);
         }
     }
 
@@ -92,8 +91,9 @@ public record CreateFunction(ObjectName Name, SqlValueList<StatementRoutineParam
     {
         Meta.FormatPreNonSql(writer, manager);
         string routineKeyword = Aggregate ? "AGGREGATE FUNCTION" : "FUNCTION";
-        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, routineKeyword, Name, Parameters, IfNotExists, ReturnType, MyCharacteristic, MsOptions, PgOptions);
+        RoutineFormatter.FormatHeader(writer, manager, CreateOrLabel, Definer, routineKeyword, Name, Parameters, IfNotExists, ReturnType, MyCharacteristic, MsOptions, PgOptionsBeforeBody);
         RoutineFormatter.FormatBody(writer, manager, Body, UseAsBeforeBody);
+        RoutineFormatter.FormatPgOptions(writer, manager, PgOptionsAfterBody);
         Meta.FormatPostNonSql(writer, manager);
     }
 

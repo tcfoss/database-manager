@@ -355,7 +355,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
         var tokens = lexer.Tokenize("CREATE UNKNOWN OBJECT");
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse([.. tokens]));
-        var expectedMessage = "Expected one of { TABLE | TRIGGER | VIEW | FUNCTION | PROCEDURE | EVENT | INDEX | TYPE | DOMAIN }. Found UNKNOWN.";
+        var expectedMessage = "Expected one of { TABLE | TRIGGER | CONSTRAINT TRIGGER | VIEW | FUNCTION | PROCEDURE | EVENT | INDEX | TYPE | DOMAIN }. Found UNKNOWN.";
 
         Assert.Equal(expectedMessage, exception.Message);
     }
@@ -501,5 +501,24 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     public void InvalidStatement_ThrowsParseException(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => new Parser().Parse(GetTokens(sql)));
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS 'table'")]
+    [InlineData("COMMENT ON COLUMN items.id IS NULL")]
+    [InlineData("COMMENT ON FUNCTION f(INT) IS 'function'")]
+    public void Comments_AreAcceptedByKitchenSinkParser(string sql)
+    {
+        var comment = Assert.IsType<CommentOn>(ParseStatement(sql));
+
+        Assert.Equal(sql, comment.ToSql());
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON FUNCTION f(arg INT READONLY) IS 'text'")]
+    [InlineData("COMMENT ON FUNCTION f(arg INT OUTPUT) IS 'text'")]
+    public void CommentSignatures_RejectSqlServerParameterOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

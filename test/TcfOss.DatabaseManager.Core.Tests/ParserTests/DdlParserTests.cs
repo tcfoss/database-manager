@@ -33,6 +33,14 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH STATEMENT SELECT 1")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT OR UPDATE OF first_column, second_column OR DELETE ON mytable FOR EACH ROW SELECT 1")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER TRUNCATE ON mytable SELECT 1")]
+    [InlineData("CREATE TRIGGER mytrigger ON mytable AFTER INSERT OR UPDATE AS SELECT 1")]
+    [InlineData("CREATE OR REPLACE CONSTRAINT TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW EXECUTE FUNCTION check_row()")]
+    [InlineData("CREATE CONSTRAINT TRIGGER mytrigger AFTER UPDATE ON mytable FROM other_table DEFERRABLE INITIALLY DEFERRED FOR ROW WHEN (NEW.id > 0) EXECUTE FUNCTION check_row('key', 1, named)")]
+    [InlineData("CREATE CONSTRAINT TRIGGER mytrigger AFTER DELETE ON mytable NOT DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE check_row()")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER UPDATE ON mytable REFERENCING OLD TABLE AS old_rows NEW TABLE new_rows FOR STATEMENT EXECUTE FUNCTION check_rows()")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable WHEN (NEW.id > 0) EXECUTE FUNCTION check_row()")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE TRIGGER basic")]
     [InlineData("CREATE OR REPLACE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE OR REPLACE TRIGGER")]
     [InlineData("CREATE OR ALTER TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH ROW SELECT 1", Label = "CREATE OR ALTER TRIGGER")]
@@ -326,7 +334,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE TRIGGER mytrigger UPDATE ON mytable FOR EACH ROW SELECT 1", "{ BEFORE | AFTER | INSTEAD OF | FOR }")]
-    [InlineData("CREATE TRIGGER mytrigger AFTER ON mytable FOR EACH ROW SELECT 1", "{ INSERT | UPDATE | DELETE }")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER ON mytable FOR EACH ROW SELECT 1", "{ INSERT | UPDATE | DELETE | TRUNCATE }")]
     [InlineData("CREATE ALGORITHM = INVALID VIEW myview AS SELECT 1 FROM mytable", "{ UNDEFINED | MERGE | TEMPTABLE }")]
     [InlineData("CREATE VIEW myview AS SELECT 1 FROM mytable WITH MISSING CHECK OPTION", "{ CASCADED | LOCAL }")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE MISSING", "{ AT | EVERY }")]

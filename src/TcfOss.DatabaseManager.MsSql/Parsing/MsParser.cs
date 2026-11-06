@@ -22,6 +22,9 @@ public class MsParser : Parser
     public override QuoteStyle DefaultQuoteStyle => QuoteStyle.Brackets;
     public override bool SupportsPostgresCastSyntax => false;
     public override bool SupportsPostgresRegexOperators => false;
+    public override bool SupportsPostgresIdentitySyntax => false;
+    public override bool SupportsPostgresColumnCollationSyntax => false;
+    protected override bool SupportsCommentOn => false;
 
     public MsParser()
     {

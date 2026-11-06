@@ -11,6 +11,28 @@ namespace TcfOss.DatabaseManager.Core.Errors;
 public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         : SourcedException(GetMessage(message), sourceRef)
 {
+    public class InvalidTrigger(ObjectIdentifier trigger, string clause, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(trigger, clause), sourceRef)
+    {
+        public ObjectIdentifier Trigger { get; } = trigger;
+        public string Clause { get; } = clause;
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_InvalidTrigger);
+    }
+
+    public class TriggerRelationNotFound(ObjectName relation, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(relation), sourceRef)
+    {
+        public ObjectName Relation { get; } = relation;
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_TriggerRelationNotFound);
+    }
+
+    public class TriggerFunctionNotFound(ObjectName function, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(function), sourceRef)
+    {
+        public ObjectName Function { get; } = function;
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_TriggerFunctionNotFound);
+    }
+
     public class UnsupportedDialectClause(string dialect, string clause, SourceRef? sourceRef = null)
         : SqlSyntaxException(s_compositeFormat.Apply(dialect, clause), sourceRef)
     {
@@ -48,6 +70,17 @@ public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
             : SqlSyntaxException(s_compositeFormat.Apply(objectType, parentType, parentName), sourceRef)
     {
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_AttributeSpecifiedMultipleTimes);
+    }
+
+    public class MutuallyExclusive(string attribute1, string attribute2, string objectType, string parentType, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(attribute1, attribute2, objectType, parentType), sourceRef)
+    {
+        private string Attribute1 { get; } = attribute1;
+        private string Attribute2 { get; } = attribute2;
+        private string ObjectType { get; } = objectType;
+        private string ParentType { get; } = parentType;
+
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_MutuallyExclusive);
     }
 
     public class ConstraintNameNotAllowedException(string constraintName, string objectType, string parentType, Identifier parentName, string? dialect = null, SourceRef? sourceRef = null)
