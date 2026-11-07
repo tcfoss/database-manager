@@ -340,4 +340,14 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens("SELECT value ?| other"));
     }
+
+    [Theory]
+    [InlineData("SELECT INTERVAL '1 day'")]
+    [InlineData("SELECT INTERVAL(3) '1.234 seconds'")]
+    [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
+    public void PostgresIntervalLiterals_AreRejected(string sql)
+    {
+        Assert.False(new MsParser().SupportsPostgresIntervalLiteralSyntax);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

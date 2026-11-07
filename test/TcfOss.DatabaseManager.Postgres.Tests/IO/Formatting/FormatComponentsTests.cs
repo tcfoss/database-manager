@@ -258,4 +258,39 @@ public class FormatComponentsTests
 
         Assert.Equal(expected, writer.ToString());
     }
+
+    [Theory]
+    [InlineData("INTERVAL '1 day'")]
+    [InlineData("INTERVAL(3) '1.234 seconds'")]
+    [InlineData("INTERVAL '1-2' YEAR TO MONTH")]
+    [InlineData("INTERVAL '2 03:04:05.678' DAY TO SECOND(3)")]
+    [InlineData("INTERVAL E'1\\x20day'")]
+    [InlineData("INTERVAL $duration$1 day$duration$")]
+    public void IntervalLiterals_FormatWithoutLosingModifiersOrLiteralSpelling(string sql)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(sql, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("items.left IS DISTINCT FROM items.right", "\"items\".\"left\" IS DISTINCT FROM \"items\".\"right\"")]
+    [InlineData("items.left IS NOT DISTINCT FROM items.right", "\"items\".\"left\" IS NOT DISTINCT FROM \"items\".\"right\"")]
+    [InlineData("items.value = ANY(ARRAY[items.other])", "\"items\".\"value\" = ANY(ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value <> ALL(ARRAY[items.other])", "\"items\".\"value\" <> ALL(ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME(ARRAY[\"items\".\"other\"])")]
+    public void RemainingComparisons_FormatOperandsRecursively(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
 }

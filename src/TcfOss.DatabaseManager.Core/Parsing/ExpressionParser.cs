@@ -67,13 +67,13 @@ public class ExpressionParser
 
     protected virtual Expression ParsePrefix(ParserState state)
     {
-        if (_p.DataTypeParser.IsDataTypeStart(state.Peek())
+        if (!state.PeekKeyword(Keyword.INTERVAL) && _p.DataTypeParser.IsDataTypeStart(state.Peek())
             && state.TryParse((s) =>
         {
             DataType dataType = _p.DataTypeParser.ParseDataType(s);
             return dataType switch
             {
-                // TODO: Handle Interval, Custom
+                // TODO: Handle Custom
                 _ => new TypedString(ValueParser.ParseLiteralString(s), dataType)
             };
         }, out TypedString? result))
@@ -180,17 +180,23 @@ public class ExpressionParser
         if (qualifierKeyword != Keyword.undefined)
         {
             Expression right;
-            state.ExpectLeftParen();
-
-            if (PeekSubquery(state))
+            if (_p.SupportsPostgresOperatorSyntax)
             {
-                state.Rewind();
-                right = ParseSubExpression(state, precedence);
+                right = ParsePostgresQuantifiedOperand(state);
             }
             else
             {
-                right = ParseSubExpression(state, precedence);
-                state.ExpectRightParen();
+                state.ExpectLeftParen();
+                if (PeekSubquery(state))
+                {
+                    state.Rewind();
+                    right = ParseSubExpression(state, precedence);
+                }
+                else
+                {
+                    right = ParseSubExpression(state, precedence);
+                    state.ExpectRightParen();
+                }
             }
 
             if (op != BinaryOperatorOp.GreaterThan
@@ -240,23 +246,30 @@ public class ExpressionParser
         Expression right;
         if (quantifier != null)
         {
-            state.ExpectLeftParen();
-            if (PeekSubquery(state) || state.PeekKeyword(Keyword.VALUES))
-            {
-                CommonTableExpression? cte = state.PeekKeyword(Keyword.WITH) ? _p.SelectParser.ParseCommonTableExpression(state) : null;
-                right = new Subquery(_p.SelectParser.ParseSelect(state, cte));
-            }
-            else
-            {
-                right = ParseExpr(state);
-            }
-            state.ExpectRightParen();
+            right = ParsePostgresQuantifiedOperand(state);
         }
         else
         {
             right = ParseSubExpression(state, precedence);
         }
         return new PgBinaryOperator(left, reference, right) { Quantifier = quantifier };
+    }
+
+    private Expression ParsePostgresQuantifiedOperand(ParserState state)
+    {
+        state.ExpectLeftParen();
+        Expression right;
+        if (PeekSubquery(state) || state.PeekKeyword(Keyword.WITH) || state.PeekKeyword(Keyword.VALUES))
+        {
+            CommonTableExpression? cte = state.PeekKeyword(Keyword.WITH) ? _p.SelectParser.ParseCommonTableExpression(state) : null;
+            right = new Subquery(_p.SelectParser.ParseSelect(state, cte));
+        }
+        else
+        {
+            right = ParseExpr(state);
+        }
+        state.ExpectRightParen();
+        return right;
     }
 
     private PgOperatorReference ParsePostgresOperatorReference(ParserState state)
@@ -821,7 +834,7 @@ public class ExpressionParser
         }
         if (state.ParseKeywordsAll(Keyword.DISTINCT, Keyword.FROM))
         {
-            return new IsDistinctFrom(expr, ParseExpr(state), negated);
+            return new IsDistinctFrom(expr, ParseSubExpression(state, _pm.GetPrecedence(Precedence.Is)), negated);
         }
         throw state.ExpectedException("[NOT] NULL", "[NOT] TRUE", "[NOT] FALSE", "[NOT] DISTINCT FROM");
     }
@@ -924,13 +937,36 @@ public class ExpressionParser
         return expression;
     }
 
-    private Interval ParseInterval(ParserState state)
+    private Expression ParseInterval(ParserState state)
     {
         state.ExpectKeyword(Keyword.INTERVAL);
+
+        if (_p.SupportsPostgresIntervalLiteralSyntax
+            && (!_p.SupportsMySqlIntervalExpressionSyntax
+                || IsIntervalString(state.Peek())
+                    && (state.PeekNth(1).ToDateTimeUnit() == null
+                        || state.PeekNth(2) is Word { Keyword: Keyword.TO } or ParenOpen)
+                || state.Peek() is ParenOpen && IsIntervalString(state.PeekNth(3))))
+        {
+            uint? precision = DataTypeParser.ParseIntervalPrecision(state);
+            if (!IsIntervalString(state.Peek()))
+            {
+                throw state.ExpectedException("string literal");
+            }
+            Value literal = ValueParser.ParseValue(state);
+            PgIntervalQualifier? qualifier = precision == null ? DataTypeParser.ParsePostgresIntervalQualifier(state) : null;
+            return new PgIntervalLiteral(literal, precision, qualifier);
+        }
+
         Expression value = ParsePrefix(state);
         DateTimeUnit unit = state.Peek().ToDateTimeUnit() ?? throw state.ExpectedCategoryException("date_time unit");
         state.Next();
         return new Interval(value, unit);
+    }
+
+    private static bool IsIntervalString(Token token)
+    {
+        return token is StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral;
     }
 
     private Position ParsePositionIn(ParserState state)

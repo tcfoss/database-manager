@@ -647,4 +647,24 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens("SELECT value ?| other"));
     }
+
+    [Theory]
+    [InlineData("SELECT INTERVAL '1 day'")]
+    [InlineData("SELECT INTERVAL(3) '1.234 seconds'")]
+    [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
+    public void PostgresIntervalLiterals_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.False(new MyParser().SupportsPostgresIntervalLiteralSyntax);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("INTERVAL 1 DAY")]
+    [InlineData("INTERVAL '1' DAY")]
+    [InlineData("INTERVAL (amount + 1) DAY")]
+    public void MySqlIntervalExpressions_RetainExistingSyntax(string sql)
+    {
+        Assert.IsType<Core.Expressions.Interval>(ParseExpression(sql));
+        Assert.Equal(sql, ParseExpression(sql).ToSql());
+    }
 }

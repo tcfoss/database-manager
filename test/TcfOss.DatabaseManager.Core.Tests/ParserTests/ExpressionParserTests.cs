@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
+using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 
 using BinaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.BinaryOperator;
@@ -387,5 +388,34 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(new Core.Common.Value.Number(sql, false), expression.Value);
         Assert.Equal(sql, expression.ToSql());
+    }
+
+
+    [Fact]
+    public void KitchenSink_IntervalSyntaxPreservesBothDialectForms()
+    {
+        var parser = new Parser();
+        var literalState = new ParserState([.. new GenericLexer().Tokenize("INTERVAL '1-2' YEAR TO MONTH")]);
+        var expressionState = new ParserState([.. new GenericLexer().Tokenize("INTERVAL (amount + 1) DAY")]);
+
+        Assert.IsType<PgIntervalLiteral>(parser.ExpressionParser.ParseExpr(literalState));
+        Assert.IsType<Interval>(parser.ExpressionParser.ParseExpr(expressionState));
+        Assert.IsType<Eof>(literalState.Peek());
+        Assert.IsType<Eof>(expressionState.Peek());
+    }
+
+    [Theory]
+    [InlineData("INTERVAL '1-2' YEAR_MONTH")]
+    [InlineData("INTERVAL '1 2' DAY_HOUR")]
+    [InlineData("INTERVAL '1' MICROSECOND")]
+    [InlineData("INTERVAL '1' DAY")]
+    [InlineData("INTERVAL '1' SECOND")]
+    public void KitchenSink_QuotedMySqlIntervalUnitsRetainExistingExpressionShape(string sql)
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
+        var expression = Assert.IsType<Interval>(new Parser().ExpressionParser.ParseExpr(state));
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.IsType<Eof>(state.Peek());
     }
 }

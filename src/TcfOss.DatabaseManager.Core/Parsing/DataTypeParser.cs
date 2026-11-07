@@ -65,6 +65,53 @@ public class DataTypeParser(Parser parser)
         return value;
     }
 
+    public static uint? ParseIntervalPrecision(ParserState state)
+    {
+        return ParseOptionalSimplePrecision(state, max: 6);
+    }
+
+    public static PgIntervalQualifier? ParsePostgresIntervalQualifier(ParserState state)
+    {
+        DateTimeUnit? start = ParseOptionalIntervalField(state);
+        if (start == null)
+        {
+            return null;
+        }
+        DateTimeUnit? end = null;
+        if (state.ParseKeyword(Keyword.TO))
+        {
+            Token endToken = state.Peek();
+            end = ParseOptionalIntervalField(state) ?? throw state.ExpectedException("interval field");
+            bool valid = start == DateTimeUnit.Year && end == DateTimeUnit.Month
+                || start.Order <= DateTimeUnit.Day.Order && end.Order < start.Order;
+            if (!valid)
+            {
+                throw new ParseException.InvalidIntervalFieldRange(start.ToString(), end.ToString(), endToken.Location);
+            }
+        }
+        Token precisionToken = state.Peek();
+        uint? precision = ParseIntervalPrecision(state);
+        if (precision != null && (end ?? start) != DateTimeUnit.Second)
+        {
+            throw new ParseException.IntervalPrecisionRequiresSecond(precisionToken.Location);
+        }
+        return new PgIntervalQualifier(start, end, precision);
+    }
+
+    private static DateTimeUnit? ParseOptionalIntervalField(ParserState state)
+    {
+        if (state.Peek() is Word word
+            && DateTimeUnit.TryParse(word.Keyword.ToString(), out DateTimeUnit? field)
+            && field is not null
+            && (field == DateTimeUnit.Year || field == DateTimeUnit.Month || field == DateTimeUnit.Day
+                || field == DateTimeUnit.Hour || field == DateTimeUnit.Minute || field == DateTimeUnit.Second))
+        {
+            state.Next();
+            return field;
+        }
+        return null;
+    }
+
     protected static uint? ParseOptionalLength(ParserState state, uint min = 0, uint max = uint.MaxValue)
     {
         return ParseOptionalSimplePrecision(state, min, max, "length");

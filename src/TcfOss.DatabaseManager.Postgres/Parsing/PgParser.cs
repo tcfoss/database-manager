@@ -8,6 +8,8 @@ namespace TcfOss.DatabaseManager.Postgres.Parsing;
 
 public class PgParser : Parser
 {
+    public override bool SupportsMySqlIntervalExpressionSyntax => false;
+
     public PgParser()
     {
         ComponentParser = new PgComponentParser(this);

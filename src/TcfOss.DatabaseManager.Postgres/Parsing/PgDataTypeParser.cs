@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
-using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
@@ -146,49 +145,12 @@ public class PgDataTypeParser(Parser parser) : DataTypeParser(parser)
         return timestamp ? new PgTimestamp(precision, withTimeZone) : new PgTime(precision, withTimeZone);
     }
 
-    private static PgIntervalField? ParseOptionalIntervalField(ParserState state)
-    {
-        if (state.Peek() is Word word && PgIntervalField.TryParse(word.Keyword.ToString(), out PgIntervalField? field))
-        {
-            state.Next();
-            return field;
-        }
-        return null;
-    }
-
-    private static int IntervalFieldOrder(PgIntervalField field) => field switch
-    {
-        var value when value == PgIntervalField.Year => 0,
-        var value when value == PgIntervalField.Month => 1,
-        var value when value == PgIntervalField.Day => 2,
-        var value when value == PgIntervalField.Hour => 3,
-        var value when value == PgIntervalField.Minute => 4,
-        var value when value == PgIntervalField.Second => 5,
-        _ => throw new DefensiveGuardException(true, "interval field", field.ToString()),
-    };
-
     private static PgInterval ParseIntervalType(ParserState state)
     {
-        PgIntervalField? start = ParseOptionalIntervalField(state);
-        PgIntervalField? end = null;
-        if (start != null && state.ParseKeyword(Keyword.TO))
-        {
-            Token endToken = state.Peek();
-            end = ParseOptionalIntervalField(state) ?? throw state.ExpectedException("interval field");
-            bool valid = start == PgIntervalField.Year && end == PgIntervalField.Month
-                || IntervalFieldOrder(start) >= IntervalFieldOrder(PgIntervalField.Day)
-                    && IntervalFieldOrder(end) > IntervalFieldOrder(start);
-            if (!valid)
-            {
-                throw new ParseException.InvalidIntervalFieldRange(start.ToString(), end.ToString(), endToken.Location);
-            }
-        }
-        Token precisionToken = state.Peek();
-        uint? precision = ParseTemporalPrecision(state);
-        if (precision != null && start != null && (end ?? start) != PgIntervalField.Second)
-        {
-            throw new ParseException.IntervalPrecisionRequiresSecond(precisionToken.Location);
-        }
+        PgIntervalQualifier? qualifier = ParsePostgresIntervalQualifier(state);
+        PgIntervalField? start = qualifier == null ? null : PgIntervalField.Parse(qualifier.StartField.ToString());
+        PgIntervalField? end = qualifier?.EndField == null ? null : PgIntervalField.Parse(qualifier.EndField.ToString());
+        uint? precision = qualifier == null ? ParseIntervalPrecision(state) : qualifier.Precision;
         return new PgInterval(start, end, precision);
     }
 }

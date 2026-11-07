@@ -981,4 +981,193 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
     }
+
+    [Theory]
+    [InlineData("INTERVAL ''")]
+    [InlineData("INTERVAL '1 day'")]
+    [InlineData("INTERVAL 'P1Y2M3DT4H5M6S'")]
+    [InlineData("INTERVAL '@ 1 day ago'")]
+    [InlineData("INTERVAL 'not yet validated'")]
+    [InlineData("INTERVAL E'1\\x20day'")]
+    [InlineData("INTERVAL U&'1\\0020day'")]
+    [InlineData("INTERVAL U&'1!0020day' UESCAPE '!'")]
+    [InlineData("INTERVAL '1 day''s worth'")]
+    [InlineData("INTERVAL $duration$1 day$duration$")]
+    [InlineData("INTERVAL(0) '1.5 seconds'")]
+    [InlineData("INTERVAL(6) '1.123456 seconds'")]
+    [InlineData("INTERVAL '1' YEAR")]
+    [InlineData("INTERVAL '1' MONTH")]
+    [InlineData("INTERVAL '1' DAY")]
+    [InlineData("INTERVAL '1' HOUR")]
+    [InlineData("INTERVAL '1' MINUTE")]
+    [InlineData("INTERVAL '1' SECOND")]
+    [InlineData("INTERVAL '1-2' YEAR TO MONTH")]
+    [InlineData("INTERVAL '2 03' DAY TO HOUR")]
+    [InlineData("INTERVAL '2 03:04' DAY TO MINUTE")]
+    [InlineData("INTERVAL '2 03:04:05' DAY TO SECOND")]
+    [InlineData("INTERVAL '03:04' HOUR TO MINUTE")]
+    [InlineData("INTERVAL '03:04:05' HOUR TO SECOND")]
+    [InlineData("INTERVAL '04:05' MINUTE TO SECOND")]
+    [InlineData("INTERVAL '1.5' SECOND(0)")]
+    [InlineData("INTERVAL '1.123456' SECOND(6)")]
+    [InlineData("INTERVAL '2 03:04:05.678' DAY TO SECOND(3)")]
+    public void IntervalLiterals_PreserveSyntaxAndRoundTripWithoutResolvingValues(string sql)
+    {
+        var interval = Assert.IsType<PgIntervalLiteral>(ParseExpression(sql));
+
+        Assert.Equal(sql, interval.ToSql());
+        Assert.Equal(interval, ParseExpression(interval.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Assert.Empty(interval.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+        Expression[] expressions = [interval];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void IntervalLiterals_PreserveModifierPlacementAndFollowingSource()
+    {
+        var prefix = Assert.IsType<PgIntervalLiteral>(ParseExpression("INTERVAL(3) '1.234 seconds'"));
+        var qualified = Assert.IsType<PgIntervalLiteral>(ParseExpression("INTERVAL '1.234' SECOND(3)"));
+        Assert.Equal(3u, prefix.Precision);
+        Assert.Null(prefix.Qualifier);
+        Assert.Null(qualified.Precision);
+        Assert.Equal(Core.BuiltIn.DateTimeUnit.Second, qualified.Qualifier!.StartField);
+        Assert.Equal(3u, qualified.Qualifier.Precision);
+
+        const string sql = "INTERVAL '1-2' YEAR TO MONTH + next_value";
+        var state = new ParserState(GetTokens(sql), 37);
+        var addition = Assert.IsType<BinaryOperator>(new PgParser().ExpressionParser.ParseExpr(state));
+        var interval = Assert.IsType<PgIntervalLiteral>(addition.Left);
+        Assert.Equal(Core.BuiltIn.DateTimeUnit.Year, interval.Qualifier!.StartField);
+        Assert.Equal(Core.BuiltIn.DateTimeUnit.Month, interval.Qualifier.EndField);
+        int position = sql.IndexOf("next_value", StringComparison.Ordinal);
+        Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, position, sql.Length), Assert.IsType<SingleIdentifier>(addition.Right).Source);
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Theory]
+    [InlineData("left IS DISTINCT FROM right AND flag", false)]
+    [InlineData("left IS NOT DISTINCT FROM right AND flag", true)]
+    [InlineData("left IS DISTINCT FROM right OR flag", false)]
+    [InlineData("left IS NOT DISTINCT FROM right OR flag", true)]
+    public void DistinctFrom_DoesNotAbsorbFollowingLogicalOperators(string sql, bool negated)
+    {
+        var logical = Assert.IsType<BinaryOperator>(ParseExpression(sql));
+        var distinct = Assert.IsType<IsDistinctFrom>(logical.Left);
+
+        Assert.Equal(negated, distinct.Negated);
+        Assert.IsType<SingleIdentifier>(distinct.Right);
+        Assert.IsType<SingleIdentifier>(logical.Right);
+        Assert.Equal(sql, logical.ToSql());
+        Assert.Equal(logical, ParseExpression(logical.ToSql()));
+    }
+
+    [Fact]
+    public void DistinctFrom_KeepsArithmeticAndExplicitGroupingInItsOperands()
+    {
+        var distinct = Assert.IsType<IsDistinctFrom>(ParseExpression("left + 1 IS DISTINCT FROM right * 2"));
+        Assert.IsType<BinaryOperator>(distinct.Left);
+        Assert.IsType<BinaryOperator>(distinct.Right);
+        var grouped = Assert.IsType<IsDistinctFrom>(ParseExpression("left IS DISTINCT FROM (right OR flag)"));
+        Assert.IsType<BinaryOperator>(Assert.IsType<Nested>(grouped.Right).Expression);
+    }
+
+    [Theory]
+    [InlineData("value = ANY(VALUES (1), (2))")]
+    [InlineData("value <> ALL(VALUES (1), (2))")]
+    [InlineData("value > SOME(WITH c AS (SELECT 1) VALUES (1))")]
+    public void QuantifiedComparisons_AcceptValuesSubqueries(string sql)
+    {
+        var expression = Assert.IsType<QuantifiedBinaryOperator>(ParseExpression(sql));
+
+        Assert.IsType<Subquery>(expression.Right);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("value = ANY(left_values OR right_values)")]
+    [InlineData("value <> ALL(left_values AND right_values)")]
+    [InlineData("value < SOME(left_values = right_values)")]
+    public void QuantifiedComparisonParentheses_ParseCompleteOperandsWithoutTypeResolution(string sql)
+    {
+        var expression = Assert.IsType<QuantifiedBinaryOperator>(ParseExpression(sql));
+
+        Assert.IsType<BinaryOperator>(expression.Right);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("value = ANY(ARRAY[1, 2])")]
+    [InlineData("value <> ALL(ARRAY[1, 2])")]
+    [InlineData("value >= SOME(ARRAY[1, 2])")]
+    [InlineData("value = ANY(SELECT other FROM items)")]
+    [InlineData("value < ALL(WITH c AS (SELECT other FROM items) SELECT other FROM c)")]
+    [InlineData("value > ANY(ARRAY[]) AND active")]
+    public void QuantifiedComparisons_ParseArraysAndQueriesWithOuterBoundaries(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Theory]
+    [InlineData("items.value = ANY(ARRAY[items.other])")]
+    [InlineData("items.value IS NOT DISTINCT FROM items.other")]
+    public void RemainingComparisons_CollectBothOperandReferences(string sql)
+    {
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        ItemRef[] expected =
+        [
+            .. ParseExpression("items.value").GetReferencedItems(context),
+            .. ParseExpression("items.other").GetReferencedItems(context)
+        ];
+
+        Assert.Equal(expected, ParseExpression(sql).GetReferencedItems(context));
+    }
+
+    [Theory]
+    [InlineData("INTERVAL 1 DAY")]
+    [InlineData("INTERVAL amount DAY")]
+    [InlineData("INTERVAL (amount + 1) DAY")]
+    [InlineData("INTERVAL DAY '1'")]
+    [InlineData("INTERVAL '1' YEAR TO DAY")]
+    [InlineData("INTERVAL '1' SECOND TO MINUTE")]
+    [InlineData("INTERVAL '1' DAY TO")]
+    [InlineData("INTERVAL '1' WEEK TO DAY")]
+    [InlineData("INTERVAL(3) '1' DAY TO SECOND")]
+    [InlineData("INTERVAL '1' DAY(3)")]
+    [InlineData("INTERVAL '1' SECOND(7)")]
+    [InlineData("INTERVAL(7) '1'")]
+    [InlineData("INTERVAL(-1) '1'")]
+    [InlineData("INTERVAL(3,2) '1'")]
+    [InlineData("INTERVAL(3)")]
+    [InlineData("INTERVAL NULL")]
+    [InlineData("INTERVAL B'01'")]
+    public void IntervalLiterals_RejectMalformedAndOtherDialectForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
+    }
+
+    [Theory]
+    [InlineData("INTERVAL(7) '1'", "7")]
+    [InlineData("INTERVAL '1' SECOND(7)", "7")]
+    [InlineData("INTERVAL '1' DAY TO SECOND(7)", "7")]
+    [InlineData("INTERVAL(4294967296) '1'", "4294967296")]
+    public void IntervalLiteralPrecision_ReportsBoundsAndSource(string sql, string value)
+    {
+        var exception = Assert.Throws<ParseException.ValueOutOfRange>(() => ParseExpression(sql));
+
+        Assert.Equal("precision", exception.Label);
+        Assert.Equal(value, exception.Value);
+        Assert.Equal(0, exception.Minimum);
+        Assert.Equal(6, exception.Maximum);
+        int position = sql.IndexOf('(') + 1;
+        Assert.Contains($"{new string(' ', position)}^", new ParseException.WithText(exception, null, sql).Message);
+    }
 }

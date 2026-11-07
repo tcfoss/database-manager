@@ -672,6 +672,16 @@ public class NormalizerTests
         Assert.Same(expression, normalizer.NormalizeExpressionNoFlatten(expression));
     }
 
+    [Theory]
+    [InlineData("INTERVAL '1 day'")]
+    [InlineData("INTERVAL(3) '1.234 seconds'")]
+    [InlineData("INTERVAL '1-2' YEAR TO MONTH")]
+    public void NormalizeExpression_PreservesIntervalLiteralSyntax(string sql)
+    {
+        Assert.Equal(sql, GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal(sql, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
