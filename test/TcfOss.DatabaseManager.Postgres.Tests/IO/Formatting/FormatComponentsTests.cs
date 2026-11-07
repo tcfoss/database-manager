@@ -176,4 +176,16 @@ public class FormatComponentsTests
         Assert.Equal(expected, writer.ToString());
         Assert.Equal(expected, value.ToSql());
     }
+
+    [Theory]
+    [InlineData("B'00101'")]
+    [InlineData("X'0aF'")]
+    public void BitStrings_FormattingPreservesRadixAndRawDigits(string literal)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted("SELECT " + literal);
+
+        Assert.Contains(literal, actual);
+    }
 }

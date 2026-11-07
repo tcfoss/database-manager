@@ -16,6 +16,8 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool SupportDollarQuotedStrings => true;
     protected virtual bool SupportEscapeStringLiterals => true;
     protected virtual bool SupportUnicodeLiterals => true;
+    protected virtual bool SupportBitStringLiterals => true;
+    protected virtual bool HexStringsAreBitStrings => false;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -101,6 +103,8 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.Backtick => TokenizeQuotedIdentifier(ref state),
 
             'N' or 'n' => TokenizeNationalStringLiteral(ref state),
+            'B' or 'b' when SupportBitStringLiterals && state.PeekNth(1) == CharSymbols.SingleQuote => TokenizeBitStringLiteral(ref state, false),
+            'X' or 'x' when HexStringsAreBitStrings && state.PeekNth(1) == CharSymbols.SingleQuote => TokenizeBitStringLiteral(ref state, true),
             'X' or 'x' => TokenizeHex(ref state),
             'E' or 'e' when SupportEscapeStringLiterals && state.PeekNth(1) == CharSymbols.SingleQuote => TokenizeEscapeStringLiteral(ref state),
             'U' or 'u' when SupportUnicodeLiterals && state.PeekNth(1) == '&' && state.PeekNth(2) is CharSymbols.SingleQuote or CharSymbols.DoubleQuote => TokenizeUnicodeLiteral(ref state, ref runState),
@@ -531,6 +535,13 @@ public class Lexer<TRunState> : ILexer
         Location initialLocation = state.Location;
         state.Next();
         return new EscapeStringLiteral(ExtractString(ref state, true, supportBackslashEscape: true)) { Location = initialLocation };
+    }
+
+    private static BitStringLiteral TokenizeBitStringLiteral(ref LexerState state, bool isHexadecimal)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        return new BitStringLiteral(ExtractString(ref state, false), isHexadecimal) { Location = initialLocation };
     }
 
     private Token TokenizeUnicodeLiteral(ref LexerState state, ref TRunState runState)

@@ -424,4 +424,101 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
             ? ((Core.Common.Value.UnicodeString)value).DecodedValue
             : ((Core.Common.Value.EscapeString)value).DecodedValue);
     }
+
+    [Theory]
+    [InlineData("B''", "", false, "B''")]
+    [InlineData("b'00101'", "00101", false, "B'00101'")]
+    [InlineData("B'1'", "1", false, "B'1'")]
+    [InlineData("X''", "", true, "X''")]
+    [InlineData("x'f'", "f", true, "X'f'")]
+    [InlineData("X'0aF'", "0aF", true, "X'0aF'")]
+    public void BitStrings_ParsePreserveRadixAndRoundTrip(string sql, string expected, bool hexadecimal, string emitted)
+    {
+        var expression = Assert.IsType<LiteralValue>(ParseExpression(sql));
+        var value = Assert.IsType<Core.Common.Value.BitString>(expression.Value);
+
+        Assert.Equal(expected, value.Value);
+        Assert.Equal(hexadecimal, value.IsHexadecimal);
+        Assert.Equal(emitted, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Empty(expression.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Theory]
+    [InlineData("SELECT B'00101'")]
+    [InlineData("SELECT X'f'::BIT(4)")]
+    [InlineData("SELECT CAST(B'101' AS BIT VARYING(8))")]
+    [InlineData("CREATE TABLE items (flags BIT(5) DEFAULT B'00101')")]
+    [InlineData("CREATE TABLE items (flags BIT VARYING(8) DEFAULT X'0a')")]
+    [InlineData("CREATE DOMAIN flags AS BIT(5) DEFAULT B'00101'")]
+    [InlineData("CREATE FUNCTION f (flags BIT(5) DEFAULT B'00101') RETURNS BIT(5) LANGUAGE plpgsql AS 'opaque'")]
+    public void BitStrings_ParseInStatementsAndRoundTrip(string sql)
+    {
+        var statement = ParseStatement(sql);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement.ToSql(), ParseStatement(statement.ToSql()).ToSql());
+    }
+
+    [Fact]
+    public void BitStrings_SerializeInsideExpressionCollections()
+    {
+        Expression[] expressions = [ParseExpression("B'001'"), ParseExpression("X'0aF'")];
+
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void BitStrings_BinaryFormIsAcceptedByKitchenSinkLexerAndParser()
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize("B'00101'")]);
+        var expression = Assert.IsType<LiteralValue>(parser.ExpressionParser.ParseExpr(state));
+
+        Assert.Equal(new Core.Common.Value.BitString("00101"), expression.Value);
+        Assert.Equal("B'00101'", expression.ToSql());
+    }
+
+    [Theory]
+    [InlineData("B'2'")]
+    [InlineData("B'10a'")]
+    [InlineData("B'10 01'")]
+    [InlineData("B'10\n01'")]
+    [InlineData("B'10_01'")]
+    [InlineData("B'10''01'")]
+    [InlineData("B'1''; DROP TABLE items; --'")]
+    [InlineData("B'\\1'")]
+    [InlineData("X'g'")]
+    [InlineData("X'0xA'")]
+    [InlineData("X'0_a'")]
+    [InlineData("X'0 a'")]
+    [InlineData("X'\\a'")]
+    [InlineData("B'\u0661'")]
+    [InlineData("X'\uFF21'")]
+    public void InvalidBitStrings_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseExpression(sql));
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON TABLE items IS B'1'")]
+    [InlineData("COMMENT ON TABLE items IS X'f'")]
+    [InlineData("CREATE FUNCTION f() RETURNS INT LANGUAGE plpgsql AS B'1'")]
+    [InlineData("CREATE PROCEDURE p() LANGUAGE plpgsql AS X'f'")]
+    public void BitStrings_AreNotAcceptedAsTextLiterals(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement(sql));
+    }
+
+    [Theory]
+    [InlineData("B'1'")]
+    [InlineData("X'f'")]
+    public void BitStrings_LiteralStringConsumersRejectThem(string sql)
+    {
+        var state = new ParserState([.. new PgLexer().Tokenize(sql)]);
+        Assert.ThrowsAny<ParseException>(() => ValueParser.ParseLiteralString(state));
+
+        state = new ParserState([.. new PgLexer().Tokenize(sql)]);
+        Assert.ThrowsAny<ParseException>(() => ValueParser.ParseLiteralStringOptionalQuotes(state));
+    }
 }

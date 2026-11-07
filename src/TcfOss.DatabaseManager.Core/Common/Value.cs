@@ -147,6 +147,14 @@ public abstract record Value() : IWriteSql
         }
     }
 
+    public record BitString(string Value, bool IsHexadecimal = false) : StringBasedValue(Value)
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"{(IsHexadecimal ? 'X' : 'B')}'{Value}'");
+        }
+    }
+
     public record HexString(string Value) : StringBasedValue(Value)
     {
         public override void ToSql(SqlTextWriter writer)

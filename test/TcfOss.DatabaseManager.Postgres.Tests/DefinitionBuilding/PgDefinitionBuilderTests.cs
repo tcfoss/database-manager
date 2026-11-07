@@ -2490,6 +2490,24 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("FUNCTION \"public\".\"f\"(INT[])", routine.ToStatementTarget().ToSql());
     }
 
+    [Theory]
+    [InlineData("B'00101'")]
+    [InlineData("X'0aF'")]
+    [InlineData("B''")]
+    [InlineData("X''")]
+    public void BitStrings_TableDefaultsSurviveCanonicalDefinitionRoundTrips(string literal)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (flags BIT VARYING(16) DEFAULT {literal})"), GetSchema(), 0);
+        var table = Assert.Single(builder.ToDefinition().Tables.Values);
+        string canonical = table.ToCreateStatement(includeSchema: true).ToSql();
+
+        Assert.Contains("DEFAULT " + literal, canonical);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(canonical), GetSchema(), 0);
+        Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true).ToSql());
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));

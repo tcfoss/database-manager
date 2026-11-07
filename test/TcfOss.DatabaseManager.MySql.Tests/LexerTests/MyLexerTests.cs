@@ -275,4 +275,26 @@ public class MyLexerTests : LexerTestBase
         Assert.IsType<Semicolon>(tokens[1]);
         Assert.Equal(2, tokens.Count);
     }
+
+    [Theory]
+    [InlineData("B")]
+    [InlineData("b")]
+    public void BitStrings_BinaryPrefixesRetainExistingTokenization(string prefix)
+    {
+        List<Token> tokens = new MyLexer().Tokenize(prefix + "'01'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal("01", Assert.IsType<StringLiteral>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("X")]
+    [InlineData("x")]
+    public void BitStrings_HexPrefixesRetainExistingHexTokenization(string prefix)
+    {
+        List<Token> tokens = new MyLexer().Tokenize(prefix + "'0aF'");
+
+        Assert.Equal("0aF", Assert.IsType<HexStringLiteral>(Assert.Single(tokens)).Value);
+    }
 }

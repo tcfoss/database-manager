@@ -12,6 +12,7 @@ public class PgLexer : Lexer<RunState>
     protected override bool SupportBackslashQuoteEscape => false;
     protected override bool SupportBracketQuotedIdentifiers => false;
     protected override bool SupportDollarQuotedStrings => true;
+    protected override bool HexStringsAreBitStrings => true;
     protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
 
     protected override bool IsIdentifierPart(char character)

@@ -29,6 +29,7 @@ public class ValueParser
             DollarQuotedStringLiteral sl => new Value.DollarQuotedString(sl.Value) { Tag = sl.Tag },
             NationalStringLiteral nsl => new Value.NationalStringLiteral(nsl.Value),
             HexStringLiteral hsl => new Value.HexString(hsl.Value),
+            BitStringLiteral bit => ParseBitString(bit),
             _ => throw ParserState.ExpectedCategoryException("literal_value", token),
         };
     }
@@ -88,6 +89,18 @@ public class ValueParser
             throw ParserState.ExpectedCategoryException("unicode_string", token);
         }
         return value;
+    }
+
+    private static Value.BitString ParseBitString(BitStringLiteral token)
+    {
+        foreach (char digit in token.Value)
+        {
+            if (token.IsHexadecimal ? !char.IsAsciiHexDigit(digit) : digit is not ('0' or '1'))
+            {
+                throw ParserState.ExpectedCategoryException("bit_string", token);
+            }
+        }
+        return new Value.BitString(token.Value, token.IsHexadecimal);
     }
 
     private static (string Text, Token Start) ParseIntegerText(ParserState state, string category)

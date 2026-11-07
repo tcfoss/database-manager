@@ -11,14 +11,19 @@ public sealed class EscapeStringLiteral(string value) : Token
         return $"E'{Value}'";
     }
 
+    private bool Equals(EscapeStringLiteral? other)
+    {
+        return other is not null && Value == other.Value;
+    }
+
     public override bool Equals(object? obj)
     {
-        return obj is EscapeStringLiteral other && Value == other.Value;
+        return Equals(obj as EscapeStringLiteral);
     }
 
     public override bool Equals(Token? other)
     {
-        return Equals((object?)other);
+        return Equals(other as EscapeStringLiteral);
     }
 
     public override int GetHashCode()

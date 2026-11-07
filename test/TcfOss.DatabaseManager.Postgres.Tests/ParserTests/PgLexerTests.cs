@@ -391,4 +391,89 @@ public class PgLexerTests
         Assert.ThrowsAny<LexException>(() => lexer.Tokenize(sql));
         Assert.Equal("data", Assert.IsType<Word>(Assert.Single(lexer.Tokenize("U&\"d\\0061ta\""))).Value);
     }
+
+    [Theory]
+    [InlineData("B''", "", false)]
+    [InlineData("B'10101'", "10101", false)]
+    [InlineData("b'001'", "001", false)]
+    [InlineData("X''", "", true)]
+    [InlineData("X'f'", "f", true)]
+    [InlineData("x'0aF'", "0aF", true)]
+    public void BitStrings_PreserveContentRadixAndSourceLength(string literal, string expected, bool hexadecimal)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        var token = Assert.IsType<BitStringLiteral>(tokens[0]);
+
+        Assert.Equal(expected, token.Value);
+        Assert.Equal(hexadecimal, token.IsHexadecimal);
+        Assert.Equal(literal.Length, token.Length);
+        Assert.Equal(new Location(2, 1, 2), token.Location);
+        Assert.Equal(literal.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal($"{(hexadecimal ? 'X' : 'B')}'{expected}'", token.ToString());
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(224, false)]
+    [InlineData(225, false)]
+    [InlineData(1024, false)]
+    [InlineData(0, true)]
+    [InlineData(224, true)]
+    [InlineData(225, true)]
+    [InlineData(1024, true)]
+    public void BitStrings_LongContentsPreserveTextAndFollowingLocation(int length, bool hexadecimal)
+    {
+        string raw = new('0', length);
+        string literal = $"{(hexadecimal ? 'X' : 'B')}'{raw}'";
+        List<Token> tokens = new PgLexer().Tokenize(literal + ";");
+
+        Assert.Equal(raw, Assert.IsType<BitStringLiteral>(tokens[0]).Value);
+        Assert.Equal(literal.Length, tokens[0].Length);
+        Assert.Equal(literal.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("B")]
+    [InlineData("b")]
+    [InlineData("X")]
+    [InlineData("x")]
+    public void BitStrings_PrefixRequiresImmediateSingleQuote(string prefix)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(prefix + " '01'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal("01", Assert.IsType<StringLiteral>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Fact]
+    public void BitStrings_TokenEqualityIncludesRadixButNotLocation()
+    {
+        Token token = new BitStringLiteral("01") { Location = new Location() };
+        var same = new BitStringLiteral("01") { Location = new Location(2, 3, 4) };
+
+        Assert.Equal(token, same);
+        Assert.True(token.Equals((object)same));
+        Assert.Equal(token.GetHashCode(), same.GetHashCode());
+        Assert.NotEqual(token, new BitStringLiteral("01", true) { Location = token.Location });
+        Assert.NotEqual(token, new BitStringLiteral("10") { Location = token.Location });
+        Assert.False(token.Equals((Token?)null));
+        Assert.False(token.Equals((object?)null));
+        Assert.False(token.Equals(new HexStringLiteral("01") { Location = token.Location }));
+    }
+
+    [Theory]
+    [InlineData("B'\0'")]
+    [InlineData("X'\0'")]
+    [InlineData("B'unterminated")]
+    [InlineData("X'unterminated")]
+    public void BitStrings_UnterminatedAndNulContentAreRejectedAndLexerRemainsReusable(string sql)
+    {
+        var lexer = new PgLexer();
+
+        Assert.ThrowsAny<LexException>(() => lexer.Tokenize(sql));
+        Assert.Equal("01", Assert.IsType<BitStringLiteral>(Assert.Single(lexer.Tokenize("B'01'"))).Value);
+    }
 }

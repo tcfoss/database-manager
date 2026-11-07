@@ -13,6 +13,7 @@ public class MyLexer : Lexer<MyRunState>
     protected override bool SupportDollarQuotedStrings => false;
     protected override bool SupportEscapeStringLiterals => false;
     protected override bool SupportUnicodeLiterals => false;
+    protected override bool SupportBitStringLiterals => false;
     private static readonly SearchValues<char> s_identifierCharacters =
         SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$");
 

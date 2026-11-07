@@ -13,14 +13,19 @@ public sealed class UnicodeStringLiteral(string value) : Token
         return EscapeCharacter is { } escape ? $"U&'{Value}' UESCAPE '{escape}'" : $"U&'{Value}'";
     }
 
+    private bool Equals(UnicodeStringLiteral? other)
+    {
+        return other is not null && Value == other.Value && EscapeCharacter == other.EscapeCharacter;
+    }
+
     public override bool Equals(object? obj)
     {
-        return obj is UnicodeStringLiteral other && Value == other.Value && EscapeCharacter == other.EscapeCharacter;
+        return Equals(obj as UnicodeStringLiteral);
     }
 
     public override bool Equals(Token? other)
     {
-        return Equals((object?)other);
+        return Equals(other as UnicodeStringLiteral);
     }
 
     public override int GetHashCode()
