@@ -983,4 +983,48 @@ public static class ParserStateTests
 
         Assert.Equal(ParseContext.None, state.Context);
     }
+
+    [Fact]
+    public static void EnterStatementScope_RestoresNestedLabelsAndClearsUnlabeledChildren()
+    {
+        var state = new ParserState([], sourceId: 17);
+        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
+        var innerToken = new Word("inner_label") { Location = new Lexing.Location() };
+
+        Assert.Null(state.StatementLabel);
+        using (state.EnterStatementScope(outerToken))
+        {
+            Assert.Equal(outerToken.ToIdentifier(17), state.StatementLabel?.Label);
+            using (state.EnterStatementScope(innerToken))
+            {
+                Assert.Equal(innerToken.ToIdentifier(17), state.StatementLabel?.Label);
+                using (state.EnterStatementScope(null))
+                {
+                    Assert.Null(state.StatementLabel);
+                }
+                Assert.Equal(innerToken.ToIdentifier(17), state.StatementLabel?.Label);
+            }
+            Assert.Equal(outerToken.ToIdentifier(17), state.StatementLabel?.Label);
+        }
+        Assert.Null(state.StatementLabel);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public static void StatementScope_RestoresEnclosingLabelAfterParseException(bool hasInnerLabel)
+    {
+        Token[] tokens = hasInnerLabel
+            ? [new Word("inner_label") { Location = new Lexing.Location() }, new Colon { Location = new Lexing.Location() }, new Word("SELECT") { Location = new Lexing.Location() }]
+            : [new Word("SELECT") { Location = new Lexing.Location() }];
+        var state = new ParserState(tokens);
+        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
+
+        using (state.EnterStatementScope(outerToken))
+        {
+            Assert.ThrowsAny<ParseException>(() => new Parser().ParseStatement(state));
+            Assert.Equal(outerToken.ToIdentifier(state.SourceId), state.StatementLabel?.Label);
+        }
+        Assert.Null(state.StatementLabel);
+    }
 }

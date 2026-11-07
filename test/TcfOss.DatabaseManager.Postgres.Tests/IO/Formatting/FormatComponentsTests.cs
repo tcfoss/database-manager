@@ -6,6 +6,9 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Tests;
+using TcfOss.DatabaseManager.Postgres.Lexing;
+using TcfOss.DatabaseManager.Postgres.Parsing;
 
 namespace TcfOss.DatabaseManager.Postgres.Tests.IO.Formatting;
 
@@ -213,5 +216,27 @@ public class FormatComponentsTests
         using var formatter = Helpers.CreateFormatter();
         string actual = formatter.GetFormatted("SELECT " + literal);
         Assert.Contains(literal, actual);
+    }
+
+    [Theory]
+    [InlineData("ARRAY[]", "ARRAY[]")]
+    [InlineData("ARRAY[[value], [other]]", "ARRAY[[\"value\"], [\"other\"]]")]
+    [InlineData("ARRAY[ARRAY[value]]", "ARRAY[ARRAY[\"value\"]]")]
+    [InlineData("ARRAY(VALUES (1), (2))", "ARRAY(VALUES (1), (2))")]
+    [InlineData("arr[lower:upper][index]", "\"arr\"[\"lower\":\"upper\"][\"index\"]")]
+    [InlineData("arr[:][1:][:2]", "\"arr\"[:][1:][:2]")]
+    [InlineData("(item).field[1].name", "(\"item\").\"field\"[1].\"name\"")]
+    [InlineData("arr[(item).lo:hi]", "\"arr\"[(\"item\").\"lo\":\"hi\"]")]
+    [InlineData("ROW(value, 1)", "ROW(\"value\", 1)")]
+    [InlineData("ROW(items.*, (item).*)", "ROW(items.*, (\"item\").*)")]
+    public void ArrayRowAndCompositeExpressions_FormatRecursively(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString().NormalizeWhitespace());
     }
 }

@@ -746,69 +746,25 @@ public class LexerSimpleTests : LexerTestBase<GenericLexer>
         Assert.Equal(expectedMessage, exception.Message);
     }
 
-    [Fact]
-    public void LexLabel()
+    [Theory]
+    [InlineData("f:")]
+    [InlineData("f: ")]
+    [InlineData("f :next")]
+    public void LabelSyntax_ProducesSeparateWordAndColon(string sql)
     {
-        var lexer = new GenericLexer();
-        var tokens = lexer.Tokenize("f: ");
-
-        var first = tokens[0];
-
-        var expected = new List<Token>
-        {
-            new Label(new Identifier("f")) { Location = new Location() },
-        };
-        Compare(expected, [first]);
-
-        Assert.True(expected[0].Equals(tokens[0]));
-
-        var other = new Label(new Identifier("f")) { Location = new Location() };
-        Assert.True(tokens[0].Equals(other));
-        Assert.True(tokens[0].Equals((object)other));
-        Assert.Equal(expected[0].GetHashCode(), tokens[0].GetHashCode());
-        Assert.Equal(2, tokens[0].Length);
-
-        other = null;
-        Assert.NotEqual(other, tokens[0]);
-        Assert.False(tokens[0].Equals(other));
-        Assert.False(tokens[0].Equals((object?)other));
+        var tokens = new GenericLexer().Tokenize(sql);
+        Assert.Equal("f", Assert.IsType<Word>(tokens[0]).Value);
+        Assert.IsType<Colon>(tokens[1]);
     }
 
     [Theory]
-    [InlineData("f:")]
-    [InlineData("f:=2")]
-    [InlineData("f::2")]
-    [InlineData("f\n")]
-    public void LexNotLabel(string sql)
+    [InlineData("f:=2", typeof(Walrus))]
+    [InlineData("f::2", typeof(DoubleColon))]
+    public void ColonOperators_RemainDistinct(string sql, Type operatorType)
     {
-        var lexer = new GenericLexer();
-        var tokens = lexer.Tokenize(sql);
-
-        Assert.All(tokens, Assert.IsNotType<Label>);
-    }
-
-    [Fact]
-    public void LexQuotedLabel()
-    {
-        var lexer = new GenericLexer();
-        var tokens = lexer.Tokenize("`my label`: ");
-
-        var expected = new List<Token>
-        {
-            new Label(new Identifier("my label", QuoteStyle.Backticks)) { Location = new Location() },
-        };
-        Compare(expected, [tokens[0]]);
-
-        var other = new Label(new Identifier("my label", QuoteStyle.Backticks)) { Location = new Location() };
-        Assert.True(tokens[0].Equals(other));
-        Assert.True(tokens[0].Equals((object)other));
-        Assert.Equal(expected[0].GetHashCode(), other.GetHashCode());
-        Assert.Equal(11, tokens[0].Length);
-
-        other = null;
-        Assert.NotEqual(other, tokens[0]);
-        Assert.False(tokens[0].Equals(other));
-        Assert.False(tokens[0].Equals((object?)other));
+        var tokens = new GenericLexer().Tokenize(sql);
+        Assert.IsType<Word>(tokens[0]);
+        Assert.Equal(operatorType, tokens[1].GetType());
     }
 
     [Theory]
@@ -821,10 +777,12 @@ public class LexerSimpleTests : LexerTestBase<GenericLexer>
         string quoted = $"{open}{name}{close}";
         List<Token> tokens = new GenericLexer().Tokenize(quoted + ": ;");
 
-        var expected = new Label(new Identifier(name, quoteStyle)) { Location = new Location(1, 1, 0) };
-        Assert.Equal(expected, Assert.IsType<Label>(tokens[0]));
-        Assert.Equal(quoted.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
-        Assert.Equal(2, tokens.Count);
+        var word = Assert.IsType<Word>(tokens[0]);
+        Assert.Equal(name, word.Value);
+        Assert.Equal(quoteStyle, word.QuoteStyle);
+        Assert.Equal(quoted.Length, Assert.IsType<Colon>(tokens[1]).Location.Position);
+        Assert.Equal(quoted.Length + 2, Assert.IsType<Semicolon>(tokens[2]).Location.Position);
+        Assert.Equal(3, tokens.Count);
     }
 
     [Theory]

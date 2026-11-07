@@ -25,6 +25,7 @@ public class MsParser : Parser
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
     public override bool SupportsPostgresExpressionCollationSyntax => false;
+    public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
     protected override bool SupportsCommentOn => false;
 
     public MsParser()
@@ -141,16 +142,16 @@ public class MsParser : Parser
         return statements;
     }
 
-    protected override Statement ParseNormalStatement(ParserState state, Token token, Label? label)
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
         return token switch
         {
             MsBatchSeparatorToken mbsToken => ParseBatchSeparator(state, mbsToken),
-            _ => base.ParseNormalStatement(state, token, label)
+            _ => base.ParseNormalStatement(state, token)
         };
     }
 
-    protected override Statement ParseKeywordStatement(ParserState state, Word first, Label? label)
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
     {
         return first.Keyword switch
         {
@@ -164,7 +165,7 @@ public class MsParser : Parser
             Keyword.PRINT => ParsePrint(state),
             Keyword.THROW => ParseThrow(state),
             Keyword.RAISERROR => ParseRaiseError(state),
-            _ => base.ParseKeywordStatement(state, first, label)
+            _ => base.ParseKeywordStatement(state, first)
         };
     }
 

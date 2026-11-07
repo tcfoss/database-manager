@@ -2,6 +2,7 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public enum Precedence
 {
+    ArraySubscript,
     DoubleColon,
     UnarySign,
     Collate,

@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -659,5 +660,225 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void DoubleDots_AreRejectedInCompleteStatements(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement($"SELECT {sql}"));
+    }
+
+    [Theory]
+    [InlineData("ARRAY[]")]
+    [InlineData("ARRAY[1, 2, ARRAY[3]]")]
+    [InlineData("ARRAY(SELECT value FROM items)")]
+    public void ArrayConstructors_ParseAndRoundTrip(string sql)
+    {
+        ArrayConstructor array = Assert.IsType<ArrayConstructor>(ParseExpression(sql), exactMatch: false);
+
+        Assert.Equal(sql, array.ToSql());
+        Assert.Equal(array, ParseExpression(array.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("arr[1]")]
+    [InlineData("arr[1][2:3]")]
+    [InlineData("arr[lower:upper]")]
+    [InlineData("arr[:2]")]
+    [InlineData("arr[1:]")]
+    [InlineData("arr[:]")]
+    public void ArraySubscriptsAndSlices_ParseAndRoundTrip(string sql)
+    {
+        ArraySubscript subscript = Assert.IsType<ArraySubscript>(ParseExpression(sql));
+
+        Assert.Equal(sql, subscript.ToSql());
+        Assert.Equal(subscript, ParseExpression(subscript.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("ROW()")]
+    [InlineData("ROW(value, nested + 1)")]
+    [InlineData("ROW(items.*, 42)")]
+    [InlineData("ROW((item).*, 42)")]
+    public void RowConstructors_ParseAndRoundTrip(string sql)
+    {
+        RowConstructor row = Assert.IsType<RowConstructor>(ParseExpression(sql));
+
+        Assert.Equal(sql, row.ToSql());
+        Assert.Equal(row, ParseExpression(row.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("array")]
+    [InlineData("row")]
+    public void ArrayAndRowKeywordsWithoutConstructors_RemainIdentifiers(string sql)
+    {
+        Assert.IsType<SingleIdentifier>(ParseExpression(sql));
+    }
+
+    [Theory]
+    [InlineData("(items.value).field")]
+    [InlineData("((left + right)).\"Field\"")]
+    [InlineData("(items.value).field.other")]
+    public void CompositeFieldAccess_ParsesAndRoundTrips(string sql)
+    {
+        CompositeAccess.Field field = Assert.IsType<CompositeAccess.Field>(ParseExpression(sql));
+
+        Assert.Equal(sql, field.ToSql());
+        Assert.Equal(field, ParseExpression(field.ToSql()));
+    }
+
+    [Fact]
+    public void ArrayAndRowExpressions_AreAcceptedByKitchenSinkParser()
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new PgLexer().Tokenize("ARRAY[ROW(value)]")]);
+
+        Assert.IsType<ArrayConstructor.Elements>(parser.ExpressionParser.ParseExpr(state));
+        Assert.True(state.PeekIs<Eof>());
+    }
+
+    [Theory]
+    [InlineData("(ARRAY[items.value])[items.index:items.bound]", new string[] { "items.value", "items.index", "items.bound" })]
+    [InlineData("(items.value).field", new string[] { "items.value" })]
+    [InlineData("(items.value).*", new string[] { "items.value" })]
+    [InlineData("items.value[items.index][items.lower:items.upper].field", new string[] { "items.value", "items.index", "items.lower", "items.upper" })]
+    [InlineData("ARRAY[[items.value], [items.other]]", new string[] { "items.value", "items.other" })]
+    [InlineData("ROW((items.value).*, items.other)", new string[] { "items.value", "items.other" })]
+    public void ArrayRowAndCompositeExpressions_CollectOnlyOperandReferences(string sql, string[] expectedOperands)
+    {
+        Expression expression = ParseExpression(sql);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        ItemRef[] references = [.. expression.GetReferencedItems(context)];
+        ItemRef[] expected = [.. expectedOperands.SelectMany(operand => ParseExpression(operand).GetReferencedItems(context))];
+
+        Assert.Equal(expected, references);
+    }
+
+    [Fact]
+    public void ArrayAndRowExpressions_SerializeInsideExpressionCollections()
+    {
+        Expression[] expressions =
+        [
+            ParseExpression("ARRAY[1, ROW(value)]"),
+            ParseExpression("ARRAY(SELECT value FROM items)"),
+            ParseExpression("arr[1:items.upper].field")
+        ];
+
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Theory]
+    [InlineData("(f())[1]")]
+    [InlineData("(f()).field")]
+    [InlineData("(ARRAY[1, 2])[1]")]
+    [InlineData("(ROW(1)).field")]
+    [InlineData("(item).arr[1].field")]
+    [InlineData("arr[1].nested[2].field")]
+    [InlineData("arr[(item).lo:hi]")]
+    [InlineData("arr[lo + step:hi]")]
+    [InlineData("$1.field[2].name")]
+    [InlineData("$1[1:2]")]
+    [InlineData("(item).*")]
+    [InlineData("$1.*")]
+    [InlineData("arr[1].*")]
+    public void PostfixChains_ParseInCompleteStatementsAndRoundTrip(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void ConsecutiveSubscripts_AreDimensionsOfOneOperation()
+    {
+        var multidimensional = Assert.IsType<ArraySubscript>(ParseExpression("arr[1][2]"));
+        var sequential = Assert.IsType<ArraySubscript>(ParseExpression("(arr[1])[2]"));
+
+        Assert.Equal(2, multidimensional.Dimensions.Count);
+        Assert.IsType<SingleIdentifier>(multidimensional.Array);
+        Assert.Single(sequential.Dimensions);
+        Assert.IsType<ArraySubscript>(Assert.IsType<Nested>(sequential.Array).Expression);
+    }
+
+    [Fact]
+    public void Subscripts_BindAboveCastsUnarySignsAndArithmetic()
+    {
+        var addition = Assert.IsType<BinaryOperator>(ParseExpression("-arr[1]::INT + other[2]"));
+        var sign = Assert.IsType<UnaryOperator>(addition.Left);
+        Assert.IsType<ArraySubscript>(Assert.IsType<Cast>(sign.Expression).Expression);
+        Assert.IsType<ArraySubscript>(addition.Right);
+        var manager = new PrecedenceManager();
+        Assert.True(manager.GetPrecedence(Precedence.ArraySubscript) > manager.GetPrecedence(Precedence.DoubleColon));
+    }
+
+    [Fact]
+    public void CompositeSliceBounds_PreserveIdentifierSourceSpans()
+    {
+        const string sql = "arr[(item).\"Lo\":bounds.hi]";
+        var state = new ParserState(GetTokens(sql), 37);
+        var array = Assert.IsType<ArraySubscript>(new PgParser().ExpressionParser.ParseExpr(state));
+        var slice = Assert.IsType<ArraySubscriptDimension.Slice>(Assert.Single(array.Dimensions));
+        var lower = Assert.IsType<CompositeAccess.Field>(slice.LowerBound);
+        var upper = Assert.IsType<CompoundIdentifier>(slice.UpperBound);
+
+        Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 11, 15), lower.Name.Source);
+        Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 16, 25), upper.Source);
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Theory]
+    [InlineData("ARRAY[[1, 2], [3, 4]]")]
+    [InlineData("ARRAY[ARRAY[1, 2], ARRAY[3, 4]]")]
+    [InlineData("ARRAY[[[1]], [[2]]]")]
+    [InlineData("ARRAY[[], []]")]
+    [InlineData("ARRAY(VALUES (1), (2))")]
+    [InlineData("ARRAY(WITH c AS (SELECT value FROM items) SELECT value FROM c)")]
+    [InlineData("ARRAY(WITH c AS (SELECT 1) VALUES (1))")]
+    [InlineData("ARRAY((SELECT 1) UNION SELECT 2)")]
+    public void NestedArraysAndArraySubqueries_ParseAndRoundTrip(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Theory]
+    [InlineData("ARRAY[1,]")]
+    [InlineData("ARRAY(1)")]
+    [InlineData("arr[]")]
+    [InlineData("arr[1:2")]
+    [InlineData("ROW(1,)")]
+    public void ArrayAndRowExpressions_RejectMalformedForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
+    }
+
+    [Theory]
+    [InlineData("f()[1]")]
+    [InlineData("f().field")]
+    [InlineData("ARRAY[1][1]")]
+    [InlineData("ROW(1).field")]
+    [InlineData("1[2]")]
+    [InlineData("arr[(lo:hi)]")]
+    [InlineData("arr[1:2:3]")]
+    [InlineData("(item).*.field")]
+    public void InvalidPostfixForms_AreRejectedInCompleteStatements(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
+    }
+
+    [Theory]
+    [InlineData("ARRAY[[1],]")]
+    [InlineData("ARRAY[[1], 2]")]
+    [InlineData("ARRAY[1, [2]]")]
+    [InlineData("[1, 2]")]
+    [InlineData("(item).*[1]")]
+    public void InvalidNestedArrayForms_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
     }
 }

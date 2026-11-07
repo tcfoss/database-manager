@@ -19,6 +19,7 @@ public class ParserState
     public int SourceId { get; }
 
     public ParseContext Context { get; private set; }
+    public StatementLabel? StatementLabel { get; private set; }
 
     public ParserState(Token[] tokens, int sourceId = 0)
     {
@@ -487,6 +488,30 @@ public class ParserState
         public void Dispose()
         {
             _state.Context = _previousContext;
+        }
+    }
+
+    public StatementScope EnterStatementScope(Word? labelToken)
+    {
+        StatementLabel? statementLabel = labelToken is not null ? new StatementLabel(labelToken, SourceId) : null;
+        return new StatementScope(this, statementLabel);
+    }
+
+    public readonly struct StatementScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly StatementLabel? _previousStatementLabel;
+
+        internal StatementScope(ParserState state, StatementLabel? statementLabel)
+        {
+            _state = state;
+            _previousStatementLabel = state.StatementLabel;
+            state.StatementLabel = statementLabel;
+        }
+
+        public void Dispose()
+        {
+            _state.StatementLabel = _previousStatementLabel;
         }
     }
 

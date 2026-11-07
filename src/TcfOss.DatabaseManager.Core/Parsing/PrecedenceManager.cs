@@ -11,6 +11,7 @@ public class PrecedenceManager(bool treatDoublePipeAsOr = false, bool usePostgre
     {
         return precedence switch
         {
+            Precedence.ArraySubscript => 60,
             Precedence.DoubleColon => 50,
             Precedence.UnarySign => usePostgresUnaryPrecedence ? (short)45 : (short)40,
             Precedence.Collate => 43,
@@ -50,6 +51,7 @@ public class PrecedenceManager(bool treatDoublePipeAsOr = false, bool usePostgre
             Word { Keyword: Keyword.LIKE or Keyword.ILIKE or Keyword.REGEXP or Keyword.RLIKE } => GetPrecedence(Precedence.Like),
             Word { Keyword: Keyword.SIMILAR } when state.PeekNth(1) is Word { Keyword: Keyword.TO } => GetPrecedence(Precedence.Like),
             Word { Keyword: Keyword.DIV } => GetPrecedence(Precedence.MultiplyDivide),
+            BracketOpen => GetPrecedence(Precedence.ArraySubscript),
             DoubleColon => GetPrecedence(Precedence.DoubleColon),
             DoublePipe => GetPrecedence(treatDoublePipeAsOr ? Precedence.Or : Precedence.PgConcat),
             Pipe => GetPrecedence(Precedence.Pipe),

@@ -208,17 +208,7 @@ public class Lexer<TRunState> : ILexer
         return new NonSql(WhitespaceCache.Newlines(count), state.Position - location.Position) { Location = location };
     }
 
-    private static Label? MaybeTokenizeLabel(ref LexerState state, string word, Location initialLocation, QuoteStyle? quoteStyle = null)
-    {
-        if (state.Peek() == CharSymbols.Colon && state.PeekNth(1) is not (CharSymbols.Colon or CharSymbols.Equal or CharSymbols.EndOfFile))
-        {
-            state.Next();
-            return new Label(new Identifier(word, quoteStyle ?? QuoteStyle.None)) { Location = initialLocation };
-        }
-        return null;
-    }
-
-    private static Token TokenizeQuotedIdentifier(ref LexerState state)
+    private static Word TokenizeQuotedIdentifier(ref LexerState state)
     {
         Location initialLocation = state.Location;
         char quoteStart = state.Next();
@@ -263,36 +253,21 @@ public class Lexer<TRunState> : ILexer
         }
 
         string word = new(state.SpanFrom(startPosition, state.Position - 1));
-        Label? label = MaybeTokenizeLabel(ref state, word, initialLocation, quoteStyle);
-        if (label != null)
-        {
-            return label;
-        }
-
         return new Word(word, quoteStyle) { Location = initialLocation };
     }
 
 
-    private Token TokenizeIdentifierOrKeyword(ref LexerState state)
+    private Word TokenizeIdentifierOrKeyword(ref LexerState state)
     {
         return TokenizeIdentifierOrKeyword(ref state, SigilKind.None);
     }
 
-    private Token TokenizeIdentifierOrKeyword(ref LexerState state, SigilKind sigil)
+    private Word TokenizeIdentifierOrKeyword(ref LexerState state, SigilKind sigil)
     {
         Location initialLocation = state.Location;
 
         state.Next();
         string word = ExtractWordTrustNoNewLines(ref state);
-
-        if (sigil == SigilKind.None)
-        {
-            Label? label = MaybeTokenizeLabel(ref state, word, initialLocation);
-            if (label != null)
-            {
-                return label;
-            }
-        }
 
         return new Word(word, QuoteStyle.None, sigil) { Location = initialLocation };
     }

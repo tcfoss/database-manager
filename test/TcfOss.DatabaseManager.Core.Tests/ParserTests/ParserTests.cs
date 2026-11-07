@@ -267,6 +267,58 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Contains("JOIN", exception.Message);
     }
 
+    [Theory]
+    [InlineData("label")]
+    [InlineData("\"my label\"")]
+    [InlineData("`my label`")]
+    [InlineData("[my label]")]
+    public void StatementLabels_PreserveNamesAndSource(string labelSql)
+    {
+        string sql = labelSql + " /* gap */ : SELECT 1";
+        var statement = Assert.IsType<LabeledStatement>(Assert.Single(new Parser().Parse(GetTokens(sql), sourceId: 7)));
+
+        Assert.IsType<Select>(statement.SubStatement);
+        Assert.Equal(labelSql, statement.Label.ToSql());
+        Assert.Equal(7, statement.Label.Source!.Value.SourceId);
+        Assert.Equal(0, statement.Label.Source.Value.Start);
+        Assert.Equal(labelSql.Length, statement.Label.Source.Value.End);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.Length, statement.Meta.End);
+        Assert.Equal(sql.Length, statement.Meta.EndPlusTerminatorLength);
+    }
+
+    [Fact]
+    public void StatementLabels_PreserveLeadingTrivia()
+    {
+        var statement = Assert.IsType<LabeledStatement>(ParseStatement("/* leading */ label: SELECT 1"));
+
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.NotEmpty(statement.Meta.PreNonSql!);
+    }
+
+    [Theory]
+    [InlineData("label: SELECT 1", "label: SELECT 1", false)]
+    [InlineData("label: SELECT 1; SELECT 2", "label: SELECT 1", true)]
+    [InlineData("/* leading */ label: SELECT 1 /* trailing */;", "/* leading */ label: SELECT 1 /* trailing */", true)]
+    public void StatementLabels_PreserveCompleteSourceSpans(string sql, string expectedSource, bool hasTerminator)
+    {
+        var statement = Assert.IsType<LabeledStatement>(new Parser().Parse(GetTokens(sql))[0]);
+
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(expectedSource.Length, statement.Meta.End);
+        Assert.Equal(expectedSource.Length + (hasTerminator ? 1 : 0), statement.Meta.EndPlusTerminatorLength);
+        Assert.Equal(statement.SubStatement.Meta.End, statement.Meta.End);
+        Assert.Equal(statement.SubStatement.Meta.EndPlusTerminatorLength, statement.Meta.EndPlusTerminatorLength);
+        Assert.NotSame(statement.SubStatement.Meta, statement.Meta);
+        Assert.Equal(expectedSource, Core.DefinitionBuilding.SourceManager.GetText(sql, statement.Meta));
+    }
+
+    [Fact]
+    public void StatementLabels_RejectSigilPrefixedWords()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("@label: SELECT 1"));
+    }
+
     private static Select GetStatementWithNonSqlTestStatement()
     {
         //       = "0    5   10    15   20   25   30   35    40   45   50   55    60   65";

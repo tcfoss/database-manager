@@ -309,4 +309,21 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements("SELECT label COLLATE app.locale FROM items"));
     }
+
+    [Theory]
+    [InlineData("SELECT ARRAY[1, 2] + 1")]
+    [InlineData("SELECT ARRAY(SELECT 1)")]
+    [InlineData("SELECT arr[1:2] + 1")]
+    [InlineData("SELECT (item).field")]
+    [InlineData("SELECT (item).*")]
+    public void PostgresArrayAndCompositeExpressions_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void BracketedAliases_AreNotParsedAsArraySubscripts()
+    {
+        Assert.Equal("SELECT arr AS [1:2]", ParseStatement("SELECT arr[1:2]").ToSql());
+    }
 }

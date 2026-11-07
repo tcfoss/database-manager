@@ -568,4 +568,69 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements("SELECT label COLLATE app.locale FROM items"));
     }
+
+    [Theory]
+    [InlineData("SELECT ROW(1, 2)")]
+    [InlineData("SELECT items.value FROM items")]
+    [InlineData("looplabel /* gap */ : LOOP SELECT 1; END LOOP looplabel")]
+    public void RowFunctionsAndStatementLabels_RetainSharedMySqlMariaDbSyntax(string sql)
+    {
+        Assert.Equal(sql.Replace(" /* gap */ ", "", StringComparison.Ordinal), ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT ARRAY[1, 2] + 1")]
+    [InlineData("SELECT ARRAY(SELECT 1)")]
+    [InlineData("SELECT arr[1:2] + 1")]
+    [InlineData("SELECT (item).field")]
+    [InlineData("SELECT (item).*")]
+    public void PostgresArrayAndCompositeExpressions_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void NestedLoopLabels_RestoreOuterLabelAndDoNotLeakIntoUnlabeledChildren()
+    {
+        const string loopSql = "outer_label: LOOP inner_label: LOOP SELECT 1; END LOOP inner_label; LOOP SELECT 2; END LOOP; SELECT 3; END LOOP outer_label";
+        string sql = loopSql + "; SELECT 4";
+        var state = GetState(sql);
+        var statements = new MyParser().Parse(state, null);
+        var outer = Assert.IsType<LabeledStatement>(statements[0]);
+        var outerLoop = Assert.IsType<Loop>(outer.SubStatement);
+        var inner = Assert.IsType<LabeledStatement>(outerLoop.Statements[0]);
+        var innerLoop = Assert.IsType<Loop>(inner.SubStatement);
+        var unlabeledLoop = Assert.IsType<Loop>(outerLoop.Statements[1]);
+
+        Assert.Equal("outer_label", outer.Label.Name);
+        Assert.Equal(outer.Label, outerLoop.EndLabel);
+        Assert.Equal("inner_label", inner.Label.Name);
+        Assert.Equal(inner.Label, innerLoop.EndLabel);
+        Assert.Collection(innerLoop.Statements, statement => Assert.IsType<Select>(statement), statement => Assert.IsType<InertOnly>(statement));
+        Assert.Null(unlabeledLoop.EndLabel);
+        Assert.Collection(unlabeledLoop.Statements, statement => Assert.IsType<Select>(statement), statement => Assert.IsType<InertOnly>(statement));
+        Assert.IsType<Select>(outerLoop.Statements[2]);
+        Assert.IsType<Select>(statements[1]);
+        Assert.Null(state.StatementLabel);
+        Assert.Equal(loopSql, outer.ToSql());
+    }
+
+    [Theory]
+    [InlineData(";")]
+    [InlineData("$$")]
+    [InlineData("//")]
+    public void LoopLabels_PreserveSourceSpansWithCustomDelimiters(string delimiter)
+    {
+        const string loopSql = "looplabel: LOOP SELECT 1; END LOOP looplabel";
+        string prefix = "DELIMITER " + delimiter + "\n";
+        string sql = prefix + loopSql + delimiter;
+        var statement = Assert.IsType<LabeledStatement>(ParseStatement(sql));
+
+        Assert.Equal(prefix.Length - 1, statement.Meta.Start);
+        Assert.Equal(prefix.Length + loopSql.Length, statement.Meta.End);
+        Assert.Equal(sql.Length, statement.Meta.EndPlusTerminatorLength);
+        Assert.Equal(statement.SubStatement.Meta.End, statement.Meta.End);
+        Assert.Equal(statement.SubStatement.Meta.EndPlusTerminatorLength, statement.Meta.EndPlusTerminatorLength);
+        Assert.Equal("\n" + loopSql, Core.DefinitionBuilding.SourceManager.GetText(sql, statement.Meta));
+    }
 }

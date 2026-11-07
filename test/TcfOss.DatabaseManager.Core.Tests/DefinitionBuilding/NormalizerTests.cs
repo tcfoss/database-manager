@@ -639,6 +639,26 @@ public class NormalizerTests
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
     }
 
+    [Fact]
+    public void NormalizeExpression_TraversesArrayRowAndCompositeExpressions()
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        Expression expression = new CompositeAccess.Field(
+            new ArraySubscript(
+                new ArrayConstructor.Elements([new SingleIdentifier(new Identifier("value"))]),
+                [new ArraySubscriptDimension.Slice(
+                    new SingleIdentifier(new Identifier("lower_bound")),
+                    new SingleIdentifier(new Identifier("upper_bound")))]),
+            new Identifier("field_name"));
+
+        Expression actual = normalizer.NormalizeExpressionNoFlatten(expression);
+        Expression row = normalizer.NormalizeExpression(new RowConstructor([new SingleIdentifier(new Identifier("value"))]));
+
+        Assert.Equal("ARRAY[`value`][`lower_bound`:`upper_bound`].`field_name`", actual.ToSql());
+        Assert.Equal("ROW(`value`)", row.ToSql());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1015,5 +1035,35 @@ public class NormalizerTests
 
         Assert.Equal(expected, actual.ToSql());
         Assert.Empty(actual.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void ArraySubscripts_NormalizationPreservesOperationBoundaries()
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var array = new SingleIdentifier(new Identifier("arr"));
+        var first = new ArraySubscriptDimension.Index(new LiteralValue(new Value.Number("1", false)));
+        var second = new ArraySubscriptDimension.Index(new LiteralValue(new Value.Number("2", false)));
+        var multidimensional = new ArraySubscript(array, [first, second]);
+        var sequential = new ArraySubscript(new Nested(new ArraySubscript(array, [first])), [second]);
+
+        Assert.NotEqual(normalizer.NormalizeExpression(multidimensional), normalizer.NormalizeExpression(sequential));
+        Assert.Equal("`arr`[1][2]", normalizer.NormalizeExpressionNoFlatten(multidimensional).ToSql());
+        Assert.Equal("(`arr`[1])[2]", normalizer.NormalizeExpressionNoFlatten(sequential).ToSql());
+    }
+
+    [Fact]
+    public void NestedArrayConstructors_NormalizationCanonicalizesOptionalKeywords()
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var inner = new ArrayConstructor.Elements([new SingleIdentifier(new Identifier("value"))]);
+        var explicitKeyword = new ArrayConstructor.Elements([inner]);
+        var omittedKeyword = new ArrayConstructor.Elements([inner with { UseArrayKeyword = false }]);
+
+        Assert.Equal(normalizer.NormalizeExpression(explicitKeyword), normalizer.NormalizeExpression(omittedKeyword));
+        Assert.Equal("ARRAY[[`value`]]", normalizer.NormalizeExpressionNoFlatten(omittedKeyword).ToSql());
+        Assert.Equal("ARRAY[ARRAY[`value`]]", normalizer.NormalizeExpressionNoFlatten(explicitKeyword).ToSql());
     }
 }

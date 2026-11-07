@@ -6,6 +6,7 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
+using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
@@ -90,6 +91,8 @@ public class ExpressionParser
             Word { Keyword: Keyword.EXISTS } => ParseExists(state, false),
             Word { Keyword: Keyword.POSITION } when state.PeekNthIs<ParenOpen>(1) => ParsePositionInOrFunction(state),
             Word { Keyword: Keyword.INTERVAL } => ParseInterval(state),
+            Word { Keyword: Keyword.ARRAY } when _p.SupportsPostgresArrayAndRowExpressionSyntax && state.PeekNth(1) is BracketOpen or ParenOpen => ParseArrayConstructor(state),
+            Word { Keyword: Keyword.ROW } when _p.SupportsPostgresArrayAndRowExpressionSyntax && state.PeekNthIs<ParenOpen>(1) => ParseRowConstructor(state),
             Word { Keyword: Keyword.CONVERT } => ParseConvert(state),
             Word { Keyword: Keyword.CAST } => ParseCast(state),
             Word { Keyword: Keyword.VALUE } when state.Context.HasFlag(ParseContext.DomainCheck) => ParseDomainValue(state),
@@ -114,6 +117,23 @@ public class ExpressionParser
     private Expression ParseInfix(ParserState state, Expression left, short precedence)
     {
         Token token = state.Next();
+
+        if (token is BracketOpen)
+        {
+            if (!_p.SupportsPostgresArrayAndRowExpressionSyntax
+                || left is not (SingleIdentifier or CompoundIdentifier or PositionalParameter or Nested or Subquery or CompositeAccess.Field))
+            {
+                throw ParserState.ExpectedException("expression operator", token);
+            }
+            state.Rewind();
+            SqlValueList<ArraySubscriptDimension> dimensions = [];
+            do
+            {
+                dimensions.Add(ParseArraySubscript(state));
+            } while (state.PeekIs<BracketOpen>());
+            return ParseCompositeContinuation(state, new ArraySubscript(left, dimensions));
+        }
+
         if (token is DoubleColon)
         {
             if (!_p.SupportsPostgresCastSyntax)
@@ -314,17 +334,18 @@ public class ExpressionParser
         return new SingleIdentifier(word.ToIdentifier(state.SourceId));
     }
 
-    private static PositionalParameter ParsePositionalParameter(ParserState state)
+    private Expression ParsePositionalParameter(ParserState state)
     {
         var token = (PositionalParameterToken)state.Next();
         if (!int.TryParse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture, out int number))
         {
             throw ParserState.ExpectedCategoryException("positional_parameter", token);
         }
-        return new PositionalParameter(number)
+        var parameter = new PositionalParameter(number)
         {
             Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length)
         };
+        return ParseCompositeContinuation(state, parameter);
     }
 
     private FunctionCall ParseFunction(ParserState state, ObjectName name)
@@ -686,9 +707,7 @@ public class ExpressionParser
 
         state.ExpectRightParen();
 
-        // TODO Consider CompositeAccess
-
-        return expr;
+        return ParseCompositeContinuation(state, expr);
     }
 
     private Expression ParseAfterIs(ParserState state, Expression expr)
@@ -727,6 +746,93 @@ public class ExpressionParser
         }
         // TODO: Consider parsing CTE query here?
         return null;
+    }
+
+
+    private Expression ParseArrayConstructor(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ARRAY);
+        if (state.PeekIs<BracketOpen>())
+        {
+            return ParseArrayElements(state, useArrayKeyword: true);
+        }
+
+        state.ExpectLeftParen();
+        CommonTableExpression? cte = null;
+        if (state.PeekKeyword(Keyword.WITH))
+        {
+            cte = _p.SelectParser.ParseCommonTableExpression(state);
+        }
+        Select query = _p.SelectParser.ParseSelect(state, cte);
+        state.ExpectRightParen();
+        return new ArrayConstructor.Subquery(query);
+    }
+
+    private ArrayConstructor.Elements ParseArrayElements(ParserState state, bool useArrayKeyword)
+    {
+        state.ExpectToken<BracketOpen>();
+        SqlValueList<Expression> values = [];
+        if (!state.PeekIs<BracketClose>())
+        {
+            values = state.PeekIs<BracketOpen>()
+                ? [.. state.ParseCommaSeparated(innerState => ParseArrayElements(innerState, useArrayKeyword: false))]
+                : state.ParseCommaSeparated(ParseExpr);
+        }
+        state.ExpectToken<BracketClose>();
+        return new ArrayConstructor.Elements(values) { UseArrayKeyword = useArrayKeyword };
+    }
+
+    private ArraySubscriptDimension ParseArraySubscript(ParserState state)
+    {
+        state.ExpectToken<BracketOpen>();
+        Expression? lowerBound = null;
+        if (!state.PeekIs<Colon>() && !state.PeekIs<BracketClose>())
+        {
+            lowerBound = ParseExpr(state);
+        }
+
+        ArraySubscriptDimension part;
+        if (state.ConsumeTokenIs<Colon>())
+        {
+            Expression? upperBound = state.PeekIs<BracketClose>() ? null : ParseExpr(state);
+            part = new ArraySubscriptDimension.Slice(lowerBound, upperBound);
+        }
+        else if (lowerBound != null)
+        {
+            part = new ArraySubscriptDimension.Index(lowerBound);
+        }
+        else
+        {
+            throw state.ExpectedException("array subscript");
+        }
+
+        state.ExpectToken<BracketClose>();
+        return part;
+    }
+
+    private RowConstructor ParseRowConstructor(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ROW);
+        SqlValueList<Expression> fields = state.ParseParenthesizedCommaSeparated(ParseExpr, allowEmpty: true);
+        return new RowConstructor(fields);
+    }
+
+    private Expression ParseCompositeContinuation(ParserState state, Expression expression)
+    {
+        if (!_p.SupportsPostgresArrayAndRowExpressionSyntax)
+        {
+            return expression;
+        }
+
+        while (state.ConsumeTokenIs<Dot>())
+        {
+            if (state.ConsumeTokenIs<Asterisk>())
+            {
+                return new CompositeAccess.Wildcard(expression);
+            }
+            expression = new CompositeAccess.Field(expression, _parseIdentifier(state));
+        }
+        return expression;
     }
 
     private Interval ParseInterval(ParserState state)

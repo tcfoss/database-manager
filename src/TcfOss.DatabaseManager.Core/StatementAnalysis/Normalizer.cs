@@ -185,6 +185,32 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             CompoundIdentifier ci => NormalizeIdentifier(ci, inSelect),
             QualifiedWildcard wildcard => NormalizeQualifiedWildcard(wildcard),
             Exists ex => NormalizeExists(ex, flatten: flatten),
+            ArrayConstructor.Elements array => array with
+            {
+                Values = [.. array.Values.Select(value => NormalizeExpression(value, inSelect, flatten))],
+                UseArrayKeyword = flatten || array.UseArrayKeyword
+            },
+            ArrayConstructor.Subquery array => array with { Query = NormalizeSelectInternal(array.Query, false, flatten) },
+            ArraySubscript subscript => subscript with
+            {
+                Array = NormalizeExpression(subscript.Array, inSelect, flatten),
+                Dimensions = [.. subscript.Dimensions.Select(dimension => dimension switch
+                {
+                    ArraySubscriptDimension.Index index => (ArraySubscriptDimension)(index with { Expression = NormalizeExpression(index.Expression, inSelect, flatten) }),
+                    ArraySubscriptDimension.Slice slice => slice with
+                    {
+                        LowerBound = slice.LowerBound == null ? null : NormalizeExpression(slice.LowerBound, inSelect, flatten),
+                        UpperBound = slice.UpperBound == null ? null : NormalizeExpression(slice.UpperBound, inSelect, flatten)
+                    },
+                    _ => dimension
+                })]
+            },
+            CompositeAccess.Field field => field with
+            {
+                Expression = NormalizeExpression(field.Expression, inSelect, flatten),
+                Name = ComponentNormalizer.NormalizeSingleIdentifier(field.Name)
+            },
+            CompositeAccess.Wildcard fields => fields with { Expression = NormalizeExpression(fields.Expression, inSelect, flatten) },
             IsFalse isFalse => NormalizeIsFalse(isFalse, inSelect: inSelect, flatten: flatten),
             InList il => new InList(NormalizeExpression(il.Expression, inSelect: inSelect, flatten: flatten), [.. il.Items.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))], il.Negated),
             InSubquery isub => NormalizeInSubquery(isub),
@@ -239,6 +265,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Right = NormalizeExpression(quantified.Right, inSelect, flatten)
             },
             Expressions.Tuple tuple => tuple with { Expressions = [.. tuple.Expressions.Select(expression => NormalizeExpression(expression, inSelect, flatten))] },
+            RowConstructor row => row with { Fields = [.. row.Fields.Select(field => NormalizeExpression(field, inSelect, flatten))] },
             Position position => position with
             {
                 Expression = NormalizeExpression(position.Expression, inSelect, flatten),
