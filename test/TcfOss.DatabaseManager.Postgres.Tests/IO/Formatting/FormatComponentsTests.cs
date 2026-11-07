@@ -188,4 +188,17 @@ public class FormatComponentsTests
 
         Assert.Contains(literal, actual);
     }
+
+    [Theory]
+    [InlineData("SELECT $1", "$1")]
+    [InlineData("SELECT $001::INT", "$1::INT")]
+    [InlineData("SELECT $1 + $2", "$1 + $2")]
+    public void PositionalParameters_FormattingKeepsDollarNotation(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted(sql);
+
+        Assert.Contains(expected, actual);
+    }
 }

@@ -96,7 +96,7 @@ public ref struct LexerState
     public int AdvanceThroughDigits()
     {
         int start = Position;
-        while (Position < _characters.Length && char.IsDigit(_characters[Position]))
+        while (Position < _characters.Length && char.IsAsciiDigit(_characters[Position]))
         {
             Position++;
         }

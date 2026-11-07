@@ -16,6 +16,7 @@ public class MsLexer : Lexer<MsRunState>
     protected override bool SupportEscapeStringLiterals => false;
     protected override bool SupportUnicodeLiterals => false;
     protected override bool SupportBitStringLiterals => false;
+    protected override bool SupportPositionalParameters => false;
     protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
 
     protected override bool IsIdentifierPart(char character)

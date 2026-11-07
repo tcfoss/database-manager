@@ -246,4 +246,21 @@ public class MsLexerTests : LexerTestBase
 
         Assert.Equal("0aF", Assert.IsType<HexStringLiteral>(Assert.Single(tokens)).Value);
     }
+
+    [Theory]
+    [InlineData("name$2")]
+    public void PositionalParameters_DollarsRetainExistingIdentifierTokenization(string text)
+    {
+        List<Token> tokens = new MsLexer().Tokenize(text);
+
+        Assert.Equal(text, Assert.IsType<Word>(Assert.Single(tokens)).Value);
+    }
+
+    [Theory]
+    [InlineData("$1")]
+    [InlineData("$001")]
+    public void PositionalParameters_DollarLeadingTextRetainsExistingRejection(string text)
+    {
+        Assert.Throws<LexException.UnexpectedCharacter>(() => new MsLexer().Tokenize(text));
+    }
 }

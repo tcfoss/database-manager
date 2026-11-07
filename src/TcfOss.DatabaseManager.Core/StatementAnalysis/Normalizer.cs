@@ -245,7 +245,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 In = NormalizeExpression(position.In, inSelect, flatten)
             },
             Interval interval => interval with { Value = NormalizeExpression(interval.Value, inSelect, flatten) },
-            LiteralValue or TypedString => expr,
+            LiteralValue or TypedString or PositionalParameter => expr,
             _ => NormalizeOtherExpression(expr)
         };
     }

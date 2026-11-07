@@ -297,4 +297,15 @@ public class MyLexerTests : LexerTestBase
 
         Assert.Equal("0aF", Assert.IsType<HexStringLiteral>(Assert.Single(tokens)).Value);
     }
+
+    [Theory]
+    [InlineData("$1")]
+    [InlineData("$001")]
+    [InlineData("name$2")]
+    public void PositionalParameters_DollarsRetainExistingIdentifierTokenization(string text)
+    {
+        List<Token> tokens = new MyLexer().Tokenize(text);
+
+        Assert.Equal(text, Assert.IsType<Word>(Assert.Single(tokens)).Value);
+    }
 }

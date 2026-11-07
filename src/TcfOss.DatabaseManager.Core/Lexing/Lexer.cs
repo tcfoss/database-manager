@@ -18,6 +18,7 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool SupportUnicodeLiterals => true;
     protected virtual bool SupportBitStringLiterals => true;
     protected virtual bool HexStringsAreBitStrings => false;
+    protected virtual bool SupportPositionalParameters => true;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -415,6 +416,19 @@ public class Lexer<TRunState> : ILexer
 
     private Token TokenizeDollar(ref LexerState state)
     {
+        if (SupportPositionalParameters && char.IsAsciiDigit(state.PeekNth(1)))
+        {
+            Location initialLocation = state.Location;
+            state.Next();
+            int start = state.Position;
+            state.AdvanceThroughDigits();
+            if (IsStrictIdentifierStart(state.Peek()) || !int.TryParse(state.SpanFrom(start), out _))
+            {
+                throw new LexException.ExpectedSymbolSequence(initialLocation);
+            }
+            return new PositionalParameterToken(new string(state.SpanFrom(start))) { Location = initialLocation };
+        }
+
         if (SupportDollarQuotedStrings)
         {
             if (MaybeTokenizeDollarQuotedString(ref state) is { } token)

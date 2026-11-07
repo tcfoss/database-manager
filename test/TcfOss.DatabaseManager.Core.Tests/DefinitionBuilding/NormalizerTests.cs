@@ -999,4 +999,21 @@ public class NormalizerTests
             Assert.Equal("`full_title` || `description` COLLATE `app`.`locale`", actual.ToSql());
         }
     }
+
+    [Theory]
+    [InlineData(false, "($1 + $2)")]
+    [InlineData(true, "$1 + $2")]
+    public void PositionalParameters_NormalizationPreservesParametersAndRespectsFlattening(bool flatten, string expected)
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new GenericLexer().Tokenize("($001 + $2)")]);
+        Expression expression = parser.ExpressionParser.ParseExpr(state);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+
+        Expression actual = flatten ? normalizer.NormalizeExpression(expression) : normalizer.NormalizeExpressionNoFlatten(expression);
+
+        Assert.Equal(expected, actual.ToSql());
+        Assert.Empty(actual.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
 }

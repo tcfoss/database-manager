@@ -51,7 +51,6 @@ public class PgLexerTests
 
     [Theory]
     [InlineData("$")]
-    [InlineData("$1$body$1$")]
     [InlineData("$tag-name$body$tag-name$")]
     [InlineData("$tag")]
     public void InvalidDollarOpeners_AreRejected(string sql)
@@ -62,6 +61,7 @@ public class PgLexerTests
     [Theory]
     [InlineData("$$")]
     [InlineData("$$body")]
+    [InlineData("$1$body$1$")]
     [InlineData("$tag$body$TAG$")]
     public void UnterminatedDollarStrings_AreRejected(string sql)
     {
@@ -475,5 +475,61 @@ public class PgLexerTests
 
         Assert.ThrowsAny<LexException>(() => lexer.Tokenize(sql));
         Assert.Equal("01", Assert.IsType<BitStringLiteral>(Assert.Single(lexer.Tokenize("B'01'"))).Value);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("12")]
+    [InlineData("0001")]
+    [InlineData("2147483647")]
+    public void PositionalParameters_PreserveDigitsAndSourceLength(string digits)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(" \n$" + digits + ";");
+        var token = Assert.IsType<PositionalParameterToken>(tokens[0]);
+
+        Assert.Equal(digits, token.Value);
+        Assert.Equal(digits.Length + 1, token.Length);
+        Assert.Equal(new Location(2, 1, 2), token.Location);
+        Assert.Equal("$" + digits, token.ToString());
+        Assert.Equal(digits.Length + 3, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Fact]
+    public void PositionalParameters_DoNotDisruptDollarQuotedStringsOrIdentifierDollars()
+    {
+        List<Token> tokens = new PgLexer().Tokenize("$1, $$literal $2$$, $tag$literal $3$tag$, field$4");
+
+        Assert.IsType<PositionalParameterToken>(tokens[0]);
+        Assert.Equal("literal $2", Assert.IsType<DollarQuotedStringLiteral>(tokens[2]).Value);
+        Assert.Equal("literal $3", Assert.IsType<DollarQuotedStringLiteral>(tokens[4]).Value);
+        Assert.Equal("field$4", Assert.IsType<Word>(tokens[6]).Value);
+        Assert.Equal(7, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("$1name")]
+    [InlineData("$1_name")]
+    [InlineData("$1\u00e9")]
+    [InlineData("$2147483648")]
+    [InlineData("$9999999999999999999999999999999999")]
+    public void PositionalParameters_InvalidIndicesAndTrailingIdentifierTextAreRejected(string sql)
+    {
+        Assert.ThrowsAny<LexException>(() => new PgLexer().Tokenize(sql));
+    }
+
+    [Fact]
+    public void PositionalParameters_TokenEqualityIgnoresLocation()
+    {
+        Token token = new PositionalParameterToken("1") { Location = new Location() };
+        var same = new PositionalParameterToken("1") { Location = new Location(2, 3, 4) };
+
+        Assert.Equal(token, same);
+        Assert.True(token.Equals((object)same));
+        Assert.Equal(token.GetHashCode(), same.GetHashCode());
+        Assert.NotEqual(token, new PositionalParameterToken("2") { Location = token.Location });
+        Assert.False(token.Equals((Token?)null));
+        Assert.False(token.Equals((object?)null));
+        Assert.False(token.Equals(new Word("1") { Location = token.Location }));
     }
 }

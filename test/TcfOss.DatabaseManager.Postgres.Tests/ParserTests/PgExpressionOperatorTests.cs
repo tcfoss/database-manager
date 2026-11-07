@@ -521,4 +521,76 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         state = new ParserState([.. new PgLexer().Tokenize(sql)]);
         Assert.ThrowsAny<ParseException>(() => ValueParser.ParseLiteralStringOptionalQuotes(state));
     }
+
+    [Theory]
+    [InlineData("$1", 1, "$1")]
+    [InlineData("$12", 12, "$12")]
+    [InlineData("$0001", 1, "$1")]
+    [InlineData("$2147483647", int.MaxValue, "$2147483647")]
+    [InlineData("$0", 0, "$0")]
+    public void PositionalParameters_ParseCanonicalizeAndPreserveSourceSpan(string sql, int expected, string canonical)
+    {
+        var state = new ParserState([.. new PgLexer().Tokenize(sql)], 37);
+        var parameter = Assert.IsType<PositionalParameter>(new PgParser().ExpressionParser.ParseExpr(state));
+
+        Assert.Equal(expected, parameter.Number);
+        Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 0, sql.Length), parameter.Source);
+        Assert.Equal(canonical, parameter.ToSql());
+        Assert.Equal(parameter, ParseExpression(parameter.ToSql()));
+        Assert.Empty(parameter.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Theory]
+    [InlineData("$1 + $2 * 3")]
+    [InlineData("-$1::INT")]
+    [InlineData("fn($1, $2)")]
+    [InlineData("$1 COLLATE \"C\"")]
+    public void PositionalParameters_ParseInsideExpressionsAndRoundTrip(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("SELECT $1")]
+    [InlineData("SELECT $1::INT, $2 FROM items WHERE id = $3")]
+    [InlineData("CREATE FUNCTION f () RETURNS INT LANGUAGE SQL RETURN $1")]
+    [InlineData("CREATE PROCEDURE p () LANGUAGE SQL BEGIN ATOMIC SELECT $1; END")]
+    public void PositionalParameters_ParseInStatementsAndRoundTrip(string sql)
+    {
+        var statement = ParseStatement(sql);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement.ToSql(), ParseStatement(statement.ToSql()).ToSql());
+    }
+
+    [Fact]
+    public void PositionalParameters_SerializeInsideExpressionCollections()
+    {
+        Expression[] expressions = [ParseExpression("$001"), ParseExpression("$2 + $3")];
+
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void PositionalParameters_AreAcceptedByKitchenSinkLexerAndParser()
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize("$1")]);
+
+        Assert.Equal(new PositionalParameter(1), parser.ExpressionParser.ParseExpr(state));
+    }
+
+    [Fact]
+    public void PositionalParameters_EqualityAndHashingIgnoreSourceSpelling()
+    {
+        Expression plain = ParseExpression("$1");
+        Expression padded = ParseExpression("$001");
+
+        Assert.Equal(plain, padded);
+        Assert.Equal(plain.GetHashCode(), padded.GetHashCode());
+        Assert.NotEqual(plain, ParseExpression("$2"));
+    }
 }

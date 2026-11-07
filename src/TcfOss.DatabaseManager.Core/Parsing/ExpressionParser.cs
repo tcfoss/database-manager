@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
@@ -7,6 +8,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using BinaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.BinaryOperator;
 using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
 using UnaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.UnaryOperator;
@@ -91,6 +93,7 @@ public class ExpressionParser
             Word { Keyword: Keyword.CONVERT } => ParseConvert(state),
             Word { Keyword: Keyword.CAST } => ParseCast(state),
             Word { Keyword: Keyword.VALUE } when state.Context.HasFlag(ParseContext.DomainCheck) => ParseDomainValue(state),
+            PositionalParameterToken => ParsePositionalParameter(state),
             Minus or Plus => ParseUnaryExpr(state),
             NumericLiteral
                 or StringLiteral
@@ -309,6 +312,19 @@ public class ExpressionParser
             };
         }
         return new SingleIdentifier(word.ToIdentifier(state.SourceId));
+    }
+
+    private static PositionalParameter ParsePositionalParameter(ParserState state)
+    {
+        var token = (PositionalParameterToken)state.Next();
+        if (!int.TryParse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture, out int number))
+        {
+            throw ParserState.ExpectedCategoryException("positional_parameter", token);
+        }
+        return new PositionalParameter(number)
+        {
+            Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length)
+        };
     }
 
     private FunctionCall ParseFunction(ParserState state, ObjectName name)
