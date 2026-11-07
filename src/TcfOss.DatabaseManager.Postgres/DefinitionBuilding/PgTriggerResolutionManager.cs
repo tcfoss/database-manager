@@ -200,7 +200,8 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
         {
             PgStatementTriggerArgument.Named named => _normalizer.NormalizeSingleIdentifier(named.Name).Name,
             PgStatementTriggerArgument.Literal { Value: Value.SingleQuotedString text } => text.Value.Replace("''", "'", StringComparison.Ordinal),
-            PgStatementTriggerArgument.Literal { Value: Value.EscapeString text } => text.Decode(),
+            PgStatementTriggerArgument.Literal { Value: Value.EscapeString text } => text.DecodedValue,
+            PgStatementTriggerArgument.Literal { Value: Value.UnicodeString text } => text.DecodedValue,
             PgStatementTriggerArgument.Literal { Value: Value.DollarQuotedString text } => text.Value,
             PgStatementTriggerArgument.Literal { Value: Value.Number { IsLong: false } number } =>
                         int.TryParse(number.Value, NumberStyles.None, CultureInfo.InvariantCulture, out int integer)

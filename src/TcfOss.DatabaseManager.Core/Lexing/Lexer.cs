@@ -15,6 +15,7 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool SupportBracketQuotedIdentifiers => true;
     protected virtual bool SupportDollarQuotedStrings => true;
     protected virtual bool SupportEscapeStringLiterals => true;
+    protected virtual bool SupportUnicodeLiterals => true;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -102,6 +103,7 @@ public class Lexer<TRunState> : ILexer
             'N' or 'n' => TokenizeNationalStringLiteral(ref state),
             'X' or 'x' => TokenizeHex(ref state),
             'E' or 'e' when SupportEscapeStringLiterals && state.PeekNth(1) == CharSymbols.SingleQuote => TokenizeEscapeStringLiteral(ref state),
+            'U' or 'u' when SupportUnicodeLiterals && state.PeekNth(1) == '&' && state.PeekNth(2) is CharSymbols.SingleQuote or CharSymbols.DoubleQuote => TokenizeUnicodeLiteral(ref state, ref runState),
 
             CharSymbols.SingleQuote => TokenizeStringLiteral(ref state),
 
@@ -529,6 +531,96 @@ public class Lexer<TRunState> : ILexer
         Location initialLocation = state.Location;
         state.Next();
         return new EscapeStringLiteral(ExtractString(ref state, true, supportBackslashEscape: true)) { Location = initialLocation };
+    }
+
+    private Token TokenizeUnicodeLiteral(ref LexerState state, ref TRunState runState)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        state.Next();
+        char quote = state.Peek();
+        string raw = ExtractString(ref state, false, quote);
+        char? escape = ParseUnicodeEscapeClause(ref state, ref runState);
+        int length = state.Position - initialLocation.Position;
+        if (quote == CharSymbols.SingleQuote)
+        {
+            return new UnicodeStringLiteral(raw) { EscapeCharacter = escape, SourceLength = length, Location = initialLocation };
+        }
+        try
+        {
+            string name = PgStringDecoders.DecodeUnicodeString(raw, escape ?? '\\', quote);
+            if (name.Length == 0)
+            {
+                throw new FormatException();
+            }
+            return new Word(name.Replace("\"", "\"\"", StringComparison.Ordinal), QuoteStyle.Ansi)
+            {
+                SourceLength = length,
+                Location = initialLocation
+            };
+        }
+        catch (FormatException)
+        {
+            throw new LexException.ExpectedSymbolSequence(initialLocation);
+        }
+    }
+
+    private char? ParseUnicodeEscapeClause(ref LexerState state, ref TRunState runState)
+    {
+        LexerState candidate = state;
+        TRunState candidateRunState = runState;
+        SkipUnicodeTrivia(ref candidate, ref candidateRunState);
+        if (candidate.Peek() is not ('U' or 'u'))
+        {
+            return null;
+        }
+        Token keyword = TokenizeIdentifierOrKeyword(ref candidate);
+        if (keyword is not Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word
+            || !word.Value.Equals("UESCAPE", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        SkipUnicodeTrivia(ref candidate, ref candidateRunState);
+        if (candidate.Peek() is 'U' or 'u')
+        {
+            throw new LexException.ExpectedSymbolSequence(candidate.Location);
+        }
+        Location literalLocation = candidate.Location;
+        Token literal = candidate.Peek() == CharSymbols.SingleQuote
+            ? new StringLiteral(ExtractString(ref candidate, false)) { Location = literalLocation }
+            : NextToken(ref candidate, ref candidateRunState);
+        try
+        {
+            string text = literal switch
+            {
+                StringLiteral textLiteral => textLiteral.Value.Replace("''", "'", StringComparison.Ordinal),
+                EscapeStringLiteral textLiteral => new Value.EscapeString(textLiteral.Value).DecodedValue,
+                DollarQuotedStringLiteral textLiteral => textLiteral.Value,
+                _ => throw new FormatException()
+            };
+            if (text.Length != 1)
+            {
+                throw new FormatException();
+            }
+            PgStringDecoders.DecodeUnicodeString("", text[0]);
+            state = candidate;
+            runState = candidateRunState;
+            return text[0];
+        }
+        catch (FormatException)
+        {
+            throw new LexException.ExpectedSymbolSequence(literal.Location);
+        }
+    }
+
+    private void SkipUnicodeTrivia(ref LexerState state, ref TRunState runState)
+    {
+        while (state.Peek() is CharSymbols.Space or CharSymbols.Tab or CharSymbols.NewLine or CharSymbols.CarriageReturn
+            || (state.Peek() == CharSymbols.Minus && state.PeekNth(1) == CharSymbols.Minus)
+            || (state.Peek() == CharSymbols.Slash && state.PeekNth(1) == CharSymbols.Asterisk))
+        {
+            NextToken(ref state, ref runState);
+        }
     }
 
     private Token TokenizeNationalStringLiteral(ref LexerState state)

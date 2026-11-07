@@ -162,4 +162,18 @@ public class FormatComponentsTests
 
         Assert.Contains(literal, actual);
     }
+
+    [Theory]
+    [InlineData("it''s\\00e9\\\\", null, "U&'it''s\\00e9\\\\'")]
+    [InlineData("it''s!00e9!!", '!', "U&'it''s!00e9!!' UESCAPE '!'")]
+    public void UnicodeStrings_FormatWithoutRewritingEscapes(string raw, char? escape, string expected)
+    {
+        var value = new Value.UnicodeString(raw) { EscapeCharacter = escape };
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        ((IWriteSql)value).FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+        Assert.Equal(expected, value.ToSql());
+    }
 }

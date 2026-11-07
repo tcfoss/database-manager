@@ -2068,6 +2068,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("$arg$it's unchanged$arg$", "it's unchanged")]
     [InlineData("E'it\\'s\\n\\u00e9'", "it's\n\u00e9")]
+    [InlineData("U&'it''s!000a!00e9' UESCAPE '!'", "it's\n\u00e9")]
+    [InlineData("U&\"it\\0027s\"", "it's")]
     public void ToDefinition_ResolvesQuotedTriggerArguments(string literal, string expected)
     {
         var builder = CreateBuilder();
@@ -2248,6 +2250,32 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         else
         {
             Assert.Equal(expected, Assert.Single(definition.Comments).Value);
+        }
+    }
+
+    [Theory]
+    [InlineData("U&''", "")]
+    [InlineData("U&'it''s!000a!00e9' UESCAPE '!'", "it's\n\u00e9")]
+    [InlineData("U&'it\\0027; DROP TABLE items; --'", "it'; DROP TABLE items; --")]
+    public void ToDefinition_ResolvesUnicodeStringCommentsAndIdentifierTargets(string literal, string expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); COMMENT ON TABLE U&\"it\\0065ms\" IS {literal}"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Single(definition.Tables.Values);
+        if (expected.Length == 0)
+        {
+            Assert.Empty(definition.Comments);
+        }
+        else
+        {
+            Assert.Equal(expected, Assert.Single(definition.Comments).Value);
+            var comment = new CommentOn(Assert.Single(definition.Comments).Key.ToStatementTarget(), new Value.SingleQuotedString(expected.Replace("'", "''", StringComparison.Ordinal)));
+            var rebuilt = CreateBuilder();
+            rebuilt.ProcessStatements(ParseStatements("CREATE TABLE items (id INT); " + comment.ToSql()), GetSchema(), 0);
+            Assert.Equal(expected, Assert.Single(rebuilt.ToDefinition().Comments).Value);
         }
     }
 

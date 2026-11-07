@@ -253,6 +253,19 @@ public class MyLexerTests : LexerTestBase
         Assert.Equal(2, tokens.Count);
     }
 
+    [Theory]
+    [InlineData("U")]
+    [InlineData("u")]
+    public void UnicodePrefixes_RemainSeparateIdentifierOperatorAndString(string prefix)
+    {
+        List<Token> tokens = new MyLexer().Tokenize(prefix + "&'body'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.IsType<Ampersand>(tokens[1]);
+        Assert.Equal("body", Assert.IsType<StringLiteral>(tokens[2]).Value);
+        Assert.Equal(3, tokens.Count);
+    }
+
     [Fact]
     public void BackslashPairs_RetainExistingQuoteEscaping()
     {

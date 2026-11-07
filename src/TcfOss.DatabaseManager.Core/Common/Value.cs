@@ -58,17 +58,63 @@ public abstract record Value() : IWriteSql
 
     public record EscapeString(string Value) : StringBasedValue(Value)
     {
-        /// <summary>
-        /// Decodes the raw literal contents, interpreting numeric byte escapes as UTF-8.
-        /// </summary>
-        public string Decode()
+        protected EscapeString(EscapeString original) : base(original)
         {
-            return PgEscapeString.Decode(Value);
+        }
+
+        /// <summary>
+        /// Gets the cached decoded contents, interpreting numeric byte escapes as UTF-8.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DecodedValue => field ??= PgStringDecoders.DecodeEscapeString(Value);
+
+        public virtual bool Equals(EscapeString? other)
+        {
+            return other != null && base.Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
         }
 
         public override void ToSql(SqlTextWriter writer)
         {
             writer.Write($"E'{Value}'");
+        }
+    }
+
+    public record UnicodeString(string Value) : StringBasedValue(Value)
+    {
+        public char? EscapeCharacter { get; init; }
+
+        protected UnicodeString(UnicodeString original) : base(original)
+        {
+            EscapeCharacter = original.EscapeCharacter;
+        }
+
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DecodedValue => field ??= PgStringDecoders.DecodeUnicodeString(Value, EscapeCharacter ?? '\\');
+
+        public virtual bool Equals(UnicodeString? other)
+        {
+            return other != null && base.Equals(other) && EscapeCharacter == other.EscapeCharacter;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), EscapeCharacter);
+        }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"U&'{Value}'");
+            if (EscapeCharacter is { } escape)
+            {
+                writer.Write($" UESCAPE '{escape}'");
+            }
         }
     }
 

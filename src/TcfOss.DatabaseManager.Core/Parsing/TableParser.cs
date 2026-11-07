@@ -287,7 +287,7 @@ public class TableParser
 
     private StatementColumnOption.Default ParseDefault(ParserState state, Identifier? constraintName)
     {
-        if (state.Peek() is NumericLiteral or StringLiteral or EscapeStringLiteral or DollarQuotedStringLiteral or NationalStringLiteral or HexStringLiteral
+        if (state.Peek() is NumericLiteral or StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral or NationalStringLiteral or HexStringLiteral
                 or Word { Keyword: Keyword.TRUE or Keyword.FALSE or Keyword.NULL }
             && state.TryParse(ValueParser.ParseValue, out Value? val))
         {

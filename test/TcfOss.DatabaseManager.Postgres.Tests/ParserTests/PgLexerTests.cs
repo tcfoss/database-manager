@@ -205,7 +205,7 @@ public class PgLexerTests
     {
         var value = new Value.EscapeString(raw);
 
-        Assert.Equal(decoded, value.Decode());
+        Assert.Equal(decoded, value.DecodedValue);
         Assert.Equal("E'" + raw + "'", value.ToSql());
     }
 
@@ -247,5 +247,148 @@ public class PgLexerTests
     public void EscapePrefix_OnlyAppliesImmediatelyBeforeQuote(string identifier)
     {
         Assert.Equal(identifier, Assert.IsType<Word>(Assert.Single(new PgLexer().Tokenize(identifier))).Value);
+    }
+
+    [Theory]
+    [InlineData("U&''", "")]
+    [InlineData("u&'d\\0061t\\+000061'", "d\\0061t\\+000061")]
+    [InlineData("U&'it''s'", "it''s")]
+    [InlineData("U&'\\\\'", "\\\\")]
+    public void UnicodeStrings_PreserveRawContentAndLength(string literal, string raw)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        var token = Assert.IsType<UnicodeStringLiteral>(tokens[0]);
+
+        Assert.Equal(raw, token.Value);
+        Assert.Equal(literal.Length, token.Length);
+        Assert.Equal(new Location(2, 1, 2), token.Location);
+        Assert.Equal(literal.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+    }
+
+    [Theory]
+    [InlineData("d\\0061t\\+000061", null, "data")]
+    [InlineData("d!0061t!+000061", '!', "data")]
+    [InlineData("\\D83D\\DE00", null, "\uD83D\uDE00")]
+    [InlineData("\\+00D83D\\DE00", null, "\uD83D\uDE00")]
+    [InlineData("\\D83D\\+00DE00", null, "\uD83D\uDE00")]
+    [InlineData("\\+01F600", null, "\uD83D\uDE00")]
+    [InlineData("\u00e9\uD83D\uDE00", null, "\u00e9\uD83D\uDE00")]
+    [InlineData("it''s\\\\", null, "it's\\")]
+    [InlineData("it''s!!", '!', "it's!")]
+    public void UnicodeValues_DecodeCodePointsAndEscapes(string raw, char? escape, string expected)
+    {
+        var value = new Value.UnicodeString(raw) { EscapeCharacter = escape };
+        Assert.Equal(expected, value.DecodedValue);
+    }
+
+    [Theory]
+    [InlineData("U&\"d\\0061ta\"", "data")]
+    [InlineData("u&\"d!0061ta\" UESCAPE '!'", "data")]
+    [InlineData("U&\"\\+01F600\"", "\uD83D\uDE00")]
+    [InlineData("U&\"has\\0022quote\"", "has\"\"quote")]
+    [InlineData("U&\"has\"\"quote\"", "has\"\"quote")]
+    [InlineData("U&\"data\" /* nested /* note */ */ UESCAPE '!'", "data")]
+    public void UnicodeIdentifiers_DecodeAndPreserveOriginalSourceSpan(string literal, string expected)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        var word = Assert.IsType<Word>(tokens[0]);
+
+        Assert.Equal(expected, word.Value);
+        Assert.Equal(QuoteStyle.Ansi, word.QuoteStyle);
+        Assert.Equal(literal.Length, word.Length);
+        Assert.Equal(2, word.ToIdentifier(7).Source!.Value.Start);
+        Assert.Equal(literal.Length + 2, word.ToIdentifier(7).Source!.Value.End);
+        Assert.Equal(literal.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("U&'d!0061ta' UESCAPE '!'", '!', "data")]
+    [InlineData("U&'d!0061ta'\n-- note\nUESCAPE '!'", '!', "data")]
+    [InlineData("U&'d!0061ta' UESCAPE E'\\x21'", '!', "data")]
+    [InlineData("U&'d!0061ta' UESCAPE $$!$$", '!', "data")]
+    [InlineData("U&'\\0061' UESCAPE '\\'", '\\', "a")]
+    public void UnicodeStrings_ReadEscapeClauseAndPreserveLength(string literal, char escape, string expected)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(literal + ";");
+        var token = Assert.IsType<UnicodeStringLiteral>(tokens[0]);
+
+        Assert.Equal(escape, token.EscapeCharacter);
+        Assert.Equal(literal.Length, token.Length);
+        Assert.Equal(expected, new Value.UnicodeString(token.Value) { EscapeCharacter = token.EscapeCharacter }.DecodedValue);
+        Assert.Equal(literal.Length, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Fact]
+    public void UnicodeLiterals_LookaheadDoesNotConsumeFollowingTokensOrTrivia()
+    {
+        const int count = 1024;
+        List<Token> tokens = new PgLexer().Tokenize(string.Join(" /* note */ ", Enumerable.Repeat("U&'x'", count)));
+
+        Assert.Equal(count, tokens.Count);
+        Assert.All(tokens, token => Assert.Equal(5, Assert.IsType<UnicodeStringLiteral>(token).Length));
+        Assert.NotNull(tokens[1].PreNonSql);
+    }
+
+    [Theory]
+    [InlineData("U & 'body'")]
+    [InlineData("U& 'body'")]
+    [InlineData("u& 'body'")]
+    public void UnicodePrefixes_RequireImmediateQuotedContent(string sql)
+    {
+        List<Token> tokens = new PgLexer().Tokenize(sql);
+        Assert.IsType<Word>(tokens[0]);
+        Assert.IsType<Ampersand>(tokens[1]);
+        Assert.IsType<StringLiteral>(tokens[2]);
+        Assert.Equal(3, tokens.Count);
+    }
+
+    [Fact]
+    public void UnicodeTokenEquality_UsesRawContentsAndEscapeCharacterButNotSourceLength()
+    {
+        Token token = new UnicodeStringLiteral("!0061") { EscapeCharacter = '!', Location = new Location(1, 1, 0) };
+        var same = new UnicodeStringLiteral("!0061") { EscapeCharacter = '!', SourceLength = 30, Location = new Location(2, 1, 8) };
+        var different = new UnicodeStringLiteral("!0061") { EscapeCharacter = '#', Location = token.Location };
+
+        Assert.Equal(token, same);
+        Assert.True(token.Equals((object)same));
+        Assert.Equal(token.GetHashCode(), same.GetHashCode());
+        Assert.NotEqual(token, different);
+        Assert.False(token.Equals((Token?)null));
+        Assert.False(token.Equals((object?)null));
+        Assert.False(token.Equals(new StringLiteral("!0061") { Location = token.Location }));
+    }
+
+    [Theory]
+    [InlineData("U&'x' UESCAPE ''")]
+    [InlineData("U&'x' UESCAPE '!!'")]
+    [InlineData("U&'x' UESCAPE '0'")]
+    [InlineData("U&'x' UESCAPE 'a'")]
+    [InlineData("U&'x' UESCAPE '+'")]
+    [InlineData("U&'x' UESCAPE ''''")]
+    [InlineData("U&'x' UESCAPE '\"'")]
+    [InlineData("U&'x' UESCAPE ' '")]
+    [InlineData("U&'x' UESCAPE '\u00e9'")]
+    [InlineData("U&'x' UESCAPE E'\\t'")]
+    [InlineData("U&'x' UESCAPE E'\\x00'")]
+    [InlineData("U&'x' UESCAPE E'\\u123'")]
+    [InlineData("U&'x' UESCAPE 1")]
+    [InlineData("U&'x' UESCAPE identifier")]
+    [InlineData("U&'x' UESCAPE U&'!'")]
+    [InlineData("U&'x' UESCAPE")]
+    [InlineData("U&'x' UESCAPE '!")]
+    [InlineData("U&\"\"")]
+    [InlineData("U&\"\\0000\"")]
+    [InlineData("U&\"\\D800\"")]
+    [InlineData("U&\"\\+110000\"")]
+    [InlineData("U&\"unterminated")]
+    [InlineData("U&'unterminated")]
+    public void InvalidUnicodeLiteralsAndEscapeClauses_AreRejectedAndLexerRemainsReusable(string sql)
+    {
+        var lexer = new PgLexer();
+
+        Assert.ThrowsAny<LexException>(() => lexer.Tokenize(sql));
+        Assert.Equal("data", Assert.IsType<Word>(Assert.Single(lexer.Tokenize("U&\"d\\0061ta\""))).Value);
     }
 }

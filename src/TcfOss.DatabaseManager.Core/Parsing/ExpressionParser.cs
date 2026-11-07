@@ -95,6 +95,7 @@ public class ExpressionParser
             NumericLiteral
                 or StringLiteral
                 or EscapeStringLiteral
+                or UnicodeStringLiteral
                 or DollarQuotedStringLiteral
                 or NationalStringLiteral => ParseValueExpr(state),
             Word => ParseMultipart(state),
