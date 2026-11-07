@@ -377,7 +377,6 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.True(parser.SupportsPostgresRegexOperators);
     }
 
-
     [Theory]
     [InlineData("0o7")]
     [InlineData("0b1_0")]

@@ -478,37 +478,11 @@ public class Lexer<TRunState> : ILexer
     private Token TokenizeNumber(ref LexerState state)
     {
         Location initialLocation = state.Location;
+        int startPosition = state.Position;
 
-        if (state.Peek() == CharSymbols.Zero && SupportNonDecimalNumericLiterals)
+        if (SupportNonDecimalNumericLiterals && TryExtractRadix(ref state, HexNumbersAreNumericLiterals, out int radix))
         {
-            int radix = state.PeekNth(1) switch
-            {
-                'x' or 'X' when HexNumbersAreNumericLiterals => 16,
-                'o' or 'O' => 8,
-                'b' or 'B' => 2,
-                _ => 0
-            };
-            if (radix != 0)
-            {
-                int start = state.Position;
-                state.Next();
-                state.Next();
-                if (SupportNumericDigitSeparators && state.Peek() == CharSymbols.Underscore)
-                {
-                    state.Next();
-                }
-                if (!IsNumericDigit(state.Peek(), radix))
-                {
-                    throw new LexException.ExpectedSymbolSequence(initialLocation);
-                }
-                AdvanceThroughNumericDigits(ref state, radix);
-                if ((RejectNumericTrailingJunk && IsStrictIdentifierStart(state.Peek()))
-                    || char.IsAsciiDigit(state.Peek()))
-                {
-                    throw new LexException.ExpectedSymbolSequence(initialLocation);
-                }
-                return new NumericLiteral(new string(state.SpanFrom(start))) { Location = initialLocation };
-            }
+            return TokenizeRadixNumber(ref state, radix, initialLocation, startPosition);
         }
 
         if (state.Peek() == CharSymbols.Zero && state.PeekNth(1) is 'x' or 'X')
@@ -519,12 +493,11 @@ public class Lexer<TRunState> : ILexer
             return new HexStringLiteral(new string(hex)) { Location = initialLocation };
         }
 
-        int startPosition = state.Position;
-
         AdvanceThroughNumericDigits(ref state);
 
         if (state.Peek() == CharSymbols.Dot
-            && (!SupportDotDotToken || state.PeekNth(1) != CharSymbols.Dot))
+            // If `..` is encountered and supported, do not split into two adjacent numeric literals
+            && !(SupportDotDotToken && state.PeekNth(1) == CharSymbols.Dot))
         {
             state.Next();
         }
@@ -552,6 +525,50 @@ public class Lexer<TRunState> : ILexer
             state.Next();
         }
         return new NumericLiteral(text, isLong) { Location = initialLocation };
+    }
+
+    private static bool TryExtractRadix(ref LexerState state, bool hexAsNumber, out int radix)
+    {
+        if (state.Peek() != CharSymbols.Zero)
+        {
+            radix = 10;
+            return false;
+        }
+
+        radix = state.PeekNth(1) switch
+        {
+            'x' or 'X' when hexAsNumber => 16,
+            'b' or 'B' => 2,
+            'o' or 'O' => 8,
+            _ => 10,
+        };
+
+        if (radix != 10)
+        {
+            state.Next(); // Consume the '0'
+            state.Next(); // Consume the radix prefix ('x', 'b', or 'o')
+            return true;
+        }
+        return false;
+    }
+
+    private NumericLiteral TokenizeRadixNumber(ref LexerState state, int radix, Location initialLocation, int startPosition)
+    {
+        if (SupportNumericDigitSeparators && state.Peek() == CharSymbols.Underscore)
+        {
+            state.Next();
+        }
+        if (!IsNumericDigit(state.Peek(), radix))
+        {
+            throw new LexException.ExpectedSymbolSequence(initialLocation);
+        }
+        AdvanceThroughNumericDigits(ref state, radix);
+        if ((RejectNumericTrailingJunk && IsStrictIdentifierStart(state.Peek()))
+            || char.IsAsciiDigit(state.Peek()))
+        {
+            throw new LexException.ExpectedSymbolSequence(initialLocation);
+        }
+        return new NumericLiteral(new string(state.SpanFrom(startPosition))) { Location = initialLocation };
     }
 
     private void AdvanceThroughNumericDigits(ref LexerState state, int radix = 10)
@@ -954,7 +971,7 @@ public class Lexer<TRunState> : ILexer
         return char.IsLetter(character) || char.IsDigit(character) || character is CharSymbols.Underscore;
     }
 
-    protected bool IsStrictIdentifierStart(char character)
+    protected static bool IsStrictIdentifierStart(char character)
     {
         return char.IsLetter(character) || character is CharSymbols.Underscore;
     }

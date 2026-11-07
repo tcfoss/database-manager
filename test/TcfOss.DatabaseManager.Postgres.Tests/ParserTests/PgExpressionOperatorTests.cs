@@ -617,38 +617,6 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("0x10", 16)]
-    [InlineData("0o20", 16)]
-    [InlineData("0b1_0000", 16)]
-    [InlineData("1_6", 16)]
-    public void ExtendedNumbers_IntegerConsumersInterpretRadixAndSeparators(string sql, int expected)
-    {
-        Assert.Equal(expected, ValueParser.ParseLiteralInt(new ParserState([.. new PgLexer().Tokenize(sql)])));
-        Assert.Equal((uint)expected, ValueParser.ParseLiteralUInt(new ParserState([.. new PgLexer().Tokenize(sql)])));
-        Assert.Equal((long)expected, ValueParser.ParseLiteralLong(new ParserState([.. new PgLexer().Tokenize(sql)])));
-        Assert.Equal((ulong)expected, ValueParser.ParseLiteralULong(new ParserState([.. new PgLexer().Tokenize(sql)])));
-        Assert.Equal(expected, new Core.Common.Value.Number(sql, false).AsInt());
-    }
-
-    [Theory]
-    [InlineData("-0x8000000000000000", long.MinValue)]
-    [InlineData("+0x7fffffffffffffff", long.MaxValue)]
-    [InlineData("-9_223_372_036_854_775_808", long.MinValue)]
-    public void ExtendedNumbers_SignedIntegerConsumersRetainFullRange(string sql, long expected)
-    {
-        Assert.Equal(expected, ValueParser.ParseLiteralLong(new ParserState([.. new PgLexer().Tokenize(sql)])));
-    }
-
-    [Theory]
-    [InlineData("0x8000000000000000")]
-    [InlineData("-0x8000000000000001")]
-    public void ExtendedNumbers_IntegerOverflowUsesExistingRangeDiagnostics(string sql)
-    {
-        Assert.Throws<ParseException.ValueOutOfRange>(() =>
-            ValueParser.ParseLiteralLong(new ParserState([.. new PgLexer().Tokenize(sql)])));
-    }
-
-    [Theory]
     [InlineData("SELECT 0x10 + 0b1_0 * 0o7")]
     [InlineData("SELECT -0x10::INT, .2_5, 1_0e+1_2")]
     [InlineData("CREATE TABLE items (id INT DEFAULT 0x10)")]

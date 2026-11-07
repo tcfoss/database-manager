@@ -136,8 +136,6 @@ public ref struct LexerState
         AdvanceBy(index < 0 ? remaining.Length : index);
     }
 
-
-
     // Tracks line/column exactly as repeated Next() calls would.
     private void AdvanceBy(int count)
     {
