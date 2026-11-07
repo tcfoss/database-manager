@@ -174,6 +174,17 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 NormalizeExpression(bet.Low, inSelect: inSelect, flatten: flatten),
                 NormalizeExpression(bet.High, inSelect: inSelect, flatten: flatten), bet.Negated),
             BinaryOperator bo => NormalizeBinaryOperator(bo, inSelect: inSelect, flatten: flatten),
+            PgBinaryOperator op => op with
+            {
+                Left = NormalizeExpression(op.Left, inSelect, flatten),
+                Right = NormalizeExpression(op.Right, inSelect, flatten),
+                Operator = op.Operator with { Schema = op.Operator.Schema == null ? null : ComponentNormalizer.NormalizeSingleIdentifier(op.Operator.Schema) }
+            },
+            PgUnaryOperator op => op with
+            {
+                Expression = NormalizeExpression(op.Expression, inSelect, flatten),
+                Operator = op.Operator with { Schema = op.Operator.Schema == null ? null : ComponentNormalizer.NormalizeSingleIdentifier(op.Operator.Schema) }
+            },
             Case ca => new Case(
                 [.. ca.Conditions.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))],
                 [.. ca.Results.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))]

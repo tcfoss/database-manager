@@ -633,4 +633,18 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Equal(statement.SubStatement.Meta.EndPlusTerminatorLength, statement.Meta.EndPlusTerminatorLength);
         Assert.Equal("\n" + loopSql, Core.DefinitionBuilding.SourceManager.GetText(sql, statement.Meta));
     }
+
+    [Theory]
+    [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT value <-> other")]
+    public void PostgresGeneralOperators_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void PostgresQuestionOperators_AreRejectedBySharedMySqlMariaDbLexer()
+    {
+        Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens("SELECT value ?| other"));
+    }
 }

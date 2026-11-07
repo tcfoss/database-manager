@@ -326,4 +326,18 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.Equal("SELECT arr AS [1:2]", ParseStatement("SELECT arr[1:2]").ToSql());
     }
+
+    [Theory]
+    [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT value <-> other")]
+    public void PostgresGeneralOperators_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void PostgresQuestionOperators_AreRejectedByLexer()
+    {
+        Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens("SELECT value ?| other"));
+    }
 }

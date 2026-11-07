@@ -31,6 +31,7 @@ public class Parser : IParser
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
     public virtual bool SupportsPostgresExpressionCollationSyntax => true;
     public virtual bool SupportsPostgresArrayAndRowExpressionSyntax => true;
+    public virtual bool SupportsPostgresOperatorSyntax => true;
     protected virtual bool SupportsCommentOn => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }

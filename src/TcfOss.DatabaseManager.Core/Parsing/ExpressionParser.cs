@@ -93,11 +93,20 @@ public class ExpressionParser
             Word { Keyword: Keyword.INTERVAL } => ParseInterval(state),
             Word { Keyword: Keyword.ARRAY } when _p.SupportsPostgresArrayAndRowExpressionSyntax && state.PeekNth(1) is BracketOpen or ParenOpen => ParseArrayConstructor(state),
             Word { Keyword: Keyword.ROW } when _p.SupportsPostgresArrayAndRowExpressionSyntax && state.PeekNthIs<ParenOpen>(1) => ParseRowConstructor(state),
+            Word { Keyword: Keyword.OPERATOR } => ParsePostgresUnaryOperator(state),
             Word { Keyword: Keyword.CONVERT } => ParseConvert(state),
             Word { Keyword: Keyword.CAST } => ParseCast(state),
             Word { Keyword: Keyword.VALUE } when state.Context.HasFlag(ParseContext.DomainCheck) => ParseDomainValue(state),
             PositionalParameterToken => ParsePositionalParameter(state),
             Minus or Plus => ParseUnaryExpr(state),
+            OperatorToken
+                or Tilde
+                or TildeAsterisk
+                or NotTilde
+                or NotTildeAsterisk
+                or Pipe
+                or Ampersand
+                or DoublePipe when _p.SupportsPostgresOperatorSyntax => ParsePostgresUnaryOperator(state),
             NumericLiteral
                 or StringLiteral
                 or EscapeStringLiteral
@@ -152,9 +161,14 @@ public class ExpressionParser
             return ParseInfixBinaryOperator(state, token, op, left, precedence);
         }
 
-        if (token is Word word)
+        if (token is Word word && word.Keyword != Keyword.OPERATOR)
         {
             return ParseInfixWord(state, word, left, precedence);
+        }
+
+        if (token is OperatorToken or Word { Keyword: Keyword.OPERATOR })
+        {
+            return ParseInfixPostgresOperator(state, token, left, precedence);
         }
 
         throw ParserState.ExpectedException("expression operator", token);
@@ -199,9 +213,84 @@ public class ExpressionParser
             };
         }
 
-        // TODO: BinaryOperator.Custom
-
         return new BinaryOperatorExp(left, op, ParseSubExpression(state, precedence));
+    }
+
+    private PgUnaryOperator ParsePostgresUnaryOperator(ParserState state)
+    {
+        PgOperatorReference reference = ParsePostgresOperatorReference(state);
+        return new PgUnaryOperator(reference, ParseSubExpression(state, _pm.GetPrecedence(Precedence.PgOperator)));
+    }
+
+    private PgBinaryOperator ParseInfixPostgresOperator(ParserState state, Token token, Expression left, short precedence)
+    {
+        if (!_p.SupportsPostgresOperatorSyntax)
+        {
+            throw ParserState.ExpectedException("expression operator", token);
+        }
+        state.Rewind();
+        PgOperatorReference reference = ParsePostgresOperatorReference(state);
+        AggregateQuantifier? quantifier = state.ParseKeywordsAny(Keyword.ANY, Keyword.ALL, Keyword.SOME) switch
+        {
+            Keyword.ANY => AggregateQuantifier.Any,
+            Keyword.ALL => AggregateQuantifier.All,
+            Keyword.SOME => AggregateQuantifier.Some,
+            _ => null
+        };
+        Expression right;
+        if (quantifier != null)
+        {
+            state.ExpectLeftParen();
+            if (PeekSubquery(state) || state.PeekKeyword(Keyword.VALUES))
+            {
+                CommonTableExpression? cte = state.PeekKeyword(Keyword.WITH) ? _p.SelectParser.ParseCommonTableExpression(state) : null;
+                right = new Subquery(_p.SelectParser.ParseSelect(state, cte));
+            }
+            else
+            {
+                right = ParseExpr(state);
+            }
+            state.ExpectRightParen();
+        }
+        else
+        {
+            right = ParseSubExpression(state, precedence);
+        }
+        return new PgBinaryOperator(left, reference, right) { Quantifier = quantifier };
+    }
+
+    private PgOperatorReference ParsePostgresOperatorReference(ParserState state)
+    {
+        if (!_p.SupportsPostgresOperatorSyntax)
+        {
+            throw state.ExpectedException("expression operator");
+        }
+        bool useOperatorSyntax = state.ParseKeyword(Keyword.OPERATOR);
+        Identifier? schema = null;
+        if (useOperatorSyntax)
+        {
+            state.ExpectLeftParen();
+            if (state.PeekIs<Word>())
+            {
+                schema = _parseIdentifier(state);
+                state.ExpectToken<Dot>();
+            }
+        }
+        Token token = state.Next();
+        if (token is not OperatorToken && GetBinaryOperator(token) == null)
+        {
+            throw ParserState.ExpectedException("operator name", token);
+        }
+        string name = token.ToString()!;
+        if (!PgOperatorReference.IsValidName(name))
+        {
+            throw ParserState.ExpectedException("operator name", token);
+        }
+        if (useOperatorSyntax)
+        {
+            state.ExpectRightParen();
+        }
+        return new PgOperatorReference(name) { Schema = schema, UseOperatorSyntax = useOperatorSyntax };
     }
 
     private Expression ParseInfixWord(ParserState state, Word word, Expression left, short precedence)

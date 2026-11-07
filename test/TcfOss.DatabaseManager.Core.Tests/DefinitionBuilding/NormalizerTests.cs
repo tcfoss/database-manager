@@ -1066,4 +1066,22 @@ public class NormalizerTests
         Assert.Equal("ARRAY[[`value`]]", normalizer.NormalizeExpressionNoFlatten(omittedKeyword).ToSql());
         Assert.Equal("ARRAY[ARRAY[`value`]]", normalizer.NormalizeExpressionNoFlatten(explicitKeyword).ToSql());
     }
+
+    [Theory]
+    [InlineData(false, "(`left`) OPERATOR(`ops`.@>) ANY((`right`))", "OPERATOR(`ops`.@) (`value`)")]
+    [InlineData(true, "`left` OPERATOR(`ops`.@>) ANY(`right`)", "OPERATOR(`ops`.@) `value`")]
+    public void PostgresOperators_NormalizationTraversesOperandsAndSchema(bool flatten, string expectedBinary, string expectedUnary)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var binary = new PgBinaryOperator(new Nested(new SingleIdentifier(new Identifier("left"))), new PgOperatorReference("@>") { Schema = new Identifier("ops") }, new Nested(new SingleIdentifier(new Identifier("right")))) { Quantifier = AggregateQuantifier.Any };
+        var unary = new PgUnaryOperator(new PgOperatorReference("@") { Schema = new Identifier("ops") }, new Nested(new SingleIdentifier(new Identifier("value"))));
+
+        Expression normalizedBinary = flatten ? normalizer.NormalizeExpression(binary) : normalizer.NormalizeExpressionNoFlatten(binary);
+        Expression normalizedUnary = flatten ? normalizer.NormalizeExpression(unary) : normalizer.NormalizeExpressionNoFlatten(unary);
+
+        Assert.Equal(expectedBinary, normalizedBinary.ToSql());
+        Assert.Equal(expectedUnary, normalizedUnary.ToSql());
+        Assert.Equal(AggregateQuantifier.Any, Assert.IsType<PgBinaryOperator>(normalizedBinary).Quantifier);
+    }
 }

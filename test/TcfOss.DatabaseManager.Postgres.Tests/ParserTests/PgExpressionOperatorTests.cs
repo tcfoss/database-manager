@@ -881,4 +881,104 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
     }
+
+    [Theory]
+    [InlineData("doc -> 'name'")]
+    [InlineData("doc ->> 'name'")]
+    [InlineData("doc #> '{a,b}'")]
+    [InlineData("doc #>> '{a,b}'")]
+    [InlineData("doc @> '{\"active\":true}'")]
+    [InlineData("doc <@ other")]
+    [InlineData("doc ? 'name'")]
+    [InlineData("doc ?| ARRAY['name', 'age']")]
+    [InlineData("doc ?& ARRAY['name', 'age']")]
+    [InlineData("search @@ query")]
+    [InlineData("tags && ARRAY['red']")]
+    [InlineData("period -|- other")]
+    [InlineData("point <-> target")]
+    [InlineData("embedding <=> target")]
+    [InlineData("value OPERATOR(app.===) other")]
+    [InlineData("value OPERATOR(\"App\".@>) other")]
+    [InlineData("value OPERATOR(+) other")]
+    [InlineData("doc @> ANY(ARRAY[other])")]
+    [InlineData("doc @> ALL(SELECT value FROM items)")]
+    [InlineData("doc @> SOME(VALUES (other))")]
+    public void PostgresOperators_ParseAndRoundTripWithoutResolvingTypes(string sql)
+    {
+        var expression = Assert.IsType<PgBinaryOperator>(ParseExpression(sql));
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Theory]
+    [InlineData("@ value")]
+    [InlineData("~ value")]
+    [InlineData("!! value")]
+    [InlineData("OPERATOR(app.@) value")]
+    [InlineData("OPERATOR(pg_catalog.-) value")]
+    public void PostgresPrefixOperators_ParseAndRoundTrip(string sql)
+    {
+        var expression = Assert.IsType<PgUnaryOperator>(ParseExpression(sql));
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void PostgresOperators_UseGenericPrecedenceAndLeftAssociativity()
+    {
+        var comparison = Assert.IsType<BinaryOperator>(ParseExpression("doc ->> 'count' = other + 1"));
+        Assert.IsType<PgBinaryOperator>(comparison.Left);
+        Assert.IsType<BinaryOperator>(comparison.Right);
+        var chain = Assert.IsType<PgBinaryOperator>(ParseExpression("doc -> 'a' ->> 'b'"));
+        Assert.IsType<PgBinaryOperator>(chain.Left);
+        var qualified = Assert.IsType<PgBinaryOperator>(ParseExpression("a OPERATOR(pg_catalog.*) b + c"));
+        Assert.IsType<BinaryOperator>(qualified.Right);
+        var prefix = Assert.IsType<PgUnaryOperator>(ParseExpression("@ a + b"));
+        Assert.IsType<BinaryOperator>(prefix.Expression);
+    }
+
+    [Theory]
+    [InlineData("items.doc OPERATOR(ops.@>) items.other", new string[] { "items.doc", "items.other" })]
+    [InlineData("OPERATOR(ops.@) items.value", new string[] { "items.value" })]
+    [InlineData("items.doc @> ANY(ARRAY[items.other])", new string[] { "items.doc", "items.other" })]
+    public void PostgresOperators_ReferenceOperandsButNotOperatorSchemas(string sql, string[] operands)
+    {
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        ItemRef[] expected = [.. operands.SelectMany(operand => ParseExpression(operand).GetReferencedItems(context))];
+
+        Assert.Equal(expected, ParseExpression(sql).GetReferencedItems(context));
+    }
+
+    [Fact]
+    public void QualifiedOperators_PreserveSchemaSourceSpansAndKitchenSinkSupport()
+    {
+        const string sql = "left OPERATOR(\"app\".@>) right";
+        var state = new ParserState(GetTokens(sql), 37);
+        var expression = Assert.IsType<PgBinaryOperator>(new Parser().ExpressionParser.ParseExpr(state));
+
+        Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 14, 19), expression.Operator.Schema!.Source);
+        Assert.IsType<Eof>(state.Peek());
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+    [Theory]
+    [InlineData("doc ->")]
+    [InlineData("doc OPERATOR(app.) value")]
+    [InlineData("doc OPERATOR(app.name) value")]
+    [InlineData("doc OPERATOR(app.schema.+) value")]
+    [InlineData("doc OPERATOR(app.::) value")]
+    [InlineData("doc OPERATOR(app.@> value")]
+    [InlineData("doc @> ANY()")]
+    [InlineData("value !!")]
+    public void MalformedPostgresOperators_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
+    }
 }

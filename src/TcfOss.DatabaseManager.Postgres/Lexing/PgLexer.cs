@@ -16,6 +16,7 @@ public class PgLexer : Lexer<RunState>
     protected override bool HexNumbersAreNumericLiterals => true;
     protected override bool SupportDotDotToken => true;
     protected override bool RejectNumericTrailingJunk => true;
+    protected override bool SupportPostgresOperatorTokens => true;
     protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
 
     protected override bool IsIdentifierPart(char character)

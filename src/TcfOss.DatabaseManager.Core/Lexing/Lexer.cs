@@ -24,6 +24,7 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool HexNumbersAreNumericLiterals => false;
     protected virtual bool SupportDotDotToken => false;
     protected virtual bool RejectNumericTrailingJunk => false;
+    protected virtual bool SupportPostgresOperatorTokens => false;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -95,6 +96,11 @@ public class Lexer<TRunState> : ILexer
     protected virtual Token NextToken(ref LexerState state, ref TRunState runState)
     {
         char character = state.Peek();
+
+        if (SupportPostgresOperatorTokens && IsOperatorCharacter(character) && !IsCommentStart(state, 0))
+        {
+            return TokenizeOperator(ref state);
+        }
 
         return character switch
         {
@@ -777,6 +783,19 @@ public class Lexer<TRunState> : ILexer
         };
     }
 
+    private Token TokenizeMinusMod(ref LexerState state)
+    {
+        Location startLocation = state.Location;
+        state.Next();
+
+        return state.Peek() switch
+        {
+            CharSymbols.Minus => TokenizeLineComment(ref state, startLocation),
+            _ when IsMaybeCustomOperator(ref state, 1) => TokenizeOperator(ref state), // Would also need to pass original offset to be the new start position
+            _ => new Minus() { Location = startLocation }
+        };
+    }
+
     private static NonSql TokenizeLineComment(ref LexerState state, Location startLocation)
     {
         state.Next(); // Consume the second '-'
@@ -819,6 +838,67 @@ public class Lexer<TRunState> : ILexer
             }
             lastChar = curr;
         }
+    }
+
+    private bool IsMaybeCustomOperator(ref LexerState state, int offset = 1)
+    {
+        if (SupportPostgresOperatorTokens && IsOperatorCharacter(state.PeekNth(offset)))
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private static Token TokenizeOperator(ref LexerState state)
+    {
+        Location location = state.Location;
+        int length = 0;
+        bool hasNonStandardCharacter = false;
+        while (IsOperatorCharacter(state.PeekNth(length)) && !IsCommentStart(state, length))
+        {
+            hasNonStandardCharacter |= state.PeekNth(length) is '~' or '!' or '@' or '#' or '%' or '^' or '&' or '|' or '`' or '?';
+            length++;
+        }
+        if (!hasNonStandardCharacter)
+        {
+            while (length > 1 && state.PeekNth(length - 1) is '+' or '-')
+            {
+                length--;
+            }
+        }
+        if (length > 63)
+        {
+            throw new LexException.ExpectedSymbolSequence(location);
+        }
+        for (int index = 0; index < length; index++)
+        {
+            state.Next();
+        }
+        string symbol = new(state.SpanFrom(location.Position));
+        return symbol switch
+        {
+            "+" => new Plus() { Location = location },
+            "-" => new Minus() { Location = location },
+            "*" => new Asterisk() { Location = location },
+            "/" => new Slash() { Location = location },
+            "%" => new Modulo() { Location = location },
+            "^" => new Caret() { Location = location },
+            "&" => new Ampersand() { Location = location },
+            "|" => new Pipe() { Location = location },
+            "||" => new DoublePipe() { Location = location },
+            "=" => new Equal() { Location = location },
+            "<" => new LessThan() { Location = location },
+            ">" => new GreaterThan() { Location = location },
+            "<=" => new LessThanOrEqual() { Location = location },
+            ">=" => new GreaterThanOrEqual() { Location = location },
+            "<>" or "!=" => new NotEqual() { Location = location },
+            "=>" => new FatArrow() { Location = location },
+            "~" => new Tilde() { Location = location },
+            "~*" => new TildeAsterisk() { Location = location },
+            "!~" => new NotTilde() { Location = location },
+            "!~*" => new NotTildeAsterisk() { Location = location },
+            _ => new OperatorToken(symbol) { Location = location }
+        };
     }
 
     private static string ExtractLineComment(ref LexerState state)
@@ -949,5 +1029,15 @@ public class Lexer<TRunState> : ILexer
     protected static bool IsStrictIdentifierStart(char character)
     {
         return char.IsLetter(character) || character is CharSymbols.Underscore;
+    }
+
+    private static bool IsOperatorCharacter(char character)
+    {
+        return character is '+' or '-' or '*' or '/' or '<' or '>' or '=' or '~' or '!' or '@' or '#' or '%' or '^' or '&' or '|' or '`' or '?';
+    }
+
+    private static bool IsCommentStart(LexerState state, int offset)
+    {
+        return (state.PeekNth(offset), state.PeekNth(offset + 1)) is ('-', '-') or ('/', '*');
     }
 }

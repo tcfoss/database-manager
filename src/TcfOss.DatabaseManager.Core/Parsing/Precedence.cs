@@ -10,6 +10,7 @@ public enum Precedence
     MultiplyDivide,
     AddSubtract,
     PgConcat,
+    PgOperator,
     Xor,
     Ampersand,
     Caret,

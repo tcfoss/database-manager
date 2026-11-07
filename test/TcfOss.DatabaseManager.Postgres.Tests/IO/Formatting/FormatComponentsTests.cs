@@ -239,4 +239,23 @@ public class FormatComponentsTests
 
         Assert.Equal(expected, writer.ToString().NormalizeWhitespace());
     }
+
+    [Theory]
+    [InlineData("doc ->> 'name'", "\"doc\" ->> 'name'")]
+    [InlineData("doc ?| ARRAY[key]", "\"doc\" ?| ARRAY[\"key\"]")]
+    [InlineData("doc OPERATOR(app.@>) other", "\"doc\" OPERATOR(\"app\".@>) \"other\"")]
+    [InlineData("doc OPERATOR(@>) other", "\"doc\" OPERATOR(@>) \"other\"")]
+    [InlineData("doc @> ANY(ARRAY[other])", "\"doc\" @> ANY(ARRAY[\"other\"])")]
+    [InlineData("@ value", "@ \"value\"")]
+    [InlineData("OPERATOR(app.@) value", "OPERATOR(\"app\".@) \"value\"")]
+    public void PostgresOperators_FormatOperandsAndSchemaNames(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
 }

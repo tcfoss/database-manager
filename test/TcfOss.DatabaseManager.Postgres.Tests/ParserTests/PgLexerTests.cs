@@ -607,4 +607,110 @@ public class PgLexerTests : LexerTestBase<PgLexer>
     {
         Assert.Throws<LexException.ExpectedSymbolSequence>(() => GetTokens(sql));
     }
+
+    [Theory]
+    [InlineData("->")]
+    [InlineData("->>")]
+    [InlineData("#>")]
+    [InlineData("#>>")]
+    [InlineData("@>")]
+    [InlineData("<@")]
+    [InlineData("?")]
+    [InlineData("?|")]
+    [InlineData("?&")]
+    [InlineData("@@")]
+    [InlineData("&&")]
+    [InlineData("<->")]
+    [InlineData("<=>")]
+    [InlineData("@-")]
+    [InlineData("`")]
+    [InlineData("!")]
+    [InlineData("@")]
+    public void Operators_PreserveWholeSpellingAndSourceSpan(string symbol)
+    {
+        List<Token> tokens = GetTokens("\n  " + symbol + ";");
+        var token = Assert.IsType<OperatorToken>(tokens[0]);
+
+        Assert.Equal(symbol, token.Value);
+        Assert.Equal(symbol, token.ToString());
+        Assert.Equal(symbol.Length, token.Length);
+        Assert.Equal(new Location(2, 3, 3), token.Location);
+        Assert.Equal(symbol.Length + 3, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("1*-2", "*")]
+    [InlineData("1=-2", "=")]
+    [InlineData("1<=-2", "<=")]
+    [InlineData("1++2", "+")]
+    public void StandardOperators_LeaveTrailingSignsSeparate(string sql, string firstSymbol)
+    {
+        List<Token> tokens = GetTokens(sql);
+
+        Assert.Equal(firstSymbol, tokens[1].ToString());
+        Assert.True(tokens[2] is Minus or Plus);
+        Assert.IsType<NumericLiteral>(tokens[3]);
+        Assert.Equal(4, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("a@>/* comment */b", "@>")]
+    [InlineData("a@>-- comment\nb", "@>")]
+    [InlineData("a+/* comment */b", "+")]
+    [InlineData("a+-- comment\nb", "+")]
+    public void Operators_StopBeforeComments(string sql, string symbol)
+    {
+        List<Token> tokens = GetTokens(sql);
+
+        Assert.Equal(symbol, tokens[1].ToString());
+        Assert.Equal("b", Assert.IsType<Word>(tokens[2]).Value);
+        Assert.NotNull(tokens[2].PreNonSql);
+        Assert.Equal(3, tokens.Count);
+    }
+
+    [Fact]
+    public void OperatorNames_RespectDefaultPostgresLengthLimit()
+    {
+        Assert.Equal(63, Assert.IsType<OperatorToken>(Assert.Single(GetTokens(new string('@', 63)))).Length);
+        Assert.Throws<LexException.ExpectedSymbolSequence>(() => GetTokens(new string('@', 64)));
+    }
+
+    [Theory]
+    [InlineData("+", typeof(Plus))]
+    [InlineData("-", typeof(Minus))]
+    [InlineData("*", typeof(Asterisk))]
+    [InlineData("/", typeof(Slash))]
+    [InlineData("%", typeof(Modulo))]
+    [InlineData("^", typeof(Caret))]
+    [InlineData("&", typeof(Ampersand))]
+    [InlineData("|", typeof(Pipe))]
+    [InlineData("||", typeof(DoublePipe))]
+    [InlineData("=", typeof(Equal))]
+    [InlineData("<", typeof(LessThan))]
+    [InlineData(">", typeof(GreaterThan))]
+    [InlineData("<=", typeof(LessThanOrEqual))]
+    [InlineData(">=", typeof(GreaterThanOrEqual))]
+    [InlineData("!=", typeof(NotEqual))]
+    [InlineData("<>", typeof(NotEqual))]
+    [InlineData("=>", typeof(FatArrow))]
+    [InlineData("~", typeof(Tilde))]
+    [InlineData("~*", typeof(TildeAsterisk))]
+    [InlineData("!~", typeof(NotTilde))]
+    [InlineData("!~*", typeof(NotTildeAsterisk))]
+    [InlineData("::", typeof(DoubleColon))]
+    [InlineData(":=", typeof(Walrus))]
+    public void OperatorScanner_PreservesEstablishedTokenTypes(string symbol, Type type)
+    {
+        Assert.IsType(type, Assert.Single(GetTokens(symbol)));
+    }
+
+    [Theory]
+    [InlineData("@>-")]
+    [InlineData("?+")]
+    [InlineData("*~-")]
+    public void NonStandardOperators_KeepTrailingSigns(string symbol)
+    {
+        Assert.Equal(symbol, Assert.IsType<OperatorToken>(Assert.Single(GetTokens(symbol))).Value);
+    }
 }

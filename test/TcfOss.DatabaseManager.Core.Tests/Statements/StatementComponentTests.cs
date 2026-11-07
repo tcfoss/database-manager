@@ -483,6 +483,36 @@ public class StatementComponentTests
         Assert.Equal("CREATE TYPE wrapper AS (values TEXT ARRAY)", statement.ToSql());
     }
 
+    [Theory]
+    [InlineData("@>")]
+    [InlineData("<->")]
+    [InlineData("+")]
+    [InlineData("@-")]
+    public void PostgresOperatorReferences_EmitEscapedSchemaNames(string symbol)
+    {
+        var reference = new PgOperatorReference(symbol) { Schema = new Identifier("ops; DROP TABLE items; --", QuoteStyle.Ansi) };
+
+        Assert.Equal("OPERATOR(\"ops; DROP TABLE items; --\"." + symbol + ")", reference.ToSql());
+        Assert.Equal(reference.ToSql(), FormatComponent(reference));
+        Assert.Equal(symbol, new PgOperatorReference(symbol).ToSql());
+        Assert.Equal("OPERATOR(" + symbol + ")", new PgOperatorReference(symbol) { UseOperatorSyntax = true }.ToSql());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("name")]
+    [InlineData("@>; SELECT 1")]
+    [InlineData("--")]
+    [InlineData("/*")]
+    [InlineData("*- ")]
+    [InlineData("*-")]
+    [InlineData("=+")]
+    public void PostgresOperatorReferences_RejectInvalidOrSqlBearingSymbols(string? symbol)
+    {
+        Assert.Throws<ArgumentException>(() => new PgOperatorReference(symbol!));
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();
