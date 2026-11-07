@@ -117,14 +117,8 @@ public class ValueParser
         {
             throw ParserState.ExpectedCategoryException(category, token);
         }
-        return (sign.Length == 0 ? number.Value : string.Concat(sign, number.Value), start);
-    }
-
-    private static ParseException IntegerParseFailure(string text, Token token, string category, long minimum, long maximum)
-    {
-        return BigInteger.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
-            ? new ParseException.ValueOutOfRange("integer", text, minimum, maximum, token.Location)
-            : ParserState.ExpectedCategoryException(category, token);
+        string text = number.GetDecimalText();
+        return (sign.Length == 0 ? text : string.Concat(sign, text), start);
     }
 
     public static int ParseLiteralInt(ParserState state)
@@ -144,11 +138,12 @@ public class ValueParser
         {
             throw ParserState.ExpectedCategoryException("literal_int", token);
         }
-        if (uint.TryParse(number.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint value))
+        string text = number.GetDecimalText();
+        if (uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint value))
         {
             return value;
         }
-        throw IntegerParseFailure(number.Value, token, "literal_int", uint.MinValue, uint.MaxValue);
+        throw IntegerParseFailure(text, token, "literal_int", uint.MinValue, uint.MaxValue);
     }
 
     public static long ParseLiteralLong(ParserState state)
@@ -164,10 +159,17 @@ public class ValueParser
     public static ulong ParseLiteralULong(ParserState state)
     {
         Token token = state.Next();
-        if (token is NumericLiteral number && ulong.TryParse(number.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong value))
+        if (token is NumericLiteral number && ulong.TryParse(number.GetDecimalText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong value))
         {
             return value;
         }
         throw ParserState.ExpectedCategoryException("literal_long", token);
+    }
+
+    private static ParseException IntegerParseFailure(string text, Token token, string category, long minimum, long maximum)
+    {
+        return BigInteger.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            ? new ParseException.ValueOutOfRange("integer", text, minimum, maximum, token.Location)
+            : ParserState.ExpectedCategoryException(category, token);
     }
 }

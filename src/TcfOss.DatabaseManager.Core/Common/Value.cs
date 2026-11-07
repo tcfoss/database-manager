@@ -1,3 +1,4 @@
+using System.Globalization;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 
@@ -29,6 +30,15 @@ public abstract record Value() : IWriteSql
 
     public record Number(string Value, bool IsLong) : StringBasedValue(Value)
     {
+        protected Number(Number original) : base(original)
+        {
+            IsLong = original.IsLong;
+        }
+
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DecimalText => field ??= NumericText.ToDecimal(Value);
+
         public override void ToSql(SqlTextWriter writer)
         {
             writer.WriteSql($"{Value}");
@@ -40,11 +50,21 @@ public abstract record Value() : IWriteSql
 
         public int? AsInt()
         {
-            if (int.TryParse(Value, out int val))
+            if (int.TryParse(DecimalText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val))
             {
                 return val;
             }
             return null;
+        }
+
+        public virtual bool Equals(Number? other)
+        {
+            return other != null && base.Equals(other) && IsLong == other.IsLong;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), IsLong);
         }
     }
 

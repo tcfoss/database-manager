@@ -593,4 +593,103 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(plain.GetHashCode(), padded.GetHashCode());
         Assert.NotEqual(plain, ParseExpression("$2"));
     }
+
+    [Theory]
+    [InlineData("0x_Ff_01", "65281")]
+    [InlineData("0O_7_5_5", "493")]
+    [InlineData("0B_1_0_1", "5")]
+    [InlineData("1_000", "1000")]
+    [InlineData("1_000.2_5", "1000.25")]
+    [InlineData(".2_5", ".25")]
+    [InlineData("1_0e+1_2", "10e+12")]
+    [InlineData("0xFFFFFFFFFFFFFFFFFFFFFFFF", "79228162514264337593543950335")]
+    public void ExtendedNumbers_ParseAsNumbersAndPreserveRawSpelling(string sql, string decimalText)
+    {
+        var expression = Assert.IsType<LiteralValue>(ParseExpression(sql));
+        var number = Assert.IsType<Core.Common.Value.Number>(expression.Value);
+
+        Assert.Equal(sql, number.Value);
+        Assert.False(number.IsLong);
+        Assert.Equal(decimalText, number.DecimalText);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Empty(expression.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Theory]
+    [InlineData("0x10", 16)]
+    [InlineData("0o20", 16)]
+    [InlineData("0b1_0000", 16)]
+    [InlineData("1_6", 16)]
+    public void ExtendedNumbers_IntegerConsumersInterpretRadixAndSeparators(string sql, int expected)
+    {
+        Assert.Equal(expected, ValueParser.ParseLiteralInt(new ParserState([.. new PgLexer().Tokenize(sql)])));
+        Assert.Equal((uint)expected, ValueParser.ParseLiteralUInt(new ParserState([.. new PgLexer().Tokenize(sql)])));
+        Assert.Equal((long)expected, ValueParser.ParseLiteralLong(new ParserState([.. new PgLexer().Tokenize(sql)])));
+        Assert.Equal((ulong)expected, ValueParser.ParseLiteralULong(new ParserState([.. new PgLexer().Tokenize(sql)])));
+        Assert.Equal(expected, new Core.Common.Value.Number(sql, false).AsInt());
+    }
+
+    [Theory]
+    [InlineData("-0x8000000000000000", long.MinValue)]
+    [InlineData("+0x7fffffffffffffff", long.MaxValue)]
+    [InlineData("-9_223_372_036_854_775_808", long.MinValue)]
+    public void ExtendedNumbers_SignedIntegerConsumersRetainFullRange(string sql, long expected)
+    {
+        Assert.Equal(expected, ValueParser.ParseLiteralLong(new ParserState([.. new PgLexer().Tokenize(sql)])));
+    }
+
+    [Theory]
+    [InlineData("0x8000000000000000")]
+    [InlineData("-0x8000000000000001")]
+    public void ExtendedNumbers_IntegerOverflowUsesExistingRangeDiagnostics(string sql)
+    {
+        Assert.Throws<ParseException.ValueOutOfRange>(() =>
+            ValueParser.ParseLiteralLong(new ParserState([.. new PgLexer().Tokenize(sql)])));
+    }
+
+    [Theory]
+    [InlineData("SELECT 0x10 + 0b1_0 * 0o7")]
+    [InlineData("SELECT -0x10::INT, .2_5, 1_0e+1_2")]
+    [InlineData("CREATE TABLE items (id INT DEFAULT 0x10)")]
+    [InlineData("CREATE DOMAIN counter AS INT DEFAULT 1_000")]
+    [InlineData("CREATE FUNCTION f () RETURNS INT LANGUAGE SQL COST 0x10 RETURN 0b1_0")]
+    [InlineData("CREATE PROCEDURE p () LANGUAGE SQL BEGIN ATOMIC SELECT 0o7; END")]
+    public void ExtendedNumbers_ParseInStatementsAndRoundTrip(string sql)
+    {
+        var statement = ParseStatement(sql);
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Fact]
+    public void ExtendedNumbers_SerializeInsideExpressionCollections()
+    {
+        Expression[] expressions = [ParseExpression("0x_Ff"), ParseExpression("0b1_0"), ParseExpression("1_000.2_5")];
+
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Theory]
+    [InlineData("app..mood")]
+    [InlineData("app...mood")]
+    [InlineData("app..\"Mood\"")]
+    public void DoubleDots_StopExpressionWithoutConsumption(string sql)
+    {
+        var state = GetState(sql);
+        Expression expression = ParseExpression(state, false);
+
+        Assert.Equal("app", expression.ToSql());
+        Assert.IsType<DotDot>(state.Peek());
+        Assert.Equal(3, state.Peek().Location.Position);
+    }
+
+    [Theory]
+    [InlineData("app..mood")]
+    [InlineData("app...mood")]
+    [InlineData("app..\"Mood\"")]
+    public void DoubleDots_AreRejectedInCompleteStatements(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"SELECT {sql}"));
+    }
 }

@@ -34,14 +34,19 @@ public class ParserTestsBase<TLexer, TParser>
         return Assert.Single(ParseStatements(sql));
     }
 
-    protected static Expression ParseExpression(ParserState state)
+    protected static Expression ParseExpression(ParserState state, bool assertAtEnd = true)
     {
-        return new TParser().ExpressionParser.ParseExpr(state);
+        var expr = new TParser().ExpressionParser.ParseExpr(state);
+        if (assertAtEnd)
+        {
+            Assert.True(state.PeekIs<Eof>());
+        }
+        return expr;
     }
 
-    protected static Expression ParseExpression(string sql)
+    protected static Expression ParseExpression(string sql, bool assertAtEnd = true)
     {
-        return ParseExpression(GetState(sql));
+        return ParseExpression(GetState(sql), assertAtEnd);
     }
 
     protected static (string? expected, string? actual) GetExpectedActual(Func<ParserState, IWriteSql?> parser, string sql, string? expectedSql = null, bool normalizeExpectedWhitespace = false, bool normalizeActualWhitespace = false)

@@ -204,7 +204,7 @@ public class PgTriggerResolutionManager(PgConfig config, ComponentNormalizer nor
             PgStatementTriggerArgument.Literal { Value: Value.UnicodeString text } => text.DecodedValue,
             PgStatementTriggerArgument.Literal { Value: Value.DollarQuotedString text } => text.Value,
             PgStatementTriggerArgument.Literal { Value: Value.Number { IsLong: false } number } =>
-                        int.TryParse(number.Value, NumberStyles.None, CultureInfo.InvariantCulture, out int integer)
+                        int.TryParse(number.DecimalText, NumberStyles.None, CultureInfo.InvariantCulture, out int integer)
                             ? integer.ToString(CultureInfo.InvariantCulture)
                             : number.Value,
             _ => throw new SqlSyntaxException.InvalidTrigger(name, "trigger argument", source)

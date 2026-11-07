@@ -3,11 +3,12 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
+using TcfOss.DatabaseManager.Core.Tests.LexerTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 
 namespace TcfOss.DatabaseManager.Postgres.Tests.ParserTests;
 
-public class PgLexerTests
+public class PgLexerTests : LexerTestBase<PgLexer>
 {
     [Theory]
     [InlineData("caf\u00e9")]
@@ -17,7 +18,7 @@ public class PgLexerTests
     [InlineData("name$tag$body$tag$")]
     public void Unquoted_Identifiers_Preserve_Dialect_Characters(string identifier)
     {
-        List<Token> tokens = new PgLexer().Tokenize(identifier + ";");
+        List<Token> tokens = GetTokens(identifier + ";");
 
         Assert.Equal(2, tokens.Count);
         Assert.Equal(identifier, Assert.IsType<Word>(tokens[0]).Value);
@@ -36,7 +37,7 @@ public class PgLexerTests
     public void DollarStrings_PreserveContentDelimiterAndSourceLength(string tag, string value)
     {
         string literal = $"${tag}${value}${tag}$";
-        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        List<Token> tokens = GetTokens(" \n" + literal + ";");
         var token = Assert.IsType<DollarQuotedStringLiteral>(tokens[0]);
 
         Assert.Equal(tag, token.Tag);
@@ -55,7 +56,7 @@ public class PgLexerTests
     [InlineData("$tag")]
     public void InvalidDollarOpeners_AreRejected(string sql)
     {
-        Assert.Throws<LexException.UnexpectedCharacter>(() => new PgLexer().Tokenize(sql));
+        Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens(sql));
     }
 
     [Theory]
@@ -65,9 +66,8 @@ public class PgLexerTests
     [InlineData("$tag$body$TAG$")]
     public void UnterminatedDollarStrings_AreRejected(string sql)
     {
-        var lexer = new PgLexer();
-        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
-        Assert.Equal("ok", Assert.IsType<DollarQuotedStringLiteral>(lexer.Tokenize("$$ok$$")[0]).Value);
+        Assert.Throws<LexException.UnterminatedString>(() => GetTokens(sql));
+        Assert.Equal("ok", Assert.IsType<DollarQuotedStringLiteral>(GetTokens("$$ok$$")[0]).Value);
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class PgLexerTests
     public void OrdinaryStrings_RetainEscapedTextWithoutDoubleEscaping()
     {
         const string sql = "'it''s fine'";
-        var token = Assert.IsType<StringLiteral>(new PgLexer().Tokenize(sql)[0]);
+        var token = Assert.IsType<StringLiteral>(GetTokens(sql)[0]);
         Assert.Equal("it''s fine", token.Value);
         Assert.Equal(sql, token.ToString());
         Assert.Equal(sql.Length, token.Length);
@@ -116,7 +116,7 @@ public class PgLexerTests
     public void Ordinary_Strings_Treat_Backslashes_As_Content(string contents)
     {
         string sql = $"'{contents}';";
-        List<Token> tokens = new PgLexer().Tokenize(sql);
+        List<Token> tokens = GetTokens(sql);
 
         Assert.Equal(contents, Assert.IsType<StringLiteral>(tokens[0]).Value);
         Assert.Equal(sql.Length - 1, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
@@ -132,7 +132,7 @@ public class PgLexerTests
     {
         string contents = new string('a', prefixLength) + "\\''line\n" + new string('b', 1024) + "\\";
         string sql = $"'{contents}';";
-        List<Token> tokens = new PgLexer().Tokenize(sql);
+        List<Token> tokens = GetTokens(sql);
 
         Assert.Equal(contents, Assert.IsType<StringLiteral>(tokens[0]).Value);
         int position = sql.Length - 1;
@@ -143,7 +143,7 @@ public class PgLexerTests
     [Fact]
     public void Square_Brackets_Are_Symbol_Tokens()
     {
-        List<Token> tokens = new PgLexer().Tokenize("a[1]");
+        List<Token> tokens = GetTokens("a[1]");
 
         Assert.Equal(4, tokens.Count);
         var open = Assert.IsType<BracketOpen>(tokens[1]);
@@ -163,7 +163,7 @@ public class PgLexerTests
     [InlineData("E'line\\nnext'", "line\\nnext")]
     public void EscapeStrings_PreserveRawContentAndSourceLength(string literal, string value)
     {
-        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        List<Token> tokens = GetTokens(" \n" + literal + ";");
         var token = Assert.IsType<EscapeStringLiteral>(tokens[0]);
 
         Assert.Equal(value, token.Value);
@@ -180,9 +180,8 @@ public class PgLexerTests
     [InlineData("E'body\\'")]
     public void UnterminatedEscapeStrings_AreRejected(string sql)
     {
-        var lexer = new PgLexer();
-        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
-        Assert.Equal("ok", Assert.IsType<EscapeStringLiteral>(lexer.Tokenize("E'ok'")[0]).Value);
+        Assert.Throws<LexException.UnterminatedString>(() => GetTokens(sql));
+        Assert.Equal("ok", Assert.IsType<EscapeStringLiteral>(GetTokens("E'ok'")[0]).Value);
     }
 
     [Theory]
@@ -218,7 +217,7 @@ public class PgLexerTests
     {
         string contents = new string('a', prefixLength) + "\\'line\n" + new string('b', 1024) + "\\\\";
         string sql = "E'" + contents + "';";
-        List<Token> tokens = new PgLexer().Tokenize(sql);
+        List<Token> tokens = GetTokens(sql);
 
         Assert.Equal(contents, Assert.IsType<EscapeStringLiteral>(tokens[0]).Value);
         int position = sql.Length - 1;
@@ -256,7 +255,7 @@ public class PgLexerTests
     [InlineData("U&'\\\\'", "\\\\")]
     public void UnicodeStrings_PreserveRawContentAndLength(string literal, string raw)
     {
-        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        List<Token> tokens = GetTokens(" \n" + literal + ";");
         var token = Assert.IsType<UnicodeStringLiteral>(tokens[0]);
 
         Assert.Equal(raw, token.Value);
@@ -290,7 +289,7 @@ public class PgLexerTests
     [InlineData("U&\"data\" /* nested /* note */ */ UESCAPE '!'", "data")]
     public void UnicodeIdentifiers_DecodeAndPreserveOriginalSourceSpan(string literal, string expected)
     {
-        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        List<Token> tokens = GetTokens(" \n" + literal + ";");
         var word = Assert.IsType<Word>(tokens[0]);
 
         Assert.Equal(expected, word.Value);
@@ -310,7 +309,7 @@ public class PgLexerTests
     [InlineData("U&'\\0061' UESCAPE '\\'", '\\', "a")]
     public void UnicodeStrings_ReadEscapeClauseAndPreserveLength(string literal, char escape, string expected)
     {
-        List<Token> tokens = new PgLexer().Tokenize(literal + ";");
+        List<Token> tokens = GetTokens(literal + ";");
         var token = Assert.IsType<UnicodeStringLiteral>(tokens[0]);
 
         Assert.Equal(escape, token.EscapeCharacter);
@@ -324,7 +323,7 @@ public class PgLexerTests
     public void UnicodeLiterals_LookaheadDoesNotConsumeFollowingTokensOrTrivia()
     {
         const int count = 1024;
-        List<Token> tokens = new PgLexer().Tokenize(string.Join(" /* note */ ", Enumerable.Repeat("U&'x'", count)));
+        List<Token> tokens = GetTokens(string.Join(" /* note */ ", Enumerable.Repeat("U&'x'", count)));
 
         Assert.Equal(count, tokens.Count);
         Assert.All(tokens, token => Assert.Equal(5, Assert.IsType<UnicodeStringLiteral>(token).Length));
@@ -337,7 +336,7 @@ public class PgLexerTests
     [InlineData("u& 'body'")]
     public void UnicodePrefixes_RequireImmediateQuotedContent(string sql)
     {
-        List<Token> tokens = new PgLexer().Tokenize(sql);
+        List<Token> tokens = GetTokens(sql);
         Assert.IsType<Word>(tokens[0]);
         Assert.IsType<Ampersand>(tokens[1]);
         Assert.IsType<StringLiteral>(tokens[2]);
@@ -386,10 +385,8 @@ public class PgLexerTests
     [InlineData("U&'unterminated")]
     public void InvalidUnicodeLiteralsAndEscapeClauses_AreRejectedAndLexerRemainsReusable(string sql)
     {
-        var lexer = new PgLexer();
-
-        Assert.ThrowsAny<LexException>(() => lexer.Tokenize(sql));
-        Assert.Equal("data", Assert.IsType<Word>(Assert.Single(lexer.Tokenize("U&\"d\\0061ta\""))).Value);
+        Assert.ThrowsAny<LexException>(() => GetTokens(sql));
+        Assert.Equal("data", Assert.IsType<Word>(Assert.Single(GetTokens("U&\"d\\0061ta\""))).Value);
     }
 
     [Theory]
@@ -401,7 +398,7 @@ public class PgLexerTests
     [InlineData("x'0aF'", "0aF", true)]
     public void BitStrings_PreserveContentRadixAndSourceLength(string literal, string expected, bool hexadecimal)
     {
-        List<Token> tokens = new PgLexer().Tokenize(" \n" + literal + ";");
+        List<Token> tokens = GetTokens(" \n" + literal + ";");
         var token = Assert.IsType<BitStringLiteral>(tokens[0]);
 
         Assert.Equal(expected, token.Value);
@@ -426,7 +423,7 @@ public class PgLexerTests
     {
         string raw = new('0', length);
         string literal = $"{(hexadecimal ? 'X' : 'B')}'{raw}'";
-        List<Token> tokens = new PgLexer().Tokenize(literal + ";");
+        List<Token> tokens = GetTokens(literal + ";");
 
         Assert.Equal(raw, Assert.IsType<BitStringLiteral>(tokens[0]).Value);
         Assert.Equal(literal.Length, tokens[0].Length);
@@ -441,7 +438,7 @@ public class PgLexerTests
     [InlineData("x")]
     public void BitStrings_PrefixRequiresImmediateSingleQuote(string prefix)
     {
-        List<Token> tokens = new PgLexer().Tokenize(prefix + " '01'");
+        List<Token> tokens = GetTokens(prefix + " '01'");
 
         Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
         Assert.Equal("01", Assert.IsType<StringLiteral>(tokens[1]).Value);
@@ -473,8 +470,8 @@ public class PgLexerTests
     {
         var lexer = new PgLexer();
 
-        Assert.ThrowsAny<LexException>(() => lexer.Tokenize(sql));
-        Assert.Equal("01", Assert.IsType<BitStringLiteral>(Assert.Single(lexer.Tokenize("B'01'"))).Value);
+        Assert.ThrowsAny<LexException>(() => GetTokens(sql));
+        Assert.Equal("01", Assert.IsType<BitStringLiteral>(Assert.Single(GetTokens("B'01'"))).Value);
     }
 
     [Theory]
@@ -484,7 +481,7 @@ public class PgLexerTests
     [InlineData("2147483647")]
     public void PositionalParameters_PreserveDigitsAndSourceLength(string digits)
     {
-        List<Token> tokens = new PgLexer().Tokenize(" \n$" + digits + ";");
+        List<Token> tokens = GetTokens(" \n$" + digits + ";");
         var token = Assert.IsType<PositionalParameterToken>(tokens[0]);
 
         Assert.Equal(digits, token.Value);
@@ -498,7 +495,7 @@ public class PgLexerTests
     [Fact]
     public void PositionalParameters_DoNotDisruptDollarQuotedStringsOrIdentifierDollars()
     {
-        List<Token> tokens = new PgLexer().Tokenize("$1, $$literal $2$$, $tag$literal $3$tag$, field$4");
+        List<Token> tokens = GetTokens("$1, $$literal $2$$, $tag$literal $3$tag$, field$4");
 
         Assert.IsType<PositionalParameterToken>(tokens[0]);
         Assert.Equal("literal $2", Assert.IsType<DollarQuotedStringLiteral>(tokens[2]).Value);
@@ -515,7 +512,7 @@ public class PgLexerTests
     [InlineData("$9999999999999999999999999999999999")]
     public void PositionalParameters_InvalidIndicesAndTrailingIdentifierTextAreRejected(string sql)
     {
-        Assert.ThrowsAny<LexException>(() => new PgLexer().Tokenize(sql));
+        Assert.ThrowsAny<LexException>(() => GetTokens(sql));
     }
 
     [Fact]
@@ -531,5 +528,83 @@ public class PgLexerTests
         Assert.False(token.Equals((Token?)null));
         Assert.False(token.Equals((object?)null));
         Assert.False(token.Equals(new Word("1") { Location = token.Location }));
+    }
+
+    [Theory]
+    [InlineData("0xFF")]
+    [InlineData("0X_Ff_01")]
+    [InlineData("0o755")]
+    [InlineData("0O_7_5_5")]
+    [InlineData("0b101")]
+    [InlineData("0B_1_0_1")]
+    [InlineData("1_000")]
+    [InlineData("1_000.2_5")]
+    [InlineData(".2_5")]
+    [InlineData("1_0e+1_2")]
+    public void ExtendedNumbers_PreserveNumericSpellingAndSourceLength(string sql)
+    {
+        List<Token> tokens = GetTokens("\n  " + sql + ";");
+
+        var number = Assert.IsType<NumericLiteral>(tokens[0]);
+        Assert.Equal(sql, number.Value);
+        Assert.False(number.IsLong);
+        Assert.Equal(sql, number.ToString());
+        Assert.Equal(sql.Length, number.Length);
+        Assert.Equal(3, number.Location.Position);
+        Assert.Equal(2, number.Location.Line);
+        Assert.Equal(3, number.Location.Column);
+        Assert.Equal(sql.Length + 3, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(sql.Length + 3, tokens[1].Location.Column);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("1..2", "1", "2")]
+    [InlineData("1_000..2_000", "1_000", "2_000")]
+    public void ExtendedNumbers_DoubleDotsDoNotBecomeDecimalPoints(string sql, string left, string right)
+    {
+        List<Token> tokens = GetTokens(sql);
+
+        Assert.Equal(left, Assert.IsType<NumericLiteral>(tokens[0]).Value);
+        Assert.Equal("..", Assert.IsType<DotDot>(tokens[1]).ToString());
+        Assert.Equal(2, tokens[1].Length);
+        Assert.Equal(right, Assert.IsType<NumericLiteral>(tokens[2]).Value);
+        Assert.Equal(3, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("0x")]
+    [InlineData("0x_")]
+    [InlineData("0x__1")]
+    [InlineData("0x1_")]
+    [InlineData("0x1g")]
+    [InlineData("0x1p2")]
+    [InlineData("0o")]
+    [InlineData("0o8")]
+    [InlineData("0o78")]
+    [InlineData("0b")]
+    [InlineData("0b2")]
+    [InlineData("0b102")]
+    [InlineData("0b1e2")]
+    [InlineData("1_")]
+    [InlineData("1__2")]
+    [InlineData("1_.2")]
+    [InlineData("1._2")]
+    [InlineData("1.2_")]
+    [InlineData("1e")]
+    [InlineData("1e+")]
+    [InlineData("1e-")]
+    [InlineData("1e_2")]
+    [InlineData("1e2_")]
+    [InlineData("1e2__3")]
+    [InlineData("1name")]
+    [InlineData("1.2name")]
+    [InlineData("1e2name")]
+    [InlineData("1L")]
+    [InlineData("1l")]
+    [InlineData("1\u00e9")]
+    public void ExtendedNumbers_InvalidDigitsSeparatorsAndTrailingJunkAreRejected(string sql)
+    {
+        Assert.Throws<LexException.ExpectedSymbolSequence>(() => GetTokens(sql));
     }
 }

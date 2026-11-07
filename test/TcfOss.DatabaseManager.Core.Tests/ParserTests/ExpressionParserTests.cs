@@ -376,4 +376,17 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.True(parser.SupportsPostgresCastSyntax);
         Assert.True(parser.SupportsPostgresRegexOperators);
     }
+
+
+    [Theory]
+    [InlineData("0o7")]
+    [InlineData("0b1_0")]
+    [InlineData("1_000.2_5")]
+    public void ExtendedNumbers_UnambiguousFormsAreAcceptedByKitchenSinkLexerAndParser(string sql)
+    {
+        var expression = Assert.IsType<LiteralValue>(ParseExpression(sql));
+
+        Assert.Equal(new Core.Common.Value.Number(sql, false), expression.Value);
+        Assert.Equal(sql, expression.ToSql());
+    }
 }

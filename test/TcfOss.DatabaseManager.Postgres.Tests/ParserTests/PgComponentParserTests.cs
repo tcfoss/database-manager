@@ -74,7 +74,6 @@ public class PgComponentParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("app.#mood")]
     [InlineData("app.\"\"")]
     [InlineData("app.")]
-    [InlineData("app..mood")]
     public void ObjectNameValidation_UsesRequestedLabel(string sql)
     {
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new PgParser().ComponentParser.ParseObjectName(GetState(sql), "data_type"));

@@ -254,4 +254,91 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Null(actualAsNumber.AsInt());
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Number_CachesDecimalTextWithoutChangingEqualityHashOrJson(bool isLong)
+    {
+        var number = new Value.Number("0x_Ff_01", isLong);
+        var uncached = new Value.Number(number.Value, isLong);
+        string json = Serialization.ToJson(number);
+        string systemJson = System.Text.Json.JsonSerializer.Serialize(number);
+        string sql = number.ToSql();
+        int hash = number.GetHashCode();
+        HashSet<Value> values = [number];
+
+        string decimalText = number.DecimalText;
+
+        Assert.Equal("65281", decimalText);
+        Assert.Same(decimalText, number.DecimalText);
+        Assert.Equal(65281, number.AsInt());
+        Assert.Equal(uncached, number);
+        Assert.Equal((Value)uncached, number);
+        Assert.Equal(hash, number.GetHashCode());
+        Assert.Contains(uncached, values);
+        Assert.NotEqual(number, new Value.Number("65281", isLong));
+        Assert.NotEqual(number, new Value.Number(number.Value, !isLong));
+        Assert.False(number.Equals((Value.Number?)null));
+        Assert.Equal(sql, number.ToSql());
+        Assert.Equal(json, Serialization.ToJson(number));
+        Assert.Equal(systemJson, System.Text.Json.JsonSerializer.Serialize(number));
+        Assert.DoesNotContain("DecimalText", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("DecimalText", systemJson, StringComparison.Ordinal);
+
+        var restored = Serialization.FromJson<Value.Number>(json);
+        Assert.Equal(number, restored);
+        Assert.Equal(decimalText, restored.DecimalText);
+        var systemRestored = System.Text.Json.JsonSerializer.Deserialize<Value.Number>(systemJson);
+        Assert.NotNull(systemRestored);
+        Assert.Equal(number, systemRestored);
+        Assert.Equal(decimalText, systemRestored.DecimalText);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Number_RecordCopiesPreserveLongFlagAndRecomputeChangedText(bool isLong)
+    {
+        var original = new Value.Number("0x10", isLong);
+        Assert.Equal("16", original.DecimalText);
+
+        var unchanged = original with { };
+        var changedText = original with { Value = "0b1_00000" };
+        var changedFlag = original with { IsLong = !isLong };
+
+        Assert.Equal(original, unchanged);
+        Assert.Equal(isLong, unchanged.IsLong);
+        Assert.Equal(original.ToSql(), unchanged.ToSql());
+        Assert.Equal("16", unchanged.DecimalText);
+        Assert.Equal(isLong, changedText.IsLong);
+        Assert.Equal("32", changedText.DecimalText);
+        Assert.Equal(32, changedText.AsInt());
+        Assert.Equal(isLong ? "0b1_00000L" : "0b1_00000", changedText.ToSql());
+        Assert.Equal(!isLong, changedFlag.IsLong);
+        Assert.NotEqual(original, changedFlag);
+        Assert.Equal("16", changedFlag.DecimalText);
+        Assert.Equal("16", original.DecimalText);
+        Assert.Equal(isLong, original.IsLong);
+    }
+
+    [Fact]
+    public void Number_EqualityPreservesRuntimeTypeContract()
+    {
+        var number = new Value.Number("0x10", true);
+        Value.Number derived = new DerivedNumber("0x10", true);
+        Value.Number otherDerived = new DerivedNumber("0x10", true);
+        int hash = derived.GetHashCode();
+
+        Assert.Equal("16", derived.DecimalText);
+        Assert.False(number.Equals(derived));
+        Assert.False(derived.Equals(number));
+        Assert.False(((Value)number).Equals(derived));
+        Assert.False(((Value)derived).Equals(number));
+        Assert.Equal(otherDerived, derived);
+        Assert.Equal(hash, derived.GetHashCode());
+        Assert.Equal(otherDerived.GetHashCode(), derived.GetHashCode());
+    }
+
+    private record DerivedNumber(string Value, bool IsLong) : Value.Number(Value, IsLong);
 }

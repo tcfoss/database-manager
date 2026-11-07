@@ -19,6 +19,11 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool SupportBitStringLiterals => true;
     protected virtual bool HexStringsAreBitStrings => false;
     protected virtual bool SupportPositionalParameters => true;
+    protected virtual bool SupportNumericDigitSeparators => true;
+    protected virtual bool SupportNonDecimalNumericLiterals => true;
+    protected virtual bool HexNumbersAreNumericLiterals => false;
+    protected virtual bool SupportDotDotToken => false;
+    protected virtual bool RejectNumericTrailingJunk => false;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -112,6 +117,7 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.SingleQuote => TokenizeStringLiteral(ref state),
 
+            CharSymbols.Dot when SupportDotDotToken && state.PeekNth(1) == CharSymbols.Dot => TokenizeDotDot(ref state),
             >= '0' and <= '9' or CharSymbols.Dot => TokenizeNumber(ref state),
 
             CharSymbols.ParenOpen => TokenizeSingleCharacter(ref state, new ParenOpen() { Location = state.Location }),
@@ -469,9 +475,41 @@ public class Lexer<TRunState> : ILexer
         return new DollarQuotedStringLiteral(tag, value) { Location = initialLocation };
     }
 
-    private static Token TokenizeNumber(ref LexerState state)
+    private Token TokenizeNumber(ref LexerState state)
     {
         Location initialLocation = state.Location;
+
+        if (state.Peek() == CharSymbols.Zero && SupportNonDecimalNumericLiterals)
+        {
+            int radix = state.PeekNth(1) switch
+            {
+                'x' or 'X' when HexNumbersAreNumericLiterals => 16,
+                'o' or 'O' => 8,
+                'b' or 'B' => 2,
+                _ => 0
+            };
+            if (radix != 0)
+            {
+                int start = state.Position;
+                state.Next();
+                state.Next();
+                if (SupportNumericDigitSeparators && state.Peek() == CharSymbols.Underscore)
+                {
+                    state.Next();
+                }
+                if (!IsNumericDigit(state.Peek(), radix))
+                {
+                    throw new LexException.ExpectedSymbolSequence(initialLocation);
+                }
+                AdvanceThroughNumericDigits(ref state, radix);
+                if ((RejectNumericTrailingJunk && IsStrictIdentifierStart(state.Peek()))
+                    || char.IsAsciiDigit(state.Peek()))
+                {
+                    throw new LexException.ExpectedSymbolSequence(initialLocation);
+                }
+                return new NumericLiteral(new string(state.SpanFrom(start))) { Location = initialLocation };
+            }
+        }
 
         if (state.Peek() == CharSymbols.Zero && state.PeekNth(1) is 'x' or 'X')
         {
@@ -483,14 +521,15 @@ public class Lexer<TRunState> : ILexer
 
         int startPosition = state.Position;
 
-        state.AdvanceThroughDigits();
+        AdvanceThroughNumericDigits(ref state);
 
-        if (state.Peek() == CharSymbols.Dot)
+        if (state.Peek() == CharSymbols.Dot
+            && (!SupportDotDotToken || state.PeekNth(1) != CharSymbols.Dot))
         {
             state.Next();
         }
 
-        state.AdvanceThroughDigits();
+        AdvanceThroughNumericDigits(ref state);
 
         if (state.SpanFrom(startPosition) is [CharSymbols.Dot])
         {
@@ -502,6 +541,10 @@ public class Lexer<TRunState> : ILexer
             TokenizeExponent(ref state);
         }
 
+        if (RejectNumericTrailingJunk && IsStrictIdentifierStart(state.Peek()))
+        {
+            throw new LexException.ExpectedSymbolSequence(initialLocation);
+        }
         bool isLong = state.Peek() is 'l' or 'L';
         string text = new(state.SpanFrom(startPosition));
         if (isLong)
@@ -511,7 +554,43 @@ public class Lexer<TRunState> : ILexer
         return new NumericLiteral(text, isLong) { Location = initialLocation };
     }
 
-    private static void TokenizeExponent(ref LexerState state)
+    private void AdvanceThroughNumericDigits(ref LexerState state, int radix = 10)
+    {
+        while (true)
+        {
+            int start = state.Position;
+            if (radix == 10)
+            {
+                state.AdvanceThroughDigits();
+            }
+            else
+            {
+                while (IsNumericDigit(state.Peek(), radix))
+                {
+                    state.Next();
+                }
+            }
+            if (state.Position == start || !SupportNumericDigitSeparators || state.Peek() != CharSymbols.Underscore
+                || !IsNumericDigit(state.PeekNth(1), radix))
+            {
+                return;
+            }
+            state.Next();
+        }
+    }
+
+    private static bool IsNumericDigit(char character, int radix)
+    {
+        return radix switch
+        {
+            16 => char.IsAsciiHexDigit(character),
+            8 => character is >= '0' and <= '7',
+            2 => character is '0' or '1',
+            _ => char.IsAsciiDigit(character)
+        };
+    }
+
+    private void TokenizeExponent(ref LexerState state)
     {
         int offset = 1; // We know the current character is 'e' or 'E'
 
@@ -520,7 +599,7 @@ public class Lexer<TRunState> : ILexer
             offset++;
         }
 
-        if (!char.IsDigit(state.PeekNth(offset)))
+        if (!char.IsAsciiDigit(state.PeekNth(offset)))
         {
             // 'e' or 'E' is not followed by a valid exponent, so it's not part of the number.
             return;
@@ -532,7 +611,15 @@ public class Lexer<TRunState> : ILexer
             state.Next(); // Consume the '+' or '-'
         }
 
-        state.AdvanceThroughDigits();
+        AdvanceThroughNumericDigits(ref state);
+    }
+
+    private static DotDot TokenizeDotDot(ref LexerState state)
+    {
+        Location initialLocation = state.Location;
+        state.Next();
+        state.Next();
+        return new DotDot { Location = initialLocation };
     }
 
     private StringLiteral TokenizeStringLiteral(ref LexerState state)

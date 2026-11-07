@@ -1,10 +1,17 @@
 ﻿using FluentAssertions;
+using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.Core.Tests.LexerTests;
 
-public class LexerTestBase
+public class LexerTestBase<TLexer>
+    where TLexer : ILexer, new()
 {
+    protected static List<Token> GetTokens(string sql)
+    {
+        return new TLexer().Tokenize(sql);
+    }
+
     protected static void Compare(IList<Token> expected, IList<Token> actual)
     {
         Assert.Equal(expected.Count, actual.Count);

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
@@ -2506,6 +2507,80 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(canonical), GetSchema(), 0);
         Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true).ToSql());
+    }
+
+    [Theory]
+    [InlineData("0x_Ff_01", "65281")]
+    [InlineData("0o7_5_5", "493")]
+    [InlineData("0b1_0_1", "5")]
+    [InlineData("1_000.2_5", "1000.25")]
+    public void ExtendedNumbers_TableDefaultsSurviveCanonicalDefinitionRoundTrips(string literal, string expectedDecimalText)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (amount NUMERIC DEFAULT {literal})"), GetSchema(), 0);
+        var table = Assert.Single(builder.ToDefinition().Tables.Values);
+        string canonical = table.ToCreateStatement(includeSchema: true).ToSql();
+
+        decimal expected = decimal.Parse(expectedDecimalText, CultureInfo.InvariantCulture);
+        var defaultValue = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(table.Columns).Default);
+        var number = Assert.IsType<Value.Number>(defaultValue.Value);
+        Assert.Equal(expected, decimal.Parse(number.DecimalText, NumberStyles.Float, CultureInfo.InvariantCulture));
+
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(canonical), GetSchema(), 0);
+        var rebuiltTable = Assert.Single(rebuilt.ToDefinition().Tables.Values);
+        var rebuiltDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(rebuiltTable.Columns).Default);
+        var rebuiltNumber = Assert.IsType<Value.Number>(rebuiltDefault.Value);
+        Assert.Equal(expected, decimal.Parse(rebuiltNumber.DecimalText, NumberStyles.Float, CultureInfo.InvariantCulture));
+        Assert.Equal(canonical, rebuiltTable.ToCreateStatement(includeSchema: true).ToSql());
+    }
+
+    [Theory]
+    [InlineData("0x10", "0b10", 16f, 2f)]
+    [InlineData("2_5.0", "0o7", 25f, 7f)]
+    public void ExtendedNumbers_RoutineEstimatesResolveNumericMeaning(string cost, string rows, float expectedCost, float expectedRows)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE FUNCTION f() RETURNS SETOF INT LANGUAGE SQL COST {cost} ROWS {rows} AS 'opaque'"), GetSchema(), 0);
+        var function = Assert.Single(builder.ToDefinition().Functions).Value;
+
+        Assert.NotNull(function.Options);
+        Assert.Equal(expectedCost, function.Options.Cost);
+        Assert.Equal(expectedRows, function.Options.Rows);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(function.ToCreateStatement(true).ToSql()), GetSchema(), 0);
+        Assert.Equal(function, Assert.Single(rebuilt.ToDefinition().Functions).Value);
+    }
+
+    [Fact]
+    public void ExtendedNumbers_IdentityClausesResolveRadixAndSeparators()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (START WITH 0x10 INCREMENT BY 0b10 CACHE 1_0))"), GetSchema(), 0);
+        var table = Assert.Single(builder.ToDefinition().Tables.Values);
+        string canonical = table.ToCreateStatement(includeSchema: true).ToSql();
+
+        Assert.Contains("START WITH 16", canonical);
+        Assert.Contains("INCREMENT BY 2", canonical);
+        Assert.Contains("CACHE 10", canonical);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(canonical), GetSchema(), 0);
+        Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true).ToSql());
+    }
+
+    [Theory]
+    [InlineData("0x10", "16")]
+    [InlineData("0o20", "16")]
+    [InlineData("0b1_0000", "16")]
+    [InlineData("1_6", "16")]
+    [InlineData("0xFFFFFFFF", "0xFFFFFFFF")]
+    public void ExtendedNumbers_TriggerArgumentsFollowIntegerVersusNumericTextRules(string literal, string expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE FUNCTION fire() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER audit BEFORE INSERT ON items FOR EACH ROW EXECUTE FUNCTION fire({literal})"), GetSchema(), 0);
+        var trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
+
+        Assert.Equal(expected, Assert.Single(trigger.Arguments));
     }
 
     private static SchemaIdentifier GetSchema()

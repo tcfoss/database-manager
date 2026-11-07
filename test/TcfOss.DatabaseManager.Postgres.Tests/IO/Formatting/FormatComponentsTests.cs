@@ -201,4 +201,17 @@ public class FormatComponentsTests
 
         Assert.Contains(expected, actual);
     }
+    [Theory]
+    [InlineData("0x_Ff_01")]
+    [InlineData("0O_7_5_5")]
+    [InlineData("0B_1_0_1")]
+    [InlineData("1_000.2_5")]
+    [InlineData(".2_5")]
+    [InlineData("1_0e+1_2")]
+    public void ExtendedNumbers_FormattingPreservesPrefixAndSeparatorSpelling(string literal)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string actual = formatter.GetFormatted("SELECT " + literal);
+        Assert.Contains(literal, actual);
+    }
 }

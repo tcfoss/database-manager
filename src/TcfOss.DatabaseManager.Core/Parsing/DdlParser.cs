@@ -1124,7 +1124,7 @@ public class DdlParser
         state.ConsumeTokenIs<Plus>();
         Token token = state.Next();
         if (token is NumericLiteral { IsLong: false } number
-            && double.TryParse(number.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
+            && double.TryParse(number.GetDecimalText(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
             && double.IsFinite(value) && value > 0)
         {
             return new Value.Number(number.Value, false);
