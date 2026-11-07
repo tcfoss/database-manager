@@ -45,6 +45,7 @@ public static class PrecedenceManagerTests
     [InlineData("and", Precedence.And, null, Label = "AND")]
     [InlineData("xor", Precedence.Xor, null, Label = "XOR")]
     [InlineData("@", Precedence.Or, 0, Label = "unknown operator")]
+    [InlineData("@>", Precedence.PgOperator, null, Label = "custom operator")]
     [InlineData("not", Precedence.Or, 0, Label = "NOT")]
     [InlineData("is", Precedence.Is, null, Label = "IS")]
     [InlineData("in", Precedence.Between, null, Label = "IN")]

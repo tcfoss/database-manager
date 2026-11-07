@@ -659,6 +659,10 @@ public class PgLexerTests : LexerTestBase<PgLexer>
     [InlineData("a@>-- comment\nb", "@>")]
     [InlineData("a+/* comment */b", "+")]
     [InlineData("a+-- comment\nb", "+")]
+    [InlineData("a!=/* comment */b", "<>")]
+    [InlineData("a!~*-- comment\nb", "!~*")]
+    [InlineData("a!=?/* comment */b", "!=?")]
+    [InlineData("a!~*?-- comment\nb", "!~*?")]
     public void Operators_StopBeforeComments(string sql, string symbol)
     {
         List<Token> tokens = GetTokens(sql);
@@ -712,5 +716,61 @@ public class PgLexerTests : LexerTestBase<PgLexer>
     public void NonStandardOperators_KeepTrailingSigns(string symbol)
     {
         Assert.Equal(symbol, Assert.IsType<OperatorToken>(Assert.Single(GetTokens(symbol))).Value);
+    }
+
+    [Theory]
+    [InlineData("->>")]
+    [InlineData("<=?")]
+    [InlineData(">=?")]
+    [InlineData("!=?")]
+    [InlineData("<>?")]
+    [InlineData("=>?")]
+    [InlineData("||?")]
+    [InlineData("~*?")]
+    [InlineData("!~*?")]
+    [InlineData("@?")]
+    [InlineData("#?")]
+    [InlineData("`?")]
+    [InlineData("?`?")]
+    public void OperatorContinuation_PreservesOriginalStartAndSpelling(string symbol)
+    {
+        List<Token> tokens = GetTokens("\n " + symbol + ";");
+
+        var token = Assert.IsType<OperatorToken>(tokens[0]);
+        Assert.Equal(symbol, token.Value);
+        Assert.Equal(symbol.Length, token.Length);
+        Assert.Equal(new Location(2, 2, 2), token.Location);
+        Assert.Equal(symbol.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("<=", typeof(LessThanOrEqual))]
+    [InlineData(">=", typeof(GreaterThanOrEqual))]
+    [InlineData("<>", typeof(NotEqual))]
+    [InlineData("=>", typeof(FatArrow))]
+    public void OperatorContinuation_TrimmingReturnsRecognizedPrefix(string symbol, Type type)
+    {
+        List<Token> tokens = GetTokens(symbol + "-2");
+
+        Assert.IsType(type, tokens[0]);
+        Assert.Equal(symbol, tokens[0].ToString());
+        Assert.Equal(0, tokens[0].Location.Position);
+        Assert.Equal(symbol.Length, Assert.IsType<Minus>(tokens[1]).Location.Position);
+        Assert.IsType<NumericLiteral>(tokens[2]);
+        Assert.Equal(3, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("@")]
+    [InlineData("#")]
+    public void OperatorStarters_DoNotBecomePostgresIdentifierSigils(string symbol)
+    {
+        List<Token> tokens = GetTokens(symbol + "word");
+
+        Assert.Equal(symbol, Assert.IsType<OperatorToken>(tokens[0]).Value);
+        Assert.Equal("word", Assert.IsType<Word>(tokens[1]).Value);
+        Assert.Equal(1, tokens[1].Location.Position);
+        Assert.Equal(2, tokens.Count);
     }
 }

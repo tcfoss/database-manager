@@ -13,6 +13,7 @@ public class Lexer<TRunState> : ILexer
     private readonly Func<char, bool> _isIdentifierPart;
     protected virtual bool SupportBackslashQuoteEscape => true;
     protected virtual bool SupportBracketQuotedIdentifiers => true;
+    protected virtual bool SupportBacktickQuotedIdentifiers => true;
     protected virtual bool SupportDollarQuotedStrings => true;
     protected virtual bool SupportEscapeStringLiterals => true;
     protected virtual bool SupportUnicodeLiterals => true;
@@ -24,7 +25,8 @@ public class Lexer<TRunState> : ILexer
     protected virtual bool HexNumbersAreNumericLiterals => false;
     protected virtual bool SupportDotDotToken => false;
     protected virtual bool RejectNumericTrailingJunk => false;
-    protected virtual bool SupportPostgresOperatorTokens => false;
+    protected virtual bool SupportPostgresOperatorTokens => true;
+    protected virtual bool SupportExclamationAsNot => true;
     protected virtual SearchValues<char> IdentifierAsciiCharacters => LexerState.s_standardIdentifierCharacters;
 
     public Lexer()
@@ -97,11 +99,6 @@ public class Lexer<TRunState> : ILexer
     {
         char character = state.Peek();
 
-        if (SupportPostgresOperatorTokens && IsOperatorCharacter(character) && !IsCommentStart(state, 0))
-        {
-            return TokenizeOperator(ref state);
-        }
-
         return character switch
         {
             CharSymbols.Space => TokenizeSpaces(ref state),
@@ -112,7 +109,8 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.SquareBracketOpen => TokenizeSingleCharacter(ref state, new BracketOpen() { Location = state.Location }),
             CharSymbols.SquareBracketClose when !SupportBracketQuotedIdentifiers => TokenizeSingleCharacter(ref state, new BracketClose() { Location = state.Location }),
             CharSymbols.DoubleQuote => TokenizeQuotedIdentifier(ref state),
-            CharSymbols.Backtick => TokenizeQuotedIdentifier(ref state),
+            CharSymbols.Backtick when SupportBacktickQuotedIdentifiers => TokenizeQuotedIdentifier(ref state),
+            CharSymbols.Backtick when SupportPostgresOperatorTokens => TokenizeSingleCharacterOperator(ref state, new OperatorToken("`") { Location = state.Location }),
 
             'N' or 'n' => TokenizeNationalStringLiteral(ref state),
             'B' or 'b' when SupportBitStringLiterals && state.PeekNth(1) == CharSymbols.SingleQuote => TokenizeBitStringLiteral(ref state, false),
@@ -133,10 +131,10 @@ public class Lexer<TRunState> : ILexer
 
             CharSymbols.Comma => TokenizeSingleCharacter(ref state, new Comma() { Location = state.Location }),
             CharSymbols.Minus => TokenizeMinus(ref state),
-            CharSymbols.Plus => TokenizeSingleCharacter(ref state, new Plus() { Location = state.Location }),
+            CharSymbols.Plus => TokenizeSingleCharacterOperator(ref state, new Plus() { Location = state.Location }),
             CharSymbols.Slash => TokenizeSlash(ref state),
-            CharSymbols.Asterisk => TokenizeSingleCharacter(ref state, new Asterisk() { Location = state.Location }),
-            CharSymbols.Percent => TokenizeSingleCharacter(ref state, new Modulo() { Location = state.Location }),
+            CharSymbols.Asterisk => TokenizeSingleCharacterOperator(ref state, new Asterisk() { Location = state.Location }),
+            CharSymbols.Percent => TokenizeSingleCharacterOperator(ref state, new Modulo() { Location = state.Location }),
             CharSymbols.Dollar => TokenizeDollar(ref state),
 
             CharSymbols.GreaterThan => TokenizeGreaterThan(ref state),
@@ -147,8 +145,8 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.Semicolon => TokenizeSingleCharacter(ref state, new Semicolon() { Location = state.Location }),
             CharSymbols.Colon => TokenizeColon(ref state),
             CharSymbols.Pipe => TokenizePipe(ref state),
-            CharSymbols.Ampersand => TokenizeSingleCharacter(ref state, new Ampersand() { Location = state.Location }),
-            CharSymbols.Caret => TokenizeSingleCharacter(ref state, new Caret() { Location = state.Location }),
+            CharSymbols.Ampersand => TokenizeSingleCharacterOperator(ref state, new Ampersand() { Location = state.Location }),
+            CharSymbols.Caret => TokenizeSingleCharacterOperator(ref state, new Caret() { Location = state.Location }),
             CharSymbols.Tilde => TokenizeTilde(ref state),
 
             CharSymbols.Backslash => TokenizeSingleCharacter(ref state, new Backslash() { Location = state.Location }),
@@ -156,6 +154,8 @@ public class Lexer<TRunState> : ILexer
             CharSymbols.At => TokenizeAt(ref state),
 
             CharSymbols.ExclamationMark => TokenizeExclamation(ref state),
+            CharSymbols.QuestionMark when SupportPostgresOperatorTokens => TokenizeSingleCharacterOperator(ref state, new OperatorToken("?") { Location = state.Location }),
+            CharSymbols.Num when SupportPostgresOperatorTokens && (!IsIdentifierStart(character) || !IsIdentifierPart(state.PeekNth(1))) => TokenizeSingleCharacterOperator(ref state, new OperatorToken("#") { Location = state.Location }),
 
             CharSymbols.EndOfFile => new Eof() { Location = state.Location },
 
@@ -170,6 +170,12 @@ public class Lexer<TRunState> : ILexer
     {
         state.Next();
         return token;
+    }
+
+    private Token TokenizeSingleCharacterOperator(ref LexerState state, Token token)
+    {
+        state.Next();
+        return TokenizeOperator(ref state, token);
     }
 
     private static NonSql TokenizeSpaces(ref LexerState state)
@@ -278,16 +284,16 @@ public class Lexer<TRunState> : ILexer
         return new Word(word, QuoteStyle.None, sigil) { Location = initialLocation };
     }
 
-    private static Token TokenizeEqual(ref LexerState state)
+    private Token TokenizeEqual(ref LexerState state)
     {
         Location initialLocation = state.Location;
         state.Next();
         if (state.Peek() == CharSymbols.GreaterThan)
         {
             state.Next();
-            return new FatArrow() { Location = initialLocation };
+            return TokenizeOperator(ref state, new FatArrow() { Location = initialLocation });
         }
-        return new Equal() { Location = initialLocation };
+        return TokenizeOperator(ref state, new Equal() { Location = initialLocation });
     }
 
     private Token TokenizeAt(ref LexerState state)
@@ -299,11 +305,13 @@ public class Lexer<TRunState> : ILexer
         return next switch
         {
             _ when IsIdentifierStart(CharSymbols.At) && IsIdentifierPart(next) => TokenizeIdentifierOrKeyword(ref state, SigilKind.Variable),
-            _ => new At() { Location = initialLocation },
+            _ => TokenizeOperator(ref state, IsIdentifierStart(CharSymbols.At)
+                ? new At() { Location = initialLocation }
+                : new OperatorToken("@") { Location = initialLocation }),
         };
     }
 
-    private static Token TokenizeExclamation(ref LexerState state)
+    private Token TokenizeExclamation(ref LexerState state)
     {
         Location initialLocation = state.Location;
         state.Next();
@@ -311,7 +319,7 @@ public class Lexer<TRunState> : ILexer
         if (state.Peek() == CharSymbols.Equal)
         {
             state.Next();
-            return new NotEqual() { Location = initialLocation };
+            return TokenizeOperator(ref state, new NotEqual() { Location = initialLocation });
         }
         if (state.Peek() == CharSymbols.Tilde)
         {
@@ -319,11 +327,13 @@ public class Lexer<TRunState> : ILexer
             if (state.Peek() == CharSymbols.Asterisk)
             {
                 state.Next();
-                return new NotTildeAsterisk() { Location = initialLocation };
+                return TokenizeOperator(ref state, new NotTildeAsterisk() { Location = initialLocation });
             }
-            return new NotTilde() { Location = initialLocation };
+            return TokenizeOperator(ref state, new NotTilde() { Location = initialLocation });
         }
-        return new Exclamation() { Location = initialLocation };
+        return TokenizeOperator(ref state, SupportExclamationAsNot
+            ? new Exclamation() { Location = initialLocation }
+            : new OperatorToken("!") { Location = initialLocation });
     }
 
     private static Token TokenizeColon(ref LexerState state)
@@ -343,31 +353,31 @@ public class Lexer<TRunState> : ILexer
         return new Colon() { Location = initialLocation };
     }
 
-    private static Token TokenizePipe(ref LexerState state)
+    private Token TokenizePipe(ref LexerState state)
     {
         Location initialLocation = state.Location;
         state.Next();
         if (state.Peek() == CharSymbols.Pipe)
         {
             state.Next();
-            return new DoublePipe() { Location = initialLocation };
+            return TokenizeOperator(ref state, new DoublePipe() { Location = initialLocation });
         }
-        return new Pipe() { Location = initialLocation };
+        return TokenizeOperator(ref state, new Pipe() { Location = initialLocation });
     }
 
-    private static Token TokenizeTilde(ref LexerState state)
+    private Token TokenizeTilde(ref LexerState state)
     {
         Location initialLocation = state.Location;
         state.Next();
         if (state.Peek() == CharSymbols.Asterisk)
         {
             state.Next();
-            return new TildeAsterisk() { Location = initialLocation };
+            return TokenizeOperator(ref state, new TildeAsterisk() { Location = initialLocation });
         }
-        return new Tilde() { Location = initialLocation };
+        return TokenizeOperator(ref state, new Tilde() { Location = initialLocation });
     }
 
-    private static Token TokenizeGreaterThan(ref LexerState state)
+    private Token TokenizeGreaterThan(ref LexerState state)
     {
         Location initialLocation = state.Location;
         state.Next();
@@ -375,13 +385,13 @@ public class Lexer<TRunState> : ILexer
         if (state.Peek() == CharSymbols.Equal)
         {
             state.Next();
-            return new GreaterThanOrEqual() { Location = initialLocation };
+            return TokenizeOperator(ref state, new GreaterThanOrEqual() { Location = initialLocation });
         }
 
-        return new GreaterThan() { Location = initialLocation };
+        return TokenizeOperator(ref state, new GreaterThan() { Location = initialLocation });
     }
 
-    private static Token TokenizeLessThan(ref LexerState state)
+    private Token TokenizeLessThan(ref LexerState state)
     {
         Location initialLocation = state.Location;
         state.Next();
@@ -390,15 +400,15 @@ public class Lexer<TRunState> : ILexer
         if (next == CharSymbols.Equal)
         {
             state.Next();
-            return new LessThanOrEqual() { Location = initialLocation };
+            return TokenizeOperator(ref state, new LessThanOrEqual() { Location = initialLocation });
         }
         else if (next == CharSymbols.GreaterThan)
         {
             state.Next();
-            return new NotEqual() { Location = initialLocation };
+            return TokenizeOperator(ref state, new NotEqual() { Location = initialLocation });
         }
 
-        return new LessThan() { Location = initialLocation };
+        return TokenizeOperator(ref state, new LessThan() { Location = initialLocation });
     }
 
     private Token TokenizeDollar(ref LexerState state)
@@ -759,7 +769,7 @@ public class Lexer<TRunState> : ILexer
         return new HexStringLiteral(hex) { Location = initialLocation };
     }
 
-    private static Token TokenizeSlash(ref LexerState state)
+    private Token TokenizeSlash(ref LexerState state)
     {
         Location startLocation = state.Location;
         state.Next();
@@ -767,11 +777,11 @@ public class Lexer<TRunState> : ILexer
         return state.Peek() switch
         {
             CharSymbols.Asterisk => TokenizeBlockComment(ref state, startLocation),
-            _ => new Slash() { Location = startLocation }
+            _ => TokenizeOperator(ref state, new Slash() { Location = startLocation })
         };
     }
 
-    private static Token TokenizeMinus(ref LexerState state)
+    private Token TokenizeMinus(ref LexerState state)
     {
         Location startLocation = state.Location;
         state.Next();
@@ -779,20 +789,7 @@ public class Lexer<TRunState> : ILexer
         return state.Peek() switch
         {
             CharSymbols.Minus => TokenizeLineComment(ref state, startLocation),
-            _ => new Minus() { Location = startLocation }
-        };
-    }
-
-    private Token TokenizeMinusMod(ref LexerState state)
-    {
-        Location startLocation = state.Location;
-        state.Next();
-
-        return state.Peek() switch
-        {
-            CharSymbols.Minus => TokenizeLineComment(ref state, startLocation),
-            _ when IsMaybeCustomOperator(ref state, 1) => TokenizeOperator(ref state), // Would also need to pass original offset to be the new start position
-            _ => new Minus() { Location = startLocation }
+            _ => TokenizeOperator(ref state, new Minus() { Location = startLocation })
         };
     }
 
@@ -840,28 +837,30 @@ public class Lexer<TRunState> : ILexer
         }
     }
 
-    private bool IsMaybeCustomOperator(ref LexerState state, int offset = 1)
+    private Token TokenizeOperator(ref LexerState state, Token prefix)
     {
-        if (SupportPostgresOperatorTokens && IsOperatorCharacter(state.PeekNth(offset)))
+        if (!SupportPostgresOperatorTokens)
         {
-            return true;
+            return prefix;
         }
-        return false;
-    }
-
-    private static Token TokenizeOperator(ref LexerState state)
-    {
-        Location location = state.Location;
-        int length = 0;
+        Location location = prefix.Location;
+        int prefixLength = state.Position - location.Position;
+        int length = prefixLength;
         bool hasNonStandardCharacter = false;
-        while (IsOperatorCharacter(state.PeekNth(length)) && !IsCommentStart(state, length))
+        foreach (char character in state.SpanFrom(location.Position))
         {
-            hasNonStandardCharacter |= state.PeekNth(length) is '~' or '!' or '@' or '#' or '%' or '^' or '&' or '|' or '`' or '?';
+            hasNonStandardCharacter |= character is '~' or '!' or '@' or '#' or '%' or '^' or '&' or '|' or '`' or '?';
+        }
+        while (IsOperatorCharacter(state.PeekNth(length - prefixLength))
+            && (!SupportBacktickQuotedIdentifiers || state.PeekNth(length - prefixLength) != CharSymbols.Backtick)
+            && !IsCommentStart(state, length - prefixLength))
+        {
+            hasNonStandardCharacter |= state.PeekNth(length - prefixLength) is '~' or '!' or '@' or '#' or '%' or '^' or '&' or '|' or '`' or '?';
             length++;
         }
         if (!hasNonStandardCharacter)
         {
-            while (length > 1 && state.PeekNth(length - 1) is '+' or '-')
+            while (length > prefixLength && state.PeekNth(length - prefixLength - 1) is '+' or '-')
             {
                 length--;
             }
@@ -870,35 +869,16 @@ public class Lexer<TRunState> : ILexer
         {
             throw new LexException.ExpectedSymbolSequence(location);
         }
-        for (int index = 0; index < length; index++)
+        if (length == prefixLength)
+        {
+            return prefix;
+        }
+        for (int index = prefixLength; index < length; index++)
         {
             state.Next();
         }
         string symbol = new(state.SpanFrom(location.Position));
-        return symbol switch
-        {
-            "+" => new Plus() { Location = location },
-            "-" => new Minus() { Location = location },
-            "*" => new Asterisk() { Location = location },
-            "/" => new Slash() { Location = location },
-            "%" => new Modulo() { Location = location },
-            "^" => new Caret() { Location = location },
-            "&" => new Ampersand() { Location = location },
-            "|" => new Pipe() { Location = location },
-            "||" => new DoublePipe() { Location = location },
-            "=" => new Equal() { Location = location },
-            "<" => new LessThan() { Location = location },
-            ">" => new GreaterThan() { Location = location },
-            "<=" => new LessThanOrEqual() { Location = location },
-            ">=" => new GreaterThanOrEqual() { Location = location },
-            "<>" or "!=" => new NotEqual() { Location = location },
-            "=>" => new FatArrow() { Location = location },
-            "~" => new Tilde() { Location = location },
-            "~*" => new TildeAsterisk() { Location = location },
-            "!~" => new NotTilde() { Location = location },
-            "!~*" => new NotTildeAsterisk() { Location = location },
-            _ => new OperatorToken(symbol) { Location = location }
-        };
+        return new OperatorToken(symbol) { Location = location };
     }
 
     private static string ExtractLineComment(ref LexerState state)

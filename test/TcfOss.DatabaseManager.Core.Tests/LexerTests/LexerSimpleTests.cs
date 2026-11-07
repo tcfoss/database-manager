@@ -1309,6 +1309,45 @@ public class LexerSimpleTests : LexerTestBase<GenericLexer>
         Assert.Throws<LexException.ExpectedSymbolSequence>(() => lexer.Tokenize(sql));
     }
 
+    [Theory]
+    [InlineData("#")]
+    [InlineData("?")]
+    [InlineData("->>")]
+    [InlineData("+?")]
+    [InlineData("/@@")]
+    [InlineData("<=?")]
+    [InlineData("!=?")]
+    [InlineData("||?")]
+    [InlineData("!~*?")]
+    public void KitchenSink_CustomOperators_Preserve_Symbol_And_Source(string symbol)
+    {
+        List<Token> tokens = GetTokens("\n " + symbol + ";");
+
+        var token = Assert.IsType<OperatorToken>(tokens[0]);
+        Assert.Equal(symbol, token.Value);
+        Assert.Equal(symbol.Length, token.Length);
+        Assert.Equal(new Location(2, 2, 2), token.Location);
+        Assert.Equal(symbol.Length + 2, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("+")]
+    [InlineData("@")]
+    [InlineData("#")]
+    [InlineData("+?")]
+    public void KitchenSink_Operators_StopBefore_BacktickQuotedIdentifiers(string symbol)
+    {
+        List<Token> tokens = GetTokens(symbol + "`dog`");
+
+        Assert.Equal(symbol, tokens[0].ToString());
+        var word = Assert.IsType<Word>(tokens[1]);
+        Assert.Equal("dog", word.Value);
+        Assert.Equal(QuoteStyle.Backticks, word.QuoteStyle);
+        Assert.Equal(symbol.Length, word.Location.Position);
+        Assert.Equal(2, tokens.Count);
+    }
+
     private sealed class NumericFlagsLexer : Lexer<RunState>
     {
         public bool DigitSeparators { get; init; } = true;

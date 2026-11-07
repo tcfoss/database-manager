@@ -19,6 +19,7 @@ public class MsLexer : Lexer<MsRunState>
     protected override bool SupportPositionalParameters => false;
     protected override bool SupportNumericDigitSeparators => false;
     protected override bool SupportNonDecimalNumericLiterals => false;
+    protected override bool SupportPostgresOperatorTokens => false;
     protected override SearchValues<char> IdentifierAsciiCharacters => s_identifierCharacters;
 
     protected override bool IsIdentifierPart(char character)
