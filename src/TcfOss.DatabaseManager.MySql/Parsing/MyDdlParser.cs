@@ -34,6 +34,17 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
         return false;
     }
 
+    protected override TriggerEvent ParseTriggerEvent(ParserState state)
+    {
+        return ParseTriggerEventNarrow(state);
+    }
+
+    protected override List<TriggerEvent> ParseAdditionalTriggerEvents(ParserState state, out bool eventsUseOr)
+    {
+        eventsUseOr = false;
+        return [];
+    }
+
     protected override SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state, out bool eventsUseOr)
     {
         eventsUseOr = false;

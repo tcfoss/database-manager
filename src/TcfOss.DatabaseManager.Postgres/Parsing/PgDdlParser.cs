@@ -10,7 +10,6 @@ namespace TcfOss.DatabaseManager.Postgres.Parsing;
 public class PgDdlParser(Parser parser) : DdlParser(parser)
 {
     protected override bool UseSqlRoutineTail(ParserState state) => true;
-    protected override bool SupportsCommaSeparatedTriggerEvents => false;
     protected override bool SupportsQualifiedTriggerNames => false;
 
     public override TriggerTime ParseTriggerTime(ParserState state)
@@ -40,6 +39,11 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
     protected override bool ParseTriggerBodyStartsWithAs(ParserState state)
     {
         return false;
+    }
+
+    protected override List<TriggerEvent>? ParseAdditionalTriggerEventsViaComma(ParserState state)
+    {
+        return null;
     }
 
     protected override Statement ParseTriggerBody(ParserState state)

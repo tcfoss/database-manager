@@ -5,12 +5,6 @@ public record ValidationSettings
     public bool AllowUniqueOnColumn { get; init; }
     public bool AllowCheckOnColumn { get; init; }
 
-    // Ignored in MySQL family
-    public bool AllowNamedColumnDefault { get; init; }
-    public bool AllowNamedColumnUnique { get; init; }
-    public bool AllowNamedColumnNullability { get; init; }
-    public bool AllowNamedColumnCheck { get; init; }
-
     public bool AllowCreateTableAsSelect { get; init; }
     public bool AllowCreateTableNoColumns { get; init; }
     public bool AllowMissingSecurityContext { get; init; }

@@ -15,7 +15,7 @@ public class YamlFileInfoConverter
         return type == typeof(FileInfo);
     }
 
-    public static object ReadYaml(IParser parser, Type type)
+    private static FileInfo ReadYaml(IParser parser)
     {
         string value = parser.Consume<Scalar>().Value;
         return new FileInfo(value);
@@ -23,10 +23,10 @@ public class YamlFileInfoConverter
 
     public object ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer)
     {
-        return ReadYaml(parser, type);
+        return ReadYaml(parser);
     }
 
-    public static void WriteYaml(IEmitter emitter, object? value, Type type)
+    private static void WriteYaml(IEmitter emitter, object? value)
     {
         if (value == null)
         {
@@ -40,6 +40,6 @@ public class YamlFileInfoConverter
 
     public void WriteYaml(IEmitter emitter, object? value, Type type, ObjectSerializer serializer)
     {
-        WriteYaml(emitter, value, type);
+        WriteYaml(emitter, value);
     }
 }

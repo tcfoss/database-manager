@@ -49,8 +49,11 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     }
 
     /// <summary>
-    /// Narrows <see cref="DdlParser.ParseTriggerTime"/> to reject <c>BEFORE</c>,
-    /// which is not supported in T-SQL.
+    /// <code>
+    /// <![CDATA[
+    /// AFTER | INSTEAD OF | FOR
+    /// ]]>
+    /// </code>
     /// </summary>
     public override TriggerTime ParseTriggerTime(ParserState state)
     {
@@ -62,6 +65,16 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     }
 
     protected override TriggerOrder? ParseOptionalTriggerOrder(ParserState state)
+    {
+        return null;
+    }
+
+    protected override TriggerEvent ParseTriggerEvent(ParserState state)
+    {
+        return ParseTriggerEventNarrow(state);
+    }
+
+    protected override List<TriggerEvent>? ParseAdditionalTriggerEventsViaOr(ParserState state)
     {
         return null;
     }

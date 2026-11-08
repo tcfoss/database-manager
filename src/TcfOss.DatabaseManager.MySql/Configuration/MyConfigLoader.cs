@@ -178,10 +178,6 @@ public class MyConfigLoader(ILogger logger, IFileSystem? fileSystem = null)
         return new ValidationSettings()
         {
             AllowCheckOnColumn = false,
-            AllowNamedColumnDefault = false,
-            AllowNamedColumnUnique = false,
-            AllowNamedColumnNullability = false,
-            AllowNamedColumnCheck = false,
             AllowUnnamedIndex = false,
         };
     }
