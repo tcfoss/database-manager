@@ -1170,4 +1170,243 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         int position = sql.IndexOf('(') + 1;
         Assert.Contains($"{new string(' ', position)}^", new ParseException.WithText(exception, null, sql).Message);
     }
+
+    [Fact]
+    public void PostgresPrecedence_MatchesDocumentedTierOrder()
+    {
+        var manager = new PgParser().PrecedenceManager;
+        Precedence[] tiers =
+        [
+            Precedence.DoubleColon, Precedence.ArraySubscript, Precedence.UnarySign,
+            Precedence.Collate, Precedence.AtTimezone, Precedence.Caret,
+            Precedence.MultiplyDivide, Precedence.AddSubtract, Precedence.PgOperator,
+            Precedence.Between, Precedence.Equals, Precedence.Is,
+            Precedence.UnaryNot, Precedence.And, Precedence.Or
+        ];
+        for (int index = 1; index < tiers.Length; index++)
+        {
+            Assert.True(manager.GetPrecedence(tiers[index - 1]) > manager.GetPrecedence(tiers[index]));
+        }
+        Assert.Equal(manager.GetPrecedence(Precedence.PgOperator), manager.GetPrecedence(Precedence.Ampersand));
+        Assert.Equal(manager.GetPrecedence(Precedence.PgOperator), manager.GetPrecedence(Precedence.Pipe));
+        Assert.Equal(manager.GetPrecedence(Precedence.Between), manager.GetPrecedence(Precedence.Like));
+    }
+
+    [Fact]
+    public void Exponentiation_BindsAboveMultiplicationAndAssociatesLeft()
+    {
+        var multiplication = Assert.IsType<BinaryOperator>(ParseExpression("a * b ^ c"));
+        var power = Assert.IsType<PgBinaryOperator>(multiplication.Right);
+        Assert.Equal("^", power.Operator.Name);
+
+        var chain = Assert.IsType<PgBinaryOperator>(ParseExpression("a ^ b ^ c"));
+        Assert.IsType<PgBinaryOperator>(chain.Left);
+        Assert.IsType<SingleIdentifier>(chain.Right);
+        Assert.IsType<UnaryOperator>(Assert.IsType<PgBinaryOperator>(ParseExpression("-a ^ b")).Left);
+        Assert.IsType<AtTimeZone>(Assert.IsType<PgBinaryOperator>(ParseExpression("a AT TIME ZONE z ^ b")).Left);
+        Assert.Equal("a ^ b ^ c", chain.ToSql());
+        Assert.Equal(chain, ParseExpression(chain.ToSql()));
+    }
+
+    [Fact]
+    public void NativeGenericOperators_SharePrecedenceAndAssociateLeft()
+    {
+        var bitwise = Assert.IsType<BinaryOperator>(ParseExpression("a | b & c"));
+        Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseAnd, bitwise.Operator);
+        Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseOr, Assert.IsType<BinaryOperator>(bitwise.Left).Operator);
+
+        var regex = Assert.IsType<BinaryOperator>(ParseExpression("a || b ~ c"));
+        Assert.Equal(Core.BuiltIn.BinaryOperator.StringConcat, Assert.IsType<BinaryOperator>(regex.Left).Operator);
+        var mixed = Assert.IsType<BinaryOperator>(ParseExpression("a <@ b & c"));
+        Assert.IsType<PgBinaryOperator>(mixed.Left);
+        var qualifiedPower = Assert.IsType<PgBinaryOperator>(ParseExpression("a OPERATOR(^) b * c"));
+        Assert.IsType<BinaryOperator>(qualifiedPower.Right);
+    }
+
+    [Fact]
+    public void PredicateTiers_GroupPatternsAboveComparisonsAboveIs()
+    {
+        var leftPattern = Assert.IsType<BinaryOperator>(ParseExpression("a LIKE b = c"));
+        Assert.IsType<Like>(leftPattern.Left);
+        var rightPattern = Assert.IsType<BinaryOperator>(ParseExpression("a = b LIKE c"));
+        Assert.IsType<Like>(rightPattern.Right);
+        var distinct = Assert.IsType<IsDistinctFrom>(ParseExpression("a IS DISTINCT FROM b = c"));
+        Assert.IsType<BinaryOperator>(distinct.Right);
+        var logical = Assert.IsType<BinaryOperator>(ParseExpression("NOT a = b AND c OR d"));
+        var conjunction = Assert.IsType<BinaryOperator>(logical.Left);
+        Assert.IsType<BinaryOperator>(Assert.IsType<UnaryOperator>(conjunction.Left).Expression);
+    }
+
+    [Theory]
+    [InlineData("a BETWEEN b = c AND d")]
+    [InlineData("a BETWEEN b IS DISTINCT FROM c AND d")]
+    [InlineData("a BETWEEN (b OR c) AND d")]
+    public void BetweenLowerBound_UsesRestrictedExpressionGrammar(string sql)
+    {
+        var between = Assert.IsType<Between>(ParseExpression(sql));
+
+        Assert.Equal(sql, between.ToSql());
+        Assert.Equal(between, ParseExpression(between.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("stamp AT LOCAL")]
+    [InlineData("stamp::TIMESTAMP AT LOCAL")]
+    [InlineData("stamp COLLATE locale AT LOCAL")]
+    [InlineData("stamp AT LOCAL AT TIME ZONE zone")]
+    [InlineData("stamp AT TIME ZONE zone AT LOCAL")]
+    [InlineData("value BETWEEN SYMMETRIC lower AND upper")]
+    [InlineData("value NOT BETWEEN SYMMETRIC lower AND upper")]
+    [InlineData("value BETWEEN ASYMMETRIC lower AND upper")]
+    [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper")]
+    [InlineData("(a = b) IS NULL")]
+    [InlineData("a BETWEEN fn(b OR c) AND d")]
+    [InlineData("a BETWEEN (NOT b) AND c")]
+    [InlineData("a BETWEEN (b LIKE c) AND d")]
+    [InlineData("a BETWEEN (b @ ANY(ARRAY[c])) AND d")]
+    public void AuditedPredicateForms_ParseAndRoundTrip(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void AtLocalAndSymmetry_PreserveAstAndReferences()
+    {
+        var local = Assert.IsType<AtLocal>(ParseExpression("items.stamp AT LOCAL"));
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        Assert.Equal(local.Timestamp.GetReferencedItems(context), local.GetReferencedItems(context));
+        Assert.True(Assert.IsType<Between>(ParseExpression("a BETWEEN SYMMETRIC b AND c")).Symmetric);
+        Assert.False(Assert.IsType<Between>(ParseExpression("a BETWEEN ASYMMETRIC b AND c")).Symmetric);
+        Assert.Null(Assert.IsType<Between>(ParseExpression("a BETWEEN b AND c")).Symmetric);
+        var power = Assert.IsType<PgBinaryOperator>(ParseExpression("stamp AT LOCAL ^ value"));
+        Assert.IsType<AtLocal>(power.Left);
+        var state = new ParserState(GetTokens("items.stamp AT LOCAL"), 37);
+        var sourced = Assert.IsType<AtLocal>(new Parser().ExpressionParser.ParseExpr(state));
+        Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 0, 11), Assert.IsType<CompoundIdentifier>(sourced.Timestamp).Source);
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Theory]
+    [InlineData("value ISNULL", "value IS NULL", false)]
+    [InlineData("value NOTNULL", "value IS NOT NULL", true)]
+    public void NullPredicateAliases_UseCanonicalIsNullNodes(string sql, string expected, bool negated)
+    {
+        var expression = Assert.IsType<IsNull>(ParseExpression(sql));
+
+        Assert.Equal(negated, expression.Negated);
+        Assert.Equal(expected, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expected));
+    }
+
+    [Theory]
+    [InlineData("value LIKE ANY(ARRAY[pattern])")]
+    [InlineData("value NOT LIKE ALL(ARRAY[pattern])")]
+    [InlineData("value ILIKE SOME(SELECT pattern FROM items)")]
+    [InlineData("value LIKE ALL(VALUES ('a'), ('b'))")]
+    [InlineData("value LIKE pattern ESCAPE escape_value")]
+    [InlineData("value ILIKE pattern ESCAPE '!' || suffix")]
+    [InlineData("value SIMILAR TO pattern ESCAPE fn(escape_value)")]
+    [InlineData("value LIKE pattern ESCAPE '!' = other")]
+    [InlineData("value LIKE pattern ESCAPE '!' LIKE other")]
+    public void PatternModifiers_ParseCompleteOperandsAndRoundTrip(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+        Expression[] expressions = [expression];
+        Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void PatternEscapeAndQuantifiedOperators_PreserveGrammarGrouping()
+    {
+        var pattern = Assert.IsType<ILike>(ParseExpression("value ILIKE pattern ESCAPE '!' || suffix"));
+        Assert.IsType<BinaryOperator>(pattern.EscapeExpression);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        Assert.Equal(pattern.Expression.GetReferencedItems(context)
+            .Concat(pattern.Pattern.GetReferencedItems(context))
+            .Concat(pattern.EscapeExpression!.GetReferencedItems(context)), pattern.GetReferencedItems(context));
+        var comparison = Assert.IsType<BinaryOperator>(ParseExpression("a = b = ANY(ARRAY[c])"));
+        Assert.IsType<QuantifiedBinaryOperator>(comparison.Right);
+        var quantified = Assert.IsType<QuantifiedBinaryOperator>(ParseExpression("a + b + ALL(ARRAY[c])"));
+        Assert.IsType<BinaryOperator>(quantified.Left);
+    }
+
+    [Theory]
+    [InlineData("a + ANY(ARRAY[b])")]
+    [InlineData("a - ALL(ARRAY[b])")]
+    [InlineData("a * SOME(ARRAY[b])")]
+    [InlineData("a / ALL(SELECT b FROM items)")]
+    [InlineData("a % ANY(ARRAY[b])")]
+    [InlineData("a ^ ALL(ARRAY[b])")]
+    public void QuantifiedNativeOperators_ParseWithoutPrematureTypeValidation(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(sql));
+    }
+
+    [Fact]
+    public void PredicateErrors_PreserveSourceAndRestoreContext()
+    {
+        const string sql = "a = b = c";
+        var exception = Assert.ThrowsAny<ParseException>(() => ParseExpression(sql));
+        Assert.Contains("      ^", new ParseException.WithText(exception, null, sql).Message);
+
+        var state = new ParserState(GetTokens("a BETWEEN NOT b AND c"));
+        using ParserState.Scope scope = state.EnterContext(ParseContext.DomainCheck | ParseContext.BeginAtomic);
+        ParseContext expected = state.Context;
+        Assert.ThrowsAny<ParseException>(() => new PgParser().ExpressionParser.ParseExpr(state));
+        Assert.Equal(expected, state.Context);
+    }
+
+    [Fact]
+    public void ComparisonOperators_RejectEveryUnparenthesizedPair()
+    {
+        string[] operators = ["=", "<>", "<", "<=", ">", ">="];
+        foreach (string first in operators)
+        {
+            foreach (string second in operators)
+            {
+                Assert.ThrowsAny<ParseException>(() => ParseStatement($"SELECT a {first} b {second} c"));
+            }
+        }
+        Assert.Equal("(a = b) = (c = d)", ParseExpression("(a = b) = (c = d)").ToSql());
+    }
+
+    [Theory]
+    [InlineData("a IS TRUE IS FALSE")]
+    [InlineData("a IS NULL IS NOT NULL")]
+    [InlineData("a ISNULL IS TRUE")]
+    [InlineData("a IS TRUE NOTNULL")]
+    [InlineData("a NOTNULL ISNULL")]
+    [InlineData("a IS DISTINCT FROM b IS DISTINCT FROM c")]
+    [InlineData("a LIKE b LIKE c")]
+    [InlineData("a IN (b) LIKE c")]
+    [InlineData("a BETWEEN b AND c BETWEEN d AND e")]
+    [InlineData("a BETWEEN b AND c LIKE d")]
+    [InlineData("a BETWEEN NOT b AND c")]
+    [InlineData("a BETWEEN b IS NULL AND c")]
+    [InlineData("a BETWEEN b COLLATE c AND d")]
+    [InlineData("a XOR b")]
+    [InlineData("a DIV b")]
+    [InlineData("a REGEXP b")]
+    [InlineData("a RLIKE b")]
+    [InlineData("a SIMILAR TO ANY(ARRAY[b])")]
+    [InlineData("a LIKE ANY(ARRAY[b]) ESCAPE '!'")]
+    [InlineData("a BETWEEN b @ ANY(ARRAY[c]) AND d")]
+    [InlineData("a BETWEEN b OPERATOR(+) ALL(ARRAY[c]) AND d")]
+    [InlineData("a BETWEEN b = ANY(ARRAY[c]) AND d")]
+    public void NonAssociativePredicatesAndRestrictedBounds_RejectAmbiguousForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
+    }
 }

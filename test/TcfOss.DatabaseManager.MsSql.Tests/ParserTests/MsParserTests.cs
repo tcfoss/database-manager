@@ -350,4 +350,23 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.False(new MsParser().SupportsPostgresIntervalLiteralSyntax);
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void PrecedenceAudit_PreservesSqlServerOperatorBehavior()
+    {
+        var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a + b ^ c"));
+        Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseXor, expression.Operator);
+        Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
+        Assert.False(new MsParser().PrecedenceManager.UsePostgresOperatorPrecedence);
+        Assert.Equal("ISNULL(value, other)", ParseExpression("ISNULL(value, other)").ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT stamp AT LOCAL + value")]
+    [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
+    [InlineData("SELECT value ISNULL AND other")]
+    public void PostgresAuditedPredicates_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

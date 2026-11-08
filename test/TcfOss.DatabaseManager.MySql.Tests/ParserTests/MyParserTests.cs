@@ -667,4 +667,23 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.IsType<Core.Expressions.Interval>(ParseExpression(sql));
         Assert.Equal(sql, ParseExpression(sql).ToSql());
     }
+
+    [Fact]
+    public void PrecedenceAudit_PreservesSharedMySqlMariaDbOperatorBehavior()
+    {
+        var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a + b ^ c"));
+        Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseXor, expression.Operator);
+        Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
+        Assert.False(new MyParser().PrecedenceManager.UsePostgresOperatorPrecedence);
+        Assert.Equal("ISNULL(value)", ParseExpression("ISNULL(value)").ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT stamp AT LOCAL + value")]
+    [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
+    [InlineData("SELECT value ISNULL AND other")]
+    public void PostgresAuditedPredicates_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

@@ -7,5 +7,6 @@ public enum ParseContext
     DomainCheck = 1 << 0,
     DefaultExpression = 1 << 1,
     StringLiteralAsStatement = 1 << 2,
-    BeginAtomic = 1 << 3
+    BeginAtomic = 1 << 3,
+    BetweenBound = 1 << 4
 }

@@ -34,7 +34,7 @@ public class ExpressionParser
 
     public Expression ParseExpr(ParserState state)
     {
-        using ParserState.Scope scope = state.EnterContext(disable: ParseContext.DefaultExpression);
+        using ParserState.Scope scope = state.EnterContext(disable: ParseContext.DefaultExpression | ParseContext.BetweenBound);
         return ParseSubExpression(state, 0);
     }
 
@@ -47,6 +47,7 @@ public class ExpressionParser
     protected Expression ParseSubExpression(ParserState state, short precedence)
     {
         Expression expr = ParsePrefix(state);
+        short previousPrecedence = 0;
 
         while (true)
         {
@@ -59,7 +60,17 @@ public class ExpressionParser
             {
                 break;
             }
+            if (previousPrecedence == nextPrecedence && _pm.IsNonAssociative(nextPrecedence))
+            {
+                throw state.ExpectedException("parenthesized expression");
+            }
             expr = ParseInfix(state, expr, nextPrecedence);
+            previousPrecedence = nextPrecedence;
+            if (_pm.UsePostgresOperatorPrecedence && expr is Like { EscapeExpression: not null }
+                    or ILike { EscapeExpression: not null } or SimilarTo { EscapeExpression: not null })
+            {
+                previousPrecedence = _pm.GetPrecedence(Precedence.Escape);
+            }
         }
 
         return expr;
@@ -67,6 +78,10 @@ public class ExpressionParser
 
     protected virtual Expression ParsePrefix(ParserState state)
     {
+        if (state.Context.HasFlag(ParseContext.BetweenBound) && state.PeekKeyword(Keyword.NOT))
+        {
+            throw state.ExpectedException("expression");
+        }
         if (!state.PeekKeyword(Keyword.INTERVAL) && _p.DataTypeParser.IsDataTypeStart(state.Peek())
             && state.TryParse((s) =>
         {
@@ -166,7 +181,8 @@ public class ExpressionParser
             return ParseInfixWord(state, word, left, precedence);
         }
 
-        if (token is OperatorToken or Word { Keyword: Keyword.OPERATOR })
+        if (token is OperatorToken or Word { Keyword: Keyword.OPERATOR }
+            || token is Caret && _pm.UsePostgresOperatorPrecedence)
         {
             return ParseInfixPostgresOperator(state, token, left, precedence);
         }
@@ -199,7 +215,7 @@ public class ExpressionParser
                 }
             }
 
-            if (op != BinaryOperatorOp.GreaterThan
+            if (!_pm.UsePostgresOperatorPrecedence && op != BinaryOperatorOp.GreaterThan
                     && op != BinaryOperatorOp.GreaterThanOrEqual
                     && op != BinaryOperatorOp.LessThan
                     && op != BinaryOperatorOp.LessThanOrEqual
@@ -257,6 +273,10 @@ public class ExpressionParser
 
     private Expression ParsePostgresQuantifiedOperand(ParserState state)
     {
+        if (_pm.UsePostgresOperatorPrecedence && state.Context.HasFlag(ParseContext.BetweenBound))
+        {
+            throw state.ExpectedException("restricted expression");
+        }
         state.ExpectLeftParen();
         Expression right;
         if (PeekSubquery(state) || state.PeekKeyword(Keyword.WITH) || state.PeekKeyword(Keyword.VALUES))
@@ -290,7 +310,7 @@ public class ExpressionParser
             }
         }
         Token token = state.Next();
-        if (token is not OperatorToken && GetBinaryOperator(token) == null)
+        if (token is not (OperatorToken or Caret) && GetBinaryOperator(token) == null)
         {
             throw ParserState.ExpectedException("operator name", token);
         }
@@ -322,8 +342,16 @@ public class ExpressionParser
         {
             return ParseAfterIs(state, left);
         }
+        if (keyword is Keyword.ISNULL or Keyword.NOTNULL)
+        {
+            return new IsNull(left, keyword == Keyword.NOTNULL);
+        }
         if (keyword == Keyword.AT)
         {
+            if (_p.SupportsPostgresOperatorSyntax && state.ParseKeyword(Keyword.LOCAL))
+            {
+                return new AtLocal(left);
+            }
             state.ExpectKeywordsAll(Keyword.TIME, Keyword.ZONE);
             return new AtTimeZone(left, ParseSubExpression(state, precedence));
         }
@@ -360,14 +388,14 @@ public class ExpressionParser
         }
         if (state.ParseKeyword(Keyword.ILIKE))
         {
-            (Expression pattern, string? escapeChar, bool any) = ParsePatternMatch(state);
-            return new ILike(left, negated, pattern, escapeChar, any);
+            var (pattern, escapeChar, any, quantifier, escapeExpression) = ParsePatternMatch(state);
+            return new ILike(left, negated, pattern, escapeChar, any) { Quantifier = quantifier, EscapeExpression = escapeExpression };
         }
         if (state.ParseKeyword(Keyword.SIMILAR))
         {
             state.ExpectKeyword(Keyword.TO);
-            (Expression pattern, string? escapeChar, bool any) = ParsePatternMatch(state);
-            return new SimilarTo(left, negated, pattern, escapeChar, any);
+            var (pattern, escapeChar, any, _, escapeExpression) = ParsePatternMatch(state, false);
+            return new SimilarTo(left, negated, pattern, escapeChar, any) { EscapeExpression = escapeExpression };
         }
 
         throw new DefensiveGuardException("infix keyword", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
@@ -715,17 +743,47 @@ public class ExpressionParser
 
     private Like ParseLike(ParserState state, Expression expr, bool negated)
     {
-        (Expression pattern, string? escapeChar, bool any) = ParsePatternMatch(state);
-        return new Like(expr, negated, pattern, escapeChar, any);
+        var (pattern, escapeChar, any, quantifier, escapeExpression) = ParsePatternMatch(state);
+        return new Like(expr, negated, pattern, escapeChar, any) { Quantifier = quantifier, EscapeExpression = escapeExpression };
     }
 
-    private (Expression Pattern, string? EscapeChar, bool Any) ParsePatternMatch(ParserState state)
+    private (Expression Pattern, string? EscapeChar, bool Any, AggregateQuantifier? Quantifier, Expression? EscapeExpression) ParsePatternMatch(ParserState state, bool allowQuantifier = true)
     {
+        if (_p.SupportsPostgresOperatorSyntax && (_pm.UsePostgresOperatorPrecedence || !state.PeekKeyword(Keyword.ANY)))
+        {
+            AggregateQuantifier? quantifier = state.ParseKeywordsAny(Keyword.ANY, Keyword.ALL, Keyword.SOME) switch
+            {
+                Keyword.ANY => AggregateQuantifier.Any,
+                Keyword.ALL => AggregateQuantifier.All,
+                Keyword.SOME => AggregateQuantifier.Some,
+                _ => null
+            };
+            if (quantifier != null)
+            {
+                if (!allowQuantifier)
+                {
+                    throw state.ExpectedException("pattern expression");
+                }
+                return (ParsePostgresQuantifiedOperand(state), null, false, quantifier, null);
+            }
+            Expression postgresPattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
+            Expression? escapeExpression = null;
+            if (state.ParseKeyword(Keyword.ESCAPE))
+            {
+                if (!_pm.UsePostgresOperatorPrecedence && state.PeekIs<StringLiteral>())
+                {
+                    return (postgresPattern, ValueParser.ParseLiteralString(state), false, null, null);
+                }
+                escapeExpression = ParseSubExpression(state, _pm.GetPrecedence(
+                    _pm.UsePostgresOperatorPrecedence ? Precedence.Escape : Precedence.Like));
+            }
+            return (postgresPattern, null, false, null, escapeExpression);
+        }
         bool any = state.ParseKeyword(Keyword.ANY);
         Expression pattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
         string? escapeChar = ParseOptionalEscapeChar(state);
 
-        return (pattern, escapeChar, any);
+        return (pattern, escapeChar, any, null, null);
     }
 
     private static string? ParseOptionalEscapeChar(ParserState state)
@@ -739,11 +797,30 @@ public class ExpressionParser
 
     private Between ParseBetween(ParserState state, Expression expr, bool negated)
     {
+        bool? symmetric = null;
+        if (_p.SupportsPostgresOperatorSyntax)
+        {
+            symmetric = state.ParseKeywordsAny(Keyword.SYMMETRIC, Keyword.ASYMMETRIC) switch
+            {
+                Keyword.SYMMETRIC => true,
+                Keyword.ASYMMETRIC => false,
+                _ => null
+            };
+        }
         short prec = _pm.GetPrecedence(Precedence.Between);
-        Expression low = ParseSubExpression(state, prec);
+        Expression low;
+        if (_pm.UsePostgresOperatorPrecedence)
+        {
+            using ParserState.Scope scope = state.EnterContext(ParseContext.BetweenBound);
+            low = ParseSubExpression(state, 0);
+        }
+        else
+        {
+            low = ParseSubExpression(state, prec);
+        }
         state.ExpectKeyword(Keyword.AND);
         Expression high = ParseSubExpression(state, prec);
-        return new Between(expr, low, high, negated);
+        return new Between(expr, low, high, negated) { Symmetric = symmetric };
     }
 
     public Expression ParseWildcardOrExpr(ParserState state)
@@ -1008,6 +1085,10 @@ public class ExpressionParser
 
     protected virtual BinaryOperatorOp? GetBinaryOperator(Token token)
     {
+        if (token is Caret && _pm.UsePostgresOperatorPrecedence)
+        {
+            return null;
+        }
         if (token is Tilde or TildeAsterisk or NotTilde or NotTildeAsterisk
             && !_p.SupportsPostgresRegexOperators)
         {

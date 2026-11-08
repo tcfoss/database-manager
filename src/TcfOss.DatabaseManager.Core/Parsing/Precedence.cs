@@ -18,6 +18,7 @@ public enum Precedence
     Between,
     Equals,
     Like,
+    Escape,
     Is,
     UnaryNot,
     And,

@@ -293,4 +293,25 @@ public class FormatComponentsTests
 
         Assert.Equal(expected, writer.ToString());
     }
+
+    [Theory]
+    [InlineData("items.stamp AT LOCAL", "\"items\".\"stamp\" AT LOCAL")]
+    [InlineData("value BETWEEN SYMMETRIC lower AND upper", "\"value\" BETWEEN SYMMETRIC \"lower\" AND \"upper\"")]
+    [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "\"value\" NOT BETWEEN ASYMMETRIC \"lower\" AND \"upper\"")]
+    [InlineData("items.a ^ items.b", "\"items\".\"a\" ^ \"items\".\"b\"")]
+    [InlineData("value LIKE ALL(ARRAY[pattern])", "\"value\" LIKE ALL(ARRAY[\"pattern\"])")]
+    [InlineData("value ILIKE SOME(ARRAY[pattern])", "\"value\" ILIKE SOME(ARRAY[\"pattern\"])")]
+    [InlineData("value LIKE pattern ESCAPE escape_value", "\"value\" LIKE \"pattern\" ESCAPE \"escape_value\"")]
+    [InlineData("value ILIKE pattern ESCAPE '!' || suffix", "\"value\" ILIKE \"pattern\" ESCAPE '!' || \"suffix\"")]
+    [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "\"value\" SIMILAR TO \"pattern\" ESCAPE \"escape_value\"")]
+    public void AuditedPredicates_FormatOperandsAndModifiers(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
 }

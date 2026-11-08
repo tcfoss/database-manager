@@ -682,6 +682,21 @@ public class NormalizerTests
         Assert.Equal(sql, GetNormalizedExpressionText(sql, flatten: false));
     }
 
+    [Theory]
+    [InlineData("stamp AT LOCAL", "`stamp` AT LOCAL")]
+    [InlineData("value BETWEEN SYMMETRIC lower AND upper", "`value` BETWEEN SYMMETRIC `lower` AND `upper`")]
+    [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "`value` NOT BETWEEN ASYMMETRIC `lower` AND `upper`")]
+    [InlineData("value LIKE pattern ESCAPE escape_value", "`value` LIKE `pattern` ESCAPE `escape_value`")]
+    [InlineData("value ILIKE pattern ESCAPE escape_value", "`value` ILIKE `pattern` ESCAPE `escape_value`")]
+    [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "`value` SIMILAR TO `pattern` ESCAPE `escape_value`")]
+    [InlineData("value LIKE ALL(pattern)", "`value` LIKE ALL(`pattern`)")]
+    [InlineData("value ILIKE SOME(pattern)", "`value` ILIKE SOME(`pattern`)")]
+    public void NormalizeExpression_PreservesAuditedPredicateModifiers(string sql, string expected)
+    {
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);

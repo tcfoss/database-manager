@@ -12,6 +12,7 @@ public class PgParser : Parser
 
     public PgParser()
     {
+        PrecedenceManager = new PrecedenceManager(usePostgresOperatorPrecedence: true);
         ComponentParser = new PgComponentParser(this);
         DataTypeParser = new PgDataTypeParser(this);
         ExpressionParser = new ExpressionParser(this);

@@ -169,10 +169,12 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
     {
         return expr switch
         {
-            Between bet => new Between(
-                NormalizeExpression(bet.Expression, inSelect: inSelect, flatten: flatten),
-                NormalizeExpression(bet.Low, inSelect: inSelect, flatten: flatten),
-                NormalizeExpression(bet.High, inSelect: inSelect, flatten: flatten), bet.Negated),
+            Between bet => bet with
+            {
+                Expression = NormalizeExpression(bet.Expression, inSelect, flatten),
+                Low = NormalizeExpression(bet.Low, inSelect, flatten),
+                High = NormalizeExpression(bet.High, inSelect, flatten)
+            },
             BinaryOperator bo => NormalizeBinaryOperator(bo, inSelect: inSelect, flatten: flatten),
             PgBinaryOperator op => op with
             {
@@ -250,20 +252,24 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Timestamp = NormalizeExpression(zone.Timestamp, inSelect, flatten),
                 Timezone = NormalizeExpression(zone.Timezone, inSelect, flatten)
             },
+            AtLocal local => local with { Timestamp = NormalizeExpression(local.Timestamp, inSelect, flatten) },
             Like like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten)
+                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                EscapeExpression = like.EscapeExpression == null ? null : NormalizeExpression(like.EscapeExpression, inSelect, flatten)
             },
             ILike like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten)
+                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                EscapeExpression = like.EscapeExpression == null ? null : NormalizeExpression(like.EscapeExpression, inSelect, flatten)
             },
             SimilarTo similar => similar with
             {
                 Expression = NormalizeExpression(similar.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(similar.Pattern, inSelect, flatten)
+                Pattern = NormalizeExpression(similar.Pattern, inSelect, flatten),
+                EscapeExpression = similar.EscapeExpression == null ? null : NormalizeExpression(similar.EscapeExpression, inSelect, flatten)
             },
             Regexp regexp => regexp with
             {
