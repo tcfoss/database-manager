@@ -691,7 +691,7 @@ public class NormalizerTests
     [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "`value` SIMILAR TO `pattern` ESCAPE `escape_value`")]
     [InlineData("value LIKE ALL(pattern)", "`value` LIKE ALL(`pattern`)")]
     [InlineData("value ILIKE SOME(pattern)", "`value` ILIKE SOME(`pattern`)")]
-    public void NormalizeExpression_PreservesAuditedPredicateModifiers(string sql, string expected)
+    public void NormalizeExpression_PreservesPredicateModifiers(string sql, string expected)
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: true));
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));

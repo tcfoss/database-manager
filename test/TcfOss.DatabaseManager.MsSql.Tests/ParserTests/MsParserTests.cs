@@ -352,12 +352,12 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     }
 
     [Fact]
-    public void PrecedenceAudit_PreservesSqlServerOperatorBehavior()
+    public void Precedence_PreservesSqlServerOperatorBehavior()
     {
         var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a + b ^ c"));
         Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseXor, expression.Operator);
         Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
-        Assert.False(new MsParser().PrecedenceManager.UsePostgresOperatorPrecedence);
+        Assert.IsType<MsPrecedenceManager>(new MsParser().PrecedenceManager);
         Assert.Equal("ISNULL(value, other)", ParseExpression("ISNULL(value, other)").ToSql());
     }
 
@@ -365,7 +365,10 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
     [InlineData("SELECT value ISNULL AND other")]
-    public void PostgresAuditedPredicates_AreNarrowed(string sql)
+    [InlineData("SELECT x * ALL(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x + ANY(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x AND SOME(SELECT colname FROM tablename)")]
+    public void PostgresPredicates_AreNarrowed(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

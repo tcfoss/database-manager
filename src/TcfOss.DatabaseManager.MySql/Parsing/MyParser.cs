@@ -32,7 +32,7 @@ public class MyParser : Parser
 
     public MyParser()
     {
-        PrecedenceManager = new PrecedenceManager(treatDoublePipeAsOr: true, usePostgresUnaryPrecedence: false, supportPostgresPredicateSyntax: false);
+        PrecedenceManager = new MyPrecedenceManager();
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MyFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MyDataTypeParser(this);

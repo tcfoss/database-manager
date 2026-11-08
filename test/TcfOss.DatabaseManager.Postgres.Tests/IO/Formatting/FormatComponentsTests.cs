@@ -295,6 +295,19 @@ public class FormatComponentsTests
     }
 
     [Theory]
+    [InlineData("!", " ESCAPE '!'")]
+    [InlineData("'", " ESCAPE ''''")]
+    public void PatternEscapeCharacter_FormatsLiteral(string value, string expected)
+    {
+        var escape = new PatternEscape.Character(value);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        escape.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
+
+    [Theory]
     [InlineData("items.stamp AT LOCAL", "\"items\".\"stamp\" AT LOCAL")]
     [InlineData("value BETWEEN SYMMETRIC lower AND upper", "\"value\" BETWEEN SYMMETRIC \"lower\" AND \"upper\"")]
     [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "\"value\" NOT BETWEEN ASYMMETRIC \"lower\" AND \"upper\"")]
@@ -304,7 +317,7 @@ public class FormatComponentsTests
     [InlineData("value LIKE pattern ESCAPE escape_value", "\"value\" LIKE \"pattern\" ESCAPE \"escape_value\"")]
     [InlineData("value ILIKE pattern ESCAPE '!' || suffix", "\"value\" ILIKE \"pattern\" ESCAPE '!' || \"suffix\"")]
     [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "\"value\" SIMILAR TO \"pattern\" ESCAPE \"escape_value\"")]
-    public void AuditedPredicates_FormatOperandsAndModifiers(string sql, string expected)
+    public void Predicates_FormatOperandsAndModifiers(string sql, string expected)
     {
         var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);

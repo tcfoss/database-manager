@@ -1,25 +1,17 @@
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Expressions;
 
-public record SimilarTo(Expression Expression, bool Negated, Expression Pattern, string? EscapeChar = null, bool Any = false) : Expression, INegated
+public record SimilarTo(Expression Expression, bool Negated, Expression Pattern, PatternEscape? Escape = null, bool Any = false) : Expression, INegated
 {
-    public Expression? EscapeExpression { get; init; }
-
     public override void ToSql(SqlTextWriter writer)
     {
         string any = Any ? "ANY " : string.Empty;
         writer.WriteSql($"{Expression} {AsNegated.NegatedText}SIMILAR TO {any}{Pattern}");
-        if (EscapeExpression != null)
-        {
-            writer.WriteSql($" ESCAPE {EscapeExpression}");
-        }
-        if (EscapeChar != null)
-        {
-            writer.WriteSql($" ESCAPE '{EscapeChar}'");
-        }
+        Escape?.ToSql(writer);
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -27,15 +19,7 @@ public record SimilarTo(Expression Expression, bool Negated, Expression Pattern,
         Expression.FormatSql(writer, manager);
         writer.WriteSql($" {AsNegated.NegatedText}SIMILAR TO {(Any ? "ANY " : string.Empty)}");
         Pattern.FormatSql(writer, manager);
-        if (EscapeExpression != null)
-        {
-            writer.Write(" ESCAPE ");
-            EscapeExpression.FormatSql(writer, manager);
-        }
-        if (EscapeChar != null)
-        {
-            writer.WriteSql($" ESCAPE '{EscapeChar}'");
-        }
+        Escape?.FormatSql(writer, manager);
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
@@ -48,9 +32,9 @@ public record SimilarTo(Expression Expression, bool Negated, Expression Pattern,
         {
             yield return item;
         }
-        if (EscapeExpression != null)
+        if (Escape != null)
         {
-            foreach (ItemRef item in EscapeExpression.GetReferencedItems(context))
+            foreach (ItemRef item in Escape.GetReferencedItems(context))
             {
                 yield return item;
             }

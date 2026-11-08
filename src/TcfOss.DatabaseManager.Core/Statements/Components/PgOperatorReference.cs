@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
@@ -23,7 +24,7 @@ public record PgOperatorReference : IWriteSql
         Name = name;
     }
 
-    internal static bool IsValidName(string? name)
+    internal static bool IsValidName([NotNullWhen(true)] string? name)
     {
         return name is { Length: > 0 and <= 63 }
             && name.AsSpan().IndexOfAnyExcept(s_characters) < 0

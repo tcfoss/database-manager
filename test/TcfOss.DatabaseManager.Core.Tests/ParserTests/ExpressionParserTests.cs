@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 using BinaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.BinaryOperator;
 using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
@@ -251,8 +252,19 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData("x * ALL(SELECT colname FROM tablename)")]
     [InlineData("x + ANY(SELECT colname FROM tablename)")]
+    public static void Quantifier_ArithmeticOperator_ParsesKitchenSinkSyntax(string sql)
+    {
+        var parser = new Parser();
+        var expression = Assert.IsType<QuantifiedBinaryOperator>(parser.ExpressionParser.ParseExpr(GetState(sql)));
+
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+    [Theory]
     [InlineData("x AND SOME(SELECT colname FROM tablename)")]
-    public static void Quantifier_Non_Comparison_Op_Throws(string sql)
+    [InlineData("x OR ANY(SELECT colname FROM tablename)")]
+    [InlineData("x XOR ALL(SELECT colname FROM tablename)")]
+    public static void Quantifier_LogicalKeywordOperator_Throws(string sql)
     {
         var parser = new Parser();
         var state = GetState(sql);
@@ -352,7 +364,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(negated, expression.Negated);
         Assert.Equal(any, expression.Any);
-        Assert.Equal(escapeChar, expression.EscapeChar);
+        Assert.Equal<PatternEscape?>(escapeChar == null ? null : new PatternEscape.Character(escapeChar), expression.Escape);
         Assert.Equal(sql, expression.ToSql());
     }
 
@@ -366,7 +378,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(negated, expression.Negated);
         Assert.Equal(any, expression.Any);
-        Assert.Equal(escapeChar, expression.EscapeChar);
+        Assert.Equal<PatternEscape?>(escapeChar == null ? null : new PatternEscape.Character(escapeChar), expression.Escape);
         Assert.Equal(sql, expression.ToSql());
     }
 

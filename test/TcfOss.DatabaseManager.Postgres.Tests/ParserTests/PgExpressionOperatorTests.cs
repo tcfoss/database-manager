@@ -1178,18 +1178,56 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Precedence[] tiers =
         [
             Precedence.DoubleColon, Precedence.ArraySubscript, Precedence.UnarySign,
-            Precedence.Collate, Precedence.AtTimezone, Precedence.Caret,
+            Precedence.Collate, Precedence.AtTimezone, Precedence.Exponentiation,
             Precedence.MultiplyDivide, Precedence.AddSubtract, Precedence.PgOperator,
-            Precedence.Between, Precedence.Equals, Precedence.Is,
-            Precedence.UnaryNot, Precedence.And, Precedence.Or
+            Precedence.Between, Precedence.Comparison, Precedence.Is,
+            Precedence.UnaryNot, Precedence.LogicalAnd, Precedence.LogicalOr
         ];
         for (int index = 1; index < tiers.Length; index++)
         {
             Assert.True(manager.GetPrecedence(tiers[index - 1]) > manager.GetPrecedence(tiers[index]));
         }
-        Assert.Equal(manager.GetPrecedence(Precedence.PgOperator), manager.GetPrecedence(Precedence.Ampersand));
-        Assert.Equal(manager.GetPrecedence(Precedence.PgOperator), manager.GetPrecedence(Precedence.Pipe));
+        Assert.Equal(manager.GetPrecedence(Precedence.PgOperator), manager.GetPrecedence(Precedence.BitwiseAnd));
+        Assert.Equal(manager.GetPrecedence(Precedence.PgOperator), manager.GetPrecedence(Precedence.BitwiseOr));
         Assert.Equal(manager.GetPrecedence(Precedence.Between), manager.GetPrecedence(Precedence.Like));
+    }
+
+    [Theory]
+    [InlineData("= ANY(ARRAY[value])", Precedence.PgOperator)]
+    [InlineData("+ ALL(ARRAY[value])", Precedence.PgOperator)]
+    [InlineData("^ SOME(ARRAY[value])", Precedence.PgOperator)]
+    [InlineData("LIKE ANY(ARRAY[value])", Precedence.PgOperator)]
+    [InlineData("NOT ILIKE ALL(ARRAY[value])", Precedence.PgOperator)]
+    [InlineData("^ value", Precedence.Exponentiation)]
+    [InlineData("~ value", Precedence.PgOperator)]
+    [InlineData("LIKE value", Precedence.Like)]
+    public void PostgresBindings_ClassifyQuantifiersAndAssociativity(string sql, Precedence precedence)
+    {
+        var manager = new PgPrecedenceManager();
+        var state = new ParserState(GetTokens(sql));
+        var originalToken = state.Peek();
+
+        PrecedenceManager.Binding binding = manager.GetNextBinding(state);
+
+        Assert.Equal(manager.GetBinding(precedence), binding);
+        Assert.Equal(precedence == Precedence.Like, binding.IsNonAssociative);
+        Assert.Same(originalToken, state.Peek());
+    }
+
+    [Theory]
+    [InlineData("a LIKE b", Precedence.Like)]
+    [InlineData("a ILIKE b", Precedence.Like)]
+    [InlineData("a SIMILAR TO b", Precedence.Like)]
+    [InlineData("a LIKE b ESCAPE c", Precedence.Escape)]
+    [InlineData("a ILIKE b ESCAPE c", Precedence.Escape)]
+    [InlineData("a SIMILAR TO b ESCAPE c", Precedence.Escape)]
+    public void PostgresBindings_ResolveCompletedPatternModifiers(string sql, Precedence precedence)
+    {
+        var manager = new PgPrecedenceManager();
+
+        PrecedenceManager.Binding binding = manager.GetCompletedBinding(ParseExpression(sql), manager.GetBinding(Precedence.Like));
+
+        Assert.Equal(manager.GetBinding(precedence), binding);
     }
 
     [Fact]
@@ -1264,7 +1302,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("a BETWEEN (NOT b) AND c")]
     [InlineData("a BETWEEN (b LIKE c) AND d")]
     [InlineData("a BETWEEN (b @ ANY(ARRAY[c])) AND d")]
-    public void AuditedPredicateForms_ParseAndRoundTrip(string sql)
+    public void PredicateForms_ParseAndRoundTrip(string sql)
     {
         Expression expression = ParseExpression(sql);
 
@@ -1329,11 +1367,12 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void PatternEscapeAndQuantifiedOperators_PreserveGrammarGrouping()
     {
         var pattern = Assert.IsType<ILike>(ParseExpression("value ILIKE pattern ESCAPE '!' || suffix"));
-        Assert.IsType<BinaryOperator>(pattern.EscapeExpression);
+        var escape = Assert.IsType<Core.Statements.Components.PatternEscape.Expression>(pattern.Escape);
+        Assert.IsType<BinaryOperator>(escape.Value);
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
         Assert.Equal(pattern.Expression.GetReferencedItems(context)
             .Concat(pattern.Pattern.GetReferencedItems(context))
-            .Concat(pattern.EscapeExpression!.GetReferencedItems(context)), pattern.GetReferencedItems(context));
+            .Concat(escape.GetReferencedItems(context)), pattern.GetReferencedItems(context));
         var comparison = Assert.IsType<BinaryOperator>(ParseExpression("a = b = ANY(ARRAY[c])"));
         Assert.IsType<QuantifiedBinaryOperator>(comparison.Right);
         var quantified = Assert.IsType<QuantifiedBinaryOperator>(ParseExpression("a + b + ALL(ARRAY[c])"));
@@ -1402,6 +1441,8 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("a RLIKE b")]
     [InlineData("a SIMILAR TO ANY(ARRAY[b])")]
     [InlineData("a LIKE ANY(ARRAY[b]) ESCAPE '!'")]
+    [InlineData("a AND ANY(ARRAY[b])")]
+    [InlineData("a OR ALL(ARRAY[b])")]
     [InlineData("a BETWEEN b @ ANY(ARRAY[c]) AND d")]
     [InlineData("a BETWEEN b OPERATOR(+) ALL(ARRAY[c]) AND d")]
     [InlineData("a BETWEEN b = ANY(ARRAY[c]) AND d")]

@@ -23,6 +23,9 @@ public class ExpressionParser
     private readonly PrecedenceManager _pm;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
 
+    protected virtual bool UsesRestrictedBetweenBounds => false;
+    protected virtual bool SupportsLegacyPatternAny => true;
+
     public ExpressionParser(Parser parser)
     {
         _p = parser;
@@ -47,7 +50,7 @@ public class ExpressionParser
     protected Expression ParseSubExpression(ParserState state, short precedence)
     {
         Expression expr = ParsePrefix(state);
-        short previousPrecedence = 0;
+        PrecedenceManager.Binding previousBinding = default;
 
         while (true)
         {
@@ -55,22 +58,18 @@ public class ExpressionParser
             {
                 break;
             }
-            short nextPrecedence = _pm.GetNextPrecedence(state);
+            PrecedenceManager.Binding nextBinding = _pm.GetNextBinding(state);
+            short nextPrecedence = nextBinding.Precedence;
             if (precedence >= nextPrecedence)
             {
                 break;
             }
-            if (previousPrecedence == nextPrecedence && _pm.IsNonAssociative(nextPrecedence))
+            if (previousBinding.Precedence == nextPrecedence && nextBinding.IsNonAssociative)
             {
                 throw state.ExpectedException("parenthesized expression");
             }
             expr = ParseInfix(state, expr, nextPrecedence);
-            previousPrecedence = nextPrecedence;
-            if (_pm.UsePostgresOperatorPrecedence && expr is Like { EscapeExpression: not null }
-                    or ILike { EscapeExpression: not null } or SimilarTo { EscapeExpression: not null })
-            {
-                previousPrecedence = _pm.GetPrecedence(Precedence.Escape);
-            }
+            previousBinding = _pm.GetCompletedBinding(expr, nextBinding);
         }
 
         return expr;
@@ -181,8 +180,7 @@ public class ExpressionParser
             return ParseInfixWord(state, word, left, precedence);
         }
 
-        if (token is OperatorToken or Word { Keyword: Keyword.OPERATOR }
-            || token is Caret && _pm.UsePostgresOperatorPrecedence)
+        if (IsGenericOperatorToken(token))
         {
             return ParseInfixPostgresOperator(state, token, left, precedence);
         }
@@ -195,32 +193,9 @@ public class ExpressionParser
         Keyword qualifierKeyword = state.ParseKeywordsAny(Keyword.ANY, Keyword.ALL, Keyword.SOME);
         if (qualifierKeyword != Keyword.undefined)
         {
-            Expression right;
-            if (_p.SupportsPostgresOperatorSyntax)
-            {
-                right = ParsePostgresQuantifiedOperand(state);
-            }
-            else
-            {
-                state.ExpectLeftParen();
-                if (PeekSubquery(state))
-                {
-                    state.Rewind();
-                    right = ParseSubExpression(state, precedence);
-                }
-                else
-                {
-                    right = ParseSubExpression(state, precedence);
-                    state.ExpectRightParen();
-                }
-            }
+            Expression right = ParseQuantifiedOperand(state, precedence);
 
-            if (!_pm.UsePostgresOperatorPrecedence && op != BinaryOperatorOp.GreaterThan
-                    && op != BinaryOperatorOp.GreaterThanOrEqual
-                    && op != BinaryOperatorOp.LessThan
-                    && op != BinaryOperatorOp.LessThanOrEqual
-                    && op != BinaryOperatorOp.Equal
-                    && op != BinaryOperatorOp.NotEqual)
+            if (!SupportsQuantifiedOperator(op))
             {
                 throw ParserState.ExpectedCategoryException("comparison_operator", token);
             }
@@ -236,6 +211,41 @@ public class ExpressionParser
         }
 
         return new BinaryOperatorExp(left, op, ParseSubExpression(state, precedence));
+    }
+
+    protected virtual bool SupportsQuantifiedOperator(BinaryOperatorOp op)
+    {
+        return op != BinaryOperatorOp.And && op != BinaryOperatorOp.Or && op != BinaryOperatorOp.Xor;
+    }
+
+    protected static bool IsComparisonOperator(BinaryOperatorOp op)
+    {
+        return op == BinaryOperatorOp.GreaterThan || op == BinaryOperatorOp.GreaterThanOrEqual
+            || op == BinaryOperatorOp.LessThan || op == BinaryOperatorOp.LessThanOrEqual
+            || op == BinaryOperatorOp.Equal || op == BinaryOperatorOp.NotEqual;
+    }
+
+    protected virtual bool IsGenericOperatorToken(Token token)
+    {
+        return token is OperatorToken or Word { Keyword: Keyword.OPERATOR };
+    }
+
+    protected virtual Expression ParseQuantifiedOperand(ParserState state, short precedence)
+    {
+        return ParseCompleteQuantifiedOperand(state);
+    }
+
+    protected Expression ParseLegacyQuantifiedOperand(ParserState state, short precedence)
+    {
+        state.ExpectLeftParen();
+        if (PeekSubquery(state))
+        {
+            state.Rewind();
+            return ParseSubExpression(state, precedence);
+        }
+        Expression right = ParseSubExpression(state, precedence);
+        state.ExpectRightParen();
+        return right;
     }
 
     private PgUnaryOperator ParsePostgresUnaryOperator(ParserState state)
@@ -262,7 +272,7 @@ public class ExpressionParser
         Expression right;
         if (quantifier != null)
         {
-            right = ParsePostgresQuantifiedOperand(state);
+            right = ParseCompleteQuantifiedOperand(state);
         }
         else
         {
@@ -271,9 +281,9 @@ public class ExpressionParser
         return new PgBinaryOperator(left, reference, right) { Quantifier = quantifier };
     }
 
-    private Expression ParsePostgresQuantifiedOperand(ParserState state)
+    private Expression ParseCompleteQuantifiedOperand(ParserState state)
     {
-        if (_pm.UsePostgresOperatorPrecedence && state.Context.HasFlag(ParseContext.BetweenBound))
+        if (UsesRestrictedBetweenBounds && state.Context.HasFlag(ParseContext.BetweenBound))
         {
             throw state.ExpectedException("restricted expression");
         }
@@ -310,11 +320,12 @@ public class ExpressionParser
             }
         }
         Token token = state.Next();
-        if (token is not (OperatorToken or Caret) && GetBinaryOperator(token) == null)
+        if (!IsGenericOperatorToken(token) && GetBinaryOperator(token) == null)
         {
             throw ParserState.ExpectedException("operator name", token);
         }
-        string name = token.ToString()!;
+
+        string? name = token.ToString();
         if (!PgOperatorReference.IsValidName(name))
         {
             throw ParserState.ExpectedException("operator name", token);
@@ -388,14 +399,14 @@ public class ExpressionParser
         }
         if (state.ParseKeyword(Keyword.ILIKE))
         {
-            var (pattern, escapeChar, any, quantifier, escapeExpression) = ParsePatternMatch(state);
-            return new ILike(left, negated, pattern, escapeChar, any) { Quantifier = quantifier, EscapeExpression = escapeExpression };
+            (Expression? pattern, PatternEscape? escape, bool any, AggregateQuantifier? quantifier) = ParsePatternMatch(state);
+            return new ILike(left, negated, pattern, escape, any) { Quantifier = quantifier };
         }
         if (state.ParseKeyword(Keyword.SIMILAR))
         {
             state.ExpectKeyword(Keyword.TO);
-            var (pattern, escapeChar, any, _, escapeExpression) = ParsePatternMatch(state, false);
-            return new SimilarTo(left, negated, pattern, escapeChar, any) { EscapeExpression = escapeExpression };
+            (Expression? pattern, PatternEscape? escape, bool any, AggregateQuantifier? _) = ParsePatternMatch(state, false);
+            return new SimilarTo(left, negated, pattern, escape, any);
         }
 
         throw new DefensiveGuardException("infix keyword", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
@@ -743,13 +754,13 @@ public class ExpressionParser
 
     private Like ParseLike(ParserState state, Expression expr, bool negated)
     {
-        var (pattern, escapeChar, any, quantifier, escapeExpression) = ParsePatternMatch(state);
-        return new Like(expr, negated, pattern, escapeChar, any) { Quantifier = quantifier, EscapeExpression = escapeExpression };
+        var (pattern, escape, any, quantifier) = ParsePatternMatch(state);
+        return new Like(expr, negated, pattern, escape, any) { Quantifier = quantifier };
     }
 
-    private (Expression Pattern, string? EscapeChar, bool Any, AggregateQuantifier? Quantifier, Expression? EscapeExpression) ParsePatternMatch(ParserState state, bool allowQuantifier = true)
+    private (Expression Pattern, PatternEscape? Escape, bool Any, AggregateQuantifier? Quantifier) ParsePatternMatch(ParserState state, bool allowQuantifier = true)
     {
-        if (_p.SupportsPostgresOperatorSyntax && (_pm.UsePostgresOperatorPrecedence || !state.PeekKeyword(Keyword.ANY)))
+        if (_p.SupportsPostgresOperatorSyntax && (!SupportsLegacyPatternAny || !state.PeekKeyword(Keyword.ANY)))
         {
             AggregateQuantifier? quantifier = state.ParseKeywordsAny(Keyword.ANY, Keyword.ALL, Keyword.SOME) switch
             {
@@ -764,33 +775,37 @@ public class ExpressionParser
                 {
                     throw state.ExpectedException("pattern expression");
                 }
-                return (ParsePostgresQuantifiedOperand(state), null, false, quantifier, null);
+                return (ParseCompleteQuantifiedOperand(state), null, false, quantifier);
             }
             Expression postgresPattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
-            Expression? escapeExpression = null;
+            PatternEscape? escape = null;
             if (state.ParseKeyword(Keyword.ESCAPE))
             {
-                if (!_pm.UsePostgresOperatorPrecedence && state.PeekIs<StringLiteral>())
-                {
-                    return (postgresPattern, ValueParser.ParseLiteralString(state), false, null, null);
-                }
-                escapeExpression = ParseSubExpression(state, _pm.GetPrecedence(
-                    _pm.UsePostgresOperatorPrecedence ? Precedence.Escape : Precedence.Like));
+                escape = ParsePatternEscape(state);
             }
-            return (postgresPattern, null, false, null, escapeExpression);
+            return (postgresPattern, escape, false, null);
         }
         bool any = state.ParseKeyword(Keyword.ANY);
         Expression pattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
-        string? escapeChar = ParseOptionalEscapeChar(state);
+        PatternEscape? characterEscape = ParseOptionalCharacterEscape(state);
 
-        return (pattern, escapeChar, any, null, null);
+        return (pattern, characterEscape, any, null);
     }
 
-    private static string? ParseOptionalEscapeChar(ParserState state)
+    protected virtual PatternEscape ParsePatternEscape(ParserState state)
+    {
+        if (state.PeekIs<StringLiteral>())
+        {
+            return new PatternEscape.Character(ValueParser.ParseLiteralString(state));
+        }
+        return new PatternEscape.Expression(ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like)));
+    }
+
+    private static PatternEscape.Character? ParseOptionalCharacterEscape(ParserState state)
     {
         if (state.ParseKeyword(Keyword.ESCAPE))
         {
-            return ValueParser.ParseLiteralString(state);
+            return new PatternEscape.Character(ValueParser.ParseLiteralString(state));
         }
         return null;
     }
@@ -809,7 +824,7 @@ public class ExpressionParser
         }
         short prec = _pm.GetPrecedence(Precedence.Between);
         Expression low;
-        if (_pm.UsePostgresOperatorPrecedence)
+        if (UsesRestrictedBetweenBounds)
         {
             using ParserState.Scope scope = state.EnterContext(ParseContext.BetweenBound);
             low = ParseSubExpression(state, 0);
@@ -1085,10 +1100,6 @@ public class ExpressionParser
 
     protected virtual BinaryOperatorOp? GetBinaryOperator(Token token)
     {
-        if (token is Caret && _pm.UsePostgresOperatorPrecedence)
-        {
-            return null;
-        }
         if (token is Tilde or TildeAsterisk or NotTilde or NotTildeAsterisk
             && !_p.SupportsPostgresRegexOperators)
         {

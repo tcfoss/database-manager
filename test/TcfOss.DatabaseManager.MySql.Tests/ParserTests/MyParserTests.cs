@@ -669,12 +669,12 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Fact]
-    public void PrecedenceAudit_PreservesSharedMySqlMariaDbOperatorBehavior()
+    public void Precedence_PreservesSharedMySqlMariaDbOperatorBehavior()
     {
         var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a + b ^ c"));
         Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseXor, expression.Operator);
         Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
-        Assert.False(new MyParser().PrecedenceManager.UsePostgresOperatorPrecedence);
+        Assert.IsType<MyPrecedenceManager>(new MyParser().PrecedenceManager);
         Assert.Equal("ISNULL(value)", ParseExpression("ISNULL(value)").ToSql());
     }
 
@@ -682,7 +682,10 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
     [InlineData("SELECT value ISNULL AND other")]
-    public void PostgresAuditedPredicates_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    [InlineData("SELECT x * ALL(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x + ANY(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x AND SOME(SELECT colname FROM tablename)")]
+    public void PostgresPredicates_AreNarrowedBySharedMySqlMariaDbParser(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

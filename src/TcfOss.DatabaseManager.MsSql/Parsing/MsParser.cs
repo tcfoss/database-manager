@@ -32,12 +32,12 @@ public class MsParser : Parser
 
     public MsParser()
     {
-        PrecedenceManager = new PrecedenceManager(usePostgresUnaryPrecedence: false, supportPostgresPredicateSyntax: false);
+        PrecedenceManager = new MsPrecedenceManager();
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MsFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MsDataTypeParser(this);
         ComponentParser = new MsComponentParser(this);
-        ExpressionParser = new ExpressionParser(this);
+        ExpressionParser = new MsExpressionParser(this);
         SelectParser = new MsSelectParser(this);
         DmlParser = new MsDmlParser(this);
         DdlParser = new MsDdlParser(this);

@@ -165,6 +165,12 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return cast with { Expression = NormalizeExpression(cast.Expression, inSelect: inSelect, flatten: flatten) };
     }
 
+    private PatternEscape? NormalizePatternEscape(PatternEscape? escape, bool inSelect, bool flatten)
+    {
+        return escape is PatternEscape.Expression expression
+            ? expression with { Value = NormalizeExpression(expression.Value, inSelect, flatten) } : escape;
+    }
+
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
     {
         return expr switch
@@ -257,19 +263,19 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
                 Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
-                EscapeExpression = like.EscapeExpression == null ? null : NormalizeExpression(like.EscapeExpression, inSelect, flatten)
+                Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             ILike like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
                 Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
-                EscapeExpression = like.EscapeExpression == null ? null : NormalizeExpression(like.EscapeExpression, inSelect, flatten)
+                Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             SimilarTo similar => similar with
             {
                 Expression = NormalizeExpression(similar.Expression, inSelect, flatten),
                 Pattern = NormalizeExpression(similar.Pattern, inSelect, flatten),
-                EscapeExpression = similar.EscapeExpression == null ? null : NormalizeExpression(similar.EscapeExpression, inSelect, flatten)
+                Escape = NormalizePatternEscape(similar.Escape, inSelect, flatten)
             },
             Regexp regexp => regexp with
             {

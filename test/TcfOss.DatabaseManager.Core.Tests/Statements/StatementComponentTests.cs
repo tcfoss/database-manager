@@ -513,6 +513,30 @@ public class StatementComponentTests
         Assert.Throws<ArgumentException>(() => new PgOperatorReference(symbol!));
     }
 
+    [Theory]
+    [InlineData("!", " ESCAPE '!'")]
+    [InlineData("'", " ESCAPE ''''")]
+    [InlineData("", " ESCAPE ''")]
+    public void PatternEscapeCharacter_WritesQuotedValueAndHasNoReferences(string value, string expected)
+    {
+        var escape = new PatternEscape.Character(value);
+
+        Assert.Equal(expected, escape.ToSql());
+        Assert.Equal(expected, FormatComponent(escape));
+        Assert.Empty(escape.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void PatternEscapeVariants_PreserveJsonAndExpressionReferences()
+    {
+        var expression = new SingleIdentifier(new Identifier("escape_value"));
+        PatternEscape[] escapes = [new PatternEscape.Character("!"), new PatternEscape.Expression(expression)];
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        Assert.Equal(escapes, Serialization.FromJson<PatternEscape[]>(Serialization.ToJson(escapes)));
+        Assert.Equal(expression.GetReferencedItems(context), escapes[1].GetReferencedItems(context));
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();
