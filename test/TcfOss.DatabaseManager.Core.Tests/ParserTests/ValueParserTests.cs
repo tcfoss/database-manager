@@ -340,5 +340,43 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(otherDerived.GetHashCode(), derived.GetHashCode());
     }
 
+    [Theory]
+    [InlineData("+0xAf", "175", 175)]
+    [InlineData("-0XAF", "-175", -175)]
+    [InlineData("+0o17", "15", 15)]
+    [InlineData("-0O17", "-15", -15)]
+    [InlineData("+0b11", "3", 3)]
+    [InlineData("-0B11", "-3", -3)]
+    public void Number_SignedRadixTextIsConvertedWithoutChangingSql(string text, string expectedDecimal, int expected)
+    {
+        var number = new Value.Number(text, false);
+
+        Assert.Equal(expectedDecimal, number.DecimalText);
+        Assert.Equal(expected, number.AsInt());
+        Assert.Equal(text, number.ToSql());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("-")]
+    [InlineData("0x")]
+    [InlineData("-0x")]
+    [InlineData("0q12")]
+    [InlineData("0.5")]
+    [InlineData("0xg")]
+    [InlineData("0xG")]
+    [InlineData("0x:")]
+    [InlineData("0x/")]
+    [InlineData("0o8")]
+    [InlineData("0b2")]
+    public void Number_UnrecognizedNumericTextIsPreservedAndCannotBeConvertedToInt(string text)
+    {
+        var number = new Value.Number(text, false);
+
+        Assert.Equal(text, number.DecimalText);
+        Assert.Null(number.AsInt());
+        Assert.Equal(text, number.ToSql());
+    }
+
     private record DerivedNumber(string Value, bool IsLong) : Value.Number(Value, IsLong);
 }

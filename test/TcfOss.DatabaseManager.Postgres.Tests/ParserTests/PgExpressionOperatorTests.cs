@@ -232,6 +232,8 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TABLE items (label TEXT DEFAULT U&'d!0061ta' UESCAPE '!')")]
     [InlineData("CREATE DOMAIN label AS TEXT DEFAULT U&'d\\0061ta'")]
     [InlineData("COMMENT ON TABLE items IS U&'it''s'")]
+    [InlineData("SELECT U&'data' / 2")]
+    [InlineData("SELECT U&'data' - 2")]
     public void UnicodeStrings_ParseInStatementsAndRoundTrip(string sql)
     {
         var statement = ParseStatement(sql);
@@ -411,19 +413,62 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void EscapeAndUnicodeStrings_InvalidRawTextRemainsLazilyValidated(bool unicode)
+    [InlineData("\\f", "\f", false)]
+    [InlineData("\\x", "x", false)]
+    [InlineData("\\xG", "xG", false)]
+    [InlineData("\\x4", "\u0004", false)]
+    [InlineData("\\x4G", "\u0004G", false)]
+    [InlineData("\uD83D\uDE00", "\uD83D\uDE00", true)]
+    public void EscapeAndUnicodeStrings_DecodeRawText(string text, string expected, bool unicode)
+    {
+        string decoded = unicode
+            ? new Core.Common.Value.UnicodeString(text).DecodedValue
+            : new Core.Common.Value.EscapeString(text).DecodedValue;
+
+        Assert.Equal(expected, decoded);
+    }
+
+    [Theory]
+    [InlineData("\\u0000", false)]
+    [InlineData("'", false)]
+    [InlineData("'x", false)]
+    [InlineData("\\", false)]
+    [InlineData("\0", false)]
+    [InlineData("\\uD800x", false)]
+    [InlineData("\\uD800\\x", false)]
+    [InlineData("\\uD800\\uE000", false)]
+    [InlineData("\\0000", true)]
+    [InlineData("'", true)]
+    [InlineData("'x", true)]
+    [InlineData("\0", true)]
+    [InlineData("\\D800x", true)]
+    [InlineData("\\D800\\E000", true)]
+    public void EscapeAndUnicodeStrings_InvalidRawTextRemainsLazilyValidated(string text, bool unicode)
     {
         Core.Common.Value value = unicode
-            ? new Core.Common.Value.UnicodeString("\\0000")
-            : new Core.Common.Value.EscapeString("\\u0000");
+            ? new Core.Common.Value.UnicodeString(text)
+            : new Core.Common.Value.EscapeString(text);
 
         string json = Serialization.ToJson(value);
         Assert.DoesNotContain("DecodedValue", json, StringComparison.Ordinal);
         Assert.Throws<FormatException>(() => unicode
             ? ((Core.Common.Value.UnicodeString)value).DecodedValue
             : ((Core.Common.Value.EscapeString)value).DecodedValue);
+    }
+
+    [Theory]
+    [InlineData('\uD800', "", false)]
+    [InlineData('\uDC00', "", false)]
+    [InlineData('\uD800', "", true)]
+    [InlineData('\uD800', "x", true)]
+    [InlineData('\uDC00', "", true)]
+    public void EscapeAndUnicodeStrings_RejectUnpairedRawSurrogates(char surrogate, string suffix, bool unicode)
+    {
+        string text = surrogate + suffix;
+
+        Assert.Throws<FormatException>(() => unicode
+            ? new Core.Common.Value.UnicodeString(text).DecodedValue
+            : new Core.Common.Value.EscapeString(text).DecodedValue);
     }
 
     [Theory]
@@ -739,6 +784,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("items.value[items.index][items.lower:items.upper].field", new string[] { "items.value", "items.index", "items.lower", "items.upper" })]
     [InlineData("ARRAY[[items.value], [items.other]]", new string[] { "items.value", "items.other" })]
     [InlineData("ROW((items.value).*, items.other)", new string[] { "items.value", "items.other" })]
+    [InlineData("ARRAY(SELECT items.value FROM items)", new string[] { "(SELECT items.value FROM items)" })]
     public void ArrayRowAndCompositeExpressions_CollectOnlyOperandReferences(string sql, string[] expectedOperands)
     {
         Expression expression = ParseExpression(sql);
@@ -1119,6 +1165,14 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("items.value = ANY(ARRAY[items.other])")]
     [InlineData("items.value IS NOT DISTINCT FROM items.other")]
+    [InlineData("items.value SIMILAR TO items.other")]
+    [InlineData("items.value NOT SIMILAR TO items.other ESCAPE '!'")]
+    [InlineData("items.value SIMILAR TO 'a' ESCAPE items.other")]
+    [InlineData("items.value LIKE items.other ESCAPE '!'")]
+    [InlineData("items.value LIKE 'pattern' ESCAPE items.other")]
+    [InlineData("items.value ILIKE items.other")]
+    [InlineData("1 = ANY(ARRAY[items.value, items.other])")]
+    [InlineData("1 BETWEEN ASYMMETRIC items.value AND items.other")]
     public void RemainingComparisons_CollectBothOperandReferences(string sql)
     {
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
@@ -1128,6 +1182,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
             .. ParseExpression("items.other").GetReferencedItems(context)
         ];
 
+        Assert.Equal(2, expected.Length);
         Assert.Equal(expected, ParseExpression(sql).GetReferencedItems(context));
     }
 
@@ -1345,6 +1400,13 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("value LIKE ANY(ARRAY[pattern])")]
     [InlineData("value NOT LIKE ALL(ARRAY[pattern])")]
+    [InlineData("value NOT LIKE ANY(ARRAY[pattern])")]
+    [InlineData("value NOT LIKE SOME(ARRAY[pattern])")]
+    [InlineData("value NOT ILIKE ANY(ARRAY[pattern])")]
+    [InlineData("value NOT ILIKE ALL(ARRAY[pattern])")]
+    [InlineData("value NOT ILIKE SOME(ARRAY[pattern])")]
+    [InlineData("value NOT LIKE 'pattern'")]
+    [InlineData("value NOT ILIKE 'pattern'")]
     [InlineData("value ILIKE SOME(SELECT pattern FROM items)")]
     [InlineData("value LIKE ALL(VALUES ('a'), ('b'))")]
     [InlineData("value LIKE pattern ESCAPE escape_value")]
@@ -1435,10 +1497,19 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("a BETWEEN NOT b AND c")]
     [InlineData("a BETWEEN b IS NULL AND c")]
     [InlineData("a BETWEEN b COLLATE c AND d")]
+    [InlineData("a BETWEEN b OR c AND d")]
+    [InlineData("a BETWEEN b IN (c) AND d")]
+    [InlineData("a BETWEEN b ILIKE c AND d")]
+    [InlineData("a BETWEEN b SIMILAR TO c AND d")]
+    [InlineData("a BETWEEN b AT LOCAL AND c")]
+    [InlineData("a BETWEEN b ISNULL AND c")]
+    [InlineData("a BETWEEN b NOTNULL AND c")]
     [InlineData("a XOR b")]
     [InlineData("a DIV b")]
     [InlineData("a REGEXP b")]
     [InlineData("a RLIKE b")]
+    [InlineData("a NOT REGEXP b")]
+    [InlineData("a NOT RLIKE b")]
     [InlineData("a SIMILAR TO ANY(ARRAY[b])")]
     [InlineData("a LIKE ANY(ARRAY[b]) ESCAPE '!'")]
     [InlineData("a AND ANY(ARRAY[b])")]

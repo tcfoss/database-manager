@@ -754,7 +754,7 @@ public class ExpressionParser
 
     private Like ParseLike(ParserState state, Expression expr, bool negated)
     {
-        var (pattern, escape, any, quantifier) = ParsePatternMatch(state);
+        (Expression? pattern, PatternEscape? escape, bool any, AggregateQuantifier? quantifier) = ParsePatternMatch(state);
         return new Like(expr, negated, pattern, escape, any) { Quantifier = quantifier };
     }
 

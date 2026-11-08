@@ -126,10 +126,7 @@ internal static class PgStringDecoders
             else if (escaped == 'x' && position < source.Length && char.IsAsciiHexDigit((char)source[position]))
             {
                 int digits = position + 1 < source.Length && char.IsAsciiHexDigit((char)source[position + 1]) ? 2 : 1;
-                if (!Utf8Parser.TryParse(source.Slice(position, digits), out byte hexadecimal, out int consumed, 'x') || consumed != digits)
-                {
-                    throw new FormatException();
-                }
+                byte hexadecimal = byte.Parse(source.Slice(position, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
                 position += digits;
                 decoded.Add(hexadecimal);
             }

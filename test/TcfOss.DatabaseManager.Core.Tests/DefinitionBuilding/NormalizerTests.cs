@@ -634,13 +634,22 @@ public class NormalizerTests
     [InlineData("f(a) OVER (PARTITION BY b ORDER BY c)", "f(`a`) OVER (PARTITION BY `b` ORDER BY `c`)")]
     [InlineData("f(a) OVER ()", "f(`a`) OVER ()")]
     [InlineData("f(a) OVER (ORDER BY b)", "f(`a`) OVER (ORDER BY `b`)")]
+    [InlineData("ARRAY(SELECT a AS x)", "ARRAY(SELECT `a` AS `x`)")]
+    [InlineData("(ROW(a)).*", "(ROW(`a`)).*")]
+    [InlineData("a OPERATOR(+) b", "`a` OPERATOR(+) `b`")]
+    [InlineData("OPERATOR(+) a", "OPERATOR(+) `a`")]
+    [InlineData("value NOT SIMILAR TO ANY(pattern) ESCAPE '!'", "`value` NOT SIMILAR TO ANY (`pattern`) ESCAPE '!'")]
     public void NormalizeExpression_TraversesAdditionalExpressionTypes(string sql, string expected)
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
     }
 
-    [Fact]
-    public void NormalizeExpression_TraversesArrayRowAndCompositeExpressions()
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public void NormalizeExpression_TraversesArrayRowAndCompositeExpressions(bool hasLowerBound, bool hasUpperBound)
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
@@ -648,14 +657,16 @@ public class NormalizerTests
             new ArraySubscript(
                 new ArrayConstructor.Elements([new SingleIdentifier(new Identifier("value"))]),
                 [new ArraySubscriptDimension.Slice(
-                    new SingleIdentifier(new Identifier("lower_bound")),
-                    new SingleIdentifier(new Identifier("upper_bound")))]),
+                    hasLowerBound ? new SingleIdentifier(new Identifier("lower_bound")) : null,
+                    hasUpperBound ? new SingleIdentifier(new Identifier("upper_bound")) : null)]),
             new Identifier("field_name"));
 
         Expression actual = normalizer.NormalizeExpressionNoFlatten(expression);
         Expression row = normalizer.NormalizeExpression(new RowConstructor([new SingleIdentifier(new Identifier("value"))]));
 
-        Assert.Equal("ARRAY[`value`][`lower_bound`:`upper_bound`].`field_name`", actual.ToSql());
+        string lower = hasLowerBound ? "`lower_bound`" : "";
+        string upper = hasUpperBound ? "`upper_bound`" : "";
+        Assert.Equal($"ARRAY[`value`][{lower}:{upper}].`field_name`", actual.ToSql());
         Assert.Equal("ROW(`value`)", row.ToSql());
     }
 
@@ -691,6 +702,9 @@ public class NormalizerTests
     [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "`value` SIMILAR TO `pattern` ESCAPE `escape_value`")]
     [InlineData("value LIKE ALL(pattern)", "`value` LIKE ALL(`pattern`)")]
     [InlineData("value ILIKE SOME(pattern)", "`value` ILIKE SOME(`pattern`)")]
+    [InlineData("value LIKE pattern ESCAPE '!'", "`value` LIKE `pattern` ESCAPE '!'")]
+    [InlineData("value ILIKE pattern ESCAPE '!'", "`value` ILIKE `pattern` ESCAPE '!'")]
+    [InlineData("value SIMILAR TO pattern ESCAPE '!'", "`value` SIMILAR TO `pattern` ESCAPE '!'")]
     public void NormalizeExpression_PreservesPredicateModifiers(string sql, string expected)
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: true));

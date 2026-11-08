@@ -679,6 +679,23 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("=", "ANY")]
+    [InlineData("<>", "ALL")]
+    [InlineData("<", "SOME")]
+    [InlineData("<=", "ANY")]
+    [InlineData(">", "ALL")]
+    [InlineData(">=", "SOME")]
+    public void QuantifiedComparisons_PreserveAllComparisonOperators(string op, string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a {op} {quantifier}(SELECT result FROM items)"));
+
+        Assert.Equal(op, expression.Operator.ToString());
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
     [InlineData("SELECT value ISNULL AND other")]

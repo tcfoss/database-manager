@@ -359,6 +359,25 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
         Assert.IsType<MsPrecedenceManager>(new MsParser().PrecedenceManager);
         Assert.Equal("ISNULL(value, other)", ParseExpression("ISNULL(value, other)").ToSql());
+        var pattern = Assert.IsType<Core.Expressions.Like>(ParseExpression("a LIKE b = c"));
+        Assert.IsType<Core.Expressions.BinaryOperator>(pattern.Pattern);
+    }
+
+    [Theory]
+    [InlineData("=", "ANY")]
+    [InlineData("<>", "ALL")]
+    [InlineData("<", "SOME")]
+    [InlineData("<=", "ANY")]
+    [InlineData(">", "ALL")]
+    [InlineData(">=", "SOME")]
+    public void QuantifiedComparisons_PreserveAllComparisonOperators(string op, string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a {op} {quantifier}(SELECT result FROM items)"));
+
+        Assert.Equal(op, expression.Operator.ToString());
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
     }
 
     [Theory]

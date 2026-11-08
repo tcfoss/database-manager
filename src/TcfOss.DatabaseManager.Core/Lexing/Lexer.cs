@@ -694,9 +694,8 @@ public class Lexer<TRunState> : ILexer
         {
             return null;
         }
-        Token keyword = TokenizeIdentifierOrKeyword(ref candidate);
-        if (keyword is not Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word
-            || !word.Value.Equals("UESCAPE", StringComparison.OrdinalIgnoreCase))
+        Word keyword = TokenizeIdentifierOrKeyword(ref candidate);
+        if (keyword.Keyword != Keyword.UESCAPE)
         {
             return null;
         }
