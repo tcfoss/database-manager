@@ -356,7 +356,7 @@ public class MsParser : Parser
         state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.TRY);
         var tryEnder = new EndSubstatements()
         {
-            GetFinished = s => s.PeekKeywordsAllEqual(Keyword.END, Keyword.TRY),
+            GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.TRY),
             GetEofException = s => s.ExpectedException("END TRY"),
         };
         SqlValueList<Statement> tryStatements = Parse(state, tryEnder);
@@ -364,7 +364,7 @@ public class MsParser : Parser
         state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.CATCH);
         var catchEnder = new EndSubstatements()
         {
-            GetFinished = s => s.PeekKeywordsAllEqual(Keyword.END, Keyword.CATCH),
+            GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.CATCH),
             GetEofException = s => s.ExpectedException("END CATCH"),
         };
         SqlValueList<Statement> catchStatements = Parse(state, catchEnder);

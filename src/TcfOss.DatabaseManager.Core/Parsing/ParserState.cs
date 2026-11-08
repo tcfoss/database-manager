@@ -90,7 +90,7 @@ public class ParserState
         return (Peek() as Word)?.Keyword == keyword;
     }
 
-    public bool PeekKeywordsAllEqual(params ReadOnlySpan<Keyword> keywords)
+    public bool PeekKeywordsAll(params ReadOnlySpan<Keyword> keywords)
     {
         ReadOnlySpan<Token> foundKeywords = PeekN(keywords.Length);
         if (keywords.Length != foundKeywords.Length)
@@ -205,12 +205,12 @@ public class ParserState
             return Keyword.undefined;
         }
 
-        for (int i = 0; i < keywords.Length; i++)
+        foreach (var kw in keywords)
         {
-            if (keywords[i] == token.Keyword)
+            if (kw == token.Keyword)
             {
                 Next();
-                return keywords[i];
+                return kw;
             }
         }
 
@@ -230,53 +230,63 @@ public class ParserState
         int position = _position;
         foreach (KeywordSearchCondition keywordCondition in keywords)
         {
-            if (keywordCondition is KeywordSearchCondition.RequiredKeyword required)
+            switch (keywordCondition)
             {
-                Keyword keyword = required.Keyword;
-                bool found = ParseKeyword(keyword);
-                if (found)
+                case KeywordSearchCondition.RequiredKeyword required:
                 {
-                    (keywordsFound ??= []).Add(keyword);
-                }
-                else
-                {
-                    _position = position;
-                    keywordsFound?.Clear();
-                    return keywordsFound ?? [];
-                }
-            }
-            else if (keywordCondition is KeywordSearchCondition.OneOfKeywords oneOf)
-            {
-                Keyword[] currKeywords = oneOf.Keywords;
-                Keyword result = ParseKeywordsAny(currKeywords);
-                if (result != Keyword.undefined)
-                {
-                    (keywordsFound ??= []).Add(result);
-                }
-                else
-                {
-                    _position = position;
-                    keywordsFound?.Clear();
-                    return keywordsFound ?? [];
-                }
+                    Keyword keyword = required.Keyword;
+                    bool found = ParseKeyword(keyword);
+                    if (found)
+                    {
+                        (keywordsFound ??= []).Add(keyword);
+                    }
+                    else
+                    {
+                        _position = position;
+                        keywordsFound?.Clear();
+                        return keywordsFound ?? [];
+                    }
 
-            }
-            else if (keywordCondition is KeywordSearchCondition.OptionalKeyword optional)
-            {
-                Keyword currKeyword = optional.Keyword;
-                bool found = ParseKeyword(currKeyword);
-                if (found)
-                {
-                    (keywordsFound ??= []).Add(currKeyword);
+                    break;
                 }
-            }
-            else if (keywordCondition is KeywordSearchCondition.OptionalKeywordSequence seq)
-            {
-                Keyword[] currKeywords = seq.Keywords;
-                bool found = ParseKeywordsAll(currKeywords);
-                if (found && currKeywords.Length > 0)
+                case KeywordSearchCondition.OneOfKeywords oneOf:
                 {
-                    (keywordsFound ??= []).AddRange(currKeywords);
+                    Keyword[] currKeywords = oneOf.Keywords;
+                    Keyword result = ParseKeywordsAny(currKeywords);
+                    if (result != Keyword.undefined)
+                    {
+                        (keywordsFound ??= []).Add(result);
+                    }
+                    else
+                    {
+                        _position = position;
+                        keywordsFound?.Clear();
+                        return keywordsFound ?? [];
+                    }
+
+                    break;
+                }
+                case KeywordSearchCondition.OptionalKeyword optional:
+                {
+                    Keyword currKeyword = optional.Keyword;
+                    bool found = ParseKeyword(currKeyword);
+                    if (found)
+                    {
+                        (keywordsFound ??= []).Add(currKeyword);
+                    }
+
+                    break;
+                }
+                case KeywordSearchCondition.OptionalKeywordSequence seq:
+                {
+                    Keyword[] currKeywords = seq.Keywords;
+                    bool found = ParseKeywordsAll(currKeywords);
+                    if (found && currKeywords.Length > 0)
+                    {
+                        (keywordsFound ??= []).AddRange(currKeywords);
+                    }
+
+                    break;
                 }
             }
         }

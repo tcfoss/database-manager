@@ -1,8 +1,8 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Expressions;
 
@@ -30,7 +30,6 @@ public record FunctionCall(ObjectName Name) : Expression
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
-        // TODO: What if Name is a user-defined function?
         if (Name.Values is [{ QuoteStyle: QuoteStyle.None }] && manager.FunctionNameProvider.IsBuiltInFunction(Name.Values[0].Name))
         {
             writer.Write(Name.Values[0]);

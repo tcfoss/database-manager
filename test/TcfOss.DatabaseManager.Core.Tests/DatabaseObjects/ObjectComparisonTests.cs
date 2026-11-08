@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 

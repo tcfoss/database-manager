@@ -1,10 +1,10 @@
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -778,13 +778,13 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("(ARRAY[items.value])[items.index:items.bound]", new string[] { "items.value", "items.index", "items.bound" })]
-    [InlineData("(items.value).field", new string[] { "items.value" })]
-    [InlineData("(items.value).*", new string[] { "items.value" })]
-    [InlineData("items.value[items.index][items.lower:items.upper].field", new string[] { "items.value", "items.index", "items.lower", "items.upper" })]
-    [InlineData("ARRAY[[items.value], [items.other]]", new string[] { "items.value", "items.other" })]
-    [InlineData("ROW((items.value).*, items.other)", new string[] { "items.value", "items.other" })]
-    [InlineData("ARRAY(SELECT items.value FROM items)", new string[] { "(SELECT items.value FROM items)" })]
+    [InlineData("(ARRAY[items.value])[items.index:items.bound]", new[] { "items.value", "items.index", "items.bound" })]
+    [InlineData("(items.value).field", new[] { "items.value" })]
+    [InlineData("(items.value).*", new[] { "items.value" })]
+    [InlineData("items.value[items.index][items.lower:items.upper].field", new[] { "items.value", "items.index", "items.lower", "items.upper" })]
+    [InlineData("ARRAY[[items.value], [items.other]]", new[] { "items.value", "items.other" })]
+    [InlineData("ROW((items.value).*, items.other)", new[] { "items.value", "items.other" })]
+    [InlineData("ARRAY(SELECT items.value FROM items)", new[] { "(SELECT items.value FROM items)" })]
     public void ArrayRowAndCompositeExpressions_CollectOnlyOperandReferences(string sql, string[] expectedOperands)
     {
         Expression expression = ParseExpression(sql);
@@ -811,6 +811,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("(f())[1]")]
+    [InlineData("(SELECT ARRAY[1])[1]")]
     [InlineData("(f()).field")]
     [InlineData("(ARRAY[1, 2])[1]")]
     [InlineData("(ROW(1)).field")]
@@ -991,9 +992,9 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("items.doc OPERATOR(ops.@>) items.other", new string[] { "items.doc", "items.other" })]
-    [InlineData("OPERATOR(ops.@) items.value", new string[] { "items.value" })]
-    [InlineData("items.doc @> ANY(ARRAY[items.other])", new string[] { "items.doc", "items.other" })]
+    [InlineData("items.doc OPERATOR(ops.@>) items.other", new[] { "items.doc", "items.other" })]
+    [InlineData("OPERATOR(ops.@) items.value", new[] { "items.value" })]
+    [InlineData("items.doc @> ANY(ARRAY[items.other])", new[] { "items.doc", "items.other" })]
     public void PostgresOperators_ReferenceOperandsButNotOperatorSchemas(string sql, string[] operands)
     {
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
@@ -1018,6 +1019,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("doc ->")]
     [InlineData("doc OPERATOR(app.) value")]
     [InlineData("doc OPERATOR(app.name) value")]
+    [InlineData("OPERATOR(app.AND) value")]
     [InlineData("doc OPERATOR(app.schema.+) value")]
     [InlineData("doc OPERATOR(app.::) value")]
     [InlineData("doc OPERATOR(app.@> value")]
@@ -1429,7 +1431,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void PatternEscapeAndQuantifiedOperators_PreserveGrammarGrouping()
     {
         var pattern = Assert.IsType<ILike>(ParseExpression("value ILIKE pattern ESCAPE '!' || suffix"));
-        var escape = Assert.IsType<Core.Statements.Components.PatternEscape.Expression>(pattern.Escape);
+        var escape = Assert.IsType<PatternEscape.Expression>(pattern.Escape);
         Assert.IsType<BinaryOperator>(escape.Value);
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
         Assert.Equal(pattern.Expression.GetReferencedItems(context)

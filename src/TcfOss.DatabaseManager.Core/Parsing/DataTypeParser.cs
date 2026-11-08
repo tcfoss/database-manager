@@ -102,7 +102,6 @@ public class DataTypeParser(Parser parser)
     {
         if (state.Peek() is Word word
             && DateTimeUnit.TryParse(word.Keyword.ToString(), out DateTimeUnit? field)
-            && field is not null
             && (field == DateTimeUnit.Year || field == DateTimeUnit.Month || field == DateTimeUnit.Day
                 || field == DateTimeUnit.Hour || field == DateTimeUnit.Minute || field == DateTimeUnit.Second))
         {

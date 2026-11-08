@@ -340,7 +340,7 @@ public class Parser : IParser
 
     protected virtual Statement ParseBegin(ParserState state)
     {
-        if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
+        if (state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
             if (!state.Context.HasFlag(ParseContext.BeginAtomic))
             {

@@ -329,6 +329,7 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT OPERATOR(+) value")]
     [InlineData("SELECT value <-> other")]
     public void PostgresGeneralOperators_AreRejected(string sql)
     {
@@ -378,6 +379,32 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Equal(quantifier, expression.Quantifier.ToString());
         Assert.IsType<Core.Expressions.Subquery>(expression.Right);
         Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("ANY")]
+    [InlineData("ALL")]
+    [InlineData("SOME")]
+    public void QuantifiedComparisons_ParseScalarOperands(string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a = {quantifier}(1)"));
+
+        Assert.Equal(Core.BuiltIn.BinaryOperator.Equal, expression.Operator);
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.LiteralValue>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Fact]
+    public void AtTimeZone_ParsesAndRoundTripsWithoutPostgresOperatorSyntax()
+    {
+        const string sql = "stamp AT TIME ZONE 'UTC'";
+        var expression = Assert.IsType<Core.Expressions.AtTimeZone>(ParseExpression(sql));
+
+        Assert.False(new MsParser().SupportsPostgresOperatorSyntax);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
     }
 
     [Theory]

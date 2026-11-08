@@ -833,7 +833,7 @@ public class DdlParser
         SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: true);
 
         StatementFunctionReturn? returnType = null;
-        if (!state.PeekKeywordsAllEqual(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
+        if (!state.PeekKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
             && state.ParseKeyword(Keyword.RETURNS))
         {
             returnType = ParseFunctionReturn(state);
@@ -955,7 +955,7 @@ public class DdlParser
                 || (state.PeekNth(2) is Word { Keyword: Keyword.BEGIN }
                     && state.PeekNth(3) is Word { Keyword: Keyword.ATOMIC });
         }
-        return state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC)
+        return state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC)
             || (state.PeekKeyword(Keyword.AS) && state.PeekNth(1) is StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral)
             || state.Peek() is Word
             {
@@ -963,7 +963,7 @@ public class DdlParser
                 or Keyword.VOLATILE or Keyword.STRICT or Keyword.CALLED or Keyword.SECURITY
                 or Keyword.EXTERNAL or Keyword.PARALLEL or Keyword.COST or Keyword.ROWS or Keyword.SET
             }
-            || state.PeekKeywordsAllEqual(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT);
+            || state.PeekKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT);
     }
 
     protected virtual ParsedRoutineTail ParseRoutineTail(ParserState state, bool isFunction)
@@ -1171,7 +1171,7 @@ public class DdlParser
                 body = _p.ParseStatement(state);
             }
         }
-        else if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
+        else if (state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
             using (state.EnterContext(ParseContext.BeginAtomic))
             {

@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
@@ -96,7 +97,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return functionCall with
         {
             Arguments = newArgs,
-            Over = functionCall.Over is { } window ? window with
+            Over = functionCall.Over is { } window ? new WindowSpec
             {
                 PartitionBy = window.PartitionBy == null ? null : [.. window.PartitionBy.Select(expression => NormalizeExpression(expression, inSelect, flatten))],
                 OrderBy = NormalizeSelectOrderBy(window.OrderBy, inSelect, flatten)
@@ -168,7 +169,8 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
     private PatternEscape? NormalizePatternEscape(PatternEscape? escape, bool inSelect, bool flatten)
     {
         return escape is PatternEscape.Expression expression
-            ? expression with { Value = NormalizeExpression(expression.Value, inSelect, flatten) } : escape;
+            ? new PatternEscape.Expression(NormalizeExpression(expression.Value, inSelect, flatten))
+            : escape;
     }
 
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
@@ -215,12 +217,8 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Array = NormalizeExpression(subscript.Array, inSelect, flatten),
                 Dimensions = [.. subscript.Dimensions.Select(dimension => dimension switch
                 {
-                    ArraySubscriptDimension.Index index => (ArraySubscriptDimension)(index with { Expression = NormalizeExpression(index.Expression, inSelect, flatten) }),
-                    ArraySubscriptDimension.Slice slice => slice with
-                    {
-                        LowerBound = slice.LowerBound == null ? null : NormalizeExpression(slice.LowerBound, inSelect, flatten),
-                        UpperBound = slice.UpperBound == null ? null : NormalizeExpression(slice.UpperBound, inSelect, flatten)
-                    },
+                    ArraySubscriptDimension.Index index => new ArraySubscriptDimension.Index(NormalizeExpression(index.Expression, inSelect, flatten)),
+                    ArraySubscriptDimension.Slice slice => new ArraySubscriptDimension.Slice(NormalizeNullableExpression(slice.LowerBound, inSelect, flatten), NormalizeNullableExpression(slice.UpperBound, inSelect, flatten)),
                     _ => dimension
                 })]
             },
@@ -298,6 +296,11 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             LiteralValue or TypedString or PositionalParameter or PgIntervalLiteral => expr,
             _ => NormalizeOtherExpression(expr)
         };
+    }
+
+    private Expression? NormalizeNullableExpression(Expression? expr, bool inSelect, bool flatten)
+    {
+        return expr is null ? null : NormalizeExpression(expr, inSelect, flatten);
     }
 
     /// <inheritdoc />

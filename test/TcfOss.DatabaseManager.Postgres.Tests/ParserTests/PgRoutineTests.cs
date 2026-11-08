@@ -302,7 +302,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         ParserState state = GetState("CREATE PROCEDURE p() BEGIN ATOMIC *; END; BEGIN ATOMIC END");
         var parser = new PgParser();
         Assert.ThrowsAny<ParseException>(() => parser.ParseStatement(state));
-        while (state.Peek() is not Eof && !state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
+        while (state.Peek() is not Eof && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
             state.Next();
         }

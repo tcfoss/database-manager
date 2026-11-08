@@ -636,6 +636,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
     [Theory]
     [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT OPERATOR(+) value")]
     [InlineData("SELECT value <-> other")]
     public void PostgresGeneralOperators_AreRejectedBySharedMySqlMariaDbParser(string sql)
     {
@@ -692,6 +693,20 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Equal(op, expression.Operator.ToString());
         Assert.Equal(quantifier, expression.Quantifier.ToString());
         Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("ANY")]
+    [InlineData("ALL")]
+    [InlineData("SOME")]
+    public void QuantifiedComparisons_ParseScalarOperands(string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a = {quantifier}(1)"));
+
+        Assert.Equal(Core.BuiltIn.BinaryOperator.Equal, expression.Operator);
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.LiteralValue>(expression.Right);
         Assert.Equal(expression, ParseExpression(expression.ToSql()));
     }
 

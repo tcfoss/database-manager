@@ -4,14 +4,16 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
-using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using BinaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.BinaryOperator;
 using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
+using DuplicateTreatment = TcfOss.DatabaseManager.Core.Expressions.Attributes.DuplicateTreatment;
+using FunctionArgumentOperator = TcfOss.DatabaseManager.Core.Expressions.Attributes.FunctionArgumentOperator;
 using UnaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.UnaryOperator;
 using UnaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.UnaryOperator;
 
@@ -269,15 +271,7 @@ public class ExpressionParser
             Keyword.SOME => AggregateQuantifier.Some,
             _ => null
         };
-        Expression right;
-        if (quantifier != null)
-        {
-            right = ParseCompleteQuantifiedOperand(state);
-        }
-        else
-        {
-            right = ParseSubExpression(state, precedence);
-        }
+        Expression right = quantifier != null ? ParseCompleteQuantifiedOperand(state) : ParseSubExpression(state, precedence);
         return new PgBinaryOperator(left, reference, right) { Quantifier = quantifier };
     }
 
@@ -463,8 +457,6 @@ public class ExpressionParser
             return new CompoundIdentifier(idParts);
         }
 
-        // TODO: Skipped Stuff Here
-
         if (word.QuoteStyle == QuoteStyle.None && _p.AllowsFunctionCallWithoutParentheses(word.Value))
         {
             return new FunctionCall(new ObjectName(new[] { word.ToIdentifier(state.SourceId) }))
@@ -478,10 +470,7 @@ public class ExpressionParser
     private Expression ParsePositionalParameter(ParserState state)
     {
         var token = (PositionalParameterToken)state.Next();
-        if (!int.TryParse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture, out int number))
-        {
-            throw ParserState.ExpectedCategoryException("positional_parameter", token);
-        }
+        int number = int.Parse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture);
         var parameter = new PositionalParameter(number)
         {
             Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length)
@@ -559,8 +548,7 @@ public class ExpressionParser
 
         if (state.ParseKeywordsAll(Keyword.ORDER, Keyword.BY))
         {
-            clauses ??= [];
-            clauses.Add(new FunctionArgumentClause.OrderBy(state.ParseCommaSeparated(_p.ComponentParser.ParseOrderBy)));
+            clauses = [new FunctionArgumentClause.OrderBy(state.ParseCommaSeparated(_p.ComponentParser.ParseOrderBy))];
         }
 
         if (state.ParseKeyword(Keyword.LIMIT))

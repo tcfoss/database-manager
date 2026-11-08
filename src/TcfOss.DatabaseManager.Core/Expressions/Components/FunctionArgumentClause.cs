@@ -1,9 +1,8 @@
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Components;
+namespace TcfOss.DatabaseManager.Core.Expressions.Components;
 
 public abstract record FunctionArgumentClause() : IWriteSql
 {
@@ -12,7 +11,7 @@ public abstract record FunctionArgumentClause() : IWriteSql
 
     // TODO: IgnoreOrRespectNulls
 
-    public record OrderBy(SqlValueList<Components.OrderBy> OrderByExpressions) : FunctionArgumentClause
+    public record OrderBy(SqlValueList<Statements.Components.OrderBy> OrderByExpressions) : FunctionArgumentClause
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -21,7 +20,7 @@ public abstract record FunctionArgumentClause() : IWriteSql
 
         public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
         {
-            foreach (Components.OrderBy orderBy in OrderByExpressions)
+            foreach (Statements.Components.OrderBy orderBy in OrderByExpressions)
             {
                 foreach (ItemRef item in orderBy.GetReferencedItems(context))
                 {

@@ -139,7 +139,10 @@ internal static class PgStringDecoders
                     {
                         throw new FormatException();
                     }
-                    scalar = CombineSurrogatePair(scalar, ReadEscapeUnicode(source, ref position, source[position++]));
+
+                    byte marker = source[position];
+                    position++;
+                    scalar = CombineSurrogatePair(scalar, ReadEscapeUnicode(source, ref position, marker));
                 }
                 int written = ToUnicodeScalar(scalar).EncodeToUtf8(unicodeBytes);
                 foreach (byte value in unicodeBytes[..written])

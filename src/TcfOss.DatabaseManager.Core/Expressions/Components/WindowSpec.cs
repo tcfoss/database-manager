@@ -1,9 +1,9 @@
-using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Components;
+namespace TcfOss.DatabaseManager.Core.Expressions.Components;
 
 /// <summary>
 /// Inline window specification for a window function, i.e. the body of an

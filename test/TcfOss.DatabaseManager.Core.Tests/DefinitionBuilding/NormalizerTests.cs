@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;

@@ -1,9 +1,8 @@
-using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Components;
+namespace TcfOss.DatabaseManager.Core.Expressions.Components;
 
 public abstract record ArraySubscriptDimension : IWriteSql
 {
