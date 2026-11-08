@@ -6,6 +6,9 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Tests;
+using TcfOss.DatabaseManager.Postgres.Lexing;
+using TcfOss.DatabaseManager.Postgres.Parsing;
 
 namespace TcfOss.DatabaseManager.Postgres.Tests.IO.Formatting;
 
@@ -136,5 +139,224 @@ public class FormatComponentsTests
         string actual = formatter.GetFormatted($"CREATE TABLE items (label TEXT COLLATE {collation} NOT NULL)");
 
         Assert.Contains("COLLATE " + expected, actual);
+    }
+
+    [Theory]
+    [InlineData("app.locale", "\"app\".\"locale\"")]
+    [InlineData("\"C\"", "\"C\"")]
+    [InlineData("\"App\".\"Locale\"", "\"App\".\"Locale\"")]
+    public void ExpressionCollations_FormatOperandAndCollationNames(string collation, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted($"SELECT (items.label || 'suffix') COLLATE {collation} FROM items");
+
+        Assert.Contains("(\"items\".\"label\" || 'suffix') COLLATE " + expected, actual);
+    }
+
+    [Theory]
+    [InlineData("E'it\\'s\\n\\\\'")]
+    [InlineData("E'\\u00e9'")]
+    public void EscapeStrings_FormattingPreservesRawLiteral(string literal)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted("SELECT " + literal);
+
+        Assert.Contains(literal, actual);
+    }
+
+    [Theory]
+    [InlineData("it''s\\00e9\\\\", null, "U&'it''s\\00e9\\\\'")]
+    [InlineData("it''s!00e9!!", '!', "U&'it''s!00e9!!' UESCAPE '!'")]
+    public void UnicodeStrings_FormatWithoutRewritingEscapes(string raw, char? escape, string expected)
+    {
+        var value = new Value.UnicodeString(raw) { EscapeCharacter = escape };
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        ((IWriteSql)value).FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+        Assert.Equal(expected, value.ToSql());
+    }
+
+    [Theory]
+    [InlineData("B'00101'")]
+    [InlineData("X'0aF'")]
+    public void BitStrings_FormattingPreservesRadixAndRawDigits(string literal)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted("SELECT " + literal);
+
+        Assert.Contains(literal, actual);
+    }
+
+    [Theory]
+    [InlineData("SELECT $1", "$1")]
+    [InlineData("SELECT $001::INT", "$1::INT")]
+    [InlineData("SELECT $1 + $2", "$1 + $2")]
+    public void PositionalParameters_FormattingKeepsDollarNotation(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string actual = formatter.GetFormatted(sql);
+
+        Assert.Contains(expected, actual);
+    }
+    [Theory]
+    [InlineData("0x_Ff_01")]
+    [InlineData("0O_7_5_5")]
+    [InlineData("0B_1_0_1")]
+    [InlineData("1_000.2_5")]
+    [InlineData(".2_5")]
+    [InlineData("1_0e+1_2")]
+    public void ExtendedNumbers_FormattingPreservesPrefixAndSeparatorSpelling(string literal)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string actual = formatter.GetFormatted("SELECT " + literal);
+        Assert.Contains(literal, actual);
+    }
+
+    [Theory]
+    [InlineData("ARRAY[]", "ARRAY[]")]
+    [InlineData("ARRAY[[value], [other]]", "ARRAY[[\"value\"], [\"other\"]]")]
+    [InlineData("ARRAY[ARRAY[value]]", "ARRAY[ARRAY[\"value\"]]")]
+    [InlineData("ARRAY(VALUES (1), (2))", "ARRAY(VALUES (1), (2))")]
+    [InlineData("arr[lower:upper][index]", "\"arr\"[\"lower\":\"upper\"][\"index\"]")]
+    [InlineData("arr[:][1:][:2]", "\"arr\"[:][1:][:2]")]
+    [InlineData("(item).field[1].name", "(\"item\").\"field\"[1].\"name\"")]
+    [InlineData("arr[(item).lo:hi]", "\"arr\"[(\"item\").\"lo\":\"hi\"]")]
+    [InlineData("ROW(value, 1)", "ROW(\"value\", 1)")]
+    [InlineData("ROW(items.*, (item).*)", "ROW(items.*, (\"item\").*)")]
+    public void ArrayRowAndCompositeExpressions_FormatRecursively(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString().NormalizeWhitespace());
+    }
+
+    [Theory]
+    [InlineData("doc ->> 'name'", "\"doc\" ->> 'name'")]
+    [InlineData("doc ?| ARRAY[key]", "\"doc\" ?| ARRAY[\"key\"]")]
+    [InlineData("doc OPERATOR(app.@>) other", "\"doc\" OPERATOR(\"app\".@>) \"other\"")]
+    [InlineData("doc OPERATOR(@>) other", "\"doc\" OPERATOR(@>) \"other\"")]
+    [InlineData("doc @> ANY(ARRAY[other])", "\"doc\" @> ANY(ARRAY[\"other\"])")]
+    [InlineData("@ value", "@ \"value\"")]
+    [InlineData("OPERATOR(app.@) value", "OPERATOR(\"app\".@) \"value\"")]
+    public void PostgresOperators_FormatOperandsAndSchemaNames(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("INTERVAL '1 day'")]
+    [InlineData("INTERVAL(3) '1.234 seconds'")]
+    [InlineData("INTERVAL '1-2' YEAR TO MONTH")]
+    [InlineData("INTERVAL '2 03:04:05.678' DAY TO SECOND(3)")]
+    [InlineData("INTERVAL E'1\\x20day'")]
+    [InlineData("INTERVAL $duration$1 day$duration$")]
+    public void IntervalLiterals_FormatWithoutLosingModifiersOrLiteralSpelling(string sql)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(sql, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("items.left IS DISTINCT FROM items.right", "\"items\".\"left\" IS DISTINCT FROM \"items\".\"right\"")]
+    [InlineData("items.left IS NOT DISTINCT FROM items.right", "\"items\".\"left\" IS NOT DISTINCT FROM \"items\".\"right\"")]
+    [InlineData("items.value = ANY(ARRAY[items.other])", "\"items\".\"value\" = ANY(ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value <> ALL(ARRAY[items.other])", "\"items\".\"value\" <> ALL(ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME(ARRAY[\"items\".\"other\"])")]
+    public void RemainingComparisons_FormatOperandsRecursively(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("items.value = ANY(SELECT items.other FROM items)", "\"items\".\"value\" = ANY( SELECT \"items\".\"other\" FROM \"items\")")]
+    [InlineData("value LIKE ANY(SELECT pattern FROM items)", "\"value\" LIKE ANY( SELECT \"pattern\" FROM \"items\")")]
+    public void QuantifiedSubqueries_FormatOperandsRecursively(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString().NormalizeWhitespace());
+    }
+
+    [Theory]
+    [InlineData("!", " ESCAPE '!'")]
+    [InlineData("'", " ESCAPE ''''")]
+    public void PatternEscapeCharacter_FormatsLiteral(string value, string expected)
+    {
+        var escape = new PatternEscape.Character(value);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        escape.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("items.stamp AT LOCAL", "\"items\".\"stamp\" AT LOCAL")]
+    [InlineData("value BETWEEN SYMMETRIC lower AND upper", "\"value\" BETWEEN SYMMETRIC \"lower\" AND \"upper\"")]
+    [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "\"value\" NOT BETWEEN ASYMMETRIC \"lower\" AND \"upper\"")]
+    [InlineData("value BETWEEN lower AND upper", "\"value\" BETWEEN \"lower\" AND \"upper\"")]
+    [InlineData("items.a ^ items.b", "\"items\".\"a\" ^ \"items\".\"b\"")]
+    [InlineData("value LIKE ALL(ARRAY[pattern])", "\"value\" LIKE ALL(ARRAY[\"pattern\"])")]
+    [InlineData("value ILIKE SOME(ARRAY[pattern])", "\"value\" ILIKE SOME(ARRAY[\"pattern\"])")]
+    [InlineData("value LIKE pattern ESCAPE escape_value", "\"value\" LIKE \"pattern\" ESCAPE \"escape_value\"")]
+    [InlineData("value ILIKE pattern ESCAPE '!' || suffix", "\"value\" ILIKE \"pattern\" ESCAPE '!' || \"suffix\"")]
+    [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "\"value\" SIMILAR TO \"pattern\" ESCAPE \"escape_value\"")]
+    [InlineData("value SIMILAR TO pattern", "\"value\" SIMILAR TO \"pattern\"")]
+    [InlineData("value NOT SIMILAR TO pattern", "\"value\" NOT SIMILAR TO \"pattern\"")]
+    public void Predicates_FormatOperandsAndModifiers(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("LIKE")]
+    [InlineData("ILIKE")]
+    [InlineData("SIMILAR TO")]
+    public void KitchenSinkPatterns_FormatLegacyAnyAndCharacterEscape(string op)
+    {
+        var state = new Core.Parsing.ParserState([.. new Core.Lexing.GenericLexer().Tokenize($"value NOT {op} ANY(pattern) ESCAPE '!'")]);
+        var expression = new Core.Parsing.Parser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal($"\"value\" NOT {op} ANY (\"pattern\") ESCAPE '!'", writer.ToString());
     }
 }

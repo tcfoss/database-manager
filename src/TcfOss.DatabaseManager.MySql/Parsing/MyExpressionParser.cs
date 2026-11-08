@@ -61,6 +61,16 @@ public class MyExpressionParser(MyParser parser)
         return new MatchAgainst(columns, matchValue, modifier);
     }
 
+    protected override Expression ParseQuantifiedOperand(ParserState state, short precedence)
+    {
+        return ParseLegacyQuantifiedOperand(state, precedence);
+    }
+
+    protected override bool SupportsQuantifiedOperator(BinaryOperatorOp op)
+    {
+        return IsComparisonOperator(op);
+    }
+
     protected override BinaryOperatorOp? GetBinaryOperator(Token token)
     {
         return token is DoublePipe ? BinaryOperatorOp.Or : base.GetBinaryOperator(token);

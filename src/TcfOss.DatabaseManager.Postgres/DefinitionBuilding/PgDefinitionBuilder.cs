@@ -258,7 +258,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
 
     private static float NormalizeRoutineEstimate(Value.Number number, string option, SourceRef sourceRef)
     {
-        if (!float.TryParse(number.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float estimate)
+        if (!float.TryParse(number.DecimalText, NumberStyles.Float, CultureInfo.InvariantCulture, out float estimate)
             || !float.IsFinite(estimate) || estimate <= 0)
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"{option} {number.Value}", sourceRef);
@@ -414,6 +414,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             string? comment = pending.Statement.Comment switch
             {
                 Value.SingleQuotedString literal => literal.Value.Replace("''", "'", StringComparison.Ordinal),
+                Value.EscapeString literal => literal.DecodedValue,
+                Value.UnicodeString literal => literal.DecodedValue,
                 Value.DollarQuotedString literal => literal.Value,
                 Value.Null => null,
                 _ => throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "non-string COMMENT ON value", pending.Source)

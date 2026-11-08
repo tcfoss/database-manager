@@ -24,9 +24,12 @@ public class ValueParser
             },
             NumericLiteral n => new Value.Number(n.Value, n.IsLong),
             StringLiteral sl => new Value.SingleQuotedString(sl.Value),
+            EscapeStringLiteral sl => ParseEscapeString(sl),
+            UnicodeStringLiteral sl => ParseUnicodeString(sl),
             DollarQuotedStringLiteral sl => new Value.DollarQuotedString(sl.Value) { Tag = sl.Tag },
             NationalStringLiteral nsl => new Value.NationalStringLiteral(nsl.Value),
             HexStringLiteral hsl => new Value.HexString(hsl.Value),
+            BitStringLiteral bit => ParseBitString(bit),
             _ => throw ParserState.ExpectedCategoryException("literal_value", token),
         };
     }
@@ -38,6 +41,8 @@ public class ValueParser
         return token switch
         {
             StringLiteral s => s.Value,
+            EscapeStringLiteral s => ParseEscapeString(s).DecodedValue,
+            UnicodeStringLiteral s => ParseUnicodeString(s).DecodedValue,
             DollarQuotedStringLiteral s => s.Value,
             _ => throw ParserState.ExpectedCategoryException("literal_string", token)
         };
@@ -51,9 +56,51 @@ public class ValueParser
         {
             Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word => word.Value,
             StringLiteral s => s.Value,
+            EscapeStringLiteral s => ParseEscapeString(s).DecodedValue,
+            UnicodeStringLiteral s => ParseUnicodeString(s).DecodedValue,
             DollarQuotedStringLiteral s => s.Value,
             _ => throw ParserState.ExpectedCategoryException("literal_string", token)
         };
+    }
+
+    private static Value.EscapeString ParseEscapeString(EscapeStringLiteral token)
+    {
+        var value = new Value.EscapeString(token.Value);
+        try
+        {
+            _ = value.DecodedValue;
+        }
+        catch (FormatException)
+        {
+            throw ParserState.ExpectedCategoryException("escape_string", token);
+        }
+        return value;
+    }
+
+    private static Value.UnicodeString ParseUnicodeString(UnicodeStringLiteral token)
+    {
+        var value = new Value.UnicodeString(token.Value) { EscapeCharacter = token.EscapeCharacter };
+        try
+        {
+            _ = value.DecodedValue;
+        }
+        catch (FormatException)
+        {
+            throw ParserState.ExpectedCategoryException("unicode_string", token);
+        }
+        return value;
+    }
+
+    private static Value.BitString ParseBitString(BitStringLiteral token)
+    {
+        foreach (char digit in token.Value)
+        {
+            if (token.IsHexadecimal ? !char.IsAsciiHexDigit(digit) : digit is not ('0' or '1'))
+            {
+                throw ParserState.ExpectedCategoryException("bit_string", token);
+            }
+        }
+        return new Value.BitString(token.Value, token.IsHexadecimal);
     }
 
     private static (string Text, Token Start) ParseIntegerText(ParserState state, string category)
@@ -70,14 +117,8 @@ public class ValueParser
         {
             throw ParserState.ExpectedCategoryException(category, token);
         }
-        return (sign.Length == 0 ? number.Value : string.Concat(sign, number.Value), start);
-    }
-
-    private static ParseException IntegerParseFailure(string text, Token token, string category, long minimum, long maximum)
-    {
-        return BigInteger.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
-            ? new ParseException.ValueOutOfRange("integer", text, minimum, maximum, token.Location)
-            : ParserState.ExpectedCategoryException(category, token);
+        string text = number.GetDecimalText();
+        return (sign.Length == 0 ? text : string.Concat(sign, text), start);
     }
 
     public static int ParseLiteralInt(ParserState state)
@@ -97,11 +138,12 @@ public class ValueParser
         {
             throw ParserState.ExpectedCategoryException("literal_int", token);
         }
-        if (uint.TryParse(number.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint value))
+        string text = number.GetDecimalText();
+        if (uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint value))
         {
             return value;
         }
-        throw IntegerParseFailure(number.Value, token, "literal_int", uint.MinValue, uint.MaxValue);
+        throw IntegerParseFailure(text, token, "literal_int", uint.MinValue, uint.MaxValue);
     }
 
     public static long ParseLiteralLong(ParserState state)
@@ -117,10 +159,17 @@ public class ValueParser
     public static ulong ParseLiteralULong(ParserState state)
     {
         Token token = state.Next();
-        if (token is NumericLiteral number && ulong.TryParse(number.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong value))
+        if (token is NumericLiteral number && ulong.TryParse(number.GetDecimalText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong value))
         {
             return value;
         }
         throw ParserState.ExpectedCategoryException("literal_long", token);
+    }
+
+    private static ParseException IntegerParseFailure(string text, Token token, string category, long minimum, long maximum)
+    {
+        return BigInteger.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+            ? new ParseException.ValueOutOfRange("integer", text, minimum, maximum, token.Location)
+            : ParserState.ExpectedCategoryException(category, token);
     }
 }

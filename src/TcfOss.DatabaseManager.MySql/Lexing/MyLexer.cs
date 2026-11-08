@@ -11,6 +11,13 @@ namespace TcfOss.DatabaseManager.MySql.Lexing;
 public class MyLexer : Lexer<MyRunState>
 {
     protected override bool SupportDollarQuotedStrings => false;
+    protected override bool SupportEscapeStringLiterals => false;
+    protected override bool SupportUnicodeLiterals => false;
+    protected override bool SupportBitStringLiterals => false;
+    protected override bool SupportPositionalParameters => false;
+    protected override bool SupportNumericDigitSeparators => false;
+    protected override bool SupportNonDecimalNumericLiterals => false;
+    protected override bool SupportPostgresOperatorTokens => false;
     private static readonly SearchValues<char> s_identifierCharacters =
         SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$");
 

@@ -303,4 +303,92 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void PostgresExpressionCollations_AreRejected()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("SELECT label COLLATE app.locale FROM items"));
+    }
+
+    [Theory]
+    [InlineData("SELECT ARRAY[1, 2] + 1")]
+    [InlineData("SELECT ARRAY(SELECT 1)")]
+    [InlineData("SELECT arr[1:2] + 1")]
+    [InlineData("SELECT (item).field")]
+    [InlineData("SELECT (item).*")]
+    public void PostgresArrayAndCompositeExpressions_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void BracketedAliases_AreNotParsedAsArraySubscripts()
+    {
+        Assert.Equal("SELECT arr AS [1:2]", ParseStatement("SELECT arr[1:2]").ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT value <-> other")]
+    public void PostgresGeneralOperators_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void PostgresQuestionOperators_AreRejectedByLexer()
+    {
+        Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens("SELECT value ?| other"));
+    }
+
+    [Theory]
+    [InlineData("SELECT INTERVAL '1 day'")]
+    [InlineData("SELECT INTERVAL(3) '1.234 seconds'")]
+    [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
+    public void PostgresIntervalLiterals_AreRejected(string sql)
+    {
+        Assert.False(new MsParser().SupportsPostgresIntervalLiteralSyntax);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void Precedence_PreservesSqlServerOperatorBehavior()
+    {
+        var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a + b ^ c"));
+        Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseXor, expression.Operator);
+        Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
+        Assert.IsType<MsPrecedenceManager>(new MsParser().PrecedenceManager);
+        Assert.Equal("ISNULL(value, other)", ParseExpression("ISNULL(value, other)").ToSql());
+        var pattern = Assert.IsType<Core.Expressions.Like>(ParseExpression("a LIKE b = c"));
+        Assert.IsType<Core.Expressions.BinaryOperator>(pattern.Pattern);
+    }
+
+    [Theory]
+    [InlineData("=", "ANY")]
+    [InlineData("<>", "ALL")]
+    [InlineData("<", "SOME")]
+    [InlineData("<=", "ANY")]
+    [InlineData(">", "ALL")]
+    [InlineData(">=", "SOME")]
+    public void QuantifiedComparisons_PreserveAllComparisonOperators(string op, string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a {op} {quantifier}(SELECT result FROM items)"));
+
+        Assert.Equal(op, expression.Operator.ToString());
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("SELECT stamp AT LOCAL + value")]
+    [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
+    [InlineData("SELECT value ISNULL AND other")]
+    [InlineData("SELECT x * ALL(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x + ANY(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x AND SOME(SELECT colname FROM tablename)")]
+    public void PostgresPredicates_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

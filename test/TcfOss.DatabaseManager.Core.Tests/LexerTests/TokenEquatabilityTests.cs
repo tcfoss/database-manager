@@ -224,6 +224,43 @@ public class TokenEquatability
         Assert.False(token1.Equals(null));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData('\\')]
+    [InlineData('!')]
+    public void UnicodeStringLiteral_EqualityIgnoresLocationAndSourceLength(char? escape)
+    {
+        var first = new UnicodeStringLiteral("data") { Location = new Lexing.Location(1, 2, 3), SourceLength = 8, EscapeCharacter = escape };
+        var second = new UnicodeStringLiteral("data") { Location = new Lexing.Location(4, 5, 6), SourceLength = 20, EscapeCharacter = escape };
+        HashSet<Token> tokens = [first];
+
+        Assert.Equal(first, second);
+        Assert.True(first.Equals((object)second));
+        Assert.True(first.Equals((Token)second));
+        Assert.Equal(first.GetHashCode(), second.GetHashCode());
+        Assert.Contains(second, tokens);
+        Assert.Equal(8, first.Length);
+        Assert.Equal(20, second.Length);
+        string expected = escape is { } character ? $"U&'data' UESCAPE '{character}'" : "U&'data'";
+        Assert.Equal(expected, first.ToString());
+    }
+
+    [Fact]
+    public void UnicodeStringLiteral_InequalityIncludesTextAndEscapeCharacter()
+    {
+        var token = new UnicodeStringLiteral("data") { Location = default, EscapeCharacter = '!' };
+        var plain = new UnicodeStringLiteral("data") { Location = default };
+
+        Assert.NotEqual(token, new UnicodeStringLiteral("other") { Location = default, EscapeCharacter = '!' });
+        Assert.NotEqual(token, plain);
+        Assert.Equal(8, plain.Length);
+        Assert.NotEqual(token, new UnicodeStringLiteral("data") { Location = default, EscapeCharacter = '#' });
+        Assert.False(token.Equals((Token?)null));
+        Assert.False(token.Equals((object?)null));
+        Assert.False(token.Equals((Token)new Asterisk { Location = default }));
+        Assert.False(token.Equals(new object()));
+    }
+
     public class TokenTestData : IEnumerable<TheoryDataRow<Token, Token>>
     {
         public IEnumerator<TheoryDataRow<Token, Token>> GetEnumerator()

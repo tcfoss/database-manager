@@ -24,16 +24,20 @@ public class MsParser : Parser
     public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
+    public override bool SupportsPostgresExpressionCollationSyntax => false;
+    public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
+    public override bool SupportsPostgresOperatorSyntax => false;
+    public override bool SupportsPostgresIntervalLiteralSyntax => false;
     protected override bool SupportsCommentOn => false;
 
     public MsParser()
     {
-        PrecedenceManager = new PrecedenceManager();
+        PrecedenceManager = new MsPrecedenceManager();
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MsFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MsDataTypeParser(this);
         ComponentParser = new MsComponentParser(this);
-        ExpressionParser = new ExpressionParser(this);
+        ExpressionParser = new MsExpressionParser(this);
         SelectParser = new MsSelectParser(this);
         DmlParser = new MsDmlParser(this);
         DdlParser = new MsDdlParser(this);
@@ -140,16 +144,16 @@ public class MsParser : Parser
         return statements;
     }
 
-    protected override Statement ParseNormalStatement(ParserState state, Token token, Label? label)
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
         return token switch
         {
             MsBatchSeparatorToken mbsToken => ParseBatchSeparator(state, mbsToken),
-            _ => base.ParseNormalStatement(state, token, label)
+            _ => base.ParseNormalStatement(state, token)
         };
     }
 
-    protected override Statement ParseKeywordStatement(ParserState state, Word first, Label? label)
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
     {
         return first.Keyword switch
         {
@@ -163,7 +167,7 @@ public class MsParser : Parser
             Keyword.PRINT => ParsePrint(state),
             Keyword.THROW => ParseThrow(state),
             Keyword.RAISERROR => ParseRaiseError(state),
-            _ => base.ParseKeywordStatement(state, first, label)
+            _ => base.ParseKeywordStatement(state, first)
         };
     }
 

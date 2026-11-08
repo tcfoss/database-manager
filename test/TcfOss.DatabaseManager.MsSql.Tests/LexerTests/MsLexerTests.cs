@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.MsSql.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.MsSql.Tests.LexerTests;
 
-public class MsLexerTests : LexerTestBase
+public class MsLexerTests : LexerTestBase<MsLexer>
 {
     [Theory]
     [InlineData("caf\u00e9")]
@@ -25,7 +25,7 @@ public class MsLexerTests : LexerTestBase
     [InlineData("GO\u00e9")]
     public void Unquoted_Identifiers_Preserve_Dialect_Characters(string identifier)
     {
-        List<Token> tokens = new MsLexer().Tokenize(identifier + ";");
+        List<Token> tokens = GetTokens(identifier + ";");
 
         Assert.Equal(2, tokens.Count);
         Assert.Equal(identifier, Assert.IsType<Word>(tokens[0]).Value);
@@ -36,7 +36,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void Variable_Preserves_Dialect_Continuation_Characters()
     {
-        var word = Assert.IsType<Word>(Assert.Single(new MsLexer().Tokenize("@name$#@\u00e9")));
+        var word = Assert.IsType<Word>(Assert.Single(GetTokens("@name$#@\u00e9")));
 
         Assert.Equal("name$#@\u00e9", word.Value);
         Assert.Equal(SigilKind.Variable, word.Sigil);
@@ -45,8 +45,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void BracketedIdentifier_Tokenized()
     {
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT [col1] FROM [dbo].[Users]");
+        var tokens = GetTokens("SELECT [col1] FROM [dbo].[Users]");
 
         // Bracketed identifiers become Word tokens; just verify the shape
         // and the identifier text (quote-style metadata aside).
@@ -62,8 +61,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void Go_AsLineStartedBatchSeparator()
     {
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT 1\nGO\nSELECT 2");
+        var tokens = GetTokens("SELECT 1\nGO\nSELECT 2");
 
         var expected = new List<Token>
         {
@@ -80,8 +78,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void Go_WithCount()
     {
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT 1\nGO 5\nSELECT 2");
+        var tokens = GetTokens("SELECT 1\nGO 5\nSELECT 2");
 
         var expected = new List<Token>
         {
@@ -98,8 +95,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void Go_AfterLeadingWhitespace_IsBatchSeparator()
     {
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT 1\n    GO\nSELECT 2");
+        var tokens = GetTokens("SELECT 1\n    GO\nSELECT 2");
 
         // The GO has only whitespace before it on its line, so it counts as
         // a line-start batch separator.
@@ -109,8 +105,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void Go_NotAtLineStart_IsIdentifier()
     {
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT GO FROM t");
+        var tokens = GetTokens("SELECT GO FROM t");
 
         Assert.DoesNotContain(tokens, t => t is MsBatchSeparator);
     }
@@ -120,8 +115,7 @@ public class MsLexerTests : LexerTestBase
     {
         // "GOAL" is just an identifier — even at line start it must NOT be
         // treated as the GO batch separator.
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT 1\nGOAL\n");
+        var tokens = GetTokens("SELECT 1\nGOAL\n");
 
         Assert.DoesNotContain(tokens, t => t is MsBatchSeparator);
     }
@@ -129,8 +123,7 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void AtVariable_TokenizedAsSigilWord()
     {
-        var lexer = new MsLexer();
-        var tokens = lexer.Tokenize("SELECT @x");
+        var tokens = GetTokens("SELECT @x");
 
         Assert.Equal(2, tokens.Count);
         var word = Assert.IsType<Word>(tokens[1]);
@@ -143,7 +136,7 @@ public class MsLexerTests : LexerTestBase
     public void Select_String_With_Quote_Escapes()
     {
         var test = "SELECT 'bl''ah'";
-        var actual = new MsLexer().Tokenize(test);
+        var actual = GetTokens(test);
         var expected = new List<Token>()
         {
             new Word("SELECT") { Location = new Location() },
@@ -161,7 +154,7 @@ public class MsLexerTests : LexerTestBase
     public void Ordinary_Strings_Treat_Backslashes_As_Content(string contents)
     {
         string sql = $"'{contents}';";
-        var tokens = new MsLexer().Tokenize(sql);
+        var tokens = GetTokens(sql);
 
         Assert.Equal(contents, Assert.IsType<StringLiteral>(tokens[0]).Value);
         Assert.Equal(sql.Length - 1, Assert.IsType<Semicolon>(tokens[1]).Location.Position);
@@ -177,7 +170,7 @@ public class MsLexerTests : LexerTestBase
     {
         string contents = new string('a', prefixLength) + "\\''line\n" + new string('b', 1024) + "\\";
         string sql = $"'{contents}';";
-        var tokens = new MsLexer().Tokenize(sql);
+        var tokens = GetTokens(sql);
 
         Assert.Equal(contents, Assert.IsType<StringLiteral>(tokens[0]).Value);
         int position = sql.Length - 1;
@@ -188,16 +181,108 @@ public class MsLexerTests : LexerTestBase
     [Fact]
     public void Select_String_With_Backslash_Escapes_Throws()
     {
-        var lexer = new MsLexer();
-        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(@"SELECT 'bl\'ah'"));
+        Assert.Throws<LexException.UnterminatedString>(() => GetTokens(@"SELECT 'bl\'ah'"));
     }
 
     [Fact]
     public void Select_Long_String_With_Backslash_Escapes_Throws()
     {
-        var lexer = new MsLexer();
         var contents = new string('a', 200) + @"bl\'ah" + new string('b', 200);
         var sql = "SELECT '" + contents + "'";
-        Assert.Throws<LexException.UnterminatedString>(() => lexer.Tokenize(sql));
+        Assert.Throws<LexException.UnterminatedString>(() => GetTokens(sql));
+    }
+
+    [Theory]
+    [InlineData("E")]
+    [InlineData("e")]
+    public void EscapeStringPrefixes_RemainSeparateIdentifierAndString(string prefix)
+    {
+        List<Token> tokens = GetTokens(prefix + "'body'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal("body", Assert.IsType<StringLiteral>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("U")]
+    [InlineData("u")]
+    public void UnicodePrefixes_RemainSeparateIdentifierOperatorAndString(string prefix)
+    {
+        List<Token> tokens = GetTokens(prefix + "&'body'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.IsType<Ampersand>(tokens[1]);
+        Assert.Equal("body", Assert.IsType<StringLiteral>(tokens[2]).Value);
+        Assert.Equal(3, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("B")]
+    [InlineData("b")]
+    public void BitStrings_BinaryPrefixesRetainExistingTokenization(string prefix)
+    {
+        List<Token> tokens = GetTokens(prefix + "'01'");
+
+        Assert.Equal(prefix, Assert.IsType<Word>(tokens[0]).Value);
+        Assert.Equal("01", Assert.IsType<StringLiteral>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Theory]
+    [InlineData("X")]
+    [InlineData("x")]
+    public void BitStrings_HexPrefixesRetainExistingHexTokenization(string prefix)
+    {
+        List<Token> tokens = GetTokens(prefix + "'0aF'");
+
+        Assert.Equal("0aF", Assert.IsType<HexStringLiteral>(Assert.Single(tokens)).Value);
+    }
+
+    [Theory]
+    [InlineData("name$2")]
+    public void PositionalParameters_DollarsRetainExistingIdentifierTokenization(string text)
+    {
+        List<Token> tokens = GetTokens(text);
+
+        Assert.Equal(text, Assert.IsType<Word>(Assert.Single(tokens)).Value);
+    }
+
+    [Theory]
+    [InlineData("$1")]
+    [InlineData("$001")]
+    public void PositionalParameters_DollarLeadingTextRetainsExistingRejection(string text)
+    {
+        Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens(text));
+    }
+
+    [Theory]
+    [InlineData("0xFF", "FF")]
+    [InlineData("0X0a", "0a")]
+    public void ExtendedNumbers_HexPrefixesRetainExistingBinaryStringInterpretation(string sql, string digits)
+    {
+        Assert.Equal(digits, Assert.IsType<HexStringLiteral>(Assert.Single(GetTokens(sql))).Value);
+    }
+
+    [Theory]
+    [InlineData("0b10", "0", "b10")]
+    [InlineData("0o7", "0", "o7")]
+    [InlineData("1_000", "1", "_000")]
+    [InlineData("1e+2_3", "1e+2", "_3")]
+    public void ExtendedNumbers_NewFormsRetainExistingTokenBoundaries(string sql, string number, string word)
+    {
+        List<Token> tokens = GetTokens(sql);
+        Assert.Equal(number, Assert.IsType<NumericLiteral>(tokens[0]).Value);
+        Assert.Equal(word, Assert.IsType<Word>(tokens[1]).Value);
+        Assert.Equal(2, tokens.Count);
+    }
+
+    [Fact]
+    public void ExtendedNumbers_LongSuffixRetainsExistingTokenization()
+    {
+        var number = Assert.IsType<NumericLiteral>(Assert.Single(GetTokens("123L")));
+        Assert.Equal("123", number.Value);
+        Assert.True(number.IsLong);
+        Assert.Equal(4, number.Length);
     }
 }

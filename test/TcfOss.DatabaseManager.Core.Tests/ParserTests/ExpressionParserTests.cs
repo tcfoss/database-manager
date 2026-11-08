@@ -3,7 +3,9 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
+using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 using BinaryOperatorExp = TcfOss.DatabaseManager.Core.Expressions.BinaryOperator;
 using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
@@ -250,8 +252,19 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData("x * ALL(SELECT colname FROM tablename)")]
     [InlineData("x + ANY(SELECT colname FROM tablename)")]
+    public static void Quantifier_ArithmeticOperator_ParsesKitchenSinkSyntax(string sql)
+    {
+        var parser = new Parser();
+        var expression = Assert.IsType<QuantifiedBinaryOperator>(parser.ExpressionParser.ParseExpr(GetState(sql)));
+
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+    [Theory]
     [InlineData("x AND SOME(SELECT colname FROM tablename)")]
-    public static void Quantifier_Non_Comparison_Op_Throws(string sql)
+    [InlineData("x OR ANY(SELECT colname FROM tablename)")]
+    [InlineData("x XOR ALL(SELECT colname FROM tablename)")]
+    public static void Quantifier_LogicalKeywordOperator_Throws(string sql)
     {
         var parser = new Parser();
         var state = GetState(sql);
@@ -351,7 +364,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(negated, expression.Negated);
         Assert.Equal(any, expression.Any);
-        Assert.Equal(escapeChar, expression.EscapeChar);
+        Assert.Equal<PatternEscape?>(escapeChar == null ? null : new PatternEscape.Character(escapeChar), expression.Escape);
         Assert.Equal(sql, expression.ToSql());
     }
 
@@ -365,7 +378,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(negated, expression.Negated);
         Assert.Equal(any, expression.Any);
-        Assert.Equal(escapeChar, expression.EscapeChar);
+        Assert.Equal<PatternEscape?>(escapeChar == null ? null : new PatternEscape.Character(escapeChar), expression.Escape);
         Assert.Equal(sql, expression.ToSql());
     }
 
@@ -375,5 +388,46 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
         Assert.True(parser.SupportsPostgresCastSyntax);
         Assert.True(parser.SupportsPostgresRegexOperators);
+    }
+
+    [Theory]
+    [InlineData("0o7")]
+    [InlineData("0b1_0")]
+    [InlineData("1_000.2_5")]
+    public void ExtendedNumbers_UnambiguousFormsAreAcceptedByKitchenSinkLexerAndParser(string sql)
+    {
+        var expression = Assert.IsType<LiteralValue>(ParseExpression(sql));
+
+        Assert.Equal(new Core.Common.Value.Number(sql, false), expression.Value);
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+
+    [Fact]
+    public void KitchenSink_IntervalSyntaxPreservesBothDialectForms()
+    {
+        var parser = new Parser();
+        var literalState = new ParserState([.. new GenericLexer().Tokenize("INTERVAL '1-2' YEAR TO MONTH")]);
+        var expressionState = new ParserState([.. new GenericLexer().Tokenize("INTERVAL (amount + 1) DAY")]);
+
+        Assert.IsType<PgIntervalLiteral>(parser.ExpressionParser.ParseExpr(literalState));
+        Assert.IsType<Interval>(parser.ExpressionParser.ParseExpr(expressionState));
+        Assert.IsType<Eof>(literalState.Peek());
+        Assert.IsType<Eof>(expressionState.Peek());
+    }
+
+    [Theory]
+    [InlineData("INTERVAL '1-2' YEAR_MONTH")]
+    [InlineData("INTERVAL '1 2' DAY_HOUR")]
+    [InlineData("INTERVAL '1' MICROSECOND")]
+    [InlineData("INTERVAL '1' DAY")]
+    [InlineData("INTERVAL '1' SECOND")]
+    public void KitchenSink_QuotedMySqlIntervalUnitsRetainExistingExpressionShape(string sql)
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
+        var expression = Assert.IsType<Interval>(new Parser().ExpressionParser.ParseExpr(state));
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.IsType<Eof>(state.Peek());
     }
 }

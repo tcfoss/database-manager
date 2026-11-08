@@ -165,15 +165,34 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return cast with { Expression = NormalizeExpression(cast.Expression, inSelect: inSelect, flatten: flatten) };
     }
 
+    private PatternEscape? NormalizePatternEscape(PatternEscape? escape, bool inSelect, bool flatten)
+    {
+        return escape is PatternEscape.Expression expression
+            ? expression with { Value = NormalizeExpression(expression.Value, inSelect, flatten) } : escape;
+    }
+
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
     {
         return expr switch
         {
-            Between bet => new Between(
-                NormalizeExpression(bet.Expression, inSelect: inSelect, flatten: flatten),
-                NormalizeExpression(bet.Low, inSelect: inSelect, flatten: flatten),
-                NormalizeExpression(bet.High, inSelect: inSelect, flatten: flatten), bet.Negated),
+            Between bet => bet with
+            {
+                Expression = NormalizeExpression(bet.Expression, inSelect, flatten),
+                Low = NormalizeExpression(bet.Low, inSelect, flatten),
+                High = NormalizeExpression(bet.High, inSelect, flatten)
+            },
             BinaryOperator bo => NormalizeBinaryOperator(bo, inSelect: inSelect, flatten: flatten),
+            PgBinaryOperator op => op with
+            {
+                Left = NormalizeExpression(op.Left, inSelect, flatten),
+                Right = NormalizeExpression(op.Right, inSelect, flatten),
+                Operator = op.Operator with { Schema = op.Operator.Schema == null ? null : ComponentNormalizer.NormalizeSingleIdentifier(op.Operator.Schema) }
+            },
+            PgUnaryOperator op => op with
+            {
+                Expression = NormalizeExpression(op.Expression, inSelect, flatten),
+                Operator = op.Operator with { Schema = op.Operator.Schema == null ? null : ComponentNormalizer.NormalizeSingleIdentifier(op.Operator.Schema) }
+            },
             Case ca => new Case(
                 [.. ca.Conditions.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))],
                 [.. ca.Results.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))]
@@ -185,6 +204,32 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             CompoundIdentifier ci => NormalizeIdentifier(ci, inSelect),
             QualifiedWildcard wildcard => NormalizeQualifiedWildcard(wildcard),
             Exists ex => NormalizeExists(ex, flatten: flatten),
+            ArrayConstructor.Elements array => array with
+            {
+                Values = [.. array.Values.Select(value => NormalizeExpression(value, inSelect, flatten))],
+                UseArrayKeyword = flatten || array.UseArrayKeyword
+            },
+            ArrayConstructor.Subquery array => array with { Query = NormalizeSelectInternal(array.Query, false, flatten) },
+            ArraySubscript subscript => subscript with
+            {
+                Array = NormalizeExpression(subscript.Array, inSelect, flatten),
+                Dimensions = [.. subscript.Dimensions.Select(dimension => dimension switch
+                {
+                    ArraySubscriptDimension.Index index => (ArraySubscriptDimension)(index with { Expression = NormalizeExpression(index.Expression, inSelect, flatten) }),
+                    ArraySubscriptDimension.Slice slice => slice with
+                    {
+                        LowerBound = slice.LowerBound == null ? null : NormalizeExpression(slice.LowerBound, inSelect, flatten),
+                        UpperBound = slice.UpperBound == null ? null : NormalizeExpression(slice.UpperBound, inSelect, flatten)
+                    },
+                    _ => dimension
+                })]
+            },
+            CompositeAccess.Field field => field with
+            {
+                Expression = NormalizeExpression(field.Expression, inSelect, flatten),
+                Name = ComponentNormalizer.NormalizeSingleIdentifier(field.Name)
+            },
+            CompositeAccess.Wildcard fields => fields with { Expression = NormalizeExpression(fields.Expression, inSelect, flatten) },
             IsFalse isFalse => NormalizeIsFalse(isFalse, inSelect: inSelect, flatten: flatten),
             InList il => new InList(NormalizeExpression(il.Expression, inSelect: inSelect, flatten: flatten), [.. il.Items.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))], il.Negated),
             InSubquery isub => NormalizeInSubquery(isub),
@@ -195,6 +240,11 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             UnaryOperator uo => new UnaryOperator(NormalizeExpression(uo.Expression, inSelect: inSelect, flatten: flatten), uo.Operator),
             FunctionCall fun => NormalizeFunctionCall(fun, inSelect: inSelect, flatten: flatten),
             Cast cast => NormalizeCast(cast, inSelect: inSelect, flatten: flatten),
+            Collate collate => collate with
+            {
+                Expression = NormalizeExpression(collate.Expression, inSelect, flatten),
+                Collation = ComponentNormalizer.NormalizeObjectName(collate.Collation)
+            },
             IsNull isNull => NormalizeIsNull(isNull, inSelect: inSelect, flatten: flatten),
             IsTrue check => check with { Expression = NormalizeExpression(check.Expression, inSelect, flatten) },
             IsUnknown check => check with { Expression = NormalizeExpression(check.Expression, inSelect, flatten) },
@@ -208,20 +258,24 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Timestamp = NormalizeExpression(zone.Timestamp, inSelect, flatten),
                 Timezone = NormalizeExpression(zone.Timezone, inSelect, flatten)
             },
+            AtLocal local => local with { Timestamp = NormalizeExpression(local.Timestamp, inSelect, flatten) },
             Like like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten)
+                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             ILike like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten)
+                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             SimilarTo similar => similar with
             {
                 Expression = NormalizeExpression(similar.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(similar.Pattern, inSelect, flatten)
+                Pattern = NormalizeExpression(similar.Pattern, inSelect, flatten),
+                Escape = NormalizePatternEscape(similar.Escape, inSelect, flatten)
             },
             Regexp regexp => regexp with
             {
@@ -234,22 +288,25 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Right = NormalizeExpression(quantified.Right, inSelect, flatten)
             },
             Expressions.Tuple tuple => tuple with { Expressions = [.. tuple.Expressions.Select(expression => NormalizeExpression(expression, inSelect, flatten))] },
+            RowConstructor row => row with { Fields = [.. row.Fields.Select(field => NormalizeExpression(field, inSelect, flatten))] },
             Position position => position with
             {
                 Expression = NormalizeExpression(position.Expression, inSelect, flatten),
                 In = NormalizeExpression(position.In, inSelect, flatten)
             },
             Interval interval => interval with { Value = NormalizeExpression(interval.Value, inSelect, flatten) },
-            LiteralValue or TypedString => expr,
+            LiteralValue or TypedString or PositionalParameter or PgIntervalLiteral => expr,
             _ => NormalizeOtherExpression(expr)
         };
     }
 
+    /// <inheritdoc />
     public Expression NormalizeExpression(Expression expr)
     {
         return NormalizeExpression(expr, inSelect: false, flatten: true);
     }
 
+    /// <inheritdoc />
     public Expression NormalizeExpressionNoFlatten(Expression expr)
     {
         return NormalizeExpression(expr, inSelect: false, flatten: false);
@@ -606,6 +663,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return select;
     }
 
+    /// <inheritdoc />
     public Select NormalizeSelect(Select selectStatement, SchemaIdentifier? activeSchema = null, PseudoTableSet? pseudoTables = null, ObjectIdentifier? name = null, SourceRef? sourceRef = null)
     {
         _name = name;

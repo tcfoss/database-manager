@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
@@ -16,6 +17,22 @@ public record QuantifiedBinaryOperator(Expression Left, BuiltIn.BinaryOperator O
             rightParen = ")";
         }
         writer.WriteSql($"{Left} {Operator} {Quantifier}{leftParen}{Right}{rightParen}");
+    }
+
+    public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+    {
+        Left.FormatSql(writer, manager);
+        writer.WriteSql($" {Operator} {Quantifier}");
+        bool wrapRight = Right is not Subquery;
+        if (wrapRight)
+        {
+            writer.Write("(");
+        }
+        Right.FormatSql(writer, manager);
+        if (wrapRight)
+        {
+            writer.Write(")");
+        }
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)

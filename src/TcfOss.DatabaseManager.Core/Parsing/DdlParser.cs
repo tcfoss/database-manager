@@ -77,7 +77,7 @@ public class DdlParser
             }
         }
         state.ExpectKeyword(Keyword.IS);
-        if (state.Peek() is not (StringLiteral or DollarQuotedStringLiteral or Word { Keyword: Keyword.NULL }))
+        if (state.Peek() is not (StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral or Word { Keyword: Keyword.NULL }))
         {
             throw state.ExpectedException("string literal", "NULL");
         }
@@ -956,7 +956,7 @@ public class DdlParser
                     && state.PeekNth(3) is Word { Keyword: Keyword.ATOMIC });
         }
         return state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC)
-            || (state.PeekKeyword(Keyword.AS) && state.PeekNth(1) is StringLiteral or DollarQuotedStringLiteral)
+            || (state.PeekKeyword(Keyword.AS) && state.PeekNth(1) is StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral)
             || state.Peek() is Word
             {
                 Keyword: Keyword.IMMUTABLE or Keyword.STABLE
@@ -1124,7 +1124,7 @@ public class DdlParser
         state.ConsumeTokenIs<Plus>();
         Token token = state.Next();
         if (token is NumericLiteral { IsLong: false } number
-            && double.TryParse(number.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
+            && double.TryParse(number.GetDecimalText(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
             && double.IsFinite(value) && value > 0)
         {
             return new Value.Number(number.Value, false);
@@ -1162,18 +1162,18 @@ public class DdlParser
         Statement body;
         if (useAsBeforeBody)
         {
-            if (state.Peek() is not (StringLiteral or DollarQuotedStringLiteral))
+            if (state.Peek() is not (StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral))
             {
                 throw state.ExpectedException("string literal");
             }
-            using (state.EnterStringLiteralAsStatement())
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement))
             {
                 body = _p.ParseStatement(state);
             }
         }
         else if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            using (state.EnterBeginAtomic())
+            using (state.EnterContext(ParseContext.BeginAtomic))
             {
                 body = _p.ParseStatement(state);
             }
@@ -1528,7 +1528,7 @@ public class DdlParser
                 {
                     throw new ParseException.Duplicate("default", currentLocation);
                 }
-                defaultExpression = _p.ExpressionParser.ParseExpr(state);
+                defaultExpression = _p.ExpressionParser.ParseDefaultExpr(state);
             }
             else
             {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 
@@ -29,6 +30,15 @@ public abstract record Value() : IWriteSql
 
     public record Number(string Value, bool IsLong) : StringBasedValue(Value)
     {
+        protected Number(Number original) : base(original)
+        {
+            IsLong = original.IsLong;
+        }
+
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DecimalText => field ??= NumericText.ToDecimal(Value);
+
         public override void ToSql(SqlTextWriter writer)
         {
             writer.WriteSql($"{Value}");
@@ -40,11 +50,21 @@ public abstract record Value() : IWriteSql
 
         public int? AsInt()
         {
-            if (int.TryParse(Value, out int val))
+            if (int.TryParse(DecimalText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val))
             {
                 return val;
             }
             return null;
+        }
+
+        public virtual bool Equals(Number? other)
+        {
+            return other != null && base.Equals(other) && IsLong == other.IsLong;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), IsLong);
         }
     }
 
@@ -53,6 +73,68 @@ public abstract record Value() : IWriteSql
         public override void ToSql(SqlTextWriter writer)
         {
             writer.WriteSql($"'{Value.EscapeSingleQuotedString()}'");
+        }
+    }
+
+    public record EscapeString(string Value) : StringBasedValue(Value)
+    {
+        protected EscapeString(EscapeString original) : base(original)
+        {
+        }
+
+        /// <summary>
+        /// Gets the cached decoded contents, interpreting numeric byte escapes as UTF-8.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DecodedValue => field ??= PgStringDecoders.DecodeEscapeString(Value);
+
+        public virtual bool Equals(EscapeString? other)
+        {
+            return other != null && base.Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"E'{Value}'");
+        }
+    }
+
+    public record UnicodeString(string Value) : StringBasedValue(Value)
+    {
+        public char? EscapeCharacter { get; init; }
+
+        protected UnicodeString(UnicodeString original) : base(original)
+        {
+            EscapeCharacter = original.EscapeCharacter;
+        }
+
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DecodedValue => field ??= PgStringDecoders.DecodeUnicodeString(Value, EscapeCharacter ?? '\\');
+
+        public virtual bool Equals(UnicodeString? other)
+        {
+            return other != null && base.Equals(other) && EscapeCharacter == other.EscapeCharacter;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), EscapeCharacter);
+        }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"U&'{Value}'");
+            if (EscapeCharacter is { } escape)
+            {
+                writer.Write($" UESCAPE '{escape}'");
+            }
         }
     }
 
@@ -82,6 +164,14 @@ public abstract record Value() : IWriteSql
         public override void ToSql(SqlTextWriter writer)
         {
             writer.WriteSql($"N'{Value}'");
+        }
+    }
+
+    public record BitString(string Value, bool IsHexadecimal = false) : StringBasedValue(Value)
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write($"{(IsHexadecimal ? 'X' : 'B')}'{Value}'");
         }
     }
 

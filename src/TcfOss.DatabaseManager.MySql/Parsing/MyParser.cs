@@ -24,11 +24,15 @@ public class MyParser : Parser
     public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
+    public override bool SupportsPostgresExpressionCollationSyntax => false;
+    public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
+    public override bool SupportsPostgresOperatorSyntax => false;
+    public override bool SupportsPostgresIntervalLiteralSyntax => false;
     protected override bool SupportsCommentOn => false;
 
     public MyParser()
     {
-        PrecedenceManager = new PrecedenceManager(treatDoublePipeAsOr: true);
+        PrecedenceManager = new MyPrecedenceManager();
         ValueParser = new ValueParser();
         IsBuiltInFunction = new MyFunctionNameProvider().IsBuiltInFunction;
         DataTypeParser = new MyDataTypeParser(this);
@@ -153,22 +157,22 @@ public class MyParser : Parser
         return statements;
     }
 
-    protected override Statement ParseNormalStatement(ParserState state, Token token, Label? label)
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
         return token switch
         {
             SetDelimiter => ParseSetDelimiter(state),
-            Word word => ParseKeywordStatement(state, word, label),
+            Word word => ParseKeywordStatement(state, word),
             ParenOpen => SelectParser.ParseSelect(state, null),
             _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
         };
     }
 
-    protected override Statement ParseKeywordStatement(ParserState state, Word first, Label? label)
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
     {
         Statement? statement = first.Keyword switch
         {
-            Keyword.LOOP => ParseLoop(state, label),
+            Keyword.LOOP => ParseLoop(state),
             Keyword.SIGNAL => ParseSignal(state),
             Keyword.RESIGNAL => ParseResignal(state),
             Keyword.START => ParseStartTransaction(state),
@@ -188,7 +192,7 @@ public class MyParser : Parser
             return statement;
         }
 
-        return base.ParseKeywordStatement(state, first, label);
+        return base.ParseKeywordStatement(state, first);
     }
 
     private static Statements.SetDelimiter ParseSetDelimiter(ParserState state)
@@ -206,7 +210,7 @@ public class MyParser : Parser
         return base.ParseFetch(state);
     }
 
-    private Loop ParseLoop(ParserState state, Label? label)
+    private Loop ParseLoop(ParserState state)
     {
         state.ExpectKeyword(Keyword.LOOP);
 
@@ -219,10 +223,11 @@ public class MyParser : Parser
         SqlValueList<Statement> subStatements = Parse(state, ender);
 
         Identifier? endLabel = null;
-        if (label != null && state.Peek() is Word w && w.Value == label.Identifier.Name)
+        Identifier? label = state.StatementLabel?.Label;
+        if (label != null && state.Peek() is Word w && w.Value == label.Name)
         {
             state.Next();
-            endLabel = label.Identifier;
+            endLabel = label;
         }
 
         return new Loop(subStatements) { EndLabel = endLabel };

@@ -562,4 +562,148 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void PostgresExpressionCollations_AreRejectedByMySqlAndMariaDbParser()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("SELECT label COLLATE app.locale FROM items"));
+    }
+
+    [Theory]
+    [InlineData("SELECT ROW(1, 2)")]
+    [InlineData("SELECT items.value FROM items")]
+    [InlineData("looplabel /* gap */ : LOOP SELECT 1; END LOOP looplabel")]
+    public void RowFunctionsAndStatementLabels_RetainSharedMySqlMariaDbSyntax(string sql)
+    {
+        Assert.Equal(sql.Replace(" /* gap */ ", "", StringComparison.Ordinal), ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT ARRAY[1, 2] + 1")]
+    [InlineData("SELECT ARRAY(SELECT 1)")]
+    [InlineData("SELECT arr[1:2] + 1")]
+    [InlineData("SELECT (item).field")]
+    [InlineData("SELECT (item).*")]
+    public void PostgresArrayAndCompositeExpressions_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void NestedLoopLabels_RestoreOuterLabelAndDoNotLeakIntoUnlabeledChildren()
+    {
+        const string loopSql = "outer_label: LOOP inner_label: LOOP SELECT 1; END LOOP inner_label; LOOP SELECT 2; END LOOP; SELECT 3; END LOOP outer_label";
+        string sql = loopSql + "; SELECT 4";
+        var state = GetState(sql);
+        var statements = new MyParser().Parse(state, null);
+        var outer = Assert.IsType<LabeledStatement>(statements[0]);
+        var outerLoop = Assert.IsType<Loop>(outer.SubStatement);
+        var inner = Assert.IsType<LabeledStatement>(outerLoop.Statements[0]);
+        var innerLoop = Assert.IsType<Loop>(inner.SubStatement);
+        var unlabeledLoop = Assert.IsType<Loop>(outerLoop.Statements[1]);
+
+        Assert.Equal("outer_label", outer.Label.Name);
+        Assert.Equal(outer.Label, outerLoop.EndLabel);
+        Assert.Equal("inner_label", inner.Label.Name);
+        Assert.Equal(inner.Label, innerLoop.EndLabel);
+        Assert.Collection(innerLoop.Statements, statement => Assert.IsType<Select>(statement), statement => Assert.IsType<InertOnly>(statement));
+        Assert.Null(unlabeledLoop.EndLabel);
+        Assert.Collection(unlabeledLoop.Statements, statement => Assert.IsType<Select>(statement), statement => Assert.IsType<InertOnly>(statement));
+        Assert.IsType<Select>(outerLoop.Statements[2]);
+        Assert.IsType<Select>(statements[1]);
+        Assert.Null(state.StatementLabel);
+        Assert.Equal(loopSql, outer.ToSql());
+    }
+
+    [Theory]
+    [InlineData(";")]
+    [InlineData("$$")]
+    [InlineData("//")]
+    public void LoopLabels_PreserveSourceSpansWithCustomDelimiters(string delimiter)
+    {
+        const string loopSql = "looplabel: LOOP SELECT 1; END LOOP looplabel";
+        string prefix = "DELIMITER " + delimiter + "\n";
+        string sql = prefix + loopSql + delimiter;
+        var statement = Assert.IsType<LabeledStatement>(ParseStatement(sql));
+
+        Assert.Equal(prefix.Length - 1, statement.Meta.Start);
+        Assert.Equal(prefix.Length + loopSql.Length, statement.Meta.End);
+        Assert.Equal(sql.Length, statement.Meta.EndPlusTerminatorLength);
+        Assert.Equal(statement.SubStatement.Meta.End, statement.Meta.End);
+        Assert.Equal(statement.SubStatement.Meta.EndPlusTerminatorLength, statement.Meta.EndPlusTerminatorLength);
+        Assert.Equal("\n" + loopSql, Core.DefinitionBuilding.SourceManager.GetText(sql, statement.Meta));
+    }
+
+    [Theory]
+    [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT value <-> other")]
+    public void PostgresGeneralOperators_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void PostgresQuestionOperators_AreRejectedBySharedMySqlMariaDbLexer()
+    {
+        Assert.Throws<LexException.UnexpectedCharacter>(() => GetTokens("SELECT value ?| other"));
+    }
+
+    [Theory]
+    [InlineData("SELECT INTERVAL '1 day'")]
+    [InlineData("SELECT INTERVAL(3) '1.234 seconds'")]
+    [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
+    public void PostgresIntervalLiterals_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.False(new MyParser().SupportsPostgresIntervalLiteralSyntax);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("INTERVAL 1 DAY")]
+    [InlineData("INTERVAL '1' DAY")]
+    [InlineData("INTERVAL (amount + 1) DAY")]
+    public void MySqlIntervalExpressions_RetainExistingSyntax(string sql)
+    {
+        Assert.IsType<Core.Expressions.Interval>(ParseExpression(sql));
+        Assert.Equal(sql, ParseExpression(sql).ToSql());
+    }
+
+    [Fact]
+    public void Precedence_PreservesSharedMySqlMariaDbOperatorBehavior()
+    {
+        var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a + b ^ c"));
+        Assert.Equal(Core.BuiltIn.BinaryOperator.BitwiseXor, expression.Operator);
+        Assert.IsType<Core.Expressions.BinaryOperator>(expression.Left);
+        Assert.IsType<MyPrecedenceManager>(new MyParser().PrecedenceManager);
+        Assert.Equal("ISNULL(value)", ParseExpression("ISNULL(value)").ToSql());
+    }
+
+    [Theory]
+    [InlineData("=", "ANY")]
+    [InlineData("<>", "ALL")]
+    [InlineData("<", "SOME")]
+    [InlineData("<=", "ANY")]
+    [InlineData(">", "ALL")]
+    [InlineData(">=", "SOME")]
+    public void QuantifiedComparisons_PreserveAllComparisonOperators(string op, string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a {op} {quantifier}(SELECT result FROM items)"));
+
+        Assert.Equal(op, expression.Operator.ToString());
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("SELECT stamp AT LOCAL + value")]
+    [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
+    [InlineData("SELECT value ISNULL AND other")]
+    [InlineData("SELECT x * ALL(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x + ANY(SELECT colname FROM tablename)")]
+    [InlineData("SELECT x AND SOME(SELECT colname FROM tablename)")]
+    public void PostgresPredicates_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

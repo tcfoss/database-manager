@@ -245,25 +245,55 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     public void LiteralScope_RestoresNestedStateAndExceptions()
     {
         ParserState state = GetState("'body'");
-        Assert.False(state.AllowStringLiteralAsStatement);
-        using (state.EnterStringLiteralAsStatement())
+        Assert.Equal(ParseContext.None, state.Context);
+        using (state.EnterContext(ParseContext.StringLiteralAsStatement))
         {
-            using (state.EnterStringLiteralAsStatement())
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement))
             {
-                Assert.True(state.AllowStringLiteralAsStatement);
+                Assert.Equal(ParseContext.StringLiteralAsStatement, state.Context);
             }
-            Assert.True(state.AllowStringLiteralAsStatement);
+            Assert.Equal(ParseContext.StringLiteralAsStatement, state.Context);
             Assert.IsType<RoutineBodyLiteral>(new PgParser().ParseStatement(state));
         }
-        Assert.False(state.AllowStringLiteralAsStatement);
+        Assert.Equal(ParseContext.None, state.Context);
         Assert.Throws<InvalidOperationException>((Action)(() =>
         {
-            using (state.EnterStringLiteralAsStatement())
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement))
             {
                 throw new InvalidOperationException();
             }
         }));
-        Assert.False(state.AllowStringLiteralAsStatement);
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("FUNCTION f() RETURNS INT", true)]
+    [InlineData("PROCEDURE p()", false)]
+    public void EscapeStringBodies_AreDecodedAndRemainOpaque(string declaration, bool isFunction)
+    {
+        var statement = ParseStatement($"CREATE {declaration} LANGUAGE plpgsql AS E'BEGIN\\nRAISE NOTICE \\'it\\\\s\\';\\nEND'");
+        IWriteSql body = isFunction ? Assert.IsType<CreateFunction>(statement).Body : Assert.IsType<CreateProcedure>(statement).Body;
+        var literal = Assert.IsType<RoutineBodyLiteral>(body);
+
+        Assert.Equal("BEGIN\nRAISE NOTICE 'it\\s';\nEND", literal.Value);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+        Assert.Empty(literal.GetReferencedItems(new ReferencedItemsManager()));
+    }
+
+    [Theory]
+    [InlineData("FUNCTION f() RETURNS INT", true)]
+    [InlineData("PROCEDURE p()", false)]
+    public void UnicodeStringBodies_AreDecodedAndRemainOpaque(string declaration, bool isFunction)
+    {
+        var statement = ParseStatement($"CREATE {declaration} LANGUAGE plpgsql AS U&'BEGIN!000aRAISE NOTICE ''it!!s'';!000aEND' UESCAPE '!'");
+        IWriteSql body = isFunction ? Assert.IsType<CreateFunction>(statement).Body : Assert.IsType<CreateProcedure>(statement).Body;
+        var literal = Assert.IsType<RoutineBodyLiteral>(body);
+
+        Assert.Equal("BEGIN\nRAISE NOTICE 'it!s';\nEND", literal.Value);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+        Assert.Empty(literal.GetReferencedItems(new ReferencedItemsManager()));
     }
 
     [Fact]

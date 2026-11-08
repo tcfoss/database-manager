@@ -96,7 +96,7 @@ public ref struct LexerState
     public int AdvanceThroughDigits()
     {
         int start = Position;
-        while (Position < _characters.Length && char.IsDigit(_characters[Position]))
+        while (Position < _characters.Length && char.IsAsciiDigit(_characters[Position]))
         {
             Position++;
         }
@@ -135,8 +135,6 @@ public ref struct LexerState
         int index = remaining.IndexOfAny(quoteChar, CharSymbols.EndOfFile);
         AdvanceBy(index < 0 ? remaining.Length : index);
     }
-
-
 
     // Tracks line/column exactly as repeated Next() calls would.
     private void AdvanceBy(int count)

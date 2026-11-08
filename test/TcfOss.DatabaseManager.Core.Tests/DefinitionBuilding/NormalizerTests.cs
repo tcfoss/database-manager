@@ -634,9 +634,40 @@ public class NormalizerTests
     [InlineData("f(a) OVER (PARTITION BY b ORDER BY c)", "f(`a`) OVER (PARTITION BY `b` ORDER BY `c`)")]
     [InlineData("f(a) OVER ()", "f(`a`) OVER ()")]
     [InlineData("f(a) OVER (ORDER BY b)", "f(`a`) OVER (ORDER BY `b`)")]
+    [InlineData("ARRAY(SELECT a AS x)", "ARRAY(SELECT `a` AS `x`)")]
+    [InlineData("(ROW(a)).*", "(ROW(`a`)).*")]
+    [InlineData("a OPERATOR(+) b", "`a` OPERATOR(+) `b`")]
+    [InlineData("OPERATOR(+) a", "OPERATOR(+) `a`")]
+    [InlineData("value NOT SIMILAR TO ANY(pattern) ESCAPE '!'", "`value` NOT SIMILAR TO ANY (`pattern`) ESCAPE '!'")]
     public void NormalizeExpression_TraversesAdditionalExpressionTypes(string sql, string expected)
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public void NormalizeExpression_TraversesArrayRowAndCompositeExpressions(bool hasLowerBound, bool hasUpperBound)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        Expression expression = new CompositeAccess.Field(
+            new ArraySubscript(
+                new ArrayConstructor.Elements([new SingleIdentifier(new Identifier("value"))]),
+                [new ArraySubscriptDimension.Slice(
+                    hasLowerBound ? new SingleIdentifier(new Identifier("lower_bound")) : null,
+                    hasUpperBound ? new SingleIdentifier(new Identifier("upper_bound")) : null)]),
+            new Identifier("field_name"));
+
+        Expression actual = normalizer.NormalizeExpressionNoFlatten(expression);
+        Expression row = normalizer.NormalizeExpression(new RowConstructor([new SingleIdentifier(new Identifier("value"))]));
+
+        string lower = hasLowerBound ? "`lower_bound`" : "";
+        string upper = hasUpperBound ? "`upper_bound`" : "";
+        Assert.Equal($"ARRAY[`value`][{lower}:{upper}].`field_name`", actual.ToSql());
+        Assert.Equal("ROW(`value`)", row.ToSql());
     }
 
     [Theory]
@@ -650,6 +681,34 @@ public class NormalizerTests
 
         Assert.Same(expression, normalizer.NormalizeExpression(expression));
         Assert.Same(expression, normalizer.NormalizeExpressionNoFlatten(expression));
+    }
+
+    [Theory]
+    [InlineData("INTERVAL '1 day'")]
+    [InlineData("INTERVAL(3) '1.234 seconds'")]
+    [InlineData("INTERVAL '1-2' YEAR TO MONTH")]
+    public void NormalizeExpression_PreservesIntervalLiteralSyntax(string sql)
+    {
+        Assert.Equal(sql, GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal(sql, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
+    [Theory]
+    [InlineData("stamp AT LOCAL", "`stamp` AT LOCAL")]
+    [InlineData("value BETWEEN SYMMETRIC lower AND upper", "`value` BETWEEN SYMMETRIC `lower` AND `upper`")]
+    [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "`value` NOT BETWEEN ASYMMETRIC `lower` AND `upper`")]
+    [InlineData("value LIKE pattern ESCAPE escape_value", "`value` LIKE `pattern` ESCAPE `escape_value`")]
+    [InlineData("value ILIKE pattern ESCAPE escape_value", "`value` ILIKE `pattern` ESCAPE `escape_value`")]
+    [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "`value` SIMILAR TO `pattern` ESCAPE `escape_value`")]
+    [InlineData("value LIKE ALL(pattern)", "`value` LIKE ALL(`pattern`)")]
+    [InlineData("value ILIKE SOME(pattern)", "`value` ILIKE SOME(`pattern`)")]
+    [InlineData("value LIKE pattern ESCAPE '!'", "`value` LIKE `pattern` ESCAPE '!'")]
+    [InlineData("value ILIKE pattern ESCAPE '!'", "`value` ILIKE `pattern` ESCAPE '!'")]
+    [InlineData("value SIMILAR TO pattern ESCAPE '!'", "`value` SIMILAR TO `pattern` ESCAPE '!'")]
+    public void NormalizeExpression_PreservesPredicateModifiers(string sql, string expected)
+    {
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
     }
 
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
@@ -948,5 +1007,120 @@ public class NormalizerTests
     {
         var actual = GetNormalizedIdentifier(givenText, quoteStyle, identifierQuotationHandling);
         Assert.Equal(expectedIdentifier, actual.ToSql());
+    }
+
+    [Fact]
+    public void ExpressionCollations_NormalizeOperandReferencesAndFlattenGrouping()
+    {
+        Select actual = GetNormalizedSelect("SELECT (full_title || description) COLLATE app.locale AS title FROM book");
+        SimpleSelect query = Assert.IsType<SelectBody.SimpleSelectQuery>(actual.Body).Query;
+        Expression expression = Assert.IsType<SimpleSelectItem.ExpressionWithAlias>(Assert.Single(query.Selections)).Expression;
+        var collate = Assert.IsType<Collate>(expression);
+        var operand = Assert.IsType<Expressions.BinaryOperator>(collate.Expression);
+
+        Assert.Equal("`library_catalog`.`book`.`full_title`", operand.Left.ToSql());
+        Assert.Equal("`library_catalog`.`book`.`description`", operand.Right.ToSql());
+        Assert.Equal("`app`.`locale`", collate.Collation.ToSql());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExpressionCollations_FollowRequestedFlattening(bool flatten)
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new GenericLexer().Tokenize("(full_title || description) COLLATE app.locale")]);
+        Expression expression = parser.ExpressionParser.ParseExpr(state);
+        var normalizationSettings = new Core.Configuration.Parsing.NormalizationSettings
+        {
+            IdentifierQuotationHandling = IdentifierQuotationHandling.Always
+        };
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(normalizationSettings), []);
+        var componentNormalizer = new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider());
+        var normalizer = new Normalizer(config, componentNormalizer);
+
+        Expression actual = flatten
+            ? normalizer.NormalizeExpression(expression)
+            : normalizer.NormalizeExpressionNoFlatten(expression);
+
+        var collate = Assert.IsType<Collate>(actual);
+        Expression operand = flatten ? collate.Expression : Assert.IsType<Nested>(collate.Expression).Expression;
+        var binary = Assert.IsType<Expressions.BinaryOperator>(operand);
+        Assert.Equal("`full_title`", binary.Left.ToSql());
+        Assert.Equal("`description`", binary.Right.ToSql());
+        Assert.Equal("`app`.`locale`", collate.Collation.ToSql());
+        if (!flatten)
+        {
+            Assert.Equal("(`full_title` || `description`) COLLATE `app`.`locale`", actual.ToSql());
+        }
+        else
+        {
+            Assert.Equal("`full_title` || `description` COLLATE `app`.`locale`", actual.ToSql());
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "($1 + $2)")]
+    [InlineData(true, "$1 + $2")]
+    public void PositionalParameters_NormalizationPreservesParametersAndRespectsFlattening(bool flatten, string expected)
+    {
+        var parser = new Parser();
+        var state = new ParserState([.. new GenericLexer().Tokenize("($001 + $2)")]);
+        Expression expression = parser.ExpressionParser.ParseExpr(state);
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+
+        Expression actual = flatten ? normalizer.NormalizeExpression(expression) : normalizer.NormalizeExpressionNoFlatten(expression);
+
+        Assert.Equal(expected, actual.ToSql());
+        Assert.Empty(actual.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void ArraySubscripts_NormalizationPreservesOperationBoundaries()
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var array = new SingleIdentifier(new Identifier("arr"));
+        var first = new ArraySubscriptDimension.Index(new LiteralValue(new Value.Number("1", false)));
+        var second = new ArraySubscriptDimension.Index(new LiteralValue(new Value.Number("2", false)));
+        var multidimensional = new ArraySubscript(array, [first, second]);
+        var sequential = new ArraySubscript(new Nested(new ArraySubscript(array, [first])), [second]);
+
+        Assert.NotEqual(normalizer.NormalizeExpression(multidimensional), normalizer.NormalizeExpression(sequential));
+        Assert.Equal("`arr`[1][2]", normalizer.NormalizeExpressionNoFlatten(multidimensional).ToSql());
+        Assert.Equal("(`arr`[1])[2]", normalizer.NormalizeExpressionNoFlatten(sequential).ToSql());
+    }
+
+    [Fact]
+    public void NestedArrayConstructors_NormalizationCanonicalizesOptionalKeywords()
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var inner = new ArrayConstructor.Elements([new SingleIdentifier(new Identifier("value"))]);
+        var explicitKeyword = new ArrayConstructor.Elements([inner]);
+        var omittedKeyword = new ArrayConstructor.Elements([inner with { UseArrayKeyword = false }]);
+
+        Assert.Equal(normalizer.NormalizeExpression(explicitKeyword), normalizer.NormalizeExpression(omittedKeyword));
+        Assert.Equal("ARRAY[[`value`]]", normalizer.NormalizeExpressionNoFlatten(omittedKeyword).ToSql());
+        Assert.Equal("ARRAY[ARRAY[`value`]]", normalizer.NormalizeExpressionNoFlatten(explicitKeyword).ToSql());
+    }
+
+    [Theory]
+    [InlineData(false, "(`left`) OPERATOR(`ops`.@>) ANY((`right`))", "OPERATOR(`ops`.@) (`value`)")]
+    [InlineData(true, "`left` OPERATOR(`ops`.@>) ANY(`right`)", "OPERATOR(`ops`.@) `value`")]
+    public void PostgresOperators_NormalizationTraversesOperandsAndSchema(bool flatten, string expectedBinary, string expectedUnary)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var binary = new PgBinaryOperator(new Nested(new SingleIdentifier(new Identifier("left"))), new PgOperatorReference("@>") { Schema = new Identifier("ops") }, new Nested(new SingleIdentifier(new Identifier("right")))) { Quantifier = AggregateQuantifier.Any };
+        var unary = new PgUnaryOperator(new PgOperatorReference("@") { Schema = new Identifier("ops") }, new Nested(new SingleIdentifier(new Identifier("value"))));
+
+        Expression normalizedBinary = flatten ? normalizer.NormalizeExpression(binary) : normalizer.NormalizeExpressionNoFlatten(binary);
+        Expression normalizedUnary = flatten ? normalizer.NormalizeExpression(unary) : normalizer.NormalizeExpressionNoFlatten(unary);
+
+        Assert.Equal(expectedBinary, normalizedBinary.ToSql());
+        Assert.Equal(expectedUnary, normalizedUnary.ToSql());
+        Assert.Equal(AggregateQuantifier.Any, Assert.IsType<PgBinaryOperator>(normalizedBinary).Quantifier);
     }
 }

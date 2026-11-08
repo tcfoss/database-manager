@@ -287,7 +287,7 @@ public class TableParser
 
     private StatementColumnOption.Default ParseDefault(ParserState state, Identifier? constraintName)
     {
-        if (state.Peek() is NumericLiteral or StringLiteral or DollarQuotedStringLiteral or NationalStringLiteral or HexStringLiteral
+        if (state.Peek() is NumericLiteral or StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or BitStringLiteral or DollarQuotedStringLiteral or NationalStringLiteral or HexStringLiteral
                 or Word { Keyword: Keyword.TRUE or Keyword.FALSE or Keyword.NULL }
             && state.TryParse(ValueParser.ParseValue, out Value? val))
         {
@@ -296,7 +296,7 @@ public class TableParser
 
         return state.PeekIs<ParenOpen>()
             ? new StatementColumnOption.Default.DefaultExpression(state.ParseParenthesized(_p.ExpressionParser.ParseExpr), constraintName)
-            : new StatementColumnOption.Default.DefaultExpression(_p.ExpressionParser.ParseExpr(state), constraintName);
+            : new StatementColumnOption.Default.DefaultExpression(_p.ExpressionParser.ParseDefaultExpr(state), constraintName);
     }
 
     private static GenerationMode? ParseGenerationMode(Keyword? generationModeKeyword)

@@ -483,6 +483,60 @@ public class StatementComponentTests
         Assert.Equal("CREATE TYPE wrapper AS (values TEXT ARRAY)", statement.ToSql());
     }
 
+    [Theory]
+    [InlineData("@>")]
+    [InlineData("<->")]
+    [InlineData("+")]
+    [InlineData("@-")]
+    public void PostgresOperatorReferences_EmitEscapedSchemaNames(string symbol)
+    {
+        var reference = new PgOperatorReference(symbol) { Schema = new Identifier("ops; DROP TABLE items; --", QuoteStyle.Ansi) };
+
+        Assert.Equal("OPERATOR(\"ops; DROP TABLE items; --\"." + symbol + ")", reference.ToSql());
+        Assert.Equal(reference.ToSql(), FormatComponent(reference));
+        Assert.Equal(symbol, new PgOperatorReference(symbol).ToSql());
+        Assert.Equal("OPERATOR(" + symbol + ")", new PgOperatorReference(symbol) { UseOperatorSyntax = true }.ToSql());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("name")]
+    [InlineData("@>; SELECT 1")]
+    [InlineData("--")]
+    [InlineData("/*")]
+    [InlineData("*- ")]
+    [InlineData("*-")]
+    [InlineData("=+")]
+    public void PostgresOperatorReferences_RejectInvalidOrSqlBearingSymbols(string? symbol)
+    {
+        Assert.Throws<ArgumentException>(() => new PgOperatorReference(symbol!));
+    }
+
+    [Theory]
+    [InlineData("!", " ESCAPE '!'")]
+    [InlineData("'", " ESCAPE ''''")]
+    [InlineData("", " ESCAPE ''")]
+    public void PatternEscapeCharacter_WritesQuotedValueAndHasNoReferences(string value, string expected)
+    {
+        var escape = new PatternEscape.Character(value);
+
+        Assert.Equal(expected, escape.ToSql());
+        Assert.Equal(expected, FormatComponent(escape));
+        Assert.Empty(escape.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void PatternEscapeVariants_PreserveJsonAndExpressionReferences()
+    {
+        var expression = new SingleIdentifier(new Identifier("escape_value"));
+        PatternEscape[] escapes = [new PatternEscape.Character("!"), new PatternEscape.Expression(expression)];
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        Assert.Equal(escapes, Serialization.FromJson<PatternEscape[]>(Serialization.ToJson(escapes)));
+        Assert.Equal(expression.GetReferencedItems(context), escapes[1].GetReferencedItems(context));
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();

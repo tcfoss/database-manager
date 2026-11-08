@@ -54,6 +54,20 @@ public class CreateDomainTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("'x' + 'y' COLLATE app.domain_collation", "'x' + 'y'", "app.domain_collation")]
+    [InlineData("('x' COLLATE app.expression_collation) COLLATE app.domain_collation", "('x' COLLATE app.expression_collation)", "app.domain_collation")]
+    [InlineData("fn('x' COLLATE app.expression_collation) COLLATE app.domain_collation", "fn('x' COLLATE app.expression_collation)", "app.domain_collation")]
+    [InlineData("('x' COLLATE app.expression_collation)", "('x' COLLATE app.expression_collation)", null)]
+    public void DefaultExpressions_KeepDomainAndExpressionCollationsSeparate(string clause, string expectedDefault, string? expectedCollation)
+    {
+        var domain = Assert.IsType<CreateDomain>(ParseStatement($"CREATE DOMAIN label AS TEXT DEFAULT {clause}"));
+
+        Assert.Equal(expectedDefault, domain.Default?.ToSql());
+        Assert.Equal(expectedCollation, domain.Collation?.ToSql());
+        Assert.Equal(domain.ToSql(), ParseStatement(domain.ToSql()).ToSql());
+    }
+
+    [Theory]
     [InlineData("CONSTRAINT required NOT NULL DEFAULT 'x' CONSTRAINT valid CHECK (VALUE <> '') COLLATE app.collation", "CONSTRAINT required NOT NULL CONSTRAINT valid CHECK (VALUE <> '')")]
     [InlineData("CONSTRAINT valid CHECK (VALUE <> '') COLLATE app.collation CONSTRAINT required NOT NULL DEFAULT 'x'", "CONSTRAINT valid CHECK (VALUE <> '') CONSTRAINT required NOT NULL")]
     [InlineData("NULL DEFAULT 'x' CHECK (VALUE <> '') COLLATE app.collation", "NULL CHECK (VALUE <> '')")]
@@ -208,7 +222,7 @@ public class CreateDomainTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
         ParserState state = GetState("(VALUE) VALUE VALUE");
 
-        using (state.EnterDomainCheck())
+        using (state.EnterContext(ParseContext.DomainCheck))
         {
             Assert.IsType<DomainValue>(parser.ExpressionParser.ParseDomainCheckExpr(state));
             Assert.IsType<DomainValue>(parser.ExpressionParser.ParseExpr(state));

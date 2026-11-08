@@ -18,13 +18,14 @@ public sealed class Word(string value, QuoteStyle quoteStyle = QuoteStyle.None, 
     public string Value { get; } = value;
     public QuoteStyle QuoteStyle { get; } = quoteStyle;
     public SigilKind Sigil { get; } = sigil;
+    public int? SourceLength { get; init; }
     public Keyword Keyword { get; } = quoteStyle == QuoteStyle.None && sigil == SigilKind.None
         ? KeywordHelper.GetKeyword(value)
         : Keyword.undefined;
 
-    public override int Length => Value.Length
+    public override int Length => SourceLength ?? (Value.Length
         + (QuoteStyle != QuoteStyle.None ? 2 : 0)
-        + Sigil switch { SigilKind.Variable => 1, _ => 0 };
+        + (Sigil switch { SigilKind.Variable => 1, _ => 0 }));
 
     public Identifier ToIdentifier(int sourceId)
     {

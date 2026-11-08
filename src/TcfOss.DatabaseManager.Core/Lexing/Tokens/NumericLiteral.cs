@@ -1,9 +1,18 @@
+using TcfOss.DatabaseManager.Core.Common;
+
 namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 public sealed class NumericLiteral(string value, bool isLong = false) : Token
 {
     public string Value { get; } = value;
     public bool IsLong { get; } = isLong;
+
+    public override int Length => Value.Length + (IsLong ? 1 : 0);
+
+    public string GetDecimalText()
+    {
+        return NumericText.ToDecimal(Value);
+    }
 
     public override string ToString()
     {

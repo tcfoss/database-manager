@@ -909,4 +909,122 @@ public static class ParserStateTests
         var expectedLocation = new Lexing.Location(0, 0, 0);
         Assert.Equal(expectedLocation, peeked.Location);
     }
+
+    [Theory]
+    [InlineData(ParseContext.None)]
+    [InlineData(ParseContext.DomainCheck)]
+    [InlineData(ParseContext.DefaultExpression)]
+    [InlineData(ParseContext.StringLiteralAsStatement)]
+    [InlineData(ParseContext.BeginAtomic)]
+    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.BeginAtomic)]
+    public static void EnterContext_RestoresNestedEnablingAndDisabling(ParseContext context)
+    {
+        var state = new ParserState([]);
+        Assert.Equal(ParseContext.None, state.Context);
+
+        using (state.EnterContext(context))
+        {
+            Assert.Equal(context, state.Context);
+            using (state.EnterContext(context))
+            {
+                Assert.Equal(context, state.Context);
+                using (state.EnterContext(disable: context))
+                {
+                    Assert.Equal(ParseContext.None, state.Context);
+                }
+                Assert.Equal(context, state.Context);
+            }
+            Assert.Equal(context, state.Context);
+        }
+
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Fact]
+    public static void EnterContext_UpdatesOnlyRequestedFlags()
+    {
+        var state = new ParserState([]);
+        const ParseContext outer = ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.BeginAtomic;
+        using (state.EnterContext(outer))
+        {
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression | ParseContext.BeginAtomic))
+            {
+                Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
+                using (state.EnterContext())
+                {
+                    Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
+                }
+                Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
+            }
+            Assert.Equal(outer, state.Context);
+        }
+
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData(ParseContext.None, ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
+    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression, ParseContext.DomainCheck | ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
+    public static void EnterContext_RestoresPreviousContextOnException(ParseContext initial, ParseContext inner)
+    {
+        var state = new ParserState([]);
+        using (state.EnterContext(initial))
+        {
+            Assert.Throws<InvalidOperationException>((Action)(() =>
+            {
+                using (state.EnterContext(ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression))
+                {
+                    Assert.Equal(inner, state.Context);
+                    throw new InvalidOperationException();
+                }
+            }));
+            Assert.Equal(initial, state.Context);
+        }
+
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Fact]
+    public static void EnterStatementScope_RestoresNestedLabelsAndClearsUnlabeledChildren()
+    {
+        var state = new ParserState([], sourceId: 17);
+        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
+        var innerToken = new Word("inner_label") { Location = new Lexing.Location() };
+
+        Assert.Null(state.StatementLabel);
+        using (state.EnterStatementScope(outerToken))
+        {
+            Assert.Equal(outerToken.ToIdentifier(17), state.StatementLabel?.Label);
+            using (state.EnterStatementScope(innerToken))
+            {
+                Assert.Equal(innerToken.ToIdentifier(17), state.StatementLabel?.Label);
+                using (state.EnterStatementScope(null))
+                {
+                    Assert.Null(state.StatementLabel);
+                }
+                Assert.Equal(innerToken.ToIdentifier(17), state.StatementLabel?.Label);
+            }
+            Assert.Equal(outerToken.ToIdentifier(17), state.StatementLabel?.Label);
+        }
+        Assert.Null(state.StatementLabel);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public static void StatementScope_RestoresEnclosingLabelAfterParseException(bool hasInnerLabel)
+    {
+        Token[] tokens = hasInnerLabel
+            ? [new Word("inner_label") { Location = new Lexing.Location() }, new Colon { Location = new Lexing.Location() }, new Word("SELECT") { Location = new Lexing.Location() }]
+            : [new Word("SELECT") { Location = new Lexing.Location() }];
+        var state = new ParserState(tokens);
+        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
+
+        using (state.EnterStatementScope(outerToken))
+        {
+            Assert.ThrowsAny<ParseException>(() => new Parser().ParseStatement(state));
+            Assert.Equal(outerToken.ToIdentifier(state.SourceId), state.StatementLabel?.Label);
+        }
+        Assert.Null(state.StatementLabel);
+    }
 }

@@ -29,6 +29,11 @@ public class Parser : IParser
     public virtual bool SupportsPostgresRegexOperators => true;
     public virtual bool SupportsPostgresIdentitySyntax => true;
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
+    public virtual bool SupportsPostgresExpressionCollationSyntax => true;
+    public virtual bool SupportsPostgresArrayAndRowExpressionSyntax => true;
+    public virtual bool SupportsPostgresOperatorSyntax => true;
+    public virtual bool SupportsPostgresIntervalLiteralSyntax => true;
+    public virtual bool SupportsMySqlIntervalExpressionSyntax => true;
     protected virtual bool SupportsCommentOn => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }
@@ -107,85 +112,47 @@ public class Parser : IParser
     public virtual Statement ParseStatement(ParserState state)
     {
         Token token = state.Peek();
-        Label? label = null;
 
-        if (token is Label l)
+        Word? labelToken = null;
+        if (token is Word { Sigil: SigilKind.None } word && state.PeekNthIs<Colon>(1))
         {
+            labelToken = word;
             state.Next();
-            label = l;
+            state.Next();
             token = state.Peek();
         }
 
-        Statement statement = ParseNormalStatement(state, token, label);
+        using ParserState.StatementScope scope = state.EnterStatementScope(labelToken);
+
+        Statement statement = ParseNormalStatement(state, token);
         AttachStatementMetadata(statement, token, state);
-
-        if (label != null)
-        {
-            statement = new LabeledStatement(statement, label.Identifier);
-            if (label.PreNonSql.SafeAny())
-            {
-                statement.Meta.PreNonSql = label.PreNonSql.Items;
-                statement.Meta.Start = label.PreNonSql.Start;
-            }
-            else
-            {
-                statement.Meta.Start = label.Location.Position;
-            }
-            statement.Meta.End = state.Peek().Location.Position;
-        }
-
-        return statement;
+        return AttachLabelToStatement(statement, state);
     }
 
-    internal static void AttachStatementMetadata(Statement statement, Token token, ParserState state)
-    {
-        if (token.PreNonSql.SafeAny())
-        {
-            statement.Meta.PreNonSql = token.PreNonSql.Items;
-            statement.Meta.Start = token.PreNonSql.Start;
-        }
-        else
-        {
-            statement.Meta.Start = token.Location.Position;
-        }
-
-
-        Token upcoming = state.Peek();
-        if (upcoming is Semicolon or Eof && upcoming.PreNonSql.SafeAny())
-        {
-            statement.Meta.PostNonSql = upcoming.PreNonSql.Items;
-        }
-
-        int end = upcoming.Location.Position;
-        int endPlusTerminatorLength = end;
-        if (upcoming is Semicolon || upcoming is MyTerminator)
-        {
-            endPlusTerminatorLength += upcoming.Length;
-        }
-        statement.Meta.End = end;
-        statement.Meta.EndPlusTerminatorLength = endPlusTerminatorLength;
-    }
-
-    protected virtual Statement ParseNormalStatement(ParserState state, Token token, Label? label)
+    protected virtual Statement ParseNormalStatement(ParserState state, Token token)
     {
         switch (token)
         {
             case Word word:
-                return ParseKeywordStatement(state, word, label);
+                return ParseKeywordStatement(state, word);
             case ParenOpen:
                 return SelectParser.ParseSelect(state, null);
-            case StringLiteral literal when state.AllowStringLiteralAsStatement:
+            case StringLiteral literal when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
                 state.Next();
                 return new RoutineBodyLiteral(literal.Value.Replace("''", "'", StringComparison.Ordinal));
-            case DollarQuotedStringLiteral literal when state.AllowStringLiteralAsStatement:
+            case DollarQuotedStringLiteral literal when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
                 state.Next();
                 return new RoutineBodyLiteral(literal.Value) { DollarQuoteTag = literal.Tag };
+            case EscapeStringLiteral when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
+                return new RoutineBodyLiteral(((Value.EscapeString)ValueParser.ParseValue(state)).DecodedValue);
+            case UnicodeStringLiteral when state.Context.HasFlag(ParseContext.StringLiteralAsStatement):
+                return new RoutineBodyLiteral(((Value.UnicodeString)ValueParser.ParseValue(state)).DecodedValue);
             default:
                 throw ParserState.ExpectedException("SQL statement".Italic(), token);
         }
     }
 
-    protected virtual Statement ParseKeywordStatement(ParserState state, Word first, Label? label)
+    protected virtual Statement ParseKeywordStatement(ParserState state, Word first)
     {
 #pragma warning disable IDE0072 // Add missing cases
         return first.Keyword switch
@@ -375,11 +342,11 @@ public class Parser : IParser
     {
         if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            if (!state.AllowBeginAtomic)
+            if (!state.Context.HasFlag(ParseContext.BeginAtomic))
             {
                 throw state.ExpectedException("SQL statement");
             }
-            using (state.EnterBeginAtomic(allow: false))
+            using (state.EnterContext(disable: ParseContext.BeginAtomic))
             {
                 return ControlFlowParser.ParseBeginAtomic(state);
             }
@@ -439,5 +406,61 @@ public class Parser : IParser
     {
         state.ExpectKeyword(Keyword.RETURN);
         return new Return(ExpressionParser.ParseExpr(state));
+    }
+
+    internal static void AttachStatementMetadata(Statement statement, Token token, ParserState state)
+    {
+        if (token.PreNonSql.SafeAny())
+        {
+            statement.Meta.PreNonSql = token.PreNonSql.Items;
+            statement.Meta.Start = token.PreNonSql.Start;
+        }
+        else
+        {
+            statement.Meta.Start = token.Location.Position;
+        }
+
+
+        Token upcoming = state.Peek();
+        if (upcoming is Semicolon or Eof && upcoming.PreNonSql.SafeAny())
+        {
+            statement.Meta.PostNonSql = upcoming.PreNonSql.Items;
+        }
+
+        int end = upcoming.Location.Position;
+        int endPlusTerminatorLength = end;
+        if (upcoming is Semicolon || upcoming is MyTerminator)
+        {
+            endPlusTerminatorLength += upcoming.Length;
+        }
+        statement.Meta.End = end;
+        statement.Meta.EndPlusTerminatorLength = endPlusTerminatorLength;
+    }
+
+    private static Statement AttachLabelToStatement(Statement statement, ParserState state)
+    {
+        if (state.StatementLabel is null)
+        {
+            return statement;
+        }
+        StatementLabel statementLabel = state.StatementLabel.Value;
+        statement = new LabeledStatement(statement, statementLabel.Label)
+        {
+            Meta = new()
+            {
+                End = statement.Meta.End,
+                EndPlusTerminatorLength = statement.Meta.EndPlusTerminatorLength
+            }
+        };
+        if (statementLabel.PreNonSql.SafeAny())
+        {
+            statement.Meta.PreNonSql = statementLabel.PreNonSql.Items;
+            statement.Meta.Start = statementLabel.PreNonSql.Start;
+        }
+        else
+        {
+            statement.Meta.Start = statementLabel.StartPosition;
+        }
+        return statement;
     }
 }

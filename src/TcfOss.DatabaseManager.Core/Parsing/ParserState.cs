@@ -18,9 +18,8 @@ public class ParserState
 
     public int SourceId { get; }
 
-    internal bool IsDomainCheck { get; private set; }
-    public bool AllowStringLiteralAsStatement { get; private set; }
-    internal bool AllowBeginAtomic { get; private set; }
+    public ParseContext Context { get; private set; }
+    public StatementLabel? StatementLabel { get; private set; }
 
     public ParserState(Token[] tokens, int sourceId = 0)
     {
@@ -469,72 +468,50 @@ public class ParserState
         return null;
     }
 
-    public DomainCheckScope EnterDomainCheck()
+    public Scope EnterContext(ParseContext enable = ParseContext.None, ParseContext disable = ParseContext.None)
     {
-        return new DomainCheckScope(this);
+        return new Scope(this, enable, disable);
     }
 
-    public StringLiteralAsStatementScope EnterStringLiteralAsStatement()
-    {
-        return new StringLiteralAsStatementScope(this);
-    }
-
-    internal BeginAtomicScope EnterBeginAtomic(bool allow = true)
-    {
-        return new BeginAtomicScope(this, allow);
-    }
-
-    internal readonly struct BeginAtomicScope : IDisposable
+    public readonly struct Scope : IDisposable
     {
         private readonly ParserState _state;
-        private readonly bool _previousValue;
+        private readonly ParseContext _previousContext;
 
-        internal BeginAtomicScope(ParserState state, bool allow)
+        internal Scope(ParserState state, ParseContext enable, ParseContext disable)
         {
             _state = state;
-            _previousValue = state.AllowBeginAtomic;
-            state.AllowBeginAtomic = allow;
+            _previousContext = state.Context;
+            state.Context = (state.Context | enable) & ~disable;
         }
 
         public void Dispose()
         {
-            _state.AllowBeginAtomic = _previousValue;
+            _state.Context = _previousContext;
         }
     }
 
-    public readonly struct StringLiteralAsStatementScope : IDisposable
+    public StatementScope EnterStatementScope(Word? labelToken)
+    {
+        StatementLabel? statementLabel = labelToken is not null ? new StatementLabel(labelToken, SourceId) : null;
+        return new StatementScope(this, statementLabel);
+    }
+
+    public readonly struct StatementScope : IDisposable
     {
         private readonly ParserState _state;
-        private readonly bool _previousValue;
+        private readonly StatementLabel? _previousStatementLabel;
 
-        internal StringLiteralAsStatementScope(ParserState state)
+        internal StatementScope(ParserState state, StatementLabel? statementLabel)
         {
             _state = state;
-            _previousValue = state.AllowStringLiteralAsStatement;
-            state.AllowStringLiteralAsStatement = true;
+            _previousStatementLabel = state.StatementLabel;
+            state.StatementLabel = statementLabel;
         }
 
         public void Dispose()
         {
-            _state.AllowStringLiteralAsStatement = _previousValue;
-        }
-    }
-
-    public readonly struct DomainCheckScope : IDisposable
-    {
-        private readonly ParserState _state;
-        private readonly bool _previousIsDomainCheck;
-
-        internal DomainCheckScope(ParserState state)
-        {
-            _state = state;
-            _previousIsDomainCheck = state.IsDomainCheck;
-            state.IsDomainCheck = true;
-        }
-
-        public void Dispose()
-        {
-            _state.IsDomainCheck = _previousIsDomainCheck;
+            _state.StatementLabel = _previousStatementLabel;
         }
     }
 
