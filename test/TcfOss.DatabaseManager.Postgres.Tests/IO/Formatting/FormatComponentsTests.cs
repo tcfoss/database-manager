@@ -432,4 +432,25 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", "FILTER (WHERE \"active\")", Label = "Format aggregate filter")]
+    [InlineData("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value DESC NULLS LAST) FROM items", "WITHIN GROUP (ORDER BY \"value\" DESC NULLS LAST)", Label = "Format within group")]
+    [InlineData("SELECT SUM(value) OVER result FROM items WINDOW result AS (PARTITION BY category ORDER BY id NULLS FIRST)", "WINDOW \"result\" AS (PARTITION BY \"category\" ORDER BY \"id\" NULLS FIRST)", Label = "Format named window")]
+    [InlineData("SELECT SUM(value) OVER (base ROWS BETWEEN (offset_value + 1) PRECEDING AND 1 FOLLOWING EXCLUDE TIES) FROM items WINDOW base AS (ORDER BY id)", "OVER (\"base\" ROWS BETWEEN (\"offset_value\" + 1) PRECEDING AND 1 FOLLOWING EXCLUDE TIES)", Label = "Format inherited frame")]
+    [InlineData("SELECT SUM(value) OVER (ROWS CURRENT ROW EXCLUDE NO OTHERS) FROM items", "ROWS CURRENT ROW EXCLUDE NO OTHERS", Label = "Format single frame bound")]
+    [InlineData("SELECT SUM(value) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM items", "ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", Label = "Format unbounded bounds")]
+    public void AggregateWindows_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Select>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

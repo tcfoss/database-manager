@@ -42,6 +42,7 @@ public static class KeywordHelper
         Keyword.GROUP,
         Keyword.SORT,
         Keyword.HAVING,
+        Keyword.WINDOW,
         Keyword.ORDER,
         Keyword.TOP,
         Keyword.LATERAL,

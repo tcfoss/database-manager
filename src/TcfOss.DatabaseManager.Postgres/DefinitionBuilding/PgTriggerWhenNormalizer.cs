@@ -60,7 +60,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
 
     protected override FunctionCall NormalizeFunctionCall(FunctionCall functionCall, bool inSelect = false, bool flatten = false)
     {
-        if (functionCall.Over != null || functionCall.Arguments is not FunctionArguments.List { DuplicateTreatment: null, Clauses: null })
+        if (functionCall.Over != null || functionCall.Filter != null || functionCall.WithinGroup != null || functionCall.Arguments is not FunctionArguments.List { DuplicateTreatment: null, Clauses: null })
         {
             throw Invalid("aggregate or window-function syntax");
         }

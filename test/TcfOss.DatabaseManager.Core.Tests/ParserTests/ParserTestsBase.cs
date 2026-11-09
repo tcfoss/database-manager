@@ -17,10 +17,10 @@ public class ParserTestsBase<TLexer, TParser>
         return [.. tokens];
     }
 
-    protected static ParserState GetState(string sql)
+    protected static ParserState GetState(string sql, int sourceId = 0)
     {
         var tokens = new TLexer().Tokenize(sql);
-        return new ParserState([.. tokens]);
+        return new ParserState([.. tokens], sourceId);
     }
 
     protected static SqlValueList<Statement> ParseStatements(string sql)

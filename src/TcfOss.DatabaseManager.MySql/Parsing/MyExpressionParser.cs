@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Expressions.Attributes;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using BinaryOperatorOp = TcfOss.DatabaseManager.Core.BuiltIn.BinaryOperator;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
@@ -12,6 +13,26 @@ public class MyExpressionParser(MyParser parser)
     : ExpressionParser(parser)
 {
     private readonly MyParser _p = parser;
+
+    protected override WindowFrameUnit? ParseOptionalWindowFrameUnit(ParserState state)
+    {
+        return state.PeekKeyword(Keyword.GROUPS) ? null : base.ParseOptionalWindowFrameUnit(state);
+    }
+
+    protected override WindowFrameExclusion? ParseOptionalWindowExclusion(ParserState state)
+    {
+        return null;
+    }
+
+    protected override SqlValueList<OrderBy>? ParseOptionalWithinGroup(ParserState state)
+    {
+        return null;
+    }
+
+    protected override Expression? ParseOptionalFilter(ParserState state)
+    {
+        return null;
+    }
 
     protected override Expression ParsePrefix(ParserState state)
     {

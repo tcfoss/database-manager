@@ -97,11 +97,44 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return functionCall with
         {
             Arguments = newArgs,
-            Over = functionCall.Over is { } window ? new WindowSpec
+            WithinGroup = NormalizeSelectOrderBy(functionCall.WithinGroup, inSelect, flatten),
+            Filter = NormalizeNullableExpression(functionCall.Filter, inSelect, flatten),
+            Over = functionCall.Over == null ? null : NormalizeWindowSpec(functionCall.Over, inSelect, flatten)
+        };
+    }
+
+    private WindowSpec NormalizeWindowSpec(WindowSpec window, bool inSelect, bool flatten)
+    {
+        return window switch
+        {
+            WindowSpec.NamedReference named => new WindowSpec.NamedReference(ComponentNormalizer.NormalizeSingleIdentifier(named.WindowName)),
+            WindowSpec.InlineSpecification inline => NormalizeWindowSpec(inline, inSelect, flatten),
+            _ => throw new DefensiveGuardException(true, "normalize window spec", window.GetType())
+        };
+    }
+
+    private WindowSpec.InlineSpecification NormalizeWindowSpec(WindowSpec.InlineSpecification inline, bool inSelect, bool flatten)
+    {
+        return new WindowSpec.InlineSpecification
+        {
+            BaseWindow = inline.BaseWindow == null ? null : ComponentNormalizer.NormalizeSingleIdentifierNullable(inline.BaseWindow),
+            PartitionBy = inline.PartitionBy == null ? null : [.. inline.PartitionBy.Select(expression => NormalizeExpression(expression, inSelect, flatten))],
+            OrderBy = NormalizeSelectOrderBy(inline.OrderBy, inSelect, flatten),
+            Frame = inline.Frame == null ? null : inline.Frame with
             {
-                PartitionBy = window.PartitionBy == null ? null : [.. window.PartitionBy.Select(expression => NormalizeExpression(expression, inSelect, flatten))],
-                OrderBy = NormalizeSelectOrderBy(window.OrderBy, inSelect, flatten)
-            } : null
+                Start = NormalizeWindowFrameBound(inline.Frame.Start, inSelect, flatten),
+                End = inline.Frame.End == null ? null : NormalizeWindowFrameBound(inline.Frame.End, inSelect, flatten)
+            }
+        };
+    }
+
+    private WindowFrameBound NormalizeWindowFrameBound(WindowFrameBound bound, bool inSelect, bool flatten)
+    {
+        return bound switch
+        {
+            WindowFrameBound.Preceding preceding => preceding with { Offset = NormalizeExpression(preceding.Offset, inSelect, flatten) },
+            WindowFrameBound.Following following => following with { Offset = NormalizeExpression(following.Offset, inSelect, flatten) },
+            _ => bound
         };
     }
 
@@ -580,7 +613,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             From = from,
             Where = where,
             GroupBy = groupBys,
-            Having = having
+            Having = having,
+            Windows = select.Windows == null
+                ? null
+                : [.. select.Windows.Select(window => window with
+            {
+                Name = ComponentNormalizer.NormalizeSingleIdentifier(window.Name),
+                Specification = NormalizeWindowSpec(window.Specification, inSelect: true, flatten: flatten)
+            })]
         };
     }
 

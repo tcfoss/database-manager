@@ -6,6 +6,11 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyComponentParser(MyParser parser) : ComponentParser(parser)
 {
+    protected override NullsOrder? ParseOptionalNullsOrder(ParserState state)
+    {
+        return null;
+    }
+
     public override CreateOrLabel? ParseCreateOrLabel(ParserState state)
     {
         if (state.ParseKeywordsAll(Keyword.OR, Keyword.REPLACE))

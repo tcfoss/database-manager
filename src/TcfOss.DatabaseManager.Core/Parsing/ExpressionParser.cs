@@ -491,20 +491,57 @@ public class ExpressionParser
             name.Values[0] = new Identifier(name.Values[0].Name.ToUpperInvariant());
         }
 
+        SqlValueList<OrderBy>? withinGroup = ParseOptionalWithinGroup(state);
+        Expression? filter = ParseOptionalFilter(state);
         WindowSpec? over = ParseOptionalOver(state);
 
         return new FunctionCall(name)
         {
             Arguments = args,
+            WithinGroup = withinGroup,
+            Filter = filter,
             Over = over
         };
     }
 
     /// <summary>
-    /// Parses an optional <c>OVER (...)</c> window specification following a
-    /// function call. Returns <c>null</c> if the next token is not <c>OVER</c>.
-    /// Inline window specs only — named windows (e.g. <c>OVER w</c>) are not
-    /// yet supported.
+    /// <code><![CDATA[
+    /// [ WITHIN GROUP ( ORDER BY expression [, ...] ) ]
+    /// ]]></code>
+    /// </summary>
+    protected virtual SqlValueList<OrderBy>? ParseOptionalWithinGroup(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.WITHIN))
+        {
+            return null;
+        }
+        state.ExpectKeyword(Keyword.GROUP);
+        state.ExpectLeftParen();
+        state.ExpectKeyword(Keyword.ORDER);
+        state.ExpectKeyword(Keyword.BY);
+        SqlValueList<OrderBy> orderBy = state.ParseCommaSeparated(_p.ComponentParser.ParseOrderBy);
+        state.ExpectRightParen();
+        return orderBy;
+    }
+
+    /// <summary>
+    /// <code><![CDATA[ [ FILTER ( WHERE expression ) ] ]]></code>
+    /// </summary>
+    protected virtual Expression? ParseOptionalFilter(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.FILTER))
+        {
+            return null;
+        }
+        state.ExpectLeftParen();
+        state.ExpectKeyword(Keyword.WHERE);
+        Expression filter = ParseExpr(state);
+        state.ExpectRightParen();
+        return filter;
+    }
+
+    /// <summary>
+    /// <code><![CDATA[ [ OVER { window_name | window_specification } ] ]]></code>
     /// </summary>
     private WindowSpec? ParseOptionalOver(ParserState state)
     {
@@ -513,7 +550,22 @@ public class ExpressionParser
             return null;
         }
 
+        return state.Peek() is ParenOpen
+            ? ParseWindowSpec(state)
+            : new WindowSpec.NamedReference(_p.ComponentParser.ParseIdentifier(state));
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// ( [ window_name ] [ PARTITION BY expression [, ...] ] [ ORDER BY expression [, ...] ] [ frame_clause ] )
+    /// ]]></code>
+    /// </summary>
+    public WindowSpec.InlineSpecification ParseWindowSpec(ParserState state)
+    {
         state.ExpectLeftParen();
+        Identifier? baseWindow = state.Peek() is Word { Keyword: not (Keyword.PARTITION or Keyword.ORDER or Keyword.ROWS or Keyword.RANGE or Keyword.GROUPS) }
+            ? _p.ComponentParser.ParseIdentifier(state)
+            : null;
 
         SqlValueList<Expression>? partitionBy = null;
         if (state.ParseKeywordsAll(Keyword.PARTITION, Keyword.BY))
@@ -527,13 +579,131 @@ public class ExpressionParser
             orderBy = state.ParseCommaSeparated(_p.ComponentParser.ParseOrderBy);
         }
 
+        WindowFrame? frame = ParseOptionalWindowFrame(state);
         state.ExpectRightParen();
 
-        return new WindowSpec
+        return new WindowSpec.InlineSpecification
         {
+            BaseWindow = baseWindow,
             PartitionBy = partitionBy,
             OrderBy = orderBy,
+            Frame = frame,
         };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ { ROWS | RANGE | GROUPS } { frame_bound | BETWEEN frame_bound AND frame_bound } [ EXCLUDE exclusion ] ]
+    /// ]]></code>
+    /// </summary>
+    private WindowFrame? ParseOptionalWindowFrame(ParserState state)
+    {
+        WindowFrameUnit? unit = ParseOptionalWindowFrameUnit(state);
+        if (unit == null)
+        {
+            return null;
+        }
+
+        bool between = state.ParseKeyword(Keyword.BETWEEN);
+        Token startToken = state.Peek();
+        WindowFrameBound start = ParseWindowFrameBound(state);
+        WindowFrameBound? end = null;
+        if (between)
+        {
+            state.ExpectKeyword(Keyword.AND);
+            end = ParseWindowFrameBound(state);
+        }
+
+        if (start is WindowFrameBound.UnboundedFollowing
+            || end is WindowFrameBound.UnboundedPreceding
+            || (start is WindowFrameBound.CurrentRow && end is WindowFrameBound.Preceding)
+            || (start is WindowFrameBound.Following && end is null or WindowFrameBound.CurrentRow or WindowFrameBound.Preceding))
+        {
+            throw ParserState.ExpectedException("valid window frame bounds", startToken);
+        }
+
+        return new WindowFrame(unit, start, end)
+        {
+            Exclusion = ParseOptionalWindowExclusion(state)
+        };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ ROWS | RANGE | GROUPS ]
+    /// ]]></code>
+    /// </summary>
+    protected virtual WindowFrameUnit? ParseOptionalWindowFrameUnit(ParserState state)
+    {
+        Keyword unit = state.ParseKeywordsAny(Keyword.ROWS, Keyword.RANGE, Keyword.GROUPS);
+        return unit switch
+        {
+            Keyword.ROWS => WindowFrameUnit.Rows,
+            Keyword.RANGE => WindowFrameUnit.Range,
+            Keyword.GROUPS => WindowFrameUnit.Groups,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// UNBOUNDED { PRECEDING | FOLLOWING }
+    ///     | CURRENT ROW
+    ///     | expression { PRECEDING | FOLLOWING }
+    /// ]]></code>
+    /// </summary>
+    private WindowFrameBound ParseWindowFrameBound(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.UNBOUNDED))
+        {
+            if (state.ParseKeyword(Keyword.PRECEDING))
+            {
+                return new WindowFrameBound.UnboundedPreceding();
+            }
+            state.ExpectKeyword(Keyword.FOLLOWING);
+            return new WindowFrameBound.UnboundedFollowing();
+        }
+        if (state.ParseKeyword(Keyword.CURRENT))
+        {
+            state.ExpectKeyword(Keyword.ROW);
+            return new WindowFrameBound.CurrentRow();
+        }
+        Expression offset = ParseExpr(state);
+        if (state.ParseKeyword(Keyword.PRECEDING))
+        {
+            return new WindowFrameBound.Preceding(offset);
+        }
+        state.ExpectKeyword(Keyword.FOLLOWING);
+        return new WindowFrameBound.Following(offset);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS } ]
+    /// ]]></code>
+    /// </summary>
+    protected virtual WindowFrameExclusion? ParseOptionalWindowExclusion(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.EXCLUDE))
+        {
+            return null;
+        }
+        if (state.ParseKeyword(Keyword.CURRENT))
+        {
+            state.ExpectKeyword(Keyword.ROW);
+            return WindowFrameExclusion.CurrentRow;
+        }
+        if (state.ParseKeyword(Keyword.GROUP))
+        {
+            return WindowFrameExclusion.Group;
+        }
+        if (state.ParseKeyword(Keyword.TIES))
+        {
+            return WindowFrameExclusion.Ties;
+        }
+        state.ExpectKeyword(Keyword.NO);
+        state.ExpectKeyword(Keyword.OTHERS);
+        return WindowFrameExclusion.NoOthers;
     }
 
     private FunctionArguments.List ParseFunctionArgumentList(ParserState state)

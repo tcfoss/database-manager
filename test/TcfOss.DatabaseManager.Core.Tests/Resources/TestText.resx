@@ -138,6 +138,7 @@
         },
         "GroupBy": null,
         "Having": null,
+        "Windows": null,
         "Meta": {
           "PreNonSql": null,
           "PostNonSql": null,
@@ -308,6 +309,7 @@
         },
         "GroupBy": null,
         "Having": null,
+        "Windows": null,
         "Meta": {
           "PreNonSql": null,
           "PostNonSql": null,

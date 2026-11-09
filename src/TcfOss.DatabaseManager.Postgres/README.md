@@ -92,6 +92,28 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Aggregate And Window Parsing
+
+Function calls retain aggregate `FILTER (WHERE ...)`, ordered-set
+`WITHIN GROUP (ORDER BY ...)`, and named or inline OVER clauses. SELECT retains
+named WINDOW definitions, including inherited specifications. Shared ORDER BY
+items preserve optional `NULLS FIRST` / `NULLS LAST`, including aggregate and
+window ordering.
+
+Window specifications support ROWS, RANGE, and GROUPS frames with single or
+BETWEEN bounds: UNBOUNDED PRECEDING/FOLLOWING, CURRENT ROW, and expression-based
+PRECEDING/FOLLOWING offsets. Optional exclusions retain CURRENT ROW, GROUP, TIES,
+or NO OTHERS. Structurally invalid bound combinations are rejected. SQL/JSON
+round trips, recursive formatting/idempotence, both normalization modes,
+dependencies, identifier sources, and atomic-body boundaries are unit-tested.
+Window names are identifiers, not database-object dependencies.
+
+Core owns the shared grammar. MySQL/MariaDB and SQL Server component overrides
+narrow PostgreSQL-only modifiers while retaining shared ROWS/RANGE windows;
+SQL Server also accepts WITHIN GROUP. Aggregate/window eligibility, named-window
+lookup and inheritance rules, frame-offset typing/value checks, ordering
+requirements, and exhaustive dialect/version validation remain deferred.
+
 ## Common Table Expressions
 
 CTE bodies retain SELECT, INSERT, UPDATE, or DELETE statements, including nested

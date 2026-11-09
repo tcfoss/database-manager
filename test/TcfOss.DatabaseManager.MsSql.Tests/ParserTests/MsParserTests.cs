@@ -473,6 +473,25 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     }
 
     [Theory]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM items", Label = "SQL Server rows frame")]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id RANGE UNBOUNDED PRECEDING) FROM items", Label = "SQL Server range frame")]
+    [InlineData("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value) OVER () FROM items", Label = "SQL Server ordered set function")]
+    public void WindowFramesAndOrderedSetFunctions_RemainSupported(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", Label = "Reject aggregate FILTER")]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id GROUPS CURRENT ROW) FROM items", Label = "Reject GROUPS frame")]
+    [InlineData("SELECT SUM(value) OVER (ROWS CURRENT ROW EXCLUDE TIES) FROM items", Label = "Reject EXCLUDE")]
+    [InlineData("SELECT id FROM items ORDER BY id NULLS LAST", Label = "Reject NULLS ordering")]
+    public void AggregateWindows_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
     [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]
     [InlineData("WITH result AS ((SELECT 1 AS id)) SELECT id FROM result")]

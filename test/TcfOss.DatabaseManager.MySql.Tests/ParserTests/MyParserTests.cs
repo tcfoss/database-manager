@@ -770,6 +770,25 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM items", Label = "Shared rows frame")]
+    [InlineData("SELECT SUM(value) OVER result FROM items WINDOW result AS (ORDER BY id RANGE UNBOUNDED PRECEDING)", Label = "Shared named range window")]
+    public void WindowFrames_RemainSupportedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", Label = "Reject aggregate FILTER")]
+    [InlineData("SELECT f() WITHIN GROUP (ORDER BY id) FROM items", Label = "Reject WITHIN GROUP")]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id GROUPS CURRENT ROW) FROM items", Label = "Reject GROUPS frame")]
+    [InlineData("SELECT SUM(value) OVER (ROWS CURRENT ROW EXCLUDE TIES) FROM items", Label = "Reject EXCLUDE")]
+    [InlineData("SELECT id FROM items ORDER BY id NULLS FIRST", Label = "Reject NULLS ordering")]
+    public void AggregateWindows_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
     [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]
     [InlineData("WITH result AS ((SELECT 1 AS id)) SELECT id FROM result")]

@@ -126,7 +126,29 @@ public class ComponentParser(Parser parser)
         Expression expr = _p.ExpressionParser.ParseExpr(state);
         Direction? dir = ParseDirection(state);
 
-        return new OrderBy(expr, dir);
+        return new OrderBy(expr, dir)
+        {
+            NullsOrder = ParseOptionalNullsOrder(state)
+        };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ NULLS { FIRST | LAST } ]
+    /// ]]></code>
+    /// </summary>
+    protected virtual NullsOrder? ParseOptionalNullsOrder(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.NULLS))
+        {
+            return null;
+        }
+        if (state.ParseKeyword(Keyword.FIRST))
+        {
+            return NullsOrder.First;
+        }
+        state.ExpectKeyword(Keyword.LAST);
+        return NullsOrder.Last;
     }
 
     public DistinctFilter? ParseAllOrDistinct(ParserState state)

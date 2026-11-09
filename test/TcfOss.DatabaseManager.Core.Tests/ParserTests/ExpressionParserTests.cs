@@ -406,13 +406,12 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [Fact]
     public void KitchenSink_IntervalSyntaxPreservesBothDialectForms()
     {
-        var parser = new Parser();
-        var literalState = new ParserState([.. new GenericLexer().Tokenize("INTERVAL '1-2' YEAR TO MONTH")]);
-        var expressionState = new ParserState([.. new GenericLexer().Tokenize("INTERVAL (amount + 1) DAY")]);
-
-        Assert.IsType<PgIntervalLiteral>(parser.ExpressionParser.ParseExpr(literalState));
-        Assert.IsType<Interval>(parser.ExpressionParser.ParseExpr(expressionState));
+        var literalState = GetState("INTERVAL '1-2' YEAR TO MONTH");
+        Assert.IsType<PgIntervalLiteral>(ParseExpression(literalState));
         Assert.IsType<Eof>(literalState.Peek());
+
+        var expressionState = GetState("INTERVAL (amount + 1) DAY");
+        Assert.IsType<Interval>(ParseExpression(expressionState));
         Assert.IsType<Eof>(expressionState.Peek());
     }
 
@@ -424,8 +423,22 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("INTERVAL '1' SECOND")]
     public void KitchenSink_QuotedMySqlIntervalUnitsRetainExistingExpressionShape(string sql)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
-        var expression = Assert.IsType<Interval>(new Parser().ExpressionParser.ParseExpr(state));
+        var state = GetState(sql);
+        var expression = Assert.IsType<Interval>(ParseExpression(state));
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Theory]
+    [InlineData("COUNT(*) FILTER (WHERE active)", Label = "Kitchen sink aggregate filter")]
+    [InlineData("app.aggregate(value) WITHIN GROUP (ORDER BY id NULLS LAST)", Label = "Kitchen sink ordered set")]
+    [InlineData("SUM(value) OVER result", Label = "Kitchen sink window reference")]
+    [InlineData("SUM(value) OVER (base ORDER BY id GROUPS BETWEEN 1 PRECEDING AND 1 FOLLOWING EXCLUDE GROUP)", Label = "Kitchen sink groups frame")]
+    public void KitchenSink_AggregateWindowsParseToCompletion(string sql)
+    {
+        var state = GetState(sql);
+        var expression = Assert.IsType<FunctionCall>(ParseExpression(state));
 
         Assert.Equal(sql, expression.ToSql());
         Assert.IsType<Eof>(state.Peek());

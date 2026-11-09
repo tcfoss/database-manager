@@ -272,6 +272,7 @@ public class SelectParser
         }
 
         Expression? having = state.ParseInit(state.ParseKeyword(Keyword.HAVING), _expr.ParseExpr);
+        SqlValueList<WindowDefinition>? windows = state.ParseInit(state.ParseKeyword(Keyword.WINDOW), inner => inner.ParseCommaSeparated(ParseWindowDefinition));
 
         return new SimpleSelect(selections)
         {
@@ -281,6 +282,7 @@ public class SelectParser
             Where = where,
             GroupBy = groupBy,
             Having = having,
+            Windows = windows,
             SelectInto = intoEarly,
         };
     }
@@ -320,6 +322,18 @@ public class SelectParser
         bool withTies = state.ParseKeywordsAll(Keyword.WITH, Keyword.TIES);
 
         return new Top(expression, percent, withTies);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// window_name AS window_specification
+    /// ]]></code>
+    /// </summary>
+    private WindowDefinition ParseWindowDefinition(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        state.ExpectKeyword(Keyword.AS);
+        return new WindowDefinition(name, _expr.ParseWindowSpec(state));
     }
 
     private SelectBody ParseSelectBody(ParserState state, short precedence)

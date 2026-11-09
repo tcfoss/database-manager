@@ -8,6 +8,13 @@ namespace TcfOss.DatabaseManager.Core.IO;
 public readonly ref struct SqlInterpolatedStringHandler(int literalLength, int formattedCount, SqlTextWriter writer)
 {
 #pragma warning restore CS9113 // variable name is unread
+
+    public SqlInterpolatedStringHandler(int literalLength, int formattedCount, DelimitedWriter delimited)
+        : this(literalLength, formattedCount, delimited.Writer)
+    {
+        delimited.BeginItem();
+    }
+
     private readonly SqlTextWriter _writer = writer;
 
     public void AppendLiteral(string? value)
