@@ -78,4 +78,9 @@ public abstract record ColumnOption()
     }
 
     public record OnUpdate(Expression Expression) : ColumnOption;
+
+    public record Identity ()
+    {        public record Specified(ulong Seed, ulong Increment)
+            : Identity();
+    }
 }
