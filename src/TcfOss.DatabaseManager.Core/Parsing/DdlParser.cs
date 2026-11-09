@@ -219,7 +219,7 @@ public class DdlParser
     /// </summary>
     protected virtual List<TriggerEvent> ParseAdditionalTriggerEvents(ParserState state, out bool eventsUseOr)
     {
-        var events = ParseAdditionalTriggerEventsViaOr(state);
+        List<TriggerEvent>? events = ParseAdditionalTriggerEventsViaOr(state);
         if (events != null)
         {
             eventsUseOr = true;

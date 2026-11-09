@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
@@ -1496,7 +1495,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void GetAndValidateName_ReturnsCanonicalIdentifierAndOriginalHandle(string sqlName, string schemaName, string objectName)
     {
         var statement = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE {sqlName} (id INT)")));
-        var builder = new NameInspectingBuilder(CreateConfig());
+        var builder = new NameInspectingBuilder(PgTestConfig.GetTestConfig());
 
         ObjectNameAndHandle result = builder.GetName(statement, GetSchema());
 
@@ -1513,7 +1512,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void GetAndValidateName_PreservesUnquotedAndQuotedCaseDistinctHandles()
     {
-        var builder = new NameInspectingBuilder(CreateConfig());
+        var builder = new NameInspectingBuilder(PgTestConfig.GetTestConfig());
         var statements = ParseStatements("CREATE TABLE Items (id INT); CREATE TABLE \"Items\" (id INT)");
 
         ObjectNameAndHandle unquoted = builder.GetName(Assert.IsType<CreateTable>(statements[0]), GetSchema());
@@ -1946,7 +1945,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void ToDefinition_TriggersFollowConfiguredSearchPathAndQuotedCase()
     {
-        var config = CreateConfig() with { SearchPath = [new Identifier("app"), new Identifier("public")] };
+        var config = PgTestConfig.GetTestConfig(searchPath: [new Identifier("app"), new Identifier("public")]);
         var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
         builder.ProcessStatements(ParseStatements("CREATE TABLE public.items (other INT); CREATE TABLE app.items (id INT); CREATE FUNCTION public.audit_fn() RETURNS INT RETURN 1; CREATE FUNCTION app.audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; CREATE TRIGGER \"Audit\" AFTER UPDATE OF id ON items EXECUTE FUNCTION audit_fn()"), GetSchema(), 0);
 
@@ -2284,7 +2283,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void ToDefinition_CommentsFollowSearchPathAndPreserveQuotedCase()
     {
-        var config = CreateConfig() with { SearchPath = [new Identifier("app"), new Identifier("public")] };
+        var config = PgTestConfig.GetTestConfig(searchPath: [new Identifier("app"), new Identifier("public")]);
         var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
         builder.ProcessStatements(ParseStatements("COMMENT ON TABLE items IS 'app'; COMMENT ON TABLE public.items IS 'public'; COMMENT ON COLUMN items.ID IS 'lower'; COMMENT ON COLUMN items.\"ID\" IS 'upper'; CREATE TABLE public.items (other INT); CREATE TABLE app.items (id INT, \"ID\" INT)"), GetSchema(), 38);
 
@@ -2591,20 +2590,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private static PgDefinitionBuilder CreateBuilder(SourceManager? sourceManager = null)
     {
-        return new PgDefinitionBuilder(CreateConfig(), sourceManager ?? new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
-    }
-
-    private static PgConfig CreateConfig()
-    {
-        return new PgConfig
-        {
-            ProjectDirectory = ".",
-            Catalog = new CatalogIdentifier("catalog"),
-            DatabaseAvailable = false,
-            ValidationSettings = new ValidationSettings(),
-            QuoteStyle = QuoteStyle.Ansi,
-            NameHandling = NameHandling.LowercaseUnlessQuoted,
-        };
+        return new PgDefinitionBuilder(PgTestConfig.GetTestConfig(), sourceManager ?? new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
     }
 
     private sealed record UnknownCommentTarget : PgStatementCommentTarget

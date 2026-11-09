@@ -478,8 +478,10 @@ public class ExpressionParser
         return ParseCompositeContinuation(state, parameter);
     }
 
-    private FunctionCall ParseFunction(ParserState state, ObjectName name)
+    public FunctionCall ParseFunction(ParserState state, ObjectName? name)
     {
+        name ??= _p.ComponentParser.ParseObjectName(state);
+
         state.ExpectLeftParen();
 
         FunctionArguments args = ParseFunctionArgumentList(state);

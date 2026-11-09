@@ -419,11 +419,39 @@ public class SelectParser
         return new TableWithJoins(relation) { Joins = joins };
     }
 
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ LATERAL ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual bool ParseOptionalLateral(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.LATERAL);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ LATERAL ] { table_name
+    ///                 | ( select )
+    ///                 | function_name ( [ argument [, ...] ] )
+    ///                 | ROWS FROM ( function_call [, ...] ) }
+    /// ]]>
+    /// </code>
+    /// </summary>
     private TableFactor ParseTableFactor(ParserState state)
     {
+        bool lateral = ParseOptionalLateral(state);
+
+        if (state.PeekKeywordsAll(Keyword.ROWS, Keyword.FROM))
+        {
+            return ParseRowsFrom(state, lateral);
+        }
         if (state.ConsumeTokenIs<ParenOpen>())
         {
-            if (MaybeDerivedTableFactorUpcoming(state) && state.TryParse(ParseDerivedTableFactor, out TableFactor? derivedTable))
+            if (MaybeDerivedTableFactorUpcoming(state) && state.TryParse((s) => ParseDerivedTableFactor(s, lateral), out TableFactor? derivedTable))
             {
                 return derivedTable;
             }
@@ -437,7 +465,9 @@ public class SelectParser
                 return new TableFactor.NestedJoin
                 {
                     TableWithJoins = tableAndJoins,
-                    Alias = alias
+                    Alias = alias,
+                    AliasColumns = ParseOptionalAliasColumns(state, alias),
+                    IsLateral = lateral
                 };
             }
 
@@ -448,7 +478,9 @@ public class SelectParser
                 return new TableFactor.NestedJoin
                 {
                     TableWithJoins = tableAndJoins,
-                    Alias = alias
+                    Alias = alias,
+                    AliasColumns = ParseOptionalAliasColumns(state, alias),
+                    IsLateral = lateral
                 };
             }
 
@@ -468,22 +500,125 @@ public class SelectParser
 
         // TODO: Parse potential version qualifier
 
-        // TODO: Parse table-valued function
-        // Todo Parse ordinality
+        if (state.PeekIs<ParenOpen>())
+        {
+            return ParseTableFunction(state, name, lateral);
+        }
 
         Identifier? tableAlias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
+        SqlValueList<Identifier>? aliasColumns = ParseOptionalAliasColumns(state, tableAlias);
 
         SqlValueList<TableHint>? hints = ParseOptionalTableHints(state);
 
         TableFactor table = new TableFactor.Table(name)
         {
             Alias = tableAlias,
+            AliasColumns = aliasColumns,
             Hints = hints,
+            IsLateral = lateral
         };
 
         // TODO Parse PIVOT/UNPIVOT
 
         return table;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// function_name ( [ argument [, ...] ] ) [ WITH ORDINALITY ] [ [ AS ] alias [ ( column_alias [, ...] ) ] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual TableFactor ParseTableFunction(ParserState state, ObjectName name, bool lateral)
+    {
+        FunctionCall call = _expr.ParseFunction(state, name);
+        bool ordinality = ParseOptionalWithOrdinality(state);
+        Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
+        return new TableFactor.TableFunction(new TableFunctionCall(call))
+        {
+            WithOrdinality = ordinality,
+            Alias = alias,
+            AliasColumns = ParseOptionalAliasColumns(state, alias),
+            IsLateral = lateral
+        };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// ROWS FROM ( function_call [ AS ( column_name data_type [, ...] ) ] [, ...] ) [ WITH ORDINALITY ] [ [ AS ] alias [ ( column_alias [, ...] ) ] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual TableFactor ParseRowsFrom(ParserState state, bool lateral)
+    {
+        state.ExpectKeywordsAll(Keyword.ROWS, Keyword.FROM);
+        SqlValueList<TableFunctionCall> functions = state.ParseParenthesizedCommaSeparated(ParseRowsFromFunction, false);
+        bool ordinality = ParseOptionalWithOrdinality(state);
+        Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
+        return new TableFactor.RowsFrom(functions)
+        {
+            WithOrdinality = ordinality,
+            Alias = alias,
+            AliasColumns = ParseOptionalAliasColumns(state, alias),
+            IsLateral = lateral
+        };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// function_name ( [ argument [, ...] ] ) [ AS ( column_name data_type [ COLLATE collation ] [, ...] ) ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    private TableFunctionCall ParseRowsFromFunction(ParserState state)
+    {
+        FunctionCall call = _expr.ParseFunction(state, null);
+        SqlValueList<CompositeTypeField>? columns = state.ParseKeyword(Keyword.AS)
+            ? state.ParseParenthesizedCommaSeparated(ParseFunctionColumn, false)
+            : null;
+        return new TableFunctionCall(call, columns);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// column_name data_type [ COLLATE collation ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    private CompositeTypeField ParseFunctionColumn(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        ObjectName? collation = state.ParseKeyword(Keyword.COLLATE) ? _parseObjectName(state) : null;
+        return new CompositeTypeField(name, dataType, collation);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ WITH ORDINALITY ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual bool ParseOptionalWithOrdinality(ParserState state)
+    {
+        return state.ParseKeywordsAll(Keyword.WITH, Keyword.ORDINALITY);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ ( column_alias [, ...] ) ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual SqlValueList<Identifier>? ParseOptionalAliasColumns(ParserState state, Identifier? tableAlias)
+    {
+        return tableAlias == null ? null : state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
     }
 
     private static bool MaybeDerivedTableFactorUpcoming(ParserState state)
@@ -495,7 +630,7 @@ public class SelectParser
         };
     }
 
-    private TableFactor ParseDerivedTableFactor(ParserState state)
+    private TableFactor.Derived ParseDerivedTableFactor(ParserState state, bool lateral)
     {
         CommonTableExpression? cte = null;
         if (state.PeekKeyword(Keyword.WITH))
@@ -507,7 +642,9 @@ public class SelectParser
         Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
         return new TableFactor.Derived(subQuery)
         {
-            Alias = alias
+            Alias = alias,
+            AliasColumns = ParseOptionalAliasColumns(state, alias),
+            IsLateral = lateral
         };
     }
 

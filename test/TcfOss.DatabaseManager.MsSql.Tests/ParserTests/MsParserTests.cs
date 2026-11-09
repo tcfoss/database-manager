@@ -407,6 +407,25 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
     }
 
+    [Fact]
+    public void TableValuedFunctions_ParseInSqlServerFromAndApply()
+    {
+        const string sql = "SELECT * FROM dbo.items CROSS APPLY dbo.expand(items.value) AS result";
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM ROWS FROM (app.first())")]
+    [InlineData("SELECT * FROM app.first() WITH ORDINALITY")]
+    [InlineData("SELECT * FROM LATERAL app.first()")]
+    public void PostgresFromComponents_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Theory]
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]

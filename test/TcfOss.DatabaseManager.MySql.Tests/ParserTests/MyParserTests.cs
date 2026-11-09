@@ -710,6 +710,21 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Equal(expression, ParseExpression(expression.ToSql()));
     }
 
+    [Fact]
+    public void LateralDerivedTables_ParseInSharedMySqlMariaDbGrammar()
+    {
+        const string sql = "SELECT * FROM LATERAL (SELECT 1 AS value) AS result (value)";
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM ROWS FROM (app.first())")]
+    [InlineData("SELECT * FROM app.first() WITH ORDINALITY")]
+    public void PostgresFromComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Theory]
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]

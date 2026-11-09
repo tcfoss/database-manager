@@ -106,7 +106,9 @@
                 }
               },
               "Hints": null,
-              "Alias": null
+              "Alias": null,
+              "AliasColumns": null,
+              "IsLateral": false
             },
             "Joins": null
           }
@@ -277,7 +279,9 @@
                 }
               },
               "Hints": null,
-              "Alias": null
+              "Alias": null,
+              "AliasColumns": null,
+              "IsLateral": false
             },
             "Joins": null
           }

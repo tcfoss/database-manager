@@ -205,7 +205,7 @@ public class ParserState
             return Keyword.undefined;
         }
 
-        foreach (var kw in keywords)
+        foreach (Keyword kw in keywords)
         {
             if (kw == token.Keyword)
             {

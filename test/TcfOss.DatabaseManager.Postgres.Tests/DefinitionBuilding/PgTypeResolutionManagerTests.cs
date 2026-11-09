@@ -1,6 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
@@ -231,15 +230,6 @@ public class PgTypeResolutionManagerTests : ParserTestsBase<PgLexer, PgParser>
 
     private static PgConfig CreateConfig()
     {
-        return new PgConfig
-        {
-            ProjectDirectory = ".",
-            Catalog = new CatalogIdentifier("catalog"),
-            DatabaseAvailable = false,
-            ValidationSettings = new ValidationSettings(),
-            QuoteStyle = QuoteStyle.Ansi,
-            NameHandling = NameHandling.LowercaseUnlessQuoted,
-            SearchPath = [new Identifier("app"), new Identifier("public")]
-        };
+        return PgTestConfig.GetTestConfig(searchPath: [new Identifier("app"), new Identifier("public")]);
     }
 }

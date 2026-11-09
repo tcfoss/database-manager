@@ -6,7 +6,6 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
-using TcfOss.DatabaseManager.Postgres.Configuration;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
 
@@ -16,15 +15,7 @@ public static class Helpers
 {
     public static Formatter CreateFormatter(PseudoTableSet? pseudoTables = null, FormattingSettings? formatSettings = null)
     {
-        var config = new PgConfig
-        {
-            ProjectDirectory = ".",
-            Catalog = new CatalogIdentifier("catalog"),
-            DatabaseAvailable = false,
-            ValidationSettings = new ValidationSettings(),
-            QuoteStyle = QuoteStyle.Ansi,
-            Formatting = formatSettings ?? new FormattingSettings()
-        };
+        var config = PgTestConfig.GetTestConfig(formatSettings: formatSettings);
         return new Formatter(config, new TextParser(new PgLexer(), new PgParser()), new FunctionNameProvider(), pseudoTables?.CloneExternalOnly());
     }
 

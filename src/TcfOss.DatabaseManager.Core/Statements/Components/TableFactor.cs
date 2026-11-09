@@ -11,12 +11,55 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 public abstract record TableFactor() : IWriteSql, IAddTablesToContext
 {
     public Identifier? Alias { get; init; }
+    public SqlValueList<Identifier>? AliasColumns { get; init; }
+    public bool IsLateral { get; init; }
 
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
     public abstract void AddTablesToContext(PseudoTableSet pseudoTableSet, SourceRef? sourceRef = null);
     public abstract IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context);
 
+    private void WriteLateral(SqlTextWriter writer)
+    {
+        if (IsLateral)
+        {
+            writer.Write("LATERAL ");
+        }
+    }
+
+    private void WriteAlias(SqlTextWriter writer)
+    {
+        if (Alias != null)
+        {
+            writer.WriteSql($" AS {Alias}");
+            if (AliasColumns != null)
+            {
+                writer.WriteSql($" ({AliasColumns.ToSqlDelimited()})");
+            }
+        }
+    }
+
+    private void FormatAlias(SqlTextWriter writer, FormatManager manager, bool quoteAlias = true)
+    {
+        if (Alias != null)
+        {
+            Identifier alias = quoteAlias ? manager.GetQuotedIdentifier(Alias) : Alias;
+            writer.WriteSql($" AS {alias}");
+            if (AliasColumns != null)
+            {
+                writer.Write(" (");
+                writer.WriteDelimited(AliasColumns.Select(manager.GetQuotedIdentifier), ", ");
+                writer.Write(")");
+            }
+        }
+    }
+
+    private void AddFunctionSource(PseudoTableSet pseudoTableSet, string defaultName)
+    {
+        string sourceName = Alias?.Name ?? defaultName;
+        PseudoTable source = new PseudoTable.Unbound(sourceName, null, PseudoTableType.Table) { Alias = Alias?.Name }.RenameColumns(AliasColumns);
+        pseudoTableSet.AddLocalSource(sourceName, source, Alias?.Name);
+    }
 
     public record Table(ObjectName Name) : TableFactor
     {
@@ -28,11 +71,9 @@ public abstract record TableFactor() : IWriteSql, IAddTablesToContext
 
         public override void ToSql(SqlTextWriter writer)
         {
+            WriteLateral(writer);
             writer.WriteSql($"{Name}");
-            if (Alias != null)
-            {
-                writer.WriteSql($" AS {Alias}");
-            }
+            WriteAlias(writer);
             if (Hints != null)
             {
                 writer.WriteSql($" WITH ({Hints})");
@@ -43,16 +84,13 @@ public abstract record TableFactor() : IWriteSql, IAddTablesToContext
         {
             using (manager.Enter(FormatContext.TableRelation))
             {
+                WriteLateral(writer);
                 SqlValueList<Identifier> identifiers = manager.GetPseudoTable(manager.Formatting.ObjectNamePrefixWithSchema, Name.Values) ?? Name.Values;
                 identifiers = manager.QuoteIdentifiers(Name.Values, identifiers);
 
                 writer.WriteDelimited(identifiers, ".");
 
-                Identifier? alias = Alias != null ? manager.GetQuotedIdentifier(Alias) : null;
-                if (alias != null)
-                {
-                    writer.WriteSql($" AS {alias}");
-                }
+                FormatAlias(writer, manager);
 
                 if (Hints != null)
                 {
@@ -69,12 +107,12 @@ public abstract record TableFactor() : IWriteSql, IAddTablesToContext
             {
                 PseudoTable tableSource = possibleSources[0];
                 string refName = Alias?.Name ?? tableSource.Name;
-                pseudoTableSet.AddLocalSource(refName, tableSource, Alias?.Name);
+                pseudoTableSet.AddLocalSource(refName, tableSource.RenameColumns(AliasColumns), Alias?.Name);
             }
             else
             {
                 string refName = Alias?.Name ?? Name.Values.Last().Name;
-                pseudoTableSet.AddLocalSource(refName, new PseudoTable.Unbound(refName, null, PseudoTableType.Table) { Alias = refName }, Alias?.Name);
+                pseudoTableSet.AddLocalSource(refName, new PseudoTable.Unbound(refName, null, PseudoTableType.Table) { Alias = refName }.RenameColumns(AliasColumns), Alias?.Name);
             }
         }
 
@@ -88,37 +126,113 @@ public abstract record TableFactor() : IWriteSql, IAddTablesToContext
         }
     }
 
-    public record Derived(Select SubQuery) : TableFactor
+    public record TableFunction(TableFunctionCall Function) : TableFactor
     {
+        public bool WithOrdinality { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"({SubQuery})");
-            if (Alias != null)
+            WriteLateral(writer);
+            Function.ToSql(writer);
+            if (WithOrdinality)
             {
-                writer.WriteSql($" AS {Alias}");
+                writer.Write(" WITH ORDINALITY");
             }
+            WriteAlias(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
+            WriteLateral(writer);
+            Function.FormatSql(writer, manager);
+            if (WithOrdinality)
+            {
+                writer.Write(" WITH ORDINALITY");
+            }
+            FormatAlias(writer, manager);
+        }
+
+        public override void AddTablesToContext(PseudoTableSet pseudoTableSet, SourceRef? sourceRef = null)
+        {
+            AddFunctionSource(pseudoTableSet, Function.Call.Name.Values.Last().Name);
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            return Function.GetReferencedItems(context);
+        }
+    }
+
+    public record RowsFrom(SqlValueList<TableFunctionCall> Functions) : TableFactor
+    {
+        public bool WithOrdinality { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteLateral(writer);
+            writer.WriteSql($"ROWS FROM ({Functions.ToSqlDelimited()})");
+            if (WithOrdinality)
+            {
+                writer.Write(" WITH ORDINALITY");
+            }
+            WriteAlias(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            WriteLateral(writer);
+            writer.Write("ROWS FROM (");
+            for (int index = 0; index < Functions.Count; index++)
+            {
+                if (index > 0)
+                {
+                    writer.Write(", ");
+                }
+                Functions[index].FormatSql(writer, manager);
+            }
+            writer.Write(")");
+            if (WithOrdinality)
+            {
+                writer.Write(" WITH ORDINALITY");
+            }
+            FormatAlias(writer, manager);
+        }
+
+        public override void AddTablesToContext(PseudoTableSet pseudoTableSet, SourceRef? sourceRef = null)
+        {
+            AddFunctionSource(pseudoTableSet, Functions[0].Call.Name.Values.Last().Name);
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            return Functions.SelectMany(function => function.GetReferencedItems(context));
+        }
+    }
+
+    public record Derived(Select SubQuery) : TableFactor
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteLateral(writer);
+            writer.WriteSql($"({SubQuery})");
+            WriteAlias(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            WriteLateral(writer);
             writer.WriteLine("(");
             manager.IncreaseIndent();
             SubQuery.FormatSql(writer, manager);
-            if (Alias != null)
-            {
-                writer.WriteSql($") AS {Alias}");
-            }
-            else
-            {
-                writer.Write(")");
-            }
+            writer.Write(")");
+            FormatAlias(writer, manager, quoteAlias: false);
             manager.DecreaseIndent();
         }
 
         public override void AddTablesToContext(PseudoTableSet pseudoTableSet, SourceRef? sourceRef = null)
         {
             string sourceName = Alias?.Name ?? throw new SqlSyntaxException.SubqueryNotAliased(sourceRef);
-            var newSource = SubQuery.ToPseudoTable(sourceName, null, sourceRef, PseudoTableType.DerivedTable);
+            PseudoTable newSource = SubQuery.ToPseudoTable(sourceName, null, sourceRef, PseudoTableType.DerivedTable).RenameColumns(AliasColumns);
             pseudoTableSet.AddExternalSource(sourceName, newSource);
             pseudoTableSet.AddLocalSource(sourceName, newSource, sourceName);
         }
@@ -138,16 +252,14 @@ public abstract record TableFactor() : IWriteSql, IAddTablesToContext
 
         public override void ToSql(SqlTextWriter writer)
         {
+            WriteLateral(writer);
             writer.WriteSql($"({TableWithJoins})");
-
-            if (Alias != null)
-            {
-                writer.WriteSql($" AS {Alias}");
-            }
+            WriteAlias(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
+            WriteLateral(writer);
             writer.WriteLine("(");
             manager.IncreaseIndent();
             writer.Write(manager.Indent);
@@ -155,10 +267,7 @@ public abstract record TableFactor() : IWriteSql, IAddTablesToContext
             manager.DecreaseIndent();
             writer.WriteLine();
             writer.Write($"{manager.Indent})");
-            if (Alias != null)
-            {
-                writer.WriteSql($" AS {Alias}");
-            }
+            FormatAlias(writer, manager, quoteAlias: false);
         }
 
         public override void AddTablesToContext(PseudoTableSet pseudoTableSet, SourceRef? sourceRef = null)

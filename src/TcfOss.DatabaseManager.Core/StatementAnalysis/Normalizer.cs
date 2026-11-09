@@ -365,6 +365,32 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return result;
     }
 
+
+    private SqlValueList<Identifier>? NormalizeAliasColumns(SqlValueList<Identifier>? columns)
+    {
+        return columns == null ? null : [.. columns.Select(ComponentNormalizer.NormalizeSingleIdentifier)];
+    }
+
+    private TableFunctionCall NormalizeTableFunctionCall(TableFunctionCall function, bool flatten)
+    {
+        return function with
+        {
+            Call = NormalizeFunctionCall(function.Call, inSelect: true, flatten: flatten),
+            Columns = function.Columns == null ? null : [.. function.Columns.Select(column => column with
+            {
+                Name = ComponentNormalizer.NormalizeSingleIdentifier(column.Name),
+                Collation = column.Collation == null ? null : ComponentNormalizer.NormalizeObjectName(column.Collation)
+            })]
+        };
+    }
+
+    private void AddNormalizedFunctionSource(TableFactor table, string defaultName, Identifier? normalizedAlias)
+    {
+        string sourceName = table.Alias?.Name ?? defaultName;
+        PseudoTable source = new PseudoTable.Unbound(sourceName, null, PseudoTableType.Table).RenameColumns(table.AliasColumns);
+        _pseudoTables?.AddLocalSource(sourceName, source, normalizedAlias?.Name);
+    }
+
     private TableFactor.Table NormalizeTableFactor(TableFactor.Table table)
     {
         Identifier? newAlias = ComponentNormalizer.NormalizeSingleIdentifierNullable(table.Alias);
@@ -378,13 +404,15 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             {
                 objectName = new ObjectName([tableSource.Identifier.Schema.ToSimpleIdentifier(_quoteStyle), new Identifier(tableSource.Name, _quoteStyle)]);
             }
-            _pseudoTables.AddLocalSource(refName, tableSource, newAlias?.Name);
+            _pseudoTables.AddLocalSource(refName, tableSource.RenameColumns(table.AliasColumns), newAlias?.Name);
         }
 
         ObjectName newName = ComponentNormalizer.NormalizeObjectName(objectName);
         return new TableFactor.Table(newName)
         {
-            Alias = newAlias
+            Alias = newAlias,
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns),
+            IsLateral = table.IsLateral
         };
     }
 
@@ -395,10 +423,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
         var newTableFactor = new TableFactor.Derived(newSubQuery)
         {
-            Alias = newAlias
+            Alias = newAlias,
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns),
+            IsLateral = table.IsLateral
         };
 
-        var newSource = newSubQuery.ToPseudoTable(newAlias.Name, null, _sourceRef, PseudoTableType.DerivedTable);
+        PseudoTable newSource = newSubQuery
+            .ToPseudoTable(newAlias.Name, null, _sourceRef, PseudoTableType.DerivedTable)
+            .RenameColumns(table.AliasColumns);
         _pseudoTables?.AddExternalSource(newAlias.Name, newSource);
         _pseudoTables?.AddLocalSource(newAlias.Name, newSource, newAlias.Name);
 
@@ -411,17 +443,45 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return new TableFactor.NestedJoin()
         {
             TableWithJoins = NormalizeTableWithJoins(table.TableWithJoins),
-            Alias = newAlias
+            Alias = newAlias,
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns),
+            IsLateral = table.IsLateral
         };
     }
 
-    private TableFactor NormalizeTableFactor(TableFactor table)
+    private TableFactor.TableFunction NormalizeTableFactor(TableFactor.TableFunction table, bool flatten)
+    {
+        TableFactor.TableFunction normalized = table with
+        {
+            Function = NormalizeTableFunctionCall(table.Function, flatten),
+            Alias = ComponentNormalizer.NormalizeSingleIdentifierNullable(table.Alias),
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns)
+        };
+        AddNormalizedFunctionSource(table, table.Function.Call.Name.Values.Last().Name, normalized.Alias);
+        return normalized;
+    }
+
+    private TableFactor.RowsFrom NormalizeTableFactor(TableFactor.RowsFrom table, bool flatten)
+    {
+        TableFactor.RowsFrom normalized = table with
+        {
+            Functions = [.. table.Functions.Select(function => NormalizeTableFunctionCall(function, flatten))],
+            Alias = ComponentNormalizer.NormalizeSingleIdentifierNullable(table.Alias),
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns)
+        };
+        AddNormalizedFunctionSource(table, table.Functions[0].Call.Name.Values.Last().Name, normalized.Alias);
+        return normalized;
+    }
+
+    private TableFactor NormalizeTableFactor(TableFactor table, bool flatten = false)
     {
         return table switch
         {
             TableFactor.Table t => NormalizeTableFactor(t),
             TableFactor.Derived d => NormalizeTableFactor(d),
             TableFactor.NestedJoin n => NormalizeTableFactor(n),
+            TableFactor.TableFunction function => NormalizeTableFactor(function, flatten),
+            TableFactor.RowsFrom rows => NormalizeTableFactor(rows, flatten),
             _ => throw new DefensiveGuardException(true, "table factor type", table.GetType())
         };
     }
@@ -442,7 +502,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
     private Join NormalizeJoin(Join join, bool flatten = false)
     {
-        TableFactor? relation = join.Relation != null ? NormalizeTableFactor(join.Relation) : null;
+        TableFactor? relation = join.Relation != null ? NormalizeTableFactor(join.Relation, flatten) : null;
         JoinOperator? op = join.JoinOperator switch
         {
             JoinOperator.Inner ji => new JoinOperator.Inner(NormalizeJoinConstraint(ji.JoinConstraint, flatten: flatten)),
@@ -480,7 +540,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             relation = FlattenNestedJoin(nestedJoin, allJoins);
         }
 
-        TableFactor normalizedRelation = NormalizeTableFactor(relation);
+        TableFactor normalizedRelation = NormalizeTableFactor(relation, flatten);
         SqlValueList<Join>? normalizedJoins = allJoins.Count > 0 ? [.. allJoins.Select(join => NormalizeJoin(join, flatten: flatten))] : null;
 
         return new TableWithJoins(normalizedRelation)

@@ -15,6 +15,31 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.IO.Formatting;
 
 public class FormatComponentsTests
 {
+    [Theory]
+    [InlineData("SELECT result.value FROM LATERAL app.expand($1) WITH ORDINALITY AS result (value, ordinal)", "\"result\"")]
+    [InlineData("SELECT result.value FROM LATERAL ROWS FROM (app.records() AS (value INT), app.other()) WITH ORDINALITY AS result (value, other, ordinal)", "\"result\"")]
+    [InlineData("SELECT result.value FROM LATERAL (SELECT $1 AS original) AS result (value)", "result")]
+    public void FromRelations_FormatAliasColumnsAndRetainFunctionStructure(string sql, string expectedAlias)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        Select statement = Assert.IsType<Select>(new PgParser().ParseStatement(state));
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        statement.FormatSql(writer, Helpers.CreateFormatManager());
+        string formatted = writer.ToString();
+
+        Assert.Contains("LATERAL ", formatted);
+        Assert.Contains($"AS {expectedAlias} (\"value\"", formatted);
+        if (sql.Contains("WITH ORDINALITY", StringComparison.Ordinal))
+        {
+            Assert.Contains("WITH ORDINALITY", formatted);
+        }
+        Assert.Contains("\"result\".\"value\"", formatted);
+        var formattedState = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Select>(new PgParser().ParseStatement(formattedState));
+        Assert.True(formattedState.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
     [Fact]
     public void RoutineSettingFormatting_DelegatesToSqlForBothVariants()
     {

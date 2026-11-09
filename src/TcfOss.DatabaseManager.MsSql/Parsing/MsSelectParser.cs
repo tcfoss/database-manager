@@ -14,6 +14,24 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 /// </summary>
 public class MsSelectParser(Parser parser) : SelectParser(parser)
 {
+    /// <inheritdoc/>
+    protected override bool ParseOptionalLateral(ParserState state)
+    {
+        return false;
+    }
+
+    /// <inheritdoc/>
+    protected override TableFactor ParseRowsFrom(ParserState state, bool lateral)
+    {
+        throw state.ExpectedException("table name");
+    }
+
+    /// <inheritdoc/>
+    protected override bool ParseOptionalWithOrdinality(ParserState state)
+    {
+        return false;
+    }
+
     protected override SelectInto ParseSelectInto(ParserState state)
     {
         SelectInto target = base.ParseSelectInto(state);
