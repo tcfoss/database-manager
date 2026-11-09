@@ -239,12 +239,12 @@ public class Parser : IParser
 
         Statement statement = state.Peek() switch
         {
-            Word { Keyword: Keyword.SELECT } => SelectParser.ParseSelect(state, cte),
+            Word { Keyword: Keyword.SELECT or Keyword.VALUES } => SelectParser.ParseSelect(state, cte),
             Word { Keyword: Keyword.INSERT } => DmlParser.ParseInsert(state, cte),
             Word { Keyword: Keyword.UPDATE } => DmlParser.ParseUpdate(state, cte),
             Word { Keyword: Keyword.DELETE } => DmlParser.ParseDelete(state, cte),
             ParenOpen => SelectParser.ParseSelect(state, cte),
-            _ => throw state.ExpectedException("SELECT", "INSERT", "UPDATE", "DELETE")
+            _ => throw state.ExpectedException("SELECT", "VALUES", "INSERT", "UPDATE", "DELETE")
         };
 
         return statement;

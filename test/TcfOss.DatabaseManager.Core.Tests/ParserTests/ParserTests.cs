@@ -526,7 +526,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var tokens = lexer.Tokenize("WITH cte AS (SELECT 1) ASC");
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
 
-        Assert.Contains("{ SELECT | INSERT | UPDATE | DELETE }", exception.Message);
+        Assert.Contains("{ SELECT | VALUES | INSERT | UPDATE | DELETE }", exception.Message);
     }
 
     [Fact]

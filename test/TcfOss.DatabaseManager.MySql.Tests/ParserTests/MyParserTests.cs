@@ -1,5 +1,6 @@
 ﻿using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -753,5 +754,58 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     public void PostgresDmlComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WITH changed AS (INSERT INTO items VALUES (1) RETURNING id) SELECT id FROM changed")]
+    [InlineData("WITH changed AS (UPDATE items SET id = 1) SELECT 1")]
+    [InlineData("WITH changed AS (DELETE FROM items) SELECT 1")]
+    [InlineData("WITH result AS MATERIALIZED (SELECT 1) SELECT 1")]
+    [InlineData("WITH result AS NOT MATERIALIZED (SELECT 1) SELECT 1")]
+    [InlineData("WITH RECURSIVE result (id) AS (SELECT 1) SEARCH DEPTH FIRST BY id SET position SELECT id FROM result")]
+    [InlineData("WITH RECURSIVE result (id) AS (SELECT 1) CYCLE id SET is_cycle USING path SELECT id FROM result")]
+    public void PostgresCteComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]
+    [InlineData("WITH result AS ((SELECT 1 AS id)) SELECT id FROM result")]
+    [InlineData("WITH result AS (WITH source AS (SELECT 1 AS id) SELECT id FROM source) SELECT id FROM result")]
+    public void CteBodyQuery_PreservesAcceptedQueryStarters(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT")]
+    [InlineData("UPDATE")]
+    [InlineData("DELETE")]
+    public void CteBodyQuery_RejectsDmlAtOpeningTokenWithoutConsumingIt(string keyword)
+    {
+        string sql = $"WITH changed AS (\n  {keyword} invalid syntax\n) SELECT 1";
+        var state = GetState(sql);
+        var first = state.PeekNth(4);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().ParseStatement(state));
+
+        Assert.Same(first, state.Peek());
+        ParseException expected = ParserState.ExpectedException("SELECT", first);
+        Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
+    }
+
+    [Fact]
+    public void CteBodyQuery_RejectsNestedWithDmlAtOpeningToken()
+    {
+        const string sql = "WITH changed AS (\n  WITH source AS (SELECT 1 AS id) INSERT INTO items SELECT id FROM source\n) SELECT 1";
+        var state = GetState(sql);
+        var first = state.PeekNth(4);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().ParseStatement(state));
+
+        ParseException expected = ParserState.ExpectedException("SELECT", first);
+        Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
     }
 }

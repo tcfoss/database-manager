@@ -101,35 +101,16 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
+        IEnumerable<ItemRef> bodyReferencedItems = GetBodyReferencedItems(context);
+        return CommonTableExpression?.GetReferencedItems(context, bodyReferencedItems) ?? bodyReferencedItems;
+    }
+
+    private IEnumerable<ItemRef> GetBodyReferencedItems(ReferencedItemsManager context)
+    {
         using (context.EnterTableScope())
         {
-            HashSet<Identifier> cteNames = [];
-            if (CommonTableExpression != null)
-            {
-                foreach (CommonTableExpressionBody body in CommonTableExpression.Tables)
-                {
-                    cteNames.Add(body.Name);
-                    foreach (ItemRef r in body.Query.GetReferencedItems(context))
-                    {
-                        yield return r;
-                    }
-
-                    if (context.PseudoTables != null)
-                    {
-                        PseudoTable ctePseudoTable = body.Columns != null
-                            ? new PseudoTable(body.Name.Name, null, [.. body.Columns.Select(x => x.Name)], PseudoTableType.CommonTableExpression)
-                            : body.Query.ToPseudoTableRelaxed(body.Name.Name, null, null, PseudoTableType.CommonTableExpression);
-                        context.PseudoTables.AddExternalSource(body.Name.Name, ctePseudoTable);
-                    }
-                }
-            }
-
             foreach (ItemRef r in Body.GetReferencedItems(context))
             {
-                if (r.Identifiers.Count == 1 && cteNames.Contains(r.Identifiers[0]))
-                {
-                    continue;
-                }
                 yield return r;
             }
         }

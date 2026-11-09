@@ -23,10 +23,11 @@ public interface INormalizeSql
     public Expression NormalizeExpressionNoFlatten(Expression expr);
 
     /// <summary>
-    /// Normalizes a SELECT statement for AST comparison, flattening explicit parentheses.
+    /// Normalizes a SELECT statement, flattening explicit parentheses by default for AST comparison.
     /// </summary>
     /// <remarks>
-    /// The result is not intended for SQL emission: removing parentheses may change grouping when printed.
+    /// When flattening is enabled, the result is not intended for SQL emission: removing parentheses may change grouping when printed.
+    /// Set <paramref name="flatten"/> to false to preserve explicit parentheses.
     /// </remarks>
-    public Select NormalizeSelect(Select selectStatement, SchemaIdentifier? activeSchema = null, PseudoTableSet? pseudoTables = null, ObjectIdentifier? name = null, SourceRef? sourceRef = null);
+    public Select NormalizeSelect(Select selectStatement, SchemaIdentifier? activeSchema = null, PseudoTableSet? pseudoTables = null, ObjectIdentifier? name = null, SourceRef? sourceRef = null, bool flatten = true);
 }

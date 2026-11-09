@@ -409,4 +409,27 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("WITH result AS MATERIALIZED (SELECT id FROM app.items) SELECT id FROM result", "AS MATERIALIZED (")]
+    [InlineData("WITH result AS NOT MATERIALIZED (SELECT id FROM app.items) SELECT id FROM result", "AS NOT MATERIALIZED (")]
+    [InlineData("WITH result AS MATERIALIZED (VALUES (1)) SELECT column1 FROM result", "AS MATERIALIZED (")]
+    [InlineData("WITH changed AS (INSERT INTO app.items DEFAULT VALUES RETURNING id) SELECT id FROM changed", "DEFAULT VALUES RETURNING")]
+    [InlineData("WITH changed AS (UPDATE app.items SET id = 1 RETURNING id) SELECT id FROM changed", "UPDATE \"app\".\"items\"")]
+    [InlineData("WITH changed AS (DELETE FROM app.items RETURNING id) INSERT INTO app.archive SELECT id FROM changed", "DELETE FROM \"app\".\"items\"")]
+    [InlineData("WITH changed AS ( /* lead */ DELETE FROM app.items RETURNING id /* tail */ ) SELECT id FROM changed", "/* tail */")]
+    [InlineData("WITH RECURSIVE tree (id) AS (VALUES (1) UNION ALL SELECT id + 1 FROM tree WHERE id < 3) SEARCH DEPTH FIRST BY id SET position CYCLE id SET is_cycle TO 'yes' DEFAULT 'no' USING path SELECT id, position, is_cycle, path FROM tree", "SEARCH DEPTH FIRST BY \"id\" SET \"position\" CYCLE \"id\" SET \"is_cycle\" TO 'yes' DEFAULT 'no' USING \"path\"")]
+    public void CteComponents_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

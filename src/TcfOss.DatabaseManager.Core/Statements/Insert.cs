@@ -148,6 +148,11 @@ public record Insert(ObjectName Name, Select? Source) : Statement
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
+        return CommonTableExpression?.GetReferencedItems(context, GetBodyReferencedItems(context)) ?? GetBodyReferencedItems(context);
+    }
+
+    private IEnumerable<ItemRef> GetBodyReferencedItems(ReferencedItemsManager context)
+    {
         using (context.EnterTableScope())
         {
             if (context.PseudoTables != null)

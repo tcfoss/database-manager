@@ -34,6 +34,11 @@ public class ParserTestsBase<TLexer, TParser>
         return Assert.Single(ParseStatements(sql));
     }
 
+    protected static IWriteSql ParseStatement(ParserState state)
+    {
+        return Assert.Single(new TParser().Parse(state, null));
+    }
+
     protected static Expression ParseExpression(ParserState state, bool assertAtEnd = true)
     {
         var expr = new TParser().ExpressionParser.ParseExpr(state);

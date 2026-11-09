@@ -481,18 +481,19 @@ public class NormalizerTests
     }
 
     [Fact]
-    public void InSubquery_IsPreserved()
+    public void InSubquery_IsNormalizedInItsOwnSelectScope()
     {
         var text = """
         SELECT
             book_id
         FROM book
-        WHERE book_id IN (SELECT book_id FROM book_author);
+        WHERE book_id IN (SELECT book_id FROM book_author WHERE book_author.book_id = book.book_id);
         """;
 
         var actual = GetActualSelectText(text);
         Assert.Contains(" IN (", actual);
-        Assert.Contains("FROM book_author", actual);
+        Assert.Contains("FROM `library_catalog`.`book_author`", actual);
+        Assert.Contains("WHERE `library_catalog`.`book_author`.`book_id` = `library_catalog`.`book`.`book_id`", actual);
     }
 
     [Fact]
@@ -812,9 +813,11 @@ public class NormalizerTests
     }
 
     [Fact]
-    public void ValuesQuery_IsNotSupported()
+    public void ValuesQuery_NormalizesExpressionsAndPreservesRows()
     {
-        Assert.Throws<NotImplementedException>(() => GetActualSelectText("VALUES (1, 2)"));
+        string actual = GetActualSelectText("VALUES ((1), 2), (3, (4))");
+
+        Assert.Equal("VALUES (1, 2), (3, 4)", actual);
     }
 
     [Theory]
@@ -882,16 +885,26 @@ public class NormalizerTests
         Assert.IsType<SelectBody.SetOperation>(outer.Left);
     }
 
-    [Fact]
-    public void ParenthesizedSetOperation_RemainsNestedInsideDerivedTable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParenthesizedSetOperation_InsideDerivedTableFollowsRequestedFlattening(bool flatten)
     {
-        Select normalized = GetNormalizedSelect("SELECT d.book_id FROM ((SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book) AS d");
+        const string sql = "SELECT d.book_id FROM ((SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book) AS d";
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+
+        Select normalized = normalizer.NormalizeSelect(query, flatten: flatten);
+
         SelectBody.SimpleSelectQuery selectBody = Assert.IsType<SelectBody.SimpleSelectQuery>(normalized.Body);
         TableWithJoins from = Assert.Single(selectBody.Query.From!);
         TableFactor.Derived derived = Assert.IsType<TableFactor.Derived>(from.Relation);
         SelectBody.SetOperation outer = Assert.IsType<SelectBody.SetOperation>(derived.SubQuery.Body);
-        SelectBody.Nested nested = Assert.IsType<SelectBody.Nested>(outer.Left);
-        Assert.IsType<SelectBody.SetOperation>(nested.Query.Body);
+        SelectBody left = flatten
+            ? outer.Left
+            : Assert.IsType<SelectBody.Nested>(outer.Left).Query.Body;
+        Assert.IsType<SelectBody.SetOperation>(left);
     }
 
     [Fact]
@@ -1105,6 +1118,70 @@ public class NormalizerTests
         Assert.Equal(normalizer.NormalizeExpression(explicitKeyword), normalizer.NormalizeExpression(omittedKeyword));
         Assert.Equal("ARRAY[[`value`]]", normalizer.NormalizeExpressionNoFlatten(omittedKeyword).ToSql());
         Assert.Equal("ARRAY[ARRAY[`value`]]", normalizer.NormalizeExpressionNoFlatten(explicitKeyword).ToSql());
+    }
+
+    [Theory]
+    [InlineData("WITH result AS (SELECT (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result(id) AS (SELECT (1 + 2)) SELECT id FROM result")]
+    [InlineData("WITH result AS (VALUES ((1 + 2), 0)) SELECT column1 FROM result")]
+    [InlineData("WITH result(first, id) AS (INSERT INTO items SELECT (1 + 2) AS id RETURNING (1 + 2), (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (UPDATE items SET id = (1 + 2) FROM other WHERE id = (1 + 2) RETURNING (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (DELETE FROM items USING other WHERE id = (1 + 2) RETURNING (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (INSERT INTO items VALUES ((1 + 2), 0) ON CONFLICT ((id + (1 + 2))) WHERE id = (1 + 2) DO UPDATE SET id = (1 + 2) WHERE id = (1 + 2) RETURNING id) SELECT id FROM result")]
+    [InlineData("WITH result AS (WITH source AS (SELECT (1 + 2) AS id) INSERT INTO items SELECT id FROM source RETURNING id) SELECT id FROM result")]
+    [InlineData("SELECT derived.id FROM (SELECT (1 + 2) AS id) AS derived")]
+    [InlineData("SELECT items.id FROM (items JOIN other ON items.id = (1 + 2)) AS joined")]
+    [InlineData("SELECT items.id FROM (items JOIN other ON items.id = (1 + 2))")]
+    public void QueryNormalization_PropagatesFlatteningToNestedPaths(string sql)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+        Expression[] expressions = [new Subquery(query), new Exists(query, false), new ArrayConstructor.Subquery(query)];
+        foreach (Expression expression in expressions)
+        {
+            string preserved = normalizer.NormalizeExpressionNoFlatten(expression).ToSql();
+            string flattened = normalizer.NormalizeExpression(expression).ToSql();
+
+            Assert.Equal(sql.Split("(1 + 2)").Length, preserved.Split("(1 + 2)").Length);
+            Assert.DoesNotContain("(1 + 2)", flattened);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NormalizeSelect_FollowsRequestedFlatteningForNestedJoins(bool flatten)
+    {
+        const string sql = "SELECT (1 + 2) AS id FROM (items LEFT JOIN other ON items.id = other.id) RIGHT JOIN last ON items.id = last.id";
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        Normalizer normalizer = new(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+
+        Select normalized = normalizer.NormalizeSelect(query, flatten: flatten);
+
+        SimpleSelect body = Assert.IsType<SelectBody.SimpleSelectQuery>(normalized.Body).Query;
+        Expression selection = Assert.IsType<SimpleSelectItem.ExpressionWithAlias>(Assert.Single(body.Selections)).Expression;
+        TableWithJoins source = Assert.Single(body.From!);
+        Assert.Equal(flatten ? 2 : 1, source.Joins!.Count);
+        if (flatten)
+        {
+            Assert.IsType<Expressions.BinaryOperator>(selection);
+            Assert.IsType<TableFactor.Table>(source.Relation);
+        }
+        else
+        {
+            Assert.IsType<Nested>(selection);
+            Assert.IsType<TableFactor.NestedJoin>(source.Relation);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "(`id` + 1) NOT IN (SELECT (`value` + 1) FROM `items` WHERE (`flag` + 1) > 0)")]
+    [InlineData(true, "`id` + 1 NOT IN (SELECT `value` + 1 FROM `items` WHERE `flag` + 1 > 0)")]
+    public void InSubqueries_NormalizeBothSidesWithRequestedFlattening(bool flatten, string expected)
+    {
+        Assert.Equal(expected, GetNormalizedExpressionText("(id + 1) NOT IN (SELECT (value + 1) FROM items WHERE (flag + 1) > 0)", flatten));
     }
 
     [Theory]

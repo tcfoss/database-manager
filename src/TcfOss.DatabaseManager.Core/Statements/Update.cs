@@ -103,6 +103,11 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
+        return CommonTableExpression?.GetReferencedItems(context, GetBodyReferencedItems(context)) ?? GetBodyReferencedItems(context);
+    }
+
+    private IEnumerable<ItemRef> GetBodyReferencedItems(ReferencedItemsManager context)
+    {
         using (context.EnterTableScope())
         {
             using (context.Enter(ReferencedItemsContext.UpdateClause))

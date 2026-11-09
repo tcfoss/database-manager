@@ -92,6 +92,32 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Common Table Expressions
+
+CTE bodies retain SELECT, INSERT, UPDATE, or DELETE statements, including nested
+WITH and VALUES queries. Materialization hints are nullable: absent, MATERIALIZED,
+and NOT MATERIALIZED remain distinct. SEARCH preserves breadth/depth-first order,
+BY columns, and its generated sequence column. CYCLE preserves BY columns, mark
+and path columns, and optional constant TO/DEFAULT values, including signed
+numbers, typed/interval literals, and PostgreSQL string forms.
+
+`CommonTableExpressionBody.Query` is a `Statement`. CTE result-column inference
+uses SELECT projections or DML RETURNING lists and includes generated SEARCH/CYCLE
+columns. DML bodies without RETURNING expose no result columns. Explicit column
+lists provide output names during normalization; VALUES rows and expressions are
+preserved. DML normalization is syntactic, not catalog-backed semantic resolution.
+WITH dependency traversal covers both CTE bodies and their consuming SELECT/DML
+statement while excluding local relation names and preserving genuine references
+to same-named tables in nonrecursive bodies.
+
+SQL/JSON output, formatting, normalization, source/comment preservation, and
+atomic SQL-body boundaries are unit-tested. Core owns shared parsing; MySQL/MariaDB
+and SQL Server narrow PostgreSQL-only components through overrides. Recursive
+query shape/types, generated-name conflicts, CYCLE coercion/equality, DML placement
+and execution semantics, and catalog-backed RETURNING wildcard expansion remain
+deferred. MERGE CTE bodies require a future shared MERGE parser. No integration
+tests or database-execution support were added.
+
 ## DML Parsing
 
 The shared DML parser supports INSERT `DEFAULT VALUES`, explicit target aliases,

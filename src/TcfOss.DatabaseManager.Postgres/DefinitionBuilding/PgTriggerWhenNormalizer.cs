@@ -48,7 +48,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
         throw Invalid("subquery");
     }
 
-    protected override InSubquery NormalizeInSubquery(InSubquery inSubquery)
+    protected override InSubquery NormalizeInSubquery(InSubquery inSubquery, bool inSelect = false, bool flatten = false)
     {
         throw Invalid("subquery");
     }

@@ -45,7 +45,8 @@ public class SelectParser
 
         state.ExpectKeyword(Keyword.AS);
 
-        Select query = state.ParseParenthesized((s) => ParseSelect(s, null));
+        bool? materialized = ParseOptionalCteMaterialization(state);
+        Statement query = state.ParseParenthesized(ParseCteBodyQuery);
 
         Identifier? from = null;
         if (state.ParseKeyword(Keyword.FROM))
@@ -53,7 +54,131 @@ public class SelectParser
             from = _parseIdentifier(state);
         }
 
-        return new CommonTableExpressionBody(name, columns, query, from);
+        PgCteSearch? search = ParseOptionalCteSearch(state);
+        PgCteCycle? cycle = ParseOptionalCteCycle(state);
+
+        return new CommonTableExpressionBody(name, columns, query, from)
+        {
+            Materialized = materialized,
+            Search = search,
+            Cycle = cycle
+        };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ SEARCH { BREADTH | DEPTH } FIRST BY column_name [, ...] SET sequence_column ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgCteSearch? ParseOptionalCteSearch(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.SEARCH))
+        {
+            return null;
+        }
+        Keyword order = state.ParseKeywordsAny(Keyword.BREADTH, Keyword.DEPTH);
+        if (order == Keyword.undefined)
+        {
+            throw state.ExpectedException("BREADTH", "DEPTH");
+        }
+        state.ExpectKeywordsAll(Keyword.FIRST, Keyword.BY);
+        SqlValueList<Identifier> columns = state.ParseCommaSeparated(_parseIdentifier);
+        state.ExpectKeyword(Keyword.SET);
+        Identifier sequenceColumn = _parseIdentifier(state);
+        return new PgCteSearch(order == Keyword.BREADTH ? PgCteSearchOrder.BreadthFirst : PgCteSearchOrder.DepthFirst, columns, sequenceColumn);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ CYCLE column_name [, ...] SET mark_column [ TO constant DEFAULT constant ] USING path_column ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgCteCycle? ParseOptionalCteCycle(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.CYCLE))
+        {
+            return null;
+        }
+        SqlValueList<Identifier> columns = state.ParseCommaSeparated(_parseIdentifier);
+        state.ExpectKeyword(Keyword.SET);
+        Identifier markColumn = _parseIdentifier(state);
+        PgCteCycleMark? mark = null;
+        if (state.ParseKeyword(Keyword.TO))
+        {
+            Expression value = ParseCteCycleConstant(state);
+            state.ExpectKeyword(Keyword.DEFAULT);
+            mark = new PgCteCycleMark(value, ParseCteCycleConstant(state));
+        }
+        state.ExpectKeyword(Keyword.USING);
+        Identifier pathColumn = _parseIdentifier(state);
+        return new PgCteCycle(columns, markColumn, pathColumn) { Mark = mark };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// literal | [ + | - ] numeric_literal | type_name string_literal
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual Expression ParseCteCycleConstant(ParserState state)
+    {
+        Token token = state.Peek();
+        Expression expression = _expr.ParseExpr(state);
+        if (expression is LiteralValue or TypedString or PgIntervalLiteral
+            || expression is Expressions.UnaryOperator { Expression: LiteralValue { Value: Value.Number }, Operator: var op }
+            && (op == BuiltIn.UnaryOperator.Plus || op == BuiltIn.UnaryOperator.Minus))
+        {
+            return expression;
+        }
+        throw ParserState.ExpectedCategoryException("constant", token);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// SELECT ... | VALUES ... | WITH ... | ( select_statement ) | INSERT ... | UPDATE ... | DELETE ...
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual Statement ParseCteBodyQuery(ParserState state)
+    {
+        if (state.Peek() is not (Word { Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH or Keyword.INSERT or Keyword.UPDATE or Keyword.DELETE } or ParenOpen))
+        {
+            throw state.ExpectedException("SELECT", "VALUES", "WITH", "INSERT", "UPDATE", "DELETE");
+        }
+        Statement query = _p.ParseStatement(state);
+        if (state.Peek() is ParenClose close && close.PreNonSql.SafeAny()
+            && close.PreNonSql.Items.Any(nonSql => nonSql is Statements.Components.NonSql.Comment))
+        {
+            query.Meta.PostNonSql = close.PreNonSql.Items;
+        }
+        return query;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ [ NOT ] MATERIALIZED ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual bool? ParseOptionalCteMaterialization(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.MATERIALIZED))
+        {
+            return true;
+        }
+        if (state.ParseKeyword(Keyword.NOT))
+        {
+            state.ExpectKeyword(Keyword.MATERIALIZED);
+            return false;
+        }
+        return null;
     }
 
     public Select ParseSelect(ParserState state, CommonTableExpression? cte)
