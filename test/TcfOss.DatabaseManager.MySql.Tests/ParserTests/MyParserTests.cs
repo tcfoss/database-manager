@@ -736,4 +736,22 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Fact]
+    public void DeleteUsing_ParsesInSharedMySqlMariaDbGrammar()
+    {
+        const string sql = "DELETE FROM items USING items INNER JOIN source ON items.id = source.id";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items DEFAULT VALUES")]
+    [InlineData("INSERT INTO items AS target VALUES (1)")]
+    [InlineData("INSERT INTO items OVERRIDING SYSTEM VALUE VALUES (1)")]
+    [InlineData("INSERT INTO items VALUES (1) ON CONFLICT DO NOTHING")]
+    public void PostgresDmlComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

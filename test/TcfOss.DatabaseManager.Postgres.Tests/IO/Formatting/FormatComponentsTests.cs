@@ -385,4 +385,28 @@ public class FormatComponentsTests
 
         Assert.Equal($"\"value\" NOT {op} ANY (\"pattern\") ESCAPE '!'", writer.ToString());
     }
+
+    [Theory]
+    [InlineData("INSERT INTO app.items DEFAULT VALUES RETURNING *", "DEFAULT VALUES RETURNING *")]
+    [InlineData("INSERT INTO app.items DEFAULT VALUES ON CONFLICT DO NOTHING", "ON CONFLICT DO NOTHING")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT ON CONSTRAINT items_pkey DO NOTHING", "ON CONFLICT ON CONSTRAINT \"items_pkey\" DO NOTHING")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT ON CONSTRAINT items_pkey DO UPDATE SET id = excluded.id", "ON CONFLICT ON CONSTRAINT \"items_pkey\" DO UPDATE SET")]
+    [InlineData("INSERT INTO app.items AS target (id) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT (id) DO UPDATE SET id = excluded.id WHERE target.id <> excluded.id RETURNING target.*", "OVERRIDING SYSTEM VALUE")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT ((app.key(name)) COLLATE app.locale app.text_ops (option = 1)) WHERE app.active(id) DO NOTHING", "COLLATE \"app\".\"locale\" \"app\".\"text_ops\" (\"option\" = 1)")]
+    [InlineData("UPDATE app.items SET id = source.id FROM app.source AS source, app.other WHERE items.id = source.id RETURNING items.*", "RETURNING \"items\".*")]
+    [InlineData("DELETE FROM app.items USING app.source, app.other WHERE items.id = source.id RETURNING *", "USING \"app\".\"source\", \"app\".\"other\"")]
+    public void DmlComponents_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("\"app\".\"items\"", formatted);
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

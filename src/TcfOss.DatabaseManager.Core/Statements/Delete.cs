@@ -16,6 +16,7 @@ public record Delete(SqlValueList<TableWithJoins> From, Expression? Where) : Sta
     public SqlValueList<OrderBy>? OrderBy { get; init; }
     public Expression? Limit { get; init; }
     public SqlValueList<SimpleSelectItem>? Returning { get; init; }
+    public SqlValueList<TableWithJoins>? Using { get; init; }
 
     /// <summary>
     /// T-SQL <c>OUTPUT</c> clause select items, written between <c>FROM</c>
@@ -41,6 +42,10 @@ public record Delete(SqlValueList<TableWithJoins> From, Expression? Where) : Sta
         if (Output != null)
         {
             writer.WriteSql($" OUTPUT {Output}");
+        }
+        if (Using != null)
+        {
+            writer.WriteSql($" USING {Using}");
         }
 
         if (Where != null)
@@ -75,6 +80,10 @@ public record Delete(SqlValueList<TableWithJoins> From, Expression? Where) : Sta
             {
                 from.AddTablesToContext(manager.PseudoTables);
             }
+            foreach (TableWithJoins relation in Using ?? [])
+            {
+                relation.AddTablesToContext(manager.PseudoTables);
+            }
 
             Meta.FormatPreNonSql(writer, manager);
             CommonTableExpression?.FormatSql(writer, manager);
@@ -92,17 +101,20 @@ public record Delete(SqlValueList<TableWithJoins> From, Expression? Where) : Sta
             {
                 DmlFormatter.FormatOutputClause(writer, manager, Output);
             }
-
+            if (Using != null)
+            {
+                writer.WriteLine();
+                writer.WriteSqlI("USING ");
+                writer.FormatDelimited(Using, manager);
+            }
             if (Where != null)
             {
                 DmlFormatter.FormatWhereClause(writer, manager, Where);
             }
-
             if (OrderBy.SafeAny())
             {
                 DmlFormatter.FormatOrderByClause(writer, manager, OrderBy!);
             }
-
             if (Limit != null)
             {
                 writer.WriteLine();
@@ -126,7 +138,7 @@ public record Delete(SqlValueList<TableWithJoins> From, Expression? Where) : Sta
         {
             using (context.Enter(ReferencedItemsContext.FromClause))
             {
-                foreach (TableWithJoins table in From)
+                foreach (TableWithJoins table in From.Concat(Using ?? []))
                 {
                     if (context.PseudoTables != null)
                     {
@@ -144,6 +156,16 @@ public record Delete(SqlValueList<TableWithJoins> From, Expression? Where) : Sta
                 using (context.Enter(ReferencedItemsContext.WhereClause))
                 {
                     foreach (ItemRef item in Where.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+            using (context.Enter(ReferencedItemsContext.SelectItem))
+            {
+                foreach (SimpleSelectItem selection in Returning ?? [])
+                {
+                    foreach (ItemRef item in selection.GetReferencedItems(context))
                     {
                         yield return item;
                     }

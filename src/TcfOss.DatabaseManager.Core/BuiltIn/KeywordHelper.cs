@@ -58,6 +58,7 @@ public static class KeywordHelper
         // Reserved only as a column alias in the `SELECT` clause
         Keyword.FROM,
         Keyword.INTO,
+        Keyword.ON,
         Keyword.END,
     ];
 
@@ -91,6 +92,7 @@ public static class KeywordHelper
         Keyword.EXCEPT,
         Keyword.INTERSECT,
         // Reserved only as a table alias in the `FROM`/`JOIN` clauses:
+        Keyword.RETURNING,
         Keyword.ON,
         Keyword.JOIN,
         Keyword.INNER,

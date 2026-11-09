@@ -437,4 +437,24 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("INSERT INTO items DEFAULT VALUES")]
+    [InlineData("INSERT INTO items OUTPUT inserted.id DEFAULT VALUES")]
+    public void InsertDefaultValues_RemainsSupported(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items AS target VALUES (1)")]
+    [InlineData("INSERT INTO items OVERRIDING SYSTEM VALUE VALUES (1)")]
+    [InlineData("INSERT INTO items VALUES (1) ON CONFLICT DO NOTHING")]
+    [InlineData("INSERT INTO items VALUES (1) RETURNING *")]
+    [InlineData("UPDATE items SET id = 1 RETURNING *")]
+    [InlineData("DELETE FROM items USING source")]
+    public void PostgresDmlComponents_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

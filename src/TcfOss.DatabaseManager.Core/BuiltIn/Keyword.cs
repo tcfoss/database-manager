@@ -579,6 +579,7 @@ public enum Keyword
     OVERFLOW,
     OVERLAPS,
     OVERLAY,
+    OVERRIDING,
     OVERWRITE,
     OWNED,
     OWNER,

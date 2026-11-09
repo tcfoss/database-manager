@@ -92,6 +92,27 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## DML Parsing
+
+The shared DML parser supports INSERT `DEFAULT VALUES`, explicit target aliases,
+`OVERRIDING SYSTEM VALUE` / `OVERRIDING USER VALUE`, and `ON CONFLICT` with
+`DO NOTHING` or `DO UPDATE`. Conflict targets retain index-inference expressions,
+collations, operator classes and their parameters, optional index predicates,
+or a named constraint. Update actions retain assignments and an optional WHERE
+condition. DO UPDATE requires a target; DO NOTHING may omit it.
+
+INSERT, UPDATE, and DELETE support RETURNING select-item lists. UPDATE FROM and
+DELETE USING accept comma-separated relations and joins, reusing the shared
+FROM parser. SQL/JSON output, formatting, expression dependencies, and atomic
+SQL-body statement boundaries are covered by unit tests. A null `Insert.Source`
+represents DEFAULT VALUES; `Update.From` holds a relation list.
+
+Core parses the shared syntax once. `PgDmlParser` excludes SQL Server OUTPUT and
+MySQL ON DUPLICATE KEY UPDATE; other providers narrow PostgreSQL-only components
+through parser overrides. Exhaustive dialect-specific syntax validation, identity
+override semantics, conflict-index/constraint lookup, and expression type checking
+remain deferred. No database execution or migration support is implied.
+
 ## Array Types
 
 Array type declarations are supported in columns, composite attributes, domain
