@@ -535,4 +535,24 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary WITH NO DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA")]
+    public void RefreshMaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<RefreshMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_CoreParserRejectsConcurrentNoData()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("REFRESH MATERIALIZED VIEW CONCURRENTLY summary WITH NO DATA"));
+    }
 }

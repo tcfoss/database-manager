@@ -23,15 +23,15 @@ public class ParserTestsBase<TLexer, TParser>
         return new ParserState([.. tokens], sourceId);
     }
 
-    protected static SqlValueList<Statement> ParseStatements(string sql)
+    protected static SqlValueList<Statement> ParseStatements(string sql, int sourceId = 0)
     {
-        var state = GetState(sql);
+        var state = GetState(sql, sourceId);
         return new TParser().Parse(state, null);
     }
 
-    protected static IWriteSql ParseStatement(string sql, bool assertAtEnd = true)
+    protected static IWriteSql ParseStatement(string sql, bool assertAtEnd = true, int sourceId = 0)
     {
-        ParserState state = GetState(sql);
+        ParserState state = GetState(sql, sourceId);
         return ParseStatement(state, assertAtEnd);
     }
 

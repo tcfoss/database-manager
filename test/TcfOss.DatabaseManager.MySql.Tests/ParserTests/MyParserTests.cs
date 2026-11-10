@@ -858,4 +858,13 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         ParseException expected = ParserState.ExpectedException("SELECT", first);
         Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
     }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]
+    public void RefreshMaterializedViews_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

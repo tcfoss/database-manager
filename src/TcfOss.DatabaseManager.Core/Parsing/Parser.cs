@@ -181,6 +181,7 @@ public class Parser : IParser
             Keyword.OPEN => ParseOpen(state),
             Keyword.CLOSE => ParseClose(state),
             Keyword.TRUNCATE => DdlParser.ParseTruncateTable(state),
+            Keyword.REFRESH => DdlParser.ParseRefreshMaterializedView(state),
             _ => throw ParserState.ExpectedException("SQL statement".Italic(), first)
         };
 #pragma warning restore IDE0072 // Add missing cases

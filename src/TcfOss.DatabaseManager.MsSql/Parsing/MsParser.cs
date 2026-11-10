@@ -173,6 +173,7 @@ public class MsParser : Parser
             Keyword.PRINT => ParsePrint(state),
             Keyword.THROW => ParseThrow(state),
             Keyword.RAISERROR => ParseRaiseError(state),
+            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
             _ => base.ParseKeywordStatement(state, first)
         };
     }

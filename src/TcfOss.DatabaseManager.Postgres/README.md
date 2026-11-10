@@ -115,8 +115,24 @@ query dependencies, source spans, query-boundary comments, invalid syntax, and
 provider boundaries are unit-tested. Dependency traversal follows the query,
 not the target, storage parameters, access method, or tablespace. Definition
 construction raises a sourced unsupported-statement error rather than dropping
-the declaration. Resolved materialized-view objects, catalog loading, REFRESH,
-ALTER/DROP lifecycle support, and migrations remain deferred.
+the declaration.
+
+`REFRESH MATERIALIZED VIEW [CONCURRENTLY] name [WITH [NO] DATA]` produces a
+separate Core `RefreshMaterializedView` AST. It retains concurrency and omitted
+versus explicit population clauses, and rejects `CONCURRENTLY` with
+`WITH NO DATA`. MySQL/MariaDB and SQL Server reject refresh statements.
+SQL/JSON round trips, quoted identifier formatting, formatter idempotence,
+statement sources/comments/terminators, atomic SQL bodies, and dependency
+filters are unit-tested. Dependency traversal reports the target as unknown
+and isolates it from enclosing column/variable contexts; it does not pretend
+that the target has been resolved as an ordinary view or table.
+
+Definition construction also rejects refresh commands with source information.
+Resolved materialized-view objects, catalog loading, ALTER/DROP lifecycle
+support, and migrations remain deferred. Refresh target lookup, unique-index
+and existing-population prerequisites, privileges, locking, and execution are
+not implemented. Parsing refresh commands in atomic SQL bodies does not check
+whether those bodies can execute on PostgreSQL.
 
 ## SQL-Body Context
 

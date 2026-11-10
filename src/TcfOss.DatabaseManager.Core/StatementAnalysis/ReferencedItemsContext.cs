@@ -20,5 +20,6 @@ public enum ReferencedItemsContext
     HavingClause,
     TruncateTarget,
     CreateTriggerTable,
-    CreateIndexTable
+    CreateIndexTable,
+    RefreshMaterializedViewTarget
 }

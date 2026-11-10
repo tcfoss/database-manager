@@ -298,4 +298,99 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary", false, null)]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary", true, null)]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary WITH DATA", false, true)]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary WITH NO DATA", false, false)]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA", true, true)]
+    [InlineData("REFRESH MATERIALIZED VIEW \"App\".\"Summary\" WITH NO DATA", false, false)]
+    [InlineData("REFRESH MATERIALIZED VIEW \"summary; DROP TABLE items; --\"", false, null)]
+    public void RefreshMaterializedViews_RoundTripSqlAndJson(string sql, bool concurrently, bool? withData)
+    {
+        var statement = Assert.IsType<RefreshMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(concurrently, statement.Concurrently);
+        Assert.Equal(withData, statement.WithData);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_ReportTargetAndRespectFilters()
+    {
+        var statement = Assert.IsType<RefreshMaterializedView>(ParseStatement("REFRESH MATERIALIZED VIEW summary"));
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        context.AddLocalVariable(new Identifier("summary"));
+        using var scope = context.Enter(ReferencedItemsContext.SelectItem);
+
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(statement.GetReferencedItems(context)));
+
+        Assert.Equal("summary", reference.Name.ToSql());
+        Assert.Equal(ItemType.Unknown, reference.Type);
+        Assert.Null(reference.ObjectHandle);
+        Assert.Equal(ReferencedItemsContext.SelectItem, context.CurrentContext);
+        Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Unknown }));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Table }));
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_PreserveSourcesCommentsAndFollowingStatements()
+    {
+        const string sql = "/* lead */ REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA /* tail */; SELECT 2;";
+        var statements = ParseStatements(sql, sourceId: 137);
+        var statement = Assert.IsType<RefreshMaterializedView>(statements[0]);
+
+        Assert.Equal(2, statements.Count);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.IndexOf(';'), statement.Meta.End);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.All(statement.Name.Values, identifier => Assert.Equal(137, identifier.Source!.Value.SourceId));
+        Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " tail " });
+        Assert.Equal("SELECT 2", statements[1].ToSql());
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_PreserveAtomicBodyBoundariesAndDependencies()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC REFRESH MATERIALIZED VIEW app.summary WITH NO DATA; SELECT 2; END";
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement(sql));
+        var body = Assert.IsType<BeginAtomic>(procedure.Body);
+        var refresh = Assert.Single(body.Statements.OfType<RefreshMaterializedView>());
+
+        Assert.False(refresh.WithData);
+        Assert.Equal(';', sql[refresh.Meta.EndPlusTerminatorLength!.Value - 1]);
+        Assert.Equal(refresh.Meta.End + 1, refresh.Meta.EndPlusTerminatorLength);
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(body.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));
+        Assert.Equal("app.summary", reference.Name.ToSql());
+        Assert.Equal(procedure.ToSql(), ParseStatement(procedure.ToSql()).ToSql());
+    }
+
+    [Theory]
+    [InlineData("REFRESH")]
+    [InlineData("REFRESH VIEW summary")]
+    [InlineData("REFRESH MATERIALIZED summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW")]
+    [InlineData("REFRESH CONCURRENTLY MATERIALIZED VIEW summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW IF EXISTS summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY CONCURRENTLY summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary CONCURRENTLY")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary, other")]
+    [InlineData("REFRESH MATERIALIZED VIEW app.")]
+    [InlineData("REFRESH MATERIALIZED VIEW 'summary'")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH CHECK OPTION")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH DATA WITH NO DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY summary WITH NO DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary CASCADE")]
+    public void RefreshMaterializedViews_RejectInvalidSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

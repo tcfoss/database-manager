@@ -184,6 +184,7 @@ public class MyParser : Parser
             Keyword.DEALLOCATE => ParseDeallocate(state),
             Keyword.SHOW => ParseShow(state),
             Keyword.CALL => ParseCall(state),
+            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
             _ => null
         };
 

@@ -1396,6 +1396,29 @@ public class DdlParser
         };
     }
 
+    public virtual RefreshMaterializedView ParseRefreshMaterializedView(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.REFRESH, Keyword.MATERIALIZED, Keyword.VIEW);
+        bool concurrently = state.ParseKeyword(Keyword.CONCURRENTLY);
+        ObjectName name = _parseObjectName(state);
+        bool? withData = null;
+        if (state.ParseKeyword(Keyword.WITH))
+        {
+            Token populationToken = state.Peek();
+            withData = !state.ParseKeyword(Keyword.NO);
+            if (concurrently && !withData.Value)
+            {
+                throw ParserState.ExpectedException("DATA", populationToken);
+            }
+            state.ExpectKeyword(Keyword.DATA);
+        }
+        return new RefreshMaterializedView(name)
+        {
+            Concurrently = concurrently,
+            WithData = withData
+        };
+    }
+
     private PgStorageParameter ParseStorageParameter(ParserState state)
     {
         Token start = state.Peek();

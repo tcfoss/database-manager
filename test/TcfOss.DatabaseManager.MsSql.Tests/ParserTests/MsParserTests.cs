@@ -559,4 +559,13 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]
+    public void RefreshMaterializedViews_AreRejectedBySqlServer(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

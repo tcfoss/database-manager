@@ -655,6 +655,7 @@ public enum Keyword
     REF,
     REFERENCES,
     REFERENCING,
+    REFRESH,
     REGCLASS,
     REGEXP,
     REGR_AVGX,

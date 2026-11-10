@@ -542,4 +542,46 @@ public class FormatComponentsTests
         Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW summary", "REFRESH MATERIALIZED VIEW \"summary\"")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary", "CONCURRENTLY \"app\".\"summary\"")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH DATA", "\"summary\" WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA", "\"summary\" WITH NO DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY \"App\".\"Summary\" WITH DATA", "CONCURRENTLY \"App\".\"Summary\" WITH DATA")]
+    [InlineData("/* lead */ REFRESH MATERIALIZED VIEW summary WITH NO DATA /* tail */", "/* tail */")]
+    [InlineData("REFRESH MATERIALIZED VIEW \"summary; DROP TABLE items; --\"", "\"summary; DROP TABLE items; --\"")]
+    public void RefreshMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<RefreshMaterializedView>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ REFRESH MATERIALIZED VIEW app.summary WITH NO DATA /* tail */; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("REFRESH MATERIALIZED VIEW \"app\".\"summary\" WITH NO DATA", formatted);
+        Assert.Contains("/* lead */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
+        Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<RefreshMaterializedView>());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }
