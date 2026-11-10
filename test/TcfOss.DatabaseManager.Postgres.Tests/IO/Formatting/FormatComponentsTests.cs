@@ -3,6 +3,7 @@ using System.Text;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -14,6 +15,31 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.IO.Formatting;
 
 public class FormatComponentsTests
 {
+    [Theory]
+    [InlineData("SELECT result.value FROM LATERAL app.expand($1) WITH ORDINALITY AS result (value, ordinal)", "\"result\"")]
+    [InlineData("SELECT result.value FROM LATERAL ROWS FROM (app.records() AS (value INT), app.other()) WITH ORDINALITY AS result (value, other, ordinal)", "\"result\"")]
+    [InlineData("SELECT result.value FROM LATERAL (SELECT $1 AS original) AS result (value)", "result")]
+    public void FromRelations_FormatAliasColumnsAndRetainFunctionStructure(string sql, string expectedAlias)
+    {
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        Select statement = Assert.IsType<Select>(new PgParser().ParseStatement(state));
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        statement.FormatSql(writer, Helpers.CreateFormatManager());
+        string formatted = writer.ToString();
+
+        Assert.Contains("LATERAL ", formatted);
+        Assert.Contains($"AS {expectedAlias} (\"value\"", formatted);
+        if (sql.Contains("WITH ORDINALITY", StringComparison.Ordinal))
+        {
+            Assert.Contains("WITH ORDINALITY", formatted);
+        }
+        Assert.Contains("\"result\".\"value\"", formatted);
+        var formattedState = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Select>(new PgParser().ParseStatement(formattedState));
+        Assert.True(formattedState.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
     [Fact]
     public void RoutineSettingFormatting_DelegatesToSqlForBothVariants()
     {
@@ -204,6 +230,31 @@ public class FormatComponentsTests
 
         Assert.Contains(expected, actual);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void AtomicRoutineBody_SeparatesHeaderWithoutDuplicatingPreservedNewline(int triviaKind)
+    {
+        var body = new BeginAtomic([]);
+        body.Meta.PreNonSql = triviaKind switch
+        {
+            0 => null,
+            1 => [],
+            2 => [new NonSql.Spaces(1)],
+            3 => [new NonSql.Newlines()],
+            _ => throw new ArgumentOutOfRangeException(nameof(triviaKind))
+        };
+        var procedure = new CreateProcedure(new ObjectName(new Identifier("routine")), [], body);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        procedure.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal("CREATE\nPROCEDURE \"routine\" ()\nBEGIN ATOMIC\nEND", writer.ToString().ReplaceLineEndings("\n"));
+    }
+
     [Theory]
     [InlineData("0x_Ff_01")]
     [InlineData("0O_7_5_5")]
@@ -358,5 +409,114 @@ public class FormatComponentsTests
         expression.FormatSql(writer, Helpers.CreateFormatManager());
 
         Assert.Equal($"\"value\" NOT {op} ANY (\"pattern\") ESCAPE '!'", writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO app.items DEFAULT VALUES RETURNING *", "DEFAULT VALUES RETURNING *")]
+    [InlineData("INSERT INTO app.items DEFAULT VALUES ON CONFLICT DO NOTHING", "ON CONFLICT DO NOTHING")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT ON CONSTRAINT items_pkey DO NOTHING", "ON CONFLICT ON CONSTRAINT \"items_pkey\" DO NOTHING")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT ON CONSTRAINT items_pkey DO UPDATE SET id = excluded.id", "ON CONFLICT ON CONSTRAINT \"items_pkey\" DO UPDATE SET")]
+    [InlineData("INSERT INTO app.items AS target (id) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT (id) DO UPDATE SET id = excluded.id WHERE target.id <> excluded.id RETURNING target.*", "OVERRIDING SYSTEM VALUE")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT ((app.key(name)) COLLATE app.locale app.text_ops (option = 1)) WHERE app.active(id) DO NOTHING", "COLLATE \"app\".\"locale\" \"app\".\"text_ops\" (\"option\" = 1)")]
+    [InlineData("UPDATE app.items SET id = source.id FROM app.source AS source, app.other WHERE items.id = source.id RETURNING items.*", "RETURNING \"items\".*")]
+    [InlineData("DELETE FROM app.items USING app.source, app.other WHERE items.id = source.id RETURNING *", "USING \"app\".\"source\", \"app\".\"other\"")]
+    public void DmlComponents_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("\"app\".\"items\"", formatted);
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("WITH result AS MATERIALIZED (SELECT id FROM app.items) SELECT id FROM result", "AS MATERIALIZED (")]
+    [InlineData("WITH result AS NOT MATERIALIZED (SELECT id FROM app.items) SELECT id FROM result", "AS NOT MATERIALIZED (")]
+    [InlineData("WITH result AS MATERIALIZED (VALUES (1)) SELECT column1 FROM result", "AS MATERIALIZED (")]
+    [InlineData("WITH changed AS (INSERT INTO app.items DEFAULT VALUES RETURNING id) SELECT id FROM changed", "DEFAULT VALUES RETURNING")]
+    [InlineData("WITH changed AS (UPDATE app.items SET id = 1 RETURNING id) SELECT id FROM changed", "UPDATE \"app\".\"items\"")]
+    [InlineData("WITH changed AS (DELETE FROM app.items RETURNING id) INSERT INTO app.archive SELECT id FROM changed", "DELETE FROM \"app\".\"items\"")]
+    [InlineData("WITH changed AS ( /* lead */ DELETE FROM app.items RETURNING id /* tail */ ) SELECT id FROM changed", "/* tail */")]
+    [InlineData("WITH RECURSIVE tree (id) AS (VALUES (1) UNION ALL SELECT id + 1 FROM tree WHERE id < 3) SEARCH DEPTH FIRST BY id SET position CYCLE id SET is_cycle TO 'yes' DEFAULT 'no' USING path SELECT id, position, is_cycle, path FROM tree", "SEARCH DEPTH FIRST BY \"id\" SET \"position\" CYCLE \"id\" SET \"is_cycle\" TO 'yes' DEFAULT 'no' USING \"path\"")]
+    public void CteComponents_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", "FILTER (WHERE \"active\")", Label = "Format aggregate filter")]
+    [InlineData("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value DESC NULLS LAST) FROM items", "WITHIN GROUP (ORDER BY \"value\" DESC NULLS LAST)", Label = "Format within group")]
+    [InlineData("SELECT SUM(value) OVER result FROM items WINDOW result AS (PARTITION BY category ORDER BY id NULLS FIRST)", "WINDOW \"result\" AS (PARTITION BY \"category\" ORDER BY \"id\" NULLS FIRST)", Label = "Format named window")]
+    [InlineData("SELECT SUM(value) OVER (base ROWS BETWEEN (offset_value + 1) PRECEDING AND 1 FOLLOWING EXCLUDE TIES) FROM items WINDOW base AS (ORDER BY id)", "OVER (\"base\" ROWS BETWEEN (\"offset_value\" + 1) PRECEDING AND 1 FOLLOWING EXCLUDE TIES)", Label = "Format inherited frame")]
+    [InlineData("SELECT SUM(value) OVER (ROWS CURRENT ROW EXCLUDE NO OTHERS) FROM items", "ROWS CURRENT ROW EXCLUDE NO OTHERS", Label = "Format single frame bound")]
+    [InlineData("SELECT SUM(value) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM items", "ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", Label = "Format unbounded bounds")]
+    public void AggregateWindows_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Select>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 FROM app.items AS i LIMIT ALL FOR UPDATE OF i NOWAIT", "LIMIT ALL FOR UPDATE OF \"i\" NOWAIT", Label = "Format unlimited count and lock target")]
+    [InlineData("SELECT 1 OFFSET (app.skip_rows())", "OFFSET (\"app\".\"skip_rows\"())", Label = "Format offset expression recursively")]
+    [InlineData("SELECT 1 LIMIT (app.count_rows()) OFFSET (app.skip_rows())", "LIMIT (\"app\".\"count_rows\"()) OFFSET (\"app\".\"skip_rows\"())", Label = "Format count and offset recursively")]
+    [InlineData("SELECT 1 FETCH NEXT ROW ONLY", "FETCH FIRST ROWS ONLY", Label = "Format implicit fetch count")]
+    [InlineData("SELECT id FROM items ORDER BY id OFFSET 2 ROWS FETCH NEXT 3 ROWS WITH TIES", "OFFSET 2 FETCH FIRST 3 ROWS WITH TIES", Label = "Format fetch with ties")]
+    [InlineData("SELECT 1 FROM items AS a FOR NO KEY UPDATE OF a NOWAIT FOR KEY SHARE OF a SKIP LOCKED", "FOR NO KEY UPDATE OF \"a\" NOWAIT FOR KEY SHARE OF \"a\" SKIP LOCKED", Label = "Format multiple locks")]
+    public void SelectTails_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Select>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CALL app.run(1, app.compute($1))", "CALL \"app\".\"run\"(1, \"app\".\"compute\"($1))", Label = "Format qualified procedure and argument function")]
+    [InlineData("CALL lower('text')", "CALL \"lower\"('text')", Label = "Do not format procedure as built-in function")]
+    [InlineData("CALL app.run(value => (1 + 2))", "CALL \"app\".\"run\"(\"value\" => (1 + 2))", Label = "Format named procedure argument")]
+    [InlineData("CALL app.run(VARIADIC values_arg => ARRAY[1, 2])", "VARIADIC \"values_arg\" => ARRAY[1, 2]", Label = "Format variadic procedure argument")]
+    [InlineData("CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ CALL app.first(1) /* tail */; CALL app.second(NULL); END", "CALL \"app\".\"first\"(1) /* tail */", Label = "Format atomic calls and comments")]
+    public void Call_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 }

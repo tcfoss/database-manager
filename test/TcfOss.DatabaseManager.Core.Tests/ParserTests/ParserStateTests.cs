@@ -596,21 +596,21 @@ public static class ParserStateTests
     public static void PeekKeywordsAll_Match_Match()
     {
         var s = new ParserState(TokenSet2);
-        Assert.True(s.PeekKeywordsAllEqual(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.TABLE));
+        Assert.True(s.PeekKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.TABLE));
     }
 
     [Fact]
     public static void PeekKeywordsAll_Match_NonMatch()
     {
         var s = new ParserState(TokenSet2);
-        Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.DATABASE));
+        Assert.False(s.PeekKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.DATABASE));
     }
 
     [Fact]
     public static void PeekKeywordsAllEqual_NonKeyword_NonMatch()
     {
         var s = new ParserState([new Word("SELECT") { Location = new Lexing.Location() }, new Asterisk() { Location = new Lexing.Location() }, new Word("FROM") { Location = new Lexing.Location() }, new Word("my_table") { Location = new Lexing.Location() }]);
-        Assert.False(s.PeekKeywordsAllEqual(Keyword.SELECT, Keyword.DISTINCT));
+        Assert.False(s.PeekKeywordsAll(Keyword.SELECT, Keyword.DISTINCT));
     }
 
     [Fact]
@@ -623,7 +623,7 @@ public static class ParserStateTests
             // Advance pointer.
         }
 
-        Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.DATABASE));
+        Assert.False(s.PeekKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.DATABASE));
     }
 
     [Fact]
@@ -632,14 +632,14 @@ public static class ParserStateTests
         Token[] tokens = [new Word("CREATE") { Location = new Lexing.Location() }];
         var s = new ParserState(tokens);
 
-        Assert.True(s.PeekKeywordsAllEqual());
-        Assert.True(s.PeekKeywordsAllEqual(Keyword.CREATE));
-        Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE, Keyword.TABLE));
+        Assert.True(s.PeekKeywordsAll());
+        Assert.True(s.PeekKeywordsAll(Keyword.CREATE));
+        Assert.False(s.PeekKeywordsAll(Keyword.CREATE, Keyword.TABLE));
         Assert.Same(tokens[0], s.Peek());
 
         s.Next();
-        Assert.True(s.PeekKeywordsAllEqual());
-        Assert.False(s.PeekKeywordsAllEqual(Keyword.CREATE));
+        Assert.True(s.PeekKeywordsAll());
+        Assert.False(s.PeekKeywordsAll(Keyword.CREATE));
     }
 
     [Fact]
@@ -916,6 +916,8 @@ public static class ParserStateTests
     [InlineData(ParseContext.DefaultExpression)]
     [InlineData(ParseContext.StringLiteralAsStatement)]
     [InlineData(ParseContext.BeginAtomic)]
+    [InlineData(ParseContext.NarrowSqlOnly)]
+    [InlineData(ParseContext.BeginAtomic | ParseContext.NarrowSqlOnly)]
     [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.BeginAtomic)]
     public static void EnterContext_RestoresNestedEnablingAndDisabling(ParseContext context)
     {

@@ -844,14 +844,15 @@ public class ReferencedItemsTests
 
         List<ItemRef> items = [.. select.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Unknown })];
 
-        // FROM: table1; SELECT: GROUP_CONCAT (function name), t.a, t.b, t.c
-        Assert.Equal(5, items.Count);
+        // FROM: table1; SELECT: GROUP_CONCAT (function name), t.a, t.b, t.c; GROUP BY: t.c
+        Assert.Equal(6, items.Count);
         Assert.All(items, i => Assert.Equal(ItemType.Unknown, i.Type));
         Assert.Equal("table1", items[0].N());
         Assert.Equal("GROUP_CONCAT", items[1].N());
         Assert.Equal("t.a", items[2].N());
         Assert.Equal("t.b", items[3].N());
         Assert.Equal("t.c", items[4].N());
+        Assert.Equal("t.c", items[5].N());
     }
 
     [Fact]

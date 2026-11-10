@@ -236,6 +236,7 @@ public class TokenEquatability
 
         Assert.Equal(first, second);
         Assert.True(first.Equals((object)second));
+        // ReSharper disable once RedundantCast
         Assert.True(first.Equals((Token)second));
         Assert.Equal(first.GetHashCode(), second.GetHashCode());
         Assert.Contains(second, tokens);

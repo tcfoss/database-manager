@@ -7,6 +7,8 @@ using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using NonSqlComponent = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
+// ReSharper disable GenericEnumeratorNotDisposed
+
 namespace TcfOss.DatabaseManager.Core.Tests.LexerTests;
 
 public class LexerSimpleTests : LexerTestBase<GenericLexer>

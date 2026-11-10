@@ -1,6 +1,6 @@
 using TcfOss.StringEnumGenerator;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Attributes;
+namespace TcfOss.DatabaseManager.Core.Expressions.Attributes;
 
 [StringEnum("ALL")]
 [StringEnum("DISTINCT")]

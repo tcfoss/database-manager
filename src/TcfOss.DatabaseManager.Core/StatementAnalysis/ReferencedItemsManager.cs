@@ -237,17 +237,27 @@ public class ReferencedItemsManager
 
     public ItemRef? CreateFunctionOrProcRef(ObjectName name)
     {
+        return CreateRoutineRef(name, procedureOnly: false);
+    }
+
+    public ItemRef? CreateProcedureRef(ObjectName name)
+    {
+        return CreateRoutineRef(name, procedureOnly: true);
+    }
+
+    private ItemRef.ObjectNameRef? CreateRoutineRef(ObjectName name, bool procedureOnly)
+    {
         ItemType type;
         ObjectHandle? objectHandle = null;
 
-        if (name.Values.Count == 1 && FunctionNameProvider != null && FunctionNameProvider.IsBuiltInFunction(name.Values[0].Name))
+        if (!procedureOnly && name.Values.Count == 1 && FunctionNameProvider != null && FunctionNameProvider.IsBuiltInFunction(name.Values[0].Name))
         {
             type = ItemType.BuiltInFunction;
         }
         else if (Definition != null && ActiveSchema != null)
         {
             ObjectType? objectType = Definition.GetObjectType(name.Values, ActiveSchema, NameHandling);
-            if (objectType == ObjectType.Function)
+            if (!procedureOnly && objectType == ObjectType.Function)
             {
                 objectHandle = ObjectHandle.Create(name.Values, ActiveSchema, NameHandling);
                 type = ItemType.Function;

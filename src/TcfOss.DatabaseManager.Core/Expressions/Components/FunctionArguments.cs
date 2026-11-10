@@ -2,13 +2,12 @@ using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
-using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using DuplicateTreatment = TcfOss.DatabaseManager.Core.Expressions.Attributes.DuplicateTreatment;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Components;
+namespace TcfOss.DatabaseManager.Core.Expressions.Components;
 
 public abstract record FunctionArguments() : IWriteSql
 {
-    // TODO: Move to Expressions/Components
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
 

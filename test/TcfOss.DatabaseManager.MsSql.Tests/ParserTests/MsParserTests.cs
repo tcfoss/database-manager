@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -329,6 +330,7 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT OPERATOR(+) value")]
     [InlineData("SELECT value <-> other")]
     public void PostgresGeneralOperators_AreRejected(string sql)
     {
@@ -381,6 +383,51 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     }
 
     [Theory]
+    [InlineData("ANY")]
+    [InlineData("ALL")]
+    [InlineData("SOME")]
+    public void QuantifiedComparisons_ParseScalarOperands(string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a = {quantifier}(1)"));
+
+        Assert.Equal(Core.BuiltIn.BinaryOperator.Equal, expression.Operator);
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.LiteralValue>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Fact]
+    public void AtTimeZone_ParsesAndRoundTripsWithoutPostgresOperatorSyntax()
+    {
+        const string sql = "stamp AT TIME ZONE 'UTC'";
+        var expression = Assert.IsType<Core.Expressions.AtTimeZone>(ParseExpression(sql));
+
+        Assert.False(new MsParser().SupportsPostgresOperatorSyntax);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+        Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
+    }
+
+    [Fact]
+    public void TableValuedFunctions_ParseInSqlServerFromAndApply()
+    {
+        const string sql = "SELECT * FROM dbo.items CROSS APPLY dbo.expand(items.value) AS result";
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM ROWS FROM (app.first())")]
+    [InlineData("SELECT * FROM app.first() WITH ORDINALITY")]
+    [InlineData("SELECT * FROM LATERAL app.first()")]
+    public void PostgresFromComponents_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
     [InlineData("SELECT value ISNULL AND other")]
@@ -388,6 +435,125 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("SELECT x + ANY(SELECT colname FROM tablename)")]
     [InlineData("SELECT x AND SOME(SELECT colname FROM tablename)")]
     public void PostgresPredicates_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items DEFAULT VALUES")]
+    [InlineData("INSERT INTO items OUTPUT inserted.id DEFAULT VALUES")]
+    public void InsertDefaultValues_RemainsSupported(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items AS target VALUES (1)")]
+    [InlineData("INSERT INTO items OVERRIDING SYSTEM VALUE VALUES (1)")]
+    [InlineData("INSERT INTO items VALUES (1) ON CONFLICT DO NOTHING")]
+    [InlineData("INSERT INTO items VALUES (1) RETURNING *")]
+    [InlineData("UPDATE items SET id = 1 RETURNING *")]
+    [InlineData("DELETE FROM items USING source")]
+    public void PostgresDmlComponents_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WITH changed AS (INSERT INTO items VALUES (1)) SELECT 1")]
+    [InlineData("WITH changed AS (UPDATE items SET id = 1) SELECT 1")]
+    [InlineData("WITH changed AS (DELETE FROM items) SELECT 1")]
+    [InlineData("WITH result AS MATERIALIZED (SELECT 1) SELECT 1")]
+    [InlineData("WITH result AS NOT MATERIALIZED (SELECT 1) SELECT 1")]
+    [InlineData("WITH result (id) AS (SELECT 1) SEARCH DEPTH FIRST BY id SET position SELECT id FROM result")]
+    [InlineData("WITH result (id) AS (SELECT 1) CYCLE id SET is_cycle USING path SELECT id FROM result")]
+    public void PostgresCteComponents_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM items", Label = "SQL Server rows frame")]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id RANGE UNBOUNDED PRECEDING) FROM items", Label = "SQL Server range frame")]
+    [InlineData("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value) OVER () FROM items", Label = "SQL Server ordered set function")]
+    public void WindowFramesAndOrderedSetFunctions_RemainSupported(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", Label = "Reject aggregate FILTER")]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id GROUPS CURRENT ROW) FROM items", Label = "Reject GROUPS frame")]
+    [InlineData("SELECT SUM(value) OVER (ROWS CURRENT ROW EXCLUDE TIES) FROM items", Label = "Reject EXCLUDE")]
+    [InlineData("SELECT id FROM items ORDER BY id NULLS LAST", Label = "Reject NULLS ordering")]
+    public void AggregateWindows_AreNarrowed(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void SelectTails_PreserveSqlServerOffsetFetch()
+    {
+        const string sql = "SELECT id FROM items ORDER BY id OFFSET 2 ROWS FETCH NEXT 3 ROWS ONLY";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 OFFSET 2", Label = "Reject offset without rows")]
+    [InlineData("SELECT 1 FETCH FIRST ROW ONLY", Label = "Reject standalone fetch")]
+    [InlineData("SELECT 1 OFFSET 2 ROWS FETCH NEXT 3 ROWS WITH TIES", Label = "Reject fetch with ties")]
+    [InlineData("SELECT 1 FOR UPDATE", Label = "Reject PostgreSQL update lock")]
+    [InlineData("SELECT 1 FOR SHARE", Label = "Reject PostgreSQL share lock")]
+    public void SelectTails_NarrowPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]
+    [InlineData("WITH result AS ((SELECT 1 AS id)) SELECT id FROM result")]
+    [InlineData("WITH result AS (WITH source AS (SELECT 1 AS id) SELECT id FROM source) SELECT id FROM result")]
+    public void CteBodyQuery_PreservesAcceptedQueryStarters(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT")]
+    [InlineData("UPDATE")]
+    [InlineData("DELETE")]
+    public void CteBodyQuery_RejectsDmlAtOpeningTokenWithoutConsumingIt(string keyword)
+    {
+        string sql = $"WITH changed AS (\n  {keyword} invalid syntax\n) SELECT 1";
+        var state = GetState(sql);
+        var first = state.PeekNth(4);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(state));
+
+        Assert.Same(first, state.Peek());
+        ParseException expected = ParserState.ExpectedException("SELECT", first);
+        Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
+    }
+
+    [Fact]
+    public void CteBodyQuery_RejectsNestedWithDmlAtOpeningToken()
+    {
+        const string sql = "WITH changed AS (\n  WITH source AS (SELECT 1 AS id) INSERT INTO items SELECT id FROM source\n) SELECT 1";
+        var state = GetState(sql);
+        var first = state.PeekNth(4);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement(state));
+
+        ParseException expected = ParserState.ExpectedException("SELECT", first);
+        Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
+    }
+
+    [Theory]
+    [InlineData("CALL app.run()", Label = "Reject standalone CALL")]
+    [InlineData("CREATE PROCEDURE app.run AS CALL app.other()", Label = "Reject CALL in TSQL routine")]
+    public void Call_IsNotSqlServerInvocationSyntax(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

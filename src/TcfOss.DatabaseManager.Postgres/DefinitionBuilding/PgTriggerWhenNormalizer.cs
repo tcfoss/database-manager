@@ -3,9 +3,9 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Postgres.Configuration;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects;
@@ -48,7 +48,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
         throw Invalid("subquery");
     }
 
-    protected override InSubquery NormalizeInSubquery(InSubquery inSubquery)
+    protected override InSubquery NormalizeInSubquery(InSubquery inSubquery, bool inSelect = false, bool flatten = false)
     {
         throw Invalid("subquery");
     }
@@ -60,7 +60,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
 
     protected override FunctionCall NormalizeFunctionCall(FunctionCall functionCall, bool inSelect = false, bool flatten = false)
     {
-        if (functionCall.Over != null || functionCall.Arguments is not FunctionArguments.List { DuplicateTreatment: null, Clauses: null })
+        if (functionCall.Over != null || functionCall.Filter != null || functionCall.WithinGroup != null || functionCall.Arguments is not FunctionArguments.List { DuplicateTreatment: null, Clauses: null })
         {
             throw Invalid("aggregate or window-function syntax");
         }

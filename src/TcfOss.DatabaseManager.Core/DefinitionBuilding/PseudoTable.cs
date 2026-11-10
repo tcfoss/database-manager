@@ -21,4 +21,24 @@ public record PseudoTable(string Name, ObjectIdentifier? Identifier, List<string
 
     public record Unbound(string Name, ObjectIdentifier? Identifier, PseudoTableType Type)
         : PseudoTable(Name, Identifier, [], Type);
+
+    public PseudoTable RenameColumns(SqlValueList<Identifier>? aliases)
+    {
+        if (aliases == null)
+        {
+            return this;
+        }
+
+        List<string> renamedItems = new(Math.Max(aliases.Count, SelectableItems.Count));
+        foreach (Identifier alias in aliases)
+        {
+            renamedItems.Add(alias.Name);
+        }
+        for (int i = aliases.Count; i < SelectableItems.Count; i++)
+        {
+            renamedItems.Add(SelectableItems[i]);
+        }
+
+        return this with { SelectableItems = renamedItems };
+    }
 }

@@ -1,27 +1,30 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Expressions;
 
 public record FunctionCall(ObjectName Name) : Expression
 {
     public required FunctionArguments Arguments { get; init; }
-
-    /// <summary>
-    /// Inline <c>OVER (...)</c> window specification, when this is a window
-    /// function call. Null for ordinary function calls. Named windows (referred
-    /// to by <c>OVER window_name</c>) are not yet supported.
-    /// </summary>
     public WindowSpec? Over { get; init; }
 
-    // TODO: Parameters?, Filter, NullTreatment, WithinGroup
+    public SqlValueList<Statements.Components.OrderBy>? WithinGroup { get; init; }
+    public Expression? Filter { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
         writer.WriteSql($"{Name}{Arguments}");
+        if (WithinGroup != null)
+        {
+            writer.WriteSql($" WITHIN GROUP (ORDER BY {WithinGroup.ToSqlDelimited()})");
+        }
+        if (Filter != null)
+        {
+            writer.WriteSql($" FILTER (WHERE {Filter})");
+        }
         if (Over != null)
         {
             writer.WriteSql($" OVER {Over}");
@@ -30,7 +33,6 @@ public record FunctionCall(ObjectName Name) : Expression
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
-        // TODO: What if Name is a user-defined function?
         if (Name.Values is [{ QuoteStyle: QuoteStyle.None }] && manager.FunctionNameProvider.IsBuiltInFunction(Name.Values[0].Name))
         {
             writer.Write(Name.Values[0]);
@@ -40,6 +42,25 @@ public record FunctionCall(ObjectName Name) : Expression
             Name.FormatSql(writer, manager);
         }
         Arguments.FormatSql(writer, manager);
+        if (WithinGroup != null)
+        {
+            writer.Write(" WITHIN GROUP (ORDER BY ");
+            for (int index = 0; index < WithinGroup.Count; index++)
+            {
+                if (index > 0)
+                {
+                    writer.Write(", ");
+                }
+                WithinGroup[index].FormatInline(writer, manager);
+            }
+            writer.Write(")");
+        }
+        if (Filter != null)
+        {
+            writer.Write(" FILTER (WHERE ");
+            Filter.FormatSql(writer, manager);
+            writer.Write(")");
+        }
         if (Over != null)
         {
             writer.Write(" OVER ");
@@ -58,6 +79,25 @@ public record FunctionCall(ObjectName Name) : Expression
         foreach (ItemRef item in Arguments.GetReferencedItems(context))
         {
             yield return item;
+        }
+
+        if (WithinGroup != null)
+        {
+            foreach (Statements.Components.OrderBy order in WithinGroup)
+            {
+                foreach (ItemRef item in order.GetReferencedItems(context))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        if (Filter != null)
+        {
+            foreach (ItemRef item in Filter.GetReferencedItems(context))
+            {
+                yield return item;
+            }
         }
 
         if (Over != null)

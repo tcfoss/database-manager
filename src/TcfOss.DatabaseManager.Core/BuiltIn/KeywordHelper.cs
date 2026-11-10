@@ -42,6 +42,7 @@ public static class KeywordHelper
         Keyword.GROUP,
         Keyword.SORT,
         Keyword.HAVING,
+        Keyword.WINDOW,
         Keyword.ORDER,
         Keyword.TOP,
         Keyword.LATERAL,
@@ -49,6 +50,7 @@ public static class KeywordHelper
         Keyword.LIMIT,
         Keyword.OFFSET,
         Keyword.FETCH,
+        Keyword.FOR,
         Keyword.UNION,
         Keyword.EXCEPT,
         Keyword.INTERSECT,
@@ -58,6 +60,7 @@ public static class KeywordHelper
         // Reserved only as a column alias in the `SELECT` clause
         Keyword.FROM,
         Keyword.INTO,
+        Keyword.ON,
         Keyword.END,
     ];
 
@@ -91,6 +94,7 @@ public static class KeywordHelper
         Keyword.EXCEPT,
         Keyword.INTERSECT,
         // Reserved only as a table alias in the `FROM`/`JOIN` clauses:
+        Keyword.RETURNING,
         Keyword.ON,
         Keyword.JOIN,
         Keyword.INNER,

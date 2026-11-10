@@ -9,22 +9,45 @@ from dbman_dev.utilities.rsync_opts import RsyncOpts as _RsyncOpts
 from dbman_dev.utilities.platform import IS_UNIX_LIKE as _IS_UNIX_LIKE
 
 
-def run(cmd: list[str], cwd: _Path | None = None, quiet: bool = False) -> None:
+def _get_redacted_cmd_list(cmd: list[str], redactions: list[str] | None = None) -> list[str]:
+    if not redactions:
+        return cmd
+    redacted_cmd = cmd.copy()
+    for i, part in enumerate(redacted_cmd):
+        for redaction in redactions:
+            if redaction in part:
+                redacted_cmd[i] = part.replace(redaction, "REDACTED")
+    return redacted_cmd
+
+
+def run(
+    cmd: list[str],
+    cwd: _Path | None = None,
+    quiet: bool = False,
+    redactions: list[str] | None = None,
+) -> None:
     """Run a shell command."""
     if not quiet:
         cwd_printable = ""
         if cwd:
             cwd_printable = str(cwd)
 
+        redacted_cmd = _get_redacted_cmd_list(cmd, redactions)
+
         if not _IS_UNIX_LIKE:
-            print(f"{cwd_printable}> {_subproc.list2cmdline(cmd)}")
+            print(f"{cwd_printable}> {_subproc.list2cmdline(redacted_cmd)}")
         else:
-            print(f"{cwd_printable}> {' '.join(cmd)}")
+            print(f"{cwd_printable}> {' '.join(redacted_cmd)}")
 
     _subproc.run(cmd, shell=False, cwd=cwd, check=True)
 
 
-def run_output(cmd: list[str], cwd: _Path | None = None, quiet: bool = False) -> str:
+def run_output(
+    cmd: list[str],
+    cwd: _Path | None = None,
+    quiet: bool = False,
+    redactions: list[str] | None = None,
+) -> str:
     """Run a shell command and return its output as a string."""
 
     if not quiet:
@@ -32,13 +55,17 @@ def run_output(cmd: list[str], cwd: _Path | None = None, quiet: bool = False) ->
         if cwd:
             cwd_printable = str(cwd)
 
+        redacted_cmd = _get_redacted_cmd_list(cmd, redactions)
+
         if not _IS_UNIX_LIKE:
-            print(f"{cwd_printable}> {_subproc.list2cmdline(cmd)}")
+            print(f"{cwd_printable}> {_subproc.list2cmdline(redacted_cmd)}")
         else:
-            print(f"{cwd_printable}> {' '.join(cmd)}")
+            print(f"{cwd_printable}> {' '.join(redacted_cmd)}")
 
     try:
-        result = _subproc.run(cmd, shell=False, cwd=cwd, check=True, capture_output=True, text=True)
+        result = _subproc.run(
+            cmd, shell=False, cwd=cwd, check=True, capture_output=True, text=True
+        )
         return result.stdout.strip()
     except _subproc.CalledProcessError as e:
         if not quiet:

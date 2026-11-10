@@ -20,6 +20,7 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
     public Expression? Where { get; init; }
     public SqlValueList<Expression>? GroupBy { get; init; }
     public Expression? Having { get; init; }
+    public SqlValueList<WindowDefinition>? Windows { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
@@ -55,6 +56,11 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
         if (Having != null)
         {
             writer.WriteSql($" HAVING {Having}");
+        }
+
+        if (Windows != null)
+        {
+            writer.WriteSql($" WINDOW {Windows.ToSqlDelimited()}");
         }
     }
 
@@ -101,6 +107,13 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
         if (Having != null)
         {
             DmlFormatter.FormatHavingClause(writer, manager, Having);
+        }
+
+        if (Windows != null)
+        {
+            writer.WriteLine();
+            writer.WriteSqlI("WINDOW ");
+            writer.FormatDelimited(Windows, manager);
         }
     }
 
@@ -213,6 +226,17 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
             }
         }
 
+        if (Windows != null)
+        {
+            foreach (WindowDefinition window in Windows)
+            {
+                foreach (ItemRef item in window.GetReferencedItems(context))
+                {
+                    yield return item;
+                }
+            }
+        }
+
         if (Where != null)
         {
             using (context.Enter(ReferencedItemsContext.WhereClause))
@@ -221,6 +245,25 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
                 {
                     yield return r;
                 }
+            }
+        }
+
+        if (GroupBy != null)
+        {
+            foreach (Expression expression in GroupBy)
+            {
+                foreach (ItemRef item in expression.GetReferencedItems(context))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        if (Having != null)
+        {
+            foreach (ItemRef item in Having.GetReferencedItems(context))
+            {
+                yield return item;
             }
         }
     }

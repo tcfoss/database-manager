@@ -6,7 +6,6 @@ namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 /// <summary>
 /// Contiguous non-SQL components preceding a token, along with the source span they cover.
 /// </summary>
-/// <remarks>
 public sealed class NonSqlList : IReadOnlyList<NonSqlComponent>
 {
     public List<NonSqlComponent> Items { get; } = [];

@@ -26,7 +26,7 @@ public class MyControlFlowParser : ControlFlowParser
         {
             GetFinished = s =>
             {
-                if (s.PeekKeywordsAllEqual(Keyword.END, Keyword.IF))
+                if (s.PeekKeywordsAll(Keyword.END, Keyword.IF))
                 {
                     return true;
                 }

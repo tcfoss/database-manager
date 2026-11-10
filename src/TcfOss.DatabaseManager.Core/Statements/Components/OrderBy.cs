@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
@@ -8,7 +9,7 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
 public record OrderBy(Expression Expression, Direction? Direction) : IWriteSql
 {
-    // TODO : NullsFirst and WithFill
+    public NullsOrder? NullsOrder { get; init; }
 
     public void ToSql(SqlTextWriter writer)
     {
@@ -18,17 +19,30 @@ public record OrderBy(Expression Expression, Direction? Direction) : IWriteSql
         {
             writer.WriteSql($" {Direction}");
         }
+        if (NullsOrder != null)
+        {
+            writer.WriteSql($" NULLS {NullsOrder}");
+        }
     }
 
     public void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
+        writer.Write(manager.Indent);
+        FormatInline(writer, manager);
+    }
+
+    public void FormatInline(SqlTextWriter writer, FormatManager manager)
+    {
         using (manager.Enter(FormatContext.OrderByClause))
         {
-            writer.Write(manager.Indent);
             Expression.FormatSql(writer, manager);
             if (Direction != null)
             {
                 writer.WriteSql($" {Direction}");
+            }
+            if (NullsOrder != null)
+            {
+                writer.WriteSql($" NULLS {NullsOrder}");
             }
         }
     }

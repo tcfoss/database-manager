@@ -92,6 +92,148 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## SQL-Body Context
+
+Unquoted SQL routine bodies enable `ParseContext.NarrowSqlOnly` for their
+statements. PostgreSQL rejects procedural blocks, statement labels, handler and
+condition declarations, and legacy procedural cursor/loop-control commands only
+while this flag is set. Core retains its broader grammar. The existing
+`BeginAtomic` flag permits the opener and is cleared before parsing its contents;
+`NarrowSqlOnly` remains active until body parsing finishes. Both flags restore
+their previous values when the scope exits, including after parse errors.
+
+Quoted routine bodies remain opaque. A future entry point for parsing extracted
+body text must select SQL-only narrowing or procedural grammar explicitly;
+leaving the flag unset does not implement the deferred PL/pgSQL grammar.
+
+Mixed CTE/query, INSERT, UPDATE, DELETE, CALL, and RETURN bodies are unit-tested
+for statement spans, terminators, identifier sources, dependencies, comments,
+canonical SQL round trips, and formatter idempotence. Tests cover leading or
+trailing LANGUAGE SQL, quoted semicolons/END text, empty terminators, closing
+comments, and following top-level statements. Missing statement terminators/END
+and nested atomic bodies are rejected. SQL cursor declarations remain accepted;
+statement eligibility and language-specific execution/transaction semantics
+are deferred.
+
+## Procedure Invocation
+
+CALL supports parenthesized positional arguments, named arguments using `=>` or
+`:=`, positional arguments followed by named arguments, and a final VARIADIC
+argument. Equality inside an argument is a positional boolean expression, not a
+named argument. PostgreSQL rejects aggregate-only argument syntax, root FILTER,
+WITHIN GROUP or OVER modifiers, positional arguments after named arguments, and
+misplaced or repeated VARIADIC modifiers. Core retains its broader argument
+grammar; MySQL/MariaDB preserve legacy CALL parsing and exclude VARIADIC, while
+SQL Server rejects CALL.
+
+Procedure names retain source identifiers and are not rewritten or formatted as
+built-in function names. Dependency traversal distinguishes catalog-resolved
+procedure targets from argument functions; unresolved targets remain unknown.
+SQL/JSON round trips, recursive formatting/idempotence, argument normalization
+with both flattening modes, and atomic-body comments/spans/terminators and
+dependencies are unit-tested. VARIADIC also uses the shared function-argument
+model, formatting, dependency traversal, and normalization.
+
+Procedure lookup and overload resolution, argument binding/types/defaults,
+OUT/INOUT semantics, transaction-control restrictions, and execution remain
+deferred. Structured SQL-body restrictions are described above; PL/pgSQL bodies
+remain opaque. No integration tests or database execution were added.
+
+## Pagination And Row Locking
+
+SELECT supports LIMIT expressions or ALL, OFFSET with optional ROW/ROWS, either
+LIMIT/OFFSET order, and FETCH FIRST/NEXT with an optional count and ONLY or WITH
+TIES. FETCH may stand alone or accompany OFFSET in either order. Canonical SQL
+emits LIMIT before OFFSET and uses FETCH FIRST with ROWS. `Limit.PgLimit` uses a
+null count for ALL; an explicit SQL NULL remains a literal expression.
+`Limit.PgFetch` uses a null count for the omitted, implicit-one form.
+
+Row-lock clauses retain FOR UPDATE, NO KEY UPDATE, SHARE, or KEY SHARE; optional
+OF relation identifiers; NOWAIT or SKIP LOCKED; and multiple clauses. Input may
+place locks before or after pagination; canonical output places locks last.
+OF names are local relation identifiers, not additional object dependencies.
+
+SQL/JSON round trips, recursive formatting/idempotence, normalization with both
+flattening modes, select-tail expression dependencies, identifier sources, and
+atomic-body spans/terminators are unit-tested. Core owns shared parsing; provider
+component overrides preserve legacy MySQL/MariaDB LIMIT and basic row locking,
+and SQL Server OFFSET/FETCH, while narrowing PostgreSQL-specific syntax.
+PostgreSQL rejects MySQL comma LIMIT.
+
+Lock-target lookup, lockable-query/relation checks, WITH TIES ordering and locking
+restrictions, count/offset types and nonnegative values, execution semantics, and
+exhaustive dialect/version validation remain deferred. No integration tests or
+database-execution support were added.
+
+## Aggregate And Window Parsing
+
+Function calls retain aggregate `FILTER (WHERE ...)`, ordered-set
+`WITHIN GROUP (ORDER BY ...)`, and named or inline OVER clauses. SELECT retains
+named WINDOW definitions, including inherited specifications. Shared ORDER BY
+items preserve optional `NULLS FIRST` / `NULLS LAST`, including aggregate and
+window ordering.
+
+Window specifications support ROWS, RANGE, and GROUPS frames with single or
+BETWEEN bounds: UNBOUNDED PRECEDING/FOLLOWING, CURRENT ROW, and expression-based
+PRECEDING/FOLLOWING offsets. Optional exclusions retain CURRENT ROW, GROUP, TIES,
+or NO OTHERS. Structurally invalid bound combinations are rejected. SQL/JSON
+round trips, recursive formatting/idempotence, both normalization modes,
+dependencies, identifier sources, and atomic-body boundaries are unit-tested.
+Window names are identifiers, not database-object dependencies.
+
+Core owns the shared grammar. MySQL/MariaDB and SQL Server component overrides
+narrow PostgreSQL-only modifiers while retaining shared ROWS/RANGE windows;
+SQL Server also accepts WITHIN GROUP. Aggregate/window eligibility, named-window
+lookup and inheritance rules, frame-offset typing/value checks, ordering
+requirements, and exhaustive dialect/version validation remain deferred.
+
+## Common Table Expressions
+
+CTE bodies retain SELECT, INSERT, UPDATE, or DELETE statements, including nested
+WITH and VALUES queries. Materialization hints are nullable: absent, MATERIALIZED,
+and NOT MATERIALIZED remain distinct. SEARCH preserves breadth/depth-first order,
+BY columns, and its generated sequence column. CYCLE preserves BY columns, mark
+and path columns, and optional constant TO/DEFAULT values, including signed
+numbers, typed/interval literals, and PostgreSQL string forms.
+
+`CommonTableExpressionBody.Query` is a `Statement`. CTE result-column inference
+uses SELECT projections or DML RETURNING lists and includes generated SEARCH/CYCLE
+columns. DML bodies without RETURNING expose no result columns. Explicit column
+lists provide output names during normalization; VALUES rows and expressions are
+preserved. DML normalization is syntactic, not catalog-backed semantic resolution.
+WITH dependency traversal covers both CTE bodies and their consuming SELECT/DML
+statement while excluding local relation names and preserving genuine references
+to same-named tables in nonrecursive bodies.
+
+SQL/JSON output, formatting, normalization, source/comment preservation, and
+atomic SQL-body boundaries are unit-tested. Core owns shared parsing; MySQL/MariaDB
+and SQL Server narrow PostgreSQL-only components through overrides. Recursive
+query shape/types, generated-name conflicts, CYCLE coercion/equality, DML placement
+and execution semantics, and catalog-backed RETURNING wildcard expansion remain
+deferred. MERGE CTE bodies require a future shared MERGE parser. No integration
+tests or database-execution support were added.
+
+## DML Parsing
+
+The shared DML parser supports INSERT `DEFAULT VALUES`, explicit target aliases,
+`OVERRIDING SYSTEM VALUE` / `OVERRIDING USER VALUE`, and `ON CONFLICT` with
+`DO NOTHING` or `DO UPDATE`. Conflict targets retain index-inference expressions,
+collations, operator classes and their parameters, optional index predicates,
+or a named constraint. Update actions retain assignments and an optional WHERE
+condition. DO UPDATE requires a target; DO NOTHING may omit it.
+
+INSERT, UPDATE, and DELETE support RETURNING select-item lists. UPDATE FROM and
+DELETE USING accept comma-separated relations and joins, reusing the shared
+FROM parser. SQL/JSON output, formatting, expression dependencies, and atomic
+SQL-body statement boundaries are covered by unit tests. A null `Insert.Source`
+represents DEFAULT VALUES; `Update.From` holds a relation list.
+
+Core parses the shared syntax once. `PgDmlParser` excludes SQL Server OUTPUT and
+MySQL ON DUPLICATE KEY UPDATE; other providers narrow PostgreSQL-only components
+through parser overrides. Exhaustive dialect-specific syntax validation, identity
+override semantics, conflict-index/constraint lookup, and expression type checking
+remain deferred. No database execution or migration support is implied.
+
 ## Array Types
 
 Array type declarations are supported in columns, composite attributes, domain

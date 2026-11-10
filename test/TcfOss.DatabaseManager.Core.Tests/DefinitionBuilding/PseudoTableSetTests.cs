@@ -176,4 +176,24 @@ public class PseudoTableSetTests
         var wildcardColumns = pseudoTableSet.GetLocalWildcardColumns();
         Assert.Empty(wildcardColumns);
     }
+
+    [Theory]
+    [InlineData(0, new[] { "col1", "col2", "col3" })]
+    [InlineData(1, new[] { "renamed1", "col2", "col3" })]
+    [InlineData(2, new[] { "renamed1", "renamed2", "col3" })]
+    [InlineData(3, new[] { "renamed1", "renamed2", "renamed3" })]
+    public void RenameColumns_PreservesTrailingColumnsAndOriginalSource(int aliasCount, string[] expected)
+    {
+        var source = new PseudoTable("items", null, ["col1", "col2", "col3"], PseudoTableType.Table) { Alias = "rows" };
+        SqlValueList<Identifier> aliases = [.. Enumerable.Range(1, aliasCount).Select(index => new Identifier($"renamed{index}"))];
+
+        PseudoTable renamed = source.RenameColumns(aliases);
+
+        Assert.Equal(expected, renamed.SelectableItems);
+        Assert.Equal(new[] { "col1", "col2", "col3" }, source.SelectableItems);
+        Assert.NotSame(source.SelectableItems, renamed.SelectableItems);
+        Assert.Equal(source.Name, renamed.Name);
+        Assert.Equal(source.Alias, renamed.Alias);
+        Assert.Equal(source.Type, renamed.Type);
+    }
 }

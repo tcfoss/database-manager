@@ -10,7 +10,8 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments, Expression? Where = null) : Statement
 {
     public CommonTableExpression? CommonTableExpression { get; init; }
-    public TableWithJoins? From { get; init; }
+    public SqlValueList<TableWithJoins>? From { get; init; }
+    public SqlValueList<SimpleSelectItem>? Returning { get; init; }
 
     /// <summary>
     /// T-SQL <c>OUTPUT</c> clause select items, written between <c>SET</c>
@@ -39,6 +40,10 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
         {
             writer.WriteSql($" WHERE {Where}");
         }
+        if (Returning != null)
+        {
+            writer.WriteSql($" RETURNING {Returning}");
+        }
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -49,7 +54,10 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
             manager.PseudoTables.EnterSelectScope();
 
             Table.AddTablesToContext(manager.PseudoTables);
-            From?.AddTablesToContext(manager.PseudoTables);
+            foreach (TableWithJoins relation in From ?? [])
+            {
+                relation.AddTablesToContext(manager.PseudoTables);
+            }
 
             Meta.FormatPreNonSql(writer, manager);
             CommonTableExpression?.FormatSql(writer, manager);
@@ -68,12 +76,23 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
 
                 if (From != null)
                 {
-                    DmlFormatter.FormatSingleFromClause(writer, manager, From);
+                    if (From.Count == 1)
+                    {
+                        DmlFormatter.FormatSingleFromClause(writer, manager, From[0]);
+                    }
+                    else
+                    {
+                        DmlFormatter.FormatFromClause(writer, manager, From);
+                    }
                 }
 
                 if (Where != null)
                 {
                     DmlFormatter.FormatWhereClause(writer, manager, Where);
+                }
+                if (Returning != null)
+                {
+                    DmlFormatter.FormatReturningClause(writer, manager, Returning);
                 }
             }
 
@@ -83,6 +102,11 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+    {
+        return CommonTableExpression?.GetReferencedItems(context, GetBodyReferencedItems(context)) ?? GetBodyReferencedItems(context);
+    }
+
+    private IEnumerable<ItemRef> GetBodyReferencedItems(ReferencedItemsManager context)
     {
         using (context.EnterTableScope())
         {
@@ -102,13 +126,16 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
             {
                 using (context.Enter(ReferencedItemsContext.FromClause))
                 {
-                    if (context.PseudoTables != null)
+                    foreach (TableWithJoins relation in From)
                     {
-                        From.AddTablesToContext(context.PseudoTables);
-                    }
-                    foreach (ItemRef item in From.GetReferencedItems(context))
-                    {
-                        yield return item;
+                        if (context.PseudoTables != null)
+                        {
+                            relation.AddTablesToContext(context.PseudoTables);
+                        }
+                        foreach (ItemRef item in relation.GetReferencedItems(context))
+                        {
+                            yield return item;
+                        }
                     }
                 }
             }
@@ -129,6 +156,16 @@ public record Update(TableWithJoins Table, SqlValueList<Assignment> Assignments,
                 using (context.Enter(ReferencedItemsContext.WhereClause))
                 {
                     foreach (ItemRef item in Where.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+            using (context.Enter(ReferencedItemsContext.SelectItem))
+            {
+                foreach (SimpleSelectItem selection in Returning ?? [])
+                {
+                    foreach (ItemRef item in selection.GetReferencedItems(context))
                     {
                         yield return item;
                     }

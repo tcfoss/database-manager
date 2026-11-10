@@ -40,16 +40,17 @@ public static class MsSqlServiceRegistration
         });
         services.AddScoped<SysContext>(sp => sp.GetRequiredService<IDbContextFactory<SysContext>>().CreateDbContext());
         services.AddSingleton<IFunctionNameProvider, MsFunctionNameProvider>();
-        // TODO: services.AddScoped<IRetrieveDatabaseObjects, MsInfoSchemaRepo>()
-        // TODO: services.AddScoped<IRetrieveRawEntities, MsRawEntityRetriever>()
-        // TODO: services.AddScoped<ILoadFsDefinition<MsDefinition>, MsFsDefinitionLoader>()
-        // TODO: services.AddScoped<ILoadDbDefinition<MsDefinition>, MsDbDefinitionLoader>()
-        // TODO: services.AddScoped<IGetUnappliedRefactors, MsDbDefinitionLoader>()
-        // TODO: services.AddScoped<IGetUnappliedDeployScripts, MsDbDefinitionLoader>()
-        // TODO: services.AddScoped<IDownloadSchema, MsDownloadSchema>()
-        // TODO: services.AddScoped<IComputeChanges, MsChangeComputer>()
+        /* TODO: Implement Services */
+        // services.AddScoped<IRetrieveDatabaseObjects, MsInfoSchemaRepo>()
+        // services.AddScoped<IRetrieveRawEntities, MsRawEntityRetriever>()
+        // services.AddScoped<ILoadFsDefinition<MsDefinition>, MsFsDefinitionLoader>()
+        // services.AddScoped<ILoadDbDefinition<MsDefinition>, MsDbDefinitionLoader>()
+        // services.AddScoped<IGetUnappliedRefactors, MsDbDefinitionLoader>()
+        // services.AddScoped<IGetUnappliedDeployScripts, MsDbDefinitionLoader>()
+        // services.AddScoped<IDownloadSchema, MsDownloadSchema>()
+        // services.AddScoped<IComputeChanges, MsChangeComputer>()
         services.AddScoped<IRunCommands, MsCommandRunner>();
-        // TODO: services.AddScoped<IReadSchemaMapFiles, DefinitionFileLoader<MsSchemaMapping>>()
+        // services.AddScoped<IReadSchemaMapFiles, DefinitionFileLoader<MsSchemaMapping>>()
         services.AddScoped<IFormatSqlFiles, MsSqlFormatter>();
     }
 }

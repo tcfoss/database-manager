@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -480,18 +481,19 @@ public class NormalizerTests
     }
 
     [Fact]
-    public void InSubquery_IsPreserved()
+    public void InSubquery_IsNormalizedInItsOwnSelectScope()
     {
         var text = """
         SELECT
             book_id
         FROM book
-        WHERE book_id IN (SELECT book_id FROM book_author);
+        WHERE book_id IN (SELECT book_id FROM book_author WHERE book_author.book_id = book.book_id);
         """;
 
         var actual = GetActualSelectText(text);
         Assert.Contains(" IN (", actual);
-        Assert.Contains("FROM book_author", actual);
+        Assert.Contains("FROM `library_catalog`.`book_author`", actual);
+        Assert.Contains("WHERE `library_catalog`.`book_author`.`book_id` = `library_catalog`.`book`.`book_id`", actual);
     }
 
     [Fact]
@@ -811,9 +813,11 @@ public class NormalizerTests
     }
 
     [Fact]
-    public void ValuesQuery_IsNotSupported()
+    public void ValuesQuery_NormalizesExpressionsAndPreservesRows()
     {
-        Assert.Throws<NotImplementedException>(() => GetActualSelectText("VALUES (1, 2)"));
+        string actual = GetActualSelectText("VALUES ((1), 2), (3, (4))");
+
+        Assert.Equal("VALUES (1, 2), (3, 4)", actual);
     }
 
     [Theory]
@@ -881,16 +885,26 @@ public class NormalizerTests
         Assert.IsType<SelectBody.SetOperation>(outer.Left);
     }
 
-    [Fact]
-    public void ParenthesizedSetOperation_RemainsNestedInsideDerivedTable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParenthesizedSetOperation_InsideDerivedTableFollowsRequestedFlattening(bool flatten)
     {
-        Select normalized = GetNormalizedSelect("SELECT d.book_id FROM ((SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book) AS d");
+        const string sql = "SELECT d.book_id FROM ((SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book) AS d";
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+
+        Select normalized = normalizer.NormalizeSelect(query, flatten: flatten);
+
         SelectBody.SimpleSelectQuery selectBody = Assert.IsType<SelectBody.SimpleSelectQuery>(normalized.Body);
         TableWithJoins from = Assert.Single(selectBody.Query.From!);
         TableFactor.Derived derived = Assert.IsType<TableFactor.Derived>(from.Relation);
         SelectBody.SetOperation outer = Assert.IsType<SelectBody.SetOperation>(derived.SubQuery.Body);
-        SelectBody.Nested nested = Assert.IsType<SelectBody.Nested>(outer.Left);
-        Assert.IsType<SelectBody.SetOperation>(nested.Query.Body);
+        SelectBody left = flatten
+            ? outer.Left
+            : Assert.IsType<SelectBody.Nested>(outer.Left).Query.Body;
+        Assert.IsType<SelectBody.SetOperation>(left);
     }
 
     [Fact]
@@ -1107,6 +1121,70 @@ public class NormalizerTests
     }
 
     [Theory]
+    [InlineData("WITH result AS (SELECT (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result(id) AS (SELECT (1 + 2)) SELECT id FROM result")]
+    [InlineData("WITH result AS (VALUES ((1 + 2), 0)) SELECT column1 FROM result")]
+    [InlineData("WITH result(first, id) AS (INSERT INTO items SELECT (1 + 2) AS id RETURNING (1 + 2), (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (UPDATE items SET id = (1 + 2) FROM other WHERE id = (1 + 2) RETURNING (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (DELETE FROM items USING other WHERE id = (1 + 2) RETURNING (1 + 2) AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (INSERT INTO items VALUES ((1 + 2), 0) ON CONFLICT ((id + (1 + 2))) WHERE id = (1 + 2) DO UPDATE SET id = (1 + 2) WHERE id = (1 + 2) RETURNING id) SELECT id FROM result")]
+    [InlineData("WITH result AS (WITH source AS (SELECT (1 + 2) AS id) INSERT INTO items SELECT id FROM source RETURNING id) SELECT id FROM result")]
+    [InlineData("SELECT derived.id FROM (SELECT (1 + 2) AS id) AS derived")]
+    [InlineData("SELECT items.id FROM (items JOIN other ON items.id = (1 + 2)) AS joined")]
+    [InlineData("SELECT items.id FROM (items JOIN other ON items.id = (1 + 2))")]
+    public void QueryNormalization_PropagatesFlatteningToNestedPaths(string sql)
+    {
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+        Expression[] expressions = [new Subquery(query), new Exists(query, false), new ArrayConstructor.Subquery(query)];
+        foreach (Expression expression in expressions)
+        {
+            string preserved = normalizer.NormalizeExpressionNoFlatten(expression).ToSql();
+            string flattened = normalizer.NormalizeExpression(expression).ToSql();
+
+            Assert.Equal(sql.Split("(1 + 2)").Length, preserved.Split("(1 + 2)").Length);
+            Assert.DoesNotContain("(1 + 2)", flattened);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NormalizeSelect_FollowsRequestedFlatteningForNestedJoins(bool flatten)
+    {
+        const string sql = "SELECT (1 + 2) AS id FROM (items LEFT JOIN other ON items.id = other.id) RIGHT JOIN last ON items.id = last.id";
+        var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
+        Normalizer normalizer = new(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+
+        Select normalized = normalizer.NormalizeSelect(query, flatten: flatten);
+
+        SimpleSelect body = Assert.IsType<SelectBody.SimpleSelectQuery>(normalized.Body).Query;
+        Expression selection = Assert.IsType<SimpleSelectItem.ExpressionWithAlias>(Assert.Single(body.Selections)).Expression;
+        TableWithJoins source = Assert.Single(body.From!);
+        Assert.Equal(flatten ? 2 : 1, source.Joins!.Count);
+        if (flatten)
+        {
+            Assert.IsType<Expressions.BinaryOperator>(selection);
+            Assert.IsType<TableFactor.Table>(source.Relation);
+        }
+        else
+        {
+            Assert.IsType<Nested>(selection);
+            Assert.IsType<TableFactor.NestedJoin>(source.Relation);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "(`id` + 1) NOT IN (SELECT (`value` + 1) FROM `items` WHERE (`flag` + 1) > 0)")]
+    [InlineData(true, "`id` + 1 NOT IN (SELECT `value` + 1 FROM `items` WHERE `flag` + 1 > 0)")]
+    public void InSubqueries_NormalizeBothSidesWithRequestedFlattening(bool flatten, string expected)
+    {
+        Assert.Equal(expected, GetNormalizedExpressionText("(id + 1) NOT IN (SELECT (value + 1) FROM items WHERE (flag + 1) > 0)", flatten));
+    }
+
+    [Theory]
     [InlineData(false, "(`left`) OPERATOR(`ops`.@>) ANY((`right`))", "OPERATOR(`ops`.@) (`value`)")]
     [InlineData(true, "`left` OPERATOR(`ops`.@>) ANY(`right`)", "OPERATOR(`ops`.@) `value`")]
     public void PostgresOperators_NormalizationTraversesOperandsAndSchema(bool flatten, string expectedBinary, string expectedUnary)
@@ -1122,5 +1200,97 @@ public class NormalizerTests
         Assert.Equal(expectedBinary, normalizedBinary.ToSql());
         Assert.Equal(expectedUnary, normalizedUnary.ToSql());
         Assert.Equal(AggregateQuantifier.Any, Assert.IsType<PgBinaryOperator>(normalizedBinary).Quantifier);
+    }
+
+    [Theory]
+    [InlineData("WITH changed (id) AS (INSERT INTO items DEFAULT VALUES ON CONFLICT ON CONSTRAINT unique_key DO NOTHING RETURNING items.*) SELECT 1 AS result", "ON CONSTRAINT `unique_key` DO NOTHING RETURNING `items`.*")]
+    [InlineData("WITH changed (id) AS (UPDATE items SET (left_id, right_id) = (source_left, source_right) RETURNING id AS result) SELECT 1 AS result", "SET (`left_id`, `right_id`) = (`source_left`, `source_right`)")]
+    [InlineData("WITH changed (id) AS (WITH seed AS (SELECT 1 AS id) INSERT INTO items SELECT id FROM seed RETURNING *) SELECT 1 AS result", "INSERT INTO `items`")]
+    [InlineData("WITH changed (id) AS (WITH seed AS (SELECT 1 AS id) UPDATE items SET id = 1 RETURNING id) SELECT 1 AS result", "UPDATE `items` SET `id` = 1")]
+    [InlineData("WITH changed (id) AS (WITH seed AS (SELECT 1 AS id) DELETE FROM items RETURNING id) SELECT 1 AS result", "DELETE FROM `items`")]
+    [InlineData("WITH changed (id) AS (DELETE items FROM items RETURNING id) SELECT 1 AS result", "DELETE `items` FROM `items`")]
+    [InlineData("WITH changed (id) AS (INSERT INTO items VALUES (1) ON CONFLICT (id app.int_ops) DO NOTHING RETURNING id) SELECT 1 AS result", "ON CONFLICT (`id` `app`.`int_ops`) DO NOTHING")]
+    [InlineData("WITH changed (id) AS (INSERT INTO items VALUES (1) ON CONFLICT (id app.int_ops (option = 1)) DO NOTHING RETURNING id) SELECT 1 AS result", "ON CONFLICT (`id` `app`.`int_ops` (`option` = 1)) DO NOTHING")]
+    [InlineData("WITH changed (id) AS (INSERT INTO items VALUES (1) ON DUPLICATE KEY UPDATE id = 2 RETURNING id) SELECT 1 AS result", "ON DUPLICATE KEY UPDATE `id` = 2")]
+    [InlineData("WITH changed (id) AS (SELECT 1 AS id) CYCLE id SET is_cycle USING path SELECT 1 AS result", "CYCLE `id` SET `is_cycle` USING `path`")]
+    public void CteDml_NormalizesOptionalTargetsAndNestedClauses(string sql, string expected)
+    {
+        Select normalized = GetNormalizedSelect(sql, usePseudoTables: false);
+
+        Assert.Contains(expected, normalized.ToSql());
+        Assert.Equal(normalized.ToSql(), GetNormalizedSelect(normalized, usePseudoTables: false).ToSql());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void RowsFrom_NormalizesTypedColumnsAndOptionalCollations(bool usePseudoTables, bool withAlias)
+    {
+        var parser = new TextParser(new GenericLexer(), new Parser());
+        string alias = withAlias ? " AS mapped (first, second)" : "";
+        var statement = Assert.IsType<Select>(Assert.Single(parser.ParseText($"SELECT 1 AS result FROM ROWS FROM (app.records() AS (first INT, second INT)){alias}")));
+        var query = Assert.IsType<SelectBody.SimpleSelectQuery>(statement.Body);
+        var rows = Assert.IsType<TableFactor.RowsFrom>(Assert.Single(query.Query.From!).Relation);
+        rows.Functions[0].Columns![0] = rows.Functions[0].Columns![0] with
+        {
+            Collation = new ObjectName([new Identifier("app"), new Identifier("locale")])
+        };
+
+        Select normalized = GetNormalizedSelect(statement, usePseudoTables: usePseudoTables);
+
+        Assert.Contains("`first` INT COLLATE `app`.`locale`, `second` INT", normalized.ToSql());
+        if (withAlias)
+        {
+            Assert.Contains("AS `mapped` (`first`, `second`)", normalized.ToSql());
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "LIMIT `row_count`")]
+    [InlineData(true, "LIMIT `row_offset`, `row_count`")]
+    public void LegacyLimits_NormalizeExpressionAndCommaSeparatedOffset(bool commaSeparated, string expected)
+    {
+        Select select = GetNormalizedSelect("SELECT 1 AS result", usePseudoTables: false);
+        var count = new Nested(new SingleIdentifier(new Identifier("row_count")));
+        Limit limit = commaSeparated
+            ? new Limit.MyCommaSeparated(count, new Nested(new SingleIdentifier(new Identifier("row_offset"))))
+            : new Limit.ExpressionLimit(count);
+
+        Select normalized = GetNormalizedSelect(select with { Limit = limit }, usePseudoTables: false);
+
+        Assert.Equal(limit.GetType(), normalized.Limit!.GetType());
+        Assert.Equal(expected, normalized.Limit.ToSql());
+    }
+
+    [Fact]
+    public void UnknownLimit_HasNoKnownReferencesAndCannotBeNormalized()
+    {
+        Select select = GetNormalizedSelect("SELECT 1 AS result", usePseudoTables: false);
+        var limit = new UnknownLimit();
+
+        Assert.Empty(limit.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+        Assert.Throws<NotImplementedException>(() => GetNormalizedSelect(select with { Limit = limit }, usePseudoTables: false));
+    }
+
+    [Fact]
+    public void CteNormalization_RejectsUnsupportedStatementBodies()
+    {
+        var parser = new TextParser(new GenericLexer(), new Parser());
+        var statement = Assert.IsType<Select>(Assert.Single(parser.ParseText("WITH changed (id) AS (SELECT 1) SELECT 1 AS result")));
+        var call = Assert.IsType<Call>(Assert.Single(parser.ParseText("CALL audit()")));
+        CommonTableExpressionBody body = Assert.Single(statement.CommonTableExpression!.Tables);
+        statement.CommonTableExpression.Tables[0] = body with { Query = call };
+
+        Assert.Throws<NotSupportedException>(() => GetNormalizedSelect(statement, usePseudoTables: false));
+    }
+
+    private sealed record UnknownLimit : Limit
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("LIMIT CUSTOM");
+        }
     }
 }

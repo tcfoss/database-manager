@@ -2,6 +2,7 @@ using System.Text;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -32,12 +33,12 @@ public class FormatComponentsTests
 
     [Theory]
     [InlineData(false, false, "()")]
-    [InlineData(true, false, "(PARTITION BY col1)")]
-    [InlineData(false, true, "(ORDER BY col2)")]
-    [InlineData(true, true, "(PARTITION BY col1 ORDER BY col2)")]
+    [InlineData(true, false, "(PARTITION BY [col1])")]
+    [InlineData(false, true, "(ORDER BY [col2])")]
+    [InlineData(true, true, "(PARTITION BY [col1] ORDER BY [col2])")]
     public void WindowSpec_FormatsOptionalClauses(bool partition, bool order, string expected)
     {
-        var window = new WindowSpec
+        var window = new WindowSpec.InlineSpecification
         {
             PartitionBy = partition ? [new SingleIdentifier(new Identifier("col1"))] : null,
             OrderBy = order ? [new OrderBy(new SingleIdentifier(new Identifier("col2")), null)] : null,

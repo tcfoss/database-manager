@@ -22,7 +22,6 @@ public class DdlParser
     protected virtual RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction) => RoutineParamsSupportStyle.KitchenSink;
     protected virtual bool SupportsOmittedFunctionReturn => true;
     protected virtual bool SupportsPostgresTriggerSyntax => true;
-    protected virtual bool SupportsCommaSeparatedTriggerEvents => true;
     protected virtual bool SupportsQualifiedTriggerNames => true;
 
     private readonly Parser _p;
@@ -85,9 +84,11 @@ public class DdlParser
     }
 
     /// <summary>
-    /// Parses a trigger time keyword. Core accepts all four variants
-    /// (<c>BEFORE</c>, <c>AFTER</c>, <c>INSTEAD OF</c>, <c>FOR</c>); dialects
-    /// override to narrow.
+    /// <code>
+    /// <![CDATA[
+    /// BEFORE | AFTER | INSTEAD OF | FOR
+    /// ]]>
+    /// </code>
     /// </summary>
     public virtual TriggerTime ParseTriggerTime(ParserState state)
     {
@@ -111,51 +112,152 @@ public class DdlParser
     }
 
     /// <summary>
-    /// Parses a trigger event, including PostgreSQL <c>UPDATE OF</c> columns
-    /// and <c>TRUNCATE</c> when supported by the dialect.
+    /// <code>
+    /// <![CDATA[
+    /// INSERT
+    ///   | UPDATE [ OF column_name [, ...] ]
+    ///   | DELETE
+    ///   | TRUNCATE
+    /// ]]>
+    /// </code>
     /// </summary>
-    protected virtual TriggerEvent ParseTriggerEvent(ParserState state)
+    private TriggerEvent ParseTriggerEventBroad(ParserState state)
     {
         Keyword? next = (state.Next() as Word)?.Keyword;
         return next switch
         {
             Keyword.INSERT => new TriggerEvent.Insert(),
-            Keyword.UPDATE => new TriggerEvent.Update(SupportsPostgresTriggerSyntax && state.ParseKeyword(Keyword.OF)
-                ? state.ParseCommaSeparated(_parseIdentifier) : null),
+            Keyword.UPDATE => new TriggerEvent.Update(
+                state.ParseKeyword(Keyword.OF)
+                    ? state.ParseCommaSeparated(_parseIdentifier)
+                    : null),
             Keyword.DELETE => new TriggerEvent.Delete(),
-            Keyword.TRUNCATE when SupportsPostgresTriggerSyntax => new TriggerEvent.Truncate(),
-            _ => throw (SupportsPostgresTriggerSyntax
-                ? state.ExpectedException("INSERT", "UPDATE", "DELETE", "TRUNCATE")
-                : state.ExpectedException("INSERT", "UPDATE", "DELETE"))
+            Keyword.TRUNCATE => new TriggerEvent.Truncate(),
+            _ => throw state.ExpectedException("INSERT", "UPDATE", "DELETE", "TRUNCATE")
         };
     }
 
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// INSERT | UPDATE | DELETE
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected static TriggerEvent ParseTriggerEventNarrow(ParserState state)
+    {
+        Keyword? next = (state.Next() as Word)?.Keyword;
+        return next switch
+        {
+            Keyword.INSERT => new TriggerEvent.Insert(),
+            Keyword.UPDATE => new TriggerEvent.Update(null),
+            Keyword.DELETE => new TriggerEvent.Delete(),
+            _ => throw state.ExpectedException("INSERT", "UPDATE", "DELETE")
+        };
+    }
+
+    /// <summary>
+    /// See <see cref="ParseTriggerEventBroad"/>
+    /// </summary>
+    protected virtual TriggerEvent ParseTriggerEvent(ParserState state)
+    {
+        return ParseTriggerEventBroad(state);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ OR trigger_event ... ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual List<TriggerEvent>? ParseAdditionalTriggerEventsViaOr(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.OR))
+        {
+            return null;
+        }
+        List<TriggerEvent> events = [];
+        do
+        {
+            events.Add(ParseTriggerEvent(state));
+        } while (state.ParseKeyword(Keyword.OR));
+        return events;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [, trigger_event ...]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="ParseAdditionalTriggerEvents"/> for <c>trigger_event</c>.
+    /// </remarks>
+    protected virtual List<TriggerEvent>? ParseAdditionalTriggerEventsViaComma(ParserState state)
+    {
+        if (!state.PeekIs<Comma>())
+        {
+            return null;
+        }
+        List<TriggerEvent> events = [];
+        while (state.ConsumeTokenIs<Comma>())
+        {
+            events.Add(ParseTriggerEvent(state));
+        }
+        return events;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ OR trigger_event ... ]
+    ///   | [, trigger_event ...]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual List<TriggerEvent> ParseAdditionalTriggerEvents(ParserState state, out bool eventsUseOr)
+    {
+        List<TriggerEvent>? events = ParseAdditionalTriggerEventsViaOr(state);
+        if (events != null)
+        {
+            eventsUseOr = true;
+            return events;
+        }
+        events = ParseAdditionalTriggerEventsViaComma(state);
+        if (events != null)
+        {
+            eventsUseOr = false;
+            return events;
+        }
+        eventsUseOr = false;
+        return [];
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// trigger_event [ [ OR trigger_event ... ] | [ , trigger_event ...] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
     protected virtual SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state, out bool eventsUseOr)
     {
-        List<TriggerEvent> events = [ParseTriggerEvent(state)];
-        eventsUseOr = SupportsPostgresTriggerSyntax && state.ParseKeyword(Keyword.OR);
-        if (eventsUseOr)
-        {
-            do
-            {
-                events.Add(ParseTriggerEvent(state));
-            } while (state.ParseKeyword(Keyword.OR));
-        }
-        else if (SupportsCommaSeparatedTriggerEvents)
-        {
-            while (state.ConsumeTokenIs<Comma>())
-            {
-                events.Add(ParseTriggerEvent(state));
-            }
-        }
-        return [.. events];
+        return
+        [
+            ParseTriggerEvent(state),
+            .. ParseAdditionalTriggerEvents(state, out eventsUseOr)
+        ];
     }
 
 
     /// <summary>
-    /// Parses an optional T-SQL <c>WITH</c> options block for views
-    /// (<c>ENCRYPTION</c>, <c>SCHEMABINDING</c>). Returns <c>null</c> when no
-    /// <c>WITH</c> is present.
+    /// <code>
+    /// <![CDATA[
+    /// [ WITH { ENCRYPTION | SCHEMABINDING } [ , ... ] ]
+    /// ]]>
+    /// </code>
     /// </summary>
     private static MsViewWithOptions? ParseOptionalViewWithOptions(ParserState state)
     {
@@ -833,7 +935,7 @@ public class DdlParser
         SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: true);
 
         StatementFunctionReturn? returnType = null;
-        if (!state.PeekKeywordsAllEqual(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
+        if (!state.PeekKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
             && state.ParseKeyword(Keyword.RETURNS))
         {
             returnType = ParseFunctionReturn(state);
@@ -955,7 +1057,7 @@ public class DdlParser
                 || (state.PeekNth(2) is Word { Keyword: Keyword.BEGIN }
                     && state.PeekNth(3) is Word { Keyword: Keyword.ATOMIC });
         }
-        return state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC)
+        return state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC)
             || (state.PeekKeyword(Keyword.AS) && state.PeekNth(1) is StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral)
             || state.Peek() is Word
             {
@@ -963,7 +1065,7 @@ public class DdlParser
                 or Keyword.VOLATILE or Keyword.STRICT or Keyword.CALLED or Keyword.SECURITY
                 or Keyword.EXTERNAL or Keyword.PARALLEL or Keyword.COST or Keyword.ROWS or Keyword.SET
             }
-            || state.PeekKeywordsAllEqual(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT);
+            || state.PeekKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT);
     }
 
     protected virtual ParsedRoutineTail ParseRoutineTail(ParserState state, bool isFunction)
@@ -1171,16 +1273,19 @@ public class DdlParser
                 body = _p.ParseStatement(state);
             }
         }
-        else if (state.PeekKeywordsAllEqual(Keyword.BEGIN, Keyword.ATOMIC))
+        else if (state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            using (state.EnterContext(ParseContext.BeginAtomic))
+            using (state.EnterContext(ParseContext.BeginAtomic | ParseContext.NarrowSqlOnly))
             {
                 body = _p.ParseStatement(state);
             }
         }
         else if (isFunction && state.PeekKeyword(Keyword.RETURN))
         {
-            body = _p.ParseStatement(state);
+            using (state.EnterContext(ParseContext.NarrowSqlOnly))
+            {
+                body = _p.ParseStatement(state);
+            }
         }
         else
         {

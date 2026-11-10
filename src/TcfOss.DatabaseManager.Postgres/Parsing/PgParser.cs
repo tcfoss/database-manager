@@ -1,4 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -17,10 +19,44 @@ public class PgParser : Parser
         DataTypeParser = new PgDataTypeParser(this);
         ExpressionParser = new PgExpressionParser(this);
         SelectParser = new SelectParser(this);
-        DmlParser = new DmlParser(this);
+        DmlParser = new PgDmlParser(this);
         DdlParser = new PgDdlParser(this);
         TableParser = new PgTableParser(this);
         ControlFlowParser = new ControlFlowParser(this);
+    }
+
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
+    {
+        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && state.StatementLabel != null)
+        {
+            throw ParserState.ExpectedException("SQL statement", token);
+        }
+        return base.ParseNormalStatement(state, token);
+    }
+
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
+    {
+        if (!state.Context.HasFlag(ParseContext.NarrowSqlOnly))
+        {
+            return base.ParseKeywordStatement(state, first);
+        }
+        return first.Keyword switch
+        {
+            Keyword.DECLARE when state.PeekNth(2) is not Word { Keyword: Keyword.CURSOR } =>
+                throw ParserState.ExpectedException("SQL statement", first),
+            Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.FETCH or Keyword.USE =>
+                throw ParserState.ExpectedException("SQL statement", first),
+            _ => base.ParseKeywordStatement(state, first)
+        };
+    }
+
+    protected override Statement ParseBegin(ParserState state)
+    {
+        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
+        {
+            throw state.ExpectedException("BEGIN ATOMIC");
+        }
+        return base.ParseBegin(state);
     }
 
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
@@ -33,6 +69,46 @@ public class PgParser : Parser
             Temporary = temporary,
             AllSupportedTypes = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
         };
+    }
+
+    protected override Call ParseCall(ParserState state)
+    {
+        Token start = state.Peek();
+        Call call = base.ParseCall(state);
+        var invocation = (FunctionCall)call.Expression;
+        var arguments = (FunctionArguments.List)invocation.Arguments;
+        if (arguments.DuplicateTreatment != null || arguments.Clauses is { Count: > 0 })
+        {
+            throw ParserState.ExpectedCategoryException("procedure arguments", start);
+        }
+
+        bool namedSeen = false;
+        if (arguments.Arguments != null)
+        {
+            for (int index = 0; index < arguments.Arguments.Count; index++)
+            {
+                FunctionArgument argument = arguments.Arguments[index];
+                if (argument is FunctionArgument.Variadic variadic)
+                {
+                    if (index != arguments.Arguments.Count - 1 || variadic.Argument is FunctionArgument.Variadic)
+                    {
+                        throw ParserState.ExpectedCategoryException("final variadic procedure argument", start);
+                    }
+                    argument = variadic.Argument;
+                }
+                switch (argument)
+                {
+                    case FunctionArgument.Named { Argument: FunctionArgumentExpression.Wildcard }:
+                    case FunctionArgument.Unnamed { Argument: FunctionArgumentExpression.Wildcard }:
+                    case FunctionArgument.Unnamed when namedSeen:
+                        throw ParserState.ExpectedCategoryException("procedure arguments", start);
+                    case FunctionArgument.Named:
+                        namedSeen = true;
+                        break;
+                }
+            }
+        }
+        return call;
     }
 
     protected override void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)

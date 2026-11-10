@@ -69,8 +69,8 @@ public class PrecedenceManager
                 return default;
             }
             if (word.Keyword == Keyword.IS
-                && !state.PeekKeywordsAllEqual(Keyword.IS, Keyword.DISTINCT, Keyword.FROM)
-                && !state.PeekKeywordsAllEqual(Keyword.IS, Keyword.NOT, Keyword.DISTINCT, Keyword.FROM))
+                && !state.PeekKeywordsAll(Keyword.IS, Keyword.DISTINCT, Keyword.FROM)
+                && !state.PeekKeywordsAll(Keyword.IS, Keyword.NOT, Keyword.DISTINCT, Keyword.FROM))
             {
                 return default;
             }
@@ -119,11 +119,11 @@ public class PrecedenceManager
 
     private Precedence? GetAtPrecedence(ParserState state)
     {
-        if (SupportsPostgresPredicateSyntax && state.PeekKeywordsAllEqual(Keyword.AT, Keyword.LOCAL))
+        if (SupportsPostgresPredicateSyntax && state.PeekKeywordsAll(Keyword.AT, Keyword.LOCAL))
         {
             return Precedence.AtTimezone;
         }
-        if (state.PeekKeywordsAllEqual(Keyword.AT, Keyword.TIME, Keyword.ZONE))
+        if (state.PeekKeywordsAll(Keyword.AT, Keyword.TIME, Keyword.ZONE))
         {
             return Precedence.AtTimezone;
         }

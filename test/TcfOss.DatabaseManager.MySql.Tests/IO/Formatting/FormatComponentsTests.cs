@@ -22,7 +22,7 @@ public class FormatComponentsTests
     }
 
     [Theory]
-    [InlineData("CALL CONCAT('a', 'b')", "CALL CONCAT('a', 'b');", Label = "Call built-in function")]
+    [InlineData("CALL CONCAT('a', 'b')", "CALL `CONCAT`('a', 'b');", Label = "Call procedure with built-in function spelling")]
     [InlineData("CALL `myfunc`('a', 'b')", "CALL `myfunc`('a', 'b');", Label = "Call quoted user-defined function")]
     [InlineData("CALL myfunc('a', 'b')", "CALL `myfunc`('a', 'b');", Label = "Call user-defined function")]
     [InlineData("CALL schema1.myfunc('a', 'b')", "CALL `schema1`.`myfunc`('a', 'b');", Label = "Call user-defined function with schema")]

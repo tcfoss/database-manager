@@ -1,4 +1,3 @@
-using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -34,10 +33,14 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
         return false;
     }
 
-    protected override SqlValueList<TriggerEvent> ParseTriggerEvents(ParserState state, out bool eventsUseOr)
+    protected override TriggerEvent ParseTriggerEvent(ParserState state)
+    {
+        return ParseTriggerEventNarrow(state);
+    }
+
+    protected override List<TriggerEvent> ParseAdditionalTriggerEvents(ParserState state, out bool eventsUseOr)
     {
         eventsUseOr = false;
-        // MySQL requires exactly one trigger event, whereas T-SQL allows multiple.
-        return [ParseTriggerEvent(state)];
+        return [];
     }
 }

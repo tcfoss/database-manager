@@ -1119,7 +1119,6 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         Assert.Contains($"Dialect: {Dialect}", actual);
         Assert.Contains("FunctionDataRelation: CONTAINS SQL", actual);
         Assert.Contains($"SignedIntWidth: {DefaultIntWidth}", actual);
-        Assert.Contains("AllowNamedColumnDefault: false", actual);
         Assert.Contains($"CharacterSet: {DefaultCharset}", actual);
         Assert.Contains("AllowUniqueOnColumn: true", actual);
 
@@ -1160,7 +1159,6 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         Assert.Contains($"Dialect: {Dialect}", actual);
         Assert.Contains("FunctionDataRelation: CONTAINS SQL", actual);
         Assert.Contains($"SignedIntWidth: {DefaultIntWidth}", actual);
-        Assert.Contains("AllowNamedColumnDefault: false", actual);
         Assert.Contains($"CharacterSet: {DefaultCharset}", actual);
         Assert.Contains("AllowUniqueOnColumn: false", actual);
 

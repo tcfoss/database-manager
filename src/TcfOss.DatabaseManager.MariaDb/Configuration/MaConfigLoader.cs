@@ -58,10 +58,6 @@ public class MaConfigLoader(ILogger logger, IFileSystem? fileSystem = null) : My
         return new ValidationSettings()
         {
             AllowCheckOnColumn = true,
-            AllowNamedColumnDefault = false,
-            AllowNamedColumnUnique = false,
-            AllowNamedColumnNullability = false,
-            AllowNamedColumnCheck = false,
             AllowUnnamedIndex = false,
         };
     }

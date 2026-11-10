@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using SqlExpression = TcfOss.DatabaseManager.Core.Expressions.Expression;
 using SqlValue = TcfOss.DatabaseManager.Core.Common.Value;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Components;
+namespace TcfOss.DatabaseManager.Core.Expressions.Components;
 
 public abstract record PatternEscape : IWriteSql
 {

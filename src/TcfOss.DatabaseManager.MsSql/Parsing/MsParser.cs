@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -53,6 +54,11 @@ public class MsParser : Parser
             CreateOrLabel = createOrLabel,
             AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX"]
         };
+    }
+
+    protected override Call ParseCall(ParserState state)
+    {
+        throw ParserState.ExpectedException("SQL statement".Italic(), state.Peek());
     }
 
     protected override void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
@@ -356,7 +362,7 @@ public class MsParser : Parser
         state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.TRY);
         var tryEnder = new EndSubstatements()
         {
-            GetFinished = s => s.PeekKeywordsAllEqual(Keyword.END, Keyword.TRY),
+            GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.TRY),
             GetEofException = s => s.ExpectedException("END TRY"),
         };
         SqlValueList<Statement> tryStatements = Parse(state, tryEnder);
@@ -364,7 +370,7 @@ public class MsParser : Parser
         state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.CATCH);
         var catchEnder = new EndSubstatements()
         {
-            GetFinished = s => s.PeekKeywordsAllEqual(Keyword.END, Keyword.CATCH),
+            GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.CATCH),
             GetEofException = s => s.ExpectedException("END CATCH"),
         };
         SqlValueList<Statement> catchStatements = Parse(state, catchEnder);

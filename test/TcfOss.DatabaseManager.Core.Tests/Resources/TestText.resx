@@ -106,7 +106,9 @@
                 }
               },
               "Hints": null,
-              "Alias": null
+              "Alias": null,
+              "AliasColumns": null,
+              "IsLateral": false
             },
             "Joins": null
           }
@@ -136,6 +138,7 @@
         },
         "GroupBy": null,
         "Having": null,
+        "Windows": null,
         "Meta": {
           "PreNonSql": null,
           "PostNonSql": null,
@@ -157,6 +160,7 @@
     "CommonTableExpression": null,
     "OrderBy": null,
     "Limit": null,
+    "RowLocks": null,
     "SelectInto": null,
     "Meta": {
       "PreNonSql": null,
@@ -277,7 +281,9 @@
                 }
               },
               "Hints": null,
-              "Alias": null
+              "Alias": null,
+              "AliasColumns": null,
+              "IsLateral": false
             },
             "Joins": null
           }
@@ -304,6 +310,7 @@
         },
         "GroupBy": null,
         "Having": null,
+        "Windows": null,
         "Meta": {
           "PreNonSql": null,
           "PostNonSql": null,
@@ -325,6 +332,7 @@
     "CommonTableExpression": null,
     "OrderBy": null,
     "Limit": null,
+    "RowLocks": null,
     "SelectInto": null,
     "Meta": {
       "PreNonSql": null,

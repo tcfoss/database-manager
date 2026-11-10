@@ -546,7 +546,7 @@ public class MyParser : Parser
         };
     }
 
-    private Call ParseCall(ParserState state)
+    protected override Call ParseCall(ParserState state)
     {
         state.ExpectKeyword(Keyword.CALL);
 

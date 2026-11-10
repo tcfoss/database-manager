@@ -90,6 +90,19 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData("SELECT 1 LIMIT ALL", Label = "Unlimited count")]
+    [InlineData("SELECT 1 OFFSET 2 FETCH FIRST ROWS ONLY", Label = "Implicit fetch")]
+    [InlineData("SELECT 1 FOR NO KEY UPDATE NOWAIT", Label = "No key update")]
+    [InlineData("SELECT 1 FOR KEY SHARE SKIP LOCKED", Label = "Key share")]
+    public void Statement_SelectWithLimitAndLock(string sql)
+    {
+        var state = GetState(sql);
+        var statement = Assert.IsType<Select>(ParseStatement(state));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
     /* Values */
     [Theory]
     [InlineData("VALUES (1, 2, 3)", Label = "VALUES numeric row")]
@@ -526,7 +539,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var tokens = lexer.Tokenize("WITH cte AS (SELECT 1) ASC");
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
 
-        Assert.Contains("{ SELECT | INSERT | UPDATE | DELETE }", exception.Message);
+        Assert.Contains("{ SELECT | VALUES | INSERT | UPDATE | DELETE }", exception.Message);
     }
 
     [Fact]
@@ -572,5 +585,16 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     public void CommentSignatures_RejectSqlServerParameterOptions(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CALL app.run()", Label = "Shared CALL invocation")]
+    [InlineData("CALL app.run(value = 1)", Label = "Kitchen sink equals named argument")]
+    [InlineData("CALL app.run(value => 1)", Label = "Shared arrow named argument")]
+    [InlineData("CALL app.run(VARIADIC app.values_for(1))", Label = "Shared variadic argument")]
+    [InlineData("CALL app.run(DISTINCT value ORDER BY id)", Label = "Kitchen sink broader invocation arguments")]
+    public void Statement_Call_TextMatch(string sql)
+    {
+        Assert.Equal(sql, Assert.IsType<Call>(ParseStatement(sql)).ToSql());
     }
 }

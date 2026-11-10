@@ -22,6 +22,9 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("INSERT INTO mytable (col1, col2, col3) SELECT t.a, t.b, t.c FROM mytable AS t")]
     [InlineData("INSERT INTO mytable SELECT t.a, t.b, t.c FROM mytable AS t", Label = "INSERT SELECT with alias")]
     [InlineData("INSERT INTO mytable (col1, col2, col3) SELECT a, b, c FROM mytable ON DUPLICATE KEY UPDATE col2 = b, col3 = c", Label = "INSERT SELECT with ON DUPLICATE KEY UPDATE")]
+    [InlineData("INSERT INTO mytable DEFAULT VALUES RETURNING *")]
+    [InlineData("INSERT INTO mytable AS target (id) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT (id) DO UPDATE SET id = excluded.id RETURNING target.id")]
+    [InlineData("INSERT INTO mytable OUTPUT inserted.id DEFAULT VALUES")]
     public static void Insert_Statement_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -39,6 +42,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("UPDATE mytable AS mt LEFT OUTER JOIN othertable AS ot ON mt.id = ot.id SET col1 = 'val1' WHERE ot.col2 IS NOT NULL", Label = "UPDATE with join and WHERE")]
     [InlineData("UPDATE mt SET mt.col1 = 'val1' FROM mytable AS mt WHERE mt.col2 IS NOT NULL")]
     [InlineData("UPDATE mytable SET (col1, col2, col3) = ('val1', 'val2', 3)")]
+    [InlineData("UPDATE mytable SET col1 = other.col1 FROM other, third RETURNING mytable.*")]
     public static void Update_Statement_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -58,6 +62,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DELETE FROM mytable WHERE col1 < 10 RETURNING col2, col3")]
     [InlineData("DELETE FROM mytable AS mt WHERE mt.col1 < 10 RETURNING mt.col2, mt.col3")]
     [InlineData("DELETE FROM mytable WHERE col1 < 10 ORDER BY col2 DESC, col3 LIMIT 50 RETURNING col2, col3", Label = "DELETE ORDER BY LIMIT RETURNING")]
+    [InlineData("DELETE FROM mytable USING other, third RETURNING mytable.*")]
     public static void Delete_Statement_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -69,6 +74,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData(Keyword.DEFAULT)]
     [InlineData(Keyword.FROM)]
     [InlineData(Keyword.WHERE)]
     [InlineData(Keyword.INTO)]

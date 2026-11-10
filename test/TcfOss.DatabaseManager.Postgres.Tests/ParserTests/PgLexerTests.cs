@@ -468,8 +468,6 @@ public class PgLexerTests : LexerTestBase<PgLexer>
     [InlineData("X'unterminated")]
     public void BitStrings_UnterminatedAndNulContentAreRejectedAndLexerRemainsReusable(string sql)
     {
-        var lexer = new PgLexer();
-
         Assert.ThrowsAny<LexException>(() => GetTokens(sql));
         Assert.Equal("01", Assert.IsType<BitStringLiteral>(Assert.Single(GetTokens("B'01'"))).Value);
     }

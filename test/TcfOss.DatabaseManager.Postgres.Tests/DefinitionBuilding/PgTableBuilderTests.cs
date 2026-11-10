@@ -1,6 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -13,7 +12,6 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
-using TcfOss.DatabaseManager.Postgres.Configuration;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 using TcfOss.DatabaseManager.Postgres.Lexing;
@@ -90,15 +88,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         ObjectIdentifier tableName = ObjectIdentifier.FromStrings("catalog", "public", "items");
         ObjectIdentifier typeName = ObjectIdentifier.FromStrings("catalog", "public", "label");
-        var config = new PgConfig
-        {
-            ProjectDirectory = ".",
-            Catalog = new CatalogIdentifier("catalog"),
-            DatabaseAvailable = false,
-            ValidationSettings = new ValidationSettings(),
-            QuoteStyle = QuoteStyle.Ansi,
-            NameHandling = NameHandling.LowercaseUnlessQuoted
-        };
+        var config = PgTestConfig.GetTestConfig();
         var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>
         {
             [new ObjectHandle("catalog", "public", "items")] = tableName,
@@ -154,15 +144,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         ObjectIdentifier tableName = ObjectIdentifier.FromStrings("catalog", "public", "items");
         var expected = new Value.Number("99", false);
         var normalizer = new DefaultValueNormalizer(expected);
-        var config = new PgConfig
-        {
-            ProjectDirectory = ".",
-            Catalog = new CatalogIdentifier("catalog"),
-            DatabaseAvailable = false,
-            ValidationSettings = new ValidationSettings(),
-            QuoteStyle = QuoteStyle.Ansi,
-            NameHandling = NameHandling.LowercaseUnlessQuoted
-        };
+        var config = PgTestConfig.GetTestConfig();
         var manager = new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>
         {
             [new ObjectHandle("catalog", "public", "items")] = tableName
@@ -818,15 +800,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private static PgTypeResolutionManager CreateManager()
     {
-        var config = new PgConfig
-        {
-            ProjectDirectory = ".",
-            Catalog = new CatalogIdentifier("catalog"),
-            DatabaseAvailable = false,
-            ValidationSettings = new ValidationSettings(),
-            QuoteStyle = QuoteStyle.Ansi,
-            NameHandling = NameHandling.LowercaseUnlessQuoted
-        };
+        var config = PgTestConfig.GetTestConfig();
         return new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
     }
 

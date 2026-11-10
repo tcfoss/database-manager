@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
@@ -54,6 +55,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         {
             FunctionArgument.Unnamed un => new FunctionArgument.Unnamed(NormalizeFunctionArgumentExpression(un.Argument, inSelect: inSelect, flatten: flatten)),
             FunctionArgument.Named named => new FunctionArgument.Named(ComponentNormalizer.NormalizeSingleIdentifier(named.Name), NormalizeFunctionArgumentExpression(named.Argument, inSelect: inSelect, flatten: flatten), named.Operator),
+            FunctionArgument.Variadic variadic => new FunctionArgument.Variadic(NormalizeFunctionArgument(variadic.Argument, inSelect, flatten)),
             _ => throw new DefensiveGuardException(true, "function argument type", arg.GetType())
         };
     }
@@ -96,11 +98,44 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return functionCall with
         {
             Arguments = newArgs,
-            Over = functionCall.Over is { } window ? window with
+            WithinGroup = NormalizeSelectOrderBy(functionCall.WithinGroup, inSelect, flatten),
+            Filter = NormalizeNullableExpression(functionCall.Filter, inSelect, flatten),
+            Over = functionCall.Over == null ? null : NormalizeWindowSpec(functionCall.Over, inSelect, flatten)
+        };
+    }
+
+    private WindowSpec NormalizeWindowSpec(WindowSpec window, bool inSelect, bool flatten)
+    {
+        return window switch
+        {
+            WindowSpec.NamedReference named => new WindowSpec.NamedReference(ComponentNormalizer.NormalizeSingleIdentifier(named.WindowName)),
+            WindowSpec.InlineSpecification inline => NormalizeWindowSpec(inline, inSelect, flatten),
+            _ => throw new DefensiveGuardException(true, "normalize window spec", window.GetType())
+        };
+    }
+
+    private WindowSpec.InlineSpecification NormalizeWindowSpec(WindowSpec.InlineSpecification inline, bool inSelect, bool flatten)
+    {
+        return new WindowSpec.InlineSpecification
+        {
+            BaseWindow = inline.BaseWindow == null ? null : ComponentNormalizer.NormalizeSingleIdentifierNullable(inline.BaseWindow),
+            PartitionBy = inline.PartitionBy == null ? null : [.. inline.PartitionBy.Select(expression => NormalizeExpression(expression, inSelect, flatten))],
+            OrderBy = NormalizeSelectOrderBy(inline.OrderBy, inSelect, flatten),
+            Frame = inline.Frame == null ? null : inline.Frame with
             {
-                PartitionBy = window.PartitionBy == null ? null : [.. window.PartitionBy.Select(expression => NormalizeExpression(expression, inSelect, flatten))],
-                OrderBy = NormalizeSelectOrderBy(window.OrderBy, inSelect, flatten)
-            } : null
+                Start = NormalizeWindowFrameBound(inline.Frame.Start, inSelect, flatten),
+                End = inline.Frame.End == null ? null : NormalizeWindowFrameBound(inline.Frame.End, inSelect, flatten)
+            }
+        };
+    }
+
+    private WindowFrameBound NormalizeWindowFrameBound(WindowFrameBound bound, bool inSelect, bool flatten)
+    {
+        return bound switch
+        {
+            WindowFrameBound.Preceding preceding => preceding with { Offset = NormalizeExpression(preceding.Offset, inSelect, flatten) },
+            WindowFrameBound.Following following => following with { Offset = NormalizeExpression(following.Offset, inSelect, flatten) },
+            _ => bound
         };
     }
 
@@ -110,10 +145,16 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return new Exists(newSubquery, exists.Negated);
     }
 
-    protected virtual InSubquery NormalizeInSubquery(InSubquery inSubquery)
+    protected virtual InSubquery NormalizeInSubquery(InSubquery inSubquery, bool inSelect = false, bool flatten = false)
     {
-        // TODO: Implement full IN-subquery normalization.
-        return inSubquery;
+        Expression? expression = NormalizeNullableExpression(inSubquery.Expression, inSelect, flatten);
+        var query = new Select(new SelectBody.SimpleSelectQuery(inSubquery.Subquery));
+        Select normalizedQuery = NormalizeSelectInternal(query, returnsValues: false, flatten: flatten);
+        return inSubquery with
+        {
+            Expression = expression,
+            Subquery = ((SelectBody.SimpleSelectQuery)normalizedQuery.Body).Query
+        };
     }
 
     protected virtual Subquery NormalizeSubquery(Subquery subquery, bool flatten = false)
@@ -168,7 +209,8 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
     private PatternEscape? NormalizePatternEscape(PatternEscape? escape, bool inSelect, bool flatten)
     {
         return escape is PatternEscape.Expression expression
-            ? expression with { Value = NormalizeExpression(expression.Value, inSelect, flatten) } : escape;
+            ? new PatternEscape.Expression(NormalizeExpression(expression.Value, inSelect, flatten))
+            : escape;
     }
 
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
@@ -215,12 +257,8 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Array = NormalizeExpression(subscript.Array, inSelect, flatten),
                 Dimensions = [.. subscript.Dimensions.Select(dimension => dimension switch
                 {
-                    ArraySubscriptDimension.Index index => (ArraySubscriptDimension)(index with { Expression = NormalizeExpression(index.Expression, inSelect, flatten) }),
-                    ArraySubscriptDimension.Slice slice => slice with
-                    {
-                        LowerBound = slice.LowerBound == null ? null : NormalizeExpression(slice.LowerBound, inSelect, flatten),
-                        UpperBound = slice.UpperBound == null ? null : NormalizeExpression(slice.UpperBound, inSelect, flatten)
-                    },
+                    ArraySubscriptDimension.Index index => new ArraySubscriptDimension.Index(NormalizeExpression(index.Expression, inSelect, flatten)),
+                    ArraySubscriptDimension.Slice slice => new ArraySubscriptDimension.Slice(NormalizeNullableExpression(slice.LowerBound, inSelect, flatten), NormalizeNullableExpression(slice.UpperBound, inSelect, flatten)),
                     _ => dimension
                 })]
             },
@@ -232,7 +270,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             CompositeAccess.Wildcard fields => fields with { Expression = NormalizeExpression(fields.Expression, inSelect, flatten) },
             IsFalse isFalse => NormalizeIsFalse(isFalse, inSelect: inSelect, flatten: flatten),
             InList il => new InList(NormalizeExpression(il.Expression, inSelect: inSelect, flatten: flatten), [.. il.Items.Select(x => NormalizeExpression(x, inSelect: inSelect, flatten: flatten))], il.Negated),
-            InSubquery isub => NormalizeInSubquery(isub),
+            InSubquery isub => NormalizeInSubquery(isub, inSelect, flatten),
             Subquery subquery => NormalizeSubquery(subquery, flatten),
             Nested nes when flatten => NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten),
             Nested nes => new Nested(NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten)),
@@ -300,6 +338,11 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         };
     }
 
+    private Expression? NormalizeNullableExpression(Expression? expr, bool inSelect, bool flatten)
+    {
+        return expr is null ? null : NormalizeExpression(expr, inSelect, flatten);
+    }
+
     /// <inheritdoc />
     public Expression NormalizeExpression(Expression expr)
     {
@@ -351,7 +394,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 CompoundIdentifier ident => new SimpleSelectItem.ExpressionWithAlias(NormalizeSelectableIdentifier(ident), ComponentNormalizer.NormalizeSingleIdentifier(ident.Identifiers.Last())),
                 Wildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
                 QualifiedWildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
-                _ when !returnsValues => item,
+                _ when !returnsValues => (SimpleSelectItem)(expr with { Expression = NormalizeExpression(expr.Expression, inSelect: true, flatten: flatten) }),
                 _ => throw new DefinitionException.ViewSelectWithoutAlias(_name, itemSourceRef)
             },
             SimpleSelectItem.QualifiedWildcard => throw new DefinitionException.ViewSelectWildcard(_name, itemSourceRef),
@@ -360,6 +403,32 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         } ?? throw new DefensiveGuardException(true, "select item type", item.GetType());
 
         return result;
+    }
+
+
+    private SqlValueList<Identifier>? NormalizeAliasColumns(SqlValueList<Identifier>? columns)
+    {
+        return columns == null ? null : [.. columns.Select(ComponentNormalizer.NormalizeSingleIdentifier)];
+    }
+
+    private TableFunctionCall NormalizeTableFunctionCall(TableFunctionCall function, bool flatten)
+    {
+        return function with
+        {
+            Call = NormalizeFunctionCall(function.Call, inSelect: true, flatten: flatten),
+            Columns = function.Columns == null ? null : [.. function.Columns.Select(column => column with
+            {
+                Name = ComponentNormalizer.NormalizeSingleIdentifier(column.Name),
+                Collation = column.Collation == null ? null : ComponentNormalizer.NormalizeObjectName(column.Collation)
+            })]
+        };
+    }
+
+    private void AddNormalizedFunctionSource(TableFactor table, string defaultName, Identifier? normalizedAlias)
+    {
+        string sourceName = table.Alias?.Name ?? defaultName;
+        PseudoTable source = new PseudoTable.Unbound(sourceName, null, PseudoTableType.Table).RenameColumns(table.AliasColumns);
+        _pseudoTables?.AddLocalSource(sourceName, source, normalizedAlias?.Name);
     }
 
     private TableFactor.Table NormalizeTableFactor(TableFactor.Table table)
@@ -375,50 +444,84 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             {
                 objectName = new ObjectName([tableSource.Identifier.Schema.ToSimpleIdentifier(_quoteStyle), new Identifier(tableSource.Name, _quoteStyle)]);
             }
-            _pseudoTables.AddLocalSource(refName, tableSource, newAlias?.Name);
+            _pseudoTables.AddLocalSource(refName, tableSource.RenameColumns(table.AliasColumns), newAlias?.Name);
         }
 
         ObjectName newName = ComponentNormalizer.NormalizeObjectName(objectName);
         return new TableFactor.Table(newName)
         {
-            Alias = newAlias
+            Alias = newAlias,
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns),
+            IsLateral = table.IsLateral
         };
     }
 
-    private TableFactor.Derived NormalizeTableFactor(TableFactor.Derived table)
+    private TableFactor.Derived NormalizeTableFactor(TableFactor.Derived table, bool flatten)
     {
         Identifier newAlias = ComponentNormalizer.NormalizeSingleIdentifier(table.Alias!);
-        Select newSubQuery = NormalizeSelectInternal(table.SubQuery, true);
+        Select newSubQuery = NormalizeSelectInternal(table.SubQuery, true, flatten);
 
         var newTableFactor = new TableFactor.Derived(newSubQuery)
         {
-            Alias = newAlias
+            Alias = newAlias,
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns),
+            IsLateral = table.IsLateral
         };
 
-        var newSource = newSubQuery.ToPseudoTable(newAlias.Name, null, _sourceRef, PseudoTableType.DerivedTable);
+        PseudoTable newSource = newSubQuery
+            .ToPseudoTable(newAlias.Name, null, _sourceRef, PseudoTableType.DerivedTable)
+            .RenameColumns(table.AliasColumns);
         _pseudoTables?.AddExternalSource(newAlias.Name, newSource);
         _pseudoTables?.AddLocalSource(newAlias.Name, newSource, newAlias.Name);
 
         return newTableFactor;
     }
 
-    private TableFactor.NestedJoin NormalizeTableFactor(TableFactor.NestedJoin table)
+    private TableFactor.NestedJoin NormalizeTableFactor(TableFactor.NestedJoin table, bool flatten)
     {
         Identifier? newAlias = ComponentNormalizer.NormalizeSingleIdentifierNullable(table.Alias);
         return new TableFactor.NestedJoin()
         {
-            TableWithJoins = NormalizeTableWithJoins(table.TableWithJoins),
-            Alias = newAlias
+            TableWithJoins = NormalizeTableWithJoins(table.TableWithJoins, flatten),
+            Alias = newAlias,
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns),
+            IsLateral = table.IsLateral
         };
     }
 
-    private TableFactor NormalizeTableFactor(TableFactor table)
+    private TableFactor.TableFunction NormalizeTableFactor(TableFactor.TableFunction table, bool flatten)
+    {
+        TableFactor.TableFunction normalized = table with
+        {
+            Function = NormalizeTableFunctionCall(table.Function, flatten),
+            Alias = ComponentNormalizer.NormalizeSingleIdentifierNullable(table.Alias),
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns)
+        };
+        AddNormalizedFunctionSource(table, table.Function.Call.Name.Values.Last().Name, normalized.Alias);
+        return normalized;
+    }
+
+    private TableFactor.RowsFrom NormalizeTableFactor(TableFactor.RowsFrom table, bool flatten)
+    {
+        TableFactor.RowsFrom normalized = table with
+        {
+            Functions = [.. table.Functions.Select(function => NormalizeTableFunctionCall(function, flatten))],
+            Alias = ComponentNormalizer.NormalizeSingleIdentifierNullable(table.Alias),
+            AliasColumns = NormalizeAliasColumns(table.AliasColumns)
+        };
+        AddNormalizedFunctionSource(table, table.Functions[0].Call.Name.Values.Last().Name, normalized.Alias);
+        return normalized;
+    }
+
+    private TableFactor NormalizeTableFactor(TableFactor table, bool flatten = false)
     {
         return table switch
         {
             TableFactor.Table t => NormalizeTableFactor(t),
-            TableFactor.Derived d => NormalizeTableFactor(d),
-            TableFactor.NestedJoin n => NormalizeTableFactor(n),
+            TableFactor.Derived d => NormalizeTableFactor(d, flatten),
+            TableFactor.NestedJoin n => NormalizeTableFactor(n, flatten),
+            TableFactor.TableFunction function => NormalizeTableFactor(function, flatten),
+            TableFactor.RowsFrom rows => NormalizeTableFactor(rows, flatten),
             _ => throw new DefensiveGuardException(true, "table factor type", table.GetType())
         };
     }
@@ -439,7 +542,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
     private Join NormalizeJoin(Join join, bool flatten = false)
     {
-        TableFactor? relation = join.Relation != null ? NormalizeTableFactor(join.Relation) : null;
+        TableFactor? relation = join.Relation != null ? NormalizeTableFactor(join.Relation, flatten) : null;
         JoinOperator? op = join.JoinOperator switch
         {
             JoinOperator.Inner ji => new JoinOperator.Inner(NormalizeJoinConstraint(ji.JoinConstraint, flatten: flatten)),
@@ -472,12 +575,12 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         TableFactor relation = tableWithJoins.Relation;
         List<Join> allJoins = tableWithJoins.Joins != null ? [.. tableWithJoins.Joins] : [];
 
-        if (relation is TableFactor.NestedJoin { Alias: null } nestedJoin)
+        if (flatten && relation is TableFactor.NestedJoin { Alias: null } nestedJoin)
         {
             relation = FlattenNestedJoin(nestedJoin, allJoins);
         }
 
-        TableFactor normalizedRelation = NormalizeTableFactor(relation);
+        TableFactor normalizedRelation = NormalizeTableFactor(relation, flatten);
         SqlValueList<Join>? normalizedJoins = allJoins.Count > 0 ? [.. allJoins.Select(join => NormalizeJoin(join, flatten: flatten))] : null;
 
         return new TableWithJoins(normalizedRelation)
@@ -511,7 +614,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             From = from,
             Where = where,
             GroupBy = groupBys,
-            Having = having
+            Having = having,
+            Windows = select.Windows == null
+                ? null
+                : [.. select.Windows.Select(window => window with
+            {
+                Name = ComponentNormalizer.NormalizeSingleIdentifier(window.Name),
+                Specification = NormalizeWindowSpec(window.Specification, inSelect: true, flatten: flatten)
+            })]
         };
     }
 
@@ -555,8 +665,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 SelectBody right = NormalizeSelectBody(so.Right, false, returnsValues, flatten: flatten);
                 return new SelectBody.SetOperation(left, so.Operator, right, so.Quantifier);
             }
-            case SelectBody.ValuesQuery:
-                throw new NotImplementedException("VALUES in views is not (yet) supported.");
+            case SelectBody.ValuesQuery values:
+                return values with
+                {
+                    Values = values.Values with
+                    {
+                        Rows = [.. values.Values.Rows.Select(row => new SqlValueList<Expression>(row.Select(expression => NormalizeExpression(expression, inSelect: true, flatten: flatten))))]
+                    }
+                };
             default:
                 throw new DefensiveGuardException(true, "select body type", body.GetType());
         }
@@ -572,7 +688,122 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         return orderBy.Select(ob => ob with { Expression = NormalizeExpression(ob.Expression, inSelect: inSelect, flatten: flatten) }).ToSequence();
     }
 
-    private (CommonTableExpressionBody, PseudoTableSet?) NormalizeCteBody(CommonTableExpressionBody cteBody, PseudoTableSet? pseudoTables)
+    private SqlValueList<SimpleSelectItem>? NormalizeCteReturning(SqlValueList<SimpleSelectItem>? selections, bool flatten)
+    {
+        return selections == null ? null : [.. selections.Select(selection => selection switch
+        {
+            SimpleSelectItem.UnnamedExpression expression => expression with { Expression = NormalizeExpression(expression.Expression, inSelect: false, flatten: flatten) },
+            SimpleSelectItem.ExpressionWithAlias expression => expression with
+            {
+                Expression = NormalizeExpression(expression.Expression, inSelect: false, flatten: flatten),
+                Alias = ComponentNormalizer.NormalizeSingleIdentifier(expression.Alias)
+            },
+            SimpleSelectItem.QualifiedWildcard wildcard => wildcard with { Name = ComponentNormalizer.NormalizeObjectName(wildcard.Name) },
+            _ => selection
+        })];
+    }
+
+    private SqlValueList<Assignment>? NormalizeCteAssignments(SqlValueList<Assignment>? assignments, bool flatten)
+    {
+        return assignments == null ? null : [.. assignments.Select(assignment => assignment with
+        {
+            Target = assignment.Target switch
+            {
+                AssignmentTarget.ObjectName target => target with { Name = ComponentNormalizer.NormalizeObjectName(target.Name) },
+                AssignmentTarget.Tuple target => target with { Names = [.. target.Names.Select(ComponentNormalizer.NormalizeObjectName)] },
+                _ => assignment.Target
+            },
+            Value = NormalizeExpression(assignment.Value, inSelect: false, flatten: flatten)
+        })];
+    }
+
+    private PgConflictTarget? NormalizeCteConflictTarget(PgConflictTarget? target, bool flatten)
+    {
+        return target switch
+        {
+            PgConflictTarget.Constraint constraint => constraint with { Name = ComponentNormalizer.NormalizeSingleIdentifier(constraint.Name) },
+            PgConflictTarget.IndexInference inference => inference with
+            {
+                Elements = [.. inference.Elements.Select(element => element with
+                {
+                    Expression = NormalizeExpression(element.Expression, inSelect: false, flatten: flatten),
+                    OperatorClass = element.OperatorClass == null ? null : ComponentNormalizer.NormalizeObjectName(element.OperatorClass),
+                    OperatorClassParameters = NormalizeCteAssignments(element.OperatorClassParameters, flatten)
+                })],
+                Where = NormalizeNullableExpression(inference.Where, inSelect: false, flatten: flatten)
+            },
+            _ => target
+        };
+    }
+
+    private PgOnConflict? NormalizeCteConflict(PgOnConflict? conflict, bool flatten)
+    {
+        return conflict switch
+        {
+            PgOnConflict.DoNothing nothing => nothing with { Target = NormalizeCteConflictTarget(nothing.Target, flatten) },
+            PgOnConflict.DoUpdate update => update with
+            {
+                Target = NormalizeCteConflictTarget(update.Target, flatten)!,
+                Assignments = NormalizeCteAssignments(update.Assignments, flatten)!,
+                Where = NormalizeNullableExpression(update.Where, inSelect: false, flatten: flatten)
+            },
+            _ => conflict
+        };
+    }
+
+    private Statement NormalizeCteStatement(Statement query, PseudoTableSet? pseudoTables, bool returnsValues, bool flatten)
+    {
+        PseudoTableSet? outerPseudoTables = _pseudoTables;
+        _pseudoTables = query is Select ? pseudoTables : null;
+        try
+        {
+            return query switch
+            {
+                Select select => NormalizeSelect(select, topLevel: false, returnsValues, flatten: flatten),
+                Insert insert => insert with
+                {
+                    CommonTableExpression = insert.CommonTableExpression == null ? null : NormalizeCte(insert.CommonTableExpression, flatten),
+                    Name = ComponentNormalizer.NormalizeObjectName(insert.Name),
+                    Alias = ComponentNormalizer.NormalizeSingleIdentifierNullable(insert.Alias),
+                    Columns = NormalizeAliasColumns(insert.Columns),
+                    Source = insert.Source == null ? null : NormalizeSelect(insert.Source, topLevel: false, returnsValues: false, flatten: flatten),
+                    OnDuplicateKeyUpdate = NormalizeCteAssignments(insert.OnDuplicateKeyUpdate, flatten),
+                    OnConflict = NormalizeCteConflict(insert.OnConflict, flatten),
+                    Returning = NormalizeCteReturning(insert.Returning, flatten),
+                    Output = NormalizeCteReturning(insert.Output, flatten)
+                },
+                Update update => update with
+                {
+                    CommonTableExpression = update.CommonTableExpression == null ? null : NormalizeCte(update.CommonTableExpression, flatten),
+                    Table = NormalizeTableWithJoins(update.Table, flatten: flatten),
+                    Assignments = NormalizeCteAssignments(update.Assignments, flatten)!,
+                    From = NormalizeFrom(update.From, flatten: flatten),
+                    Where = NormalizeNullableExpression(update.Where, inSelect: false, flatten: flatten),
+                    Returning = NormalizeCteReturning(update.Returning, flatten),
+                    Output = NormalizeCteReturning(update.Output, flatten)
+                },
+                Delete delete => delete with
+                {
+                    CommonTableExpression = delete.CommonTableExpression == null ? null : NormalizeCte(delete.CommonTableExpression, flatten),
+                    From = NormalizeFrom(delete.From, flatten: flatten)!,
+                    DeleteTables = delete.DeleteTables == null ? null : [.. delete.DeleteTables.Select(ComponentNormalizer.NormalizeObjectName)],
+                    Using = NormalizeFrom(delete.Using, flatten: flatten),
+                    Where = NormalizeNullableExpression(delete.Where, inSelect: false, flatten: flatten),
+                    OrderBy = NormalizeSelectOrderBy(delete.OrderBy, inSelect: false, flatten: flatten),
+                    Limit = NormalizeNullableExpression(delete.Limit, inSelect: false, flatten: flatten),
+                    Returning = NormalizeCteReturning(delete.Returning, flatten),
+                    Output = NormalizeCteReturning(delete.Output, flatten)
+                },
+                _ => throw new NotSupportedException()
+            };
+        }
+        finally
+        {
+            _pseudoTables = outerPseudoTables;
+        }
+    }
+
+    private (CommonTableExpressionBody, PseudoTableSet?) NormalizeCteBody(CommonTableExpressionBody cteBody, PseudoTableSet? pseudoTables, bool flatten)
     {
         INormalizeSql normalizer = ConstructNewNormalizer();
         // To account for recursive references, we need to add the CTE tables to the context before normalizing the body.
@@ -582,30 +813,52 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         {
             cteBody.AddTablesToContext(currPseudoTables);
         }
-        Select newSelect = normalizer.NormalizeSelect(cteBody.Query, _activeSchema, currPseudoTables, _name);
+        Statement newQuery = cteBody.Query is Select select && !cteBody.Columns.SafeAny()
+            ? normalizer.NormalizeSelect(select, _activeSchema, currPseudoTables, _name, flatten: flatten)
+            : NormalizeCteStatement(cteBody.Query, currPseudoTables, returnsValues: false, flatten: flatten);
         SqlValueList<Identifier>? newColumns = null;
         if (cteBody.Columns.SafeAny())
         {
             newColumns = [.. cteBody.Columns!.Select(ComponentNormalizer.NormalizeSingleIdentifier)];
         }
 
-        var newBody = new CommonTableExpressionBody(ComponentNormalizer.NormalizeSingleIdentifier(cteBody.Name, _normalization.CteDeclarationNameQuotationHandling), newColumns, newSelect, cteBody.From != null ? ComponentNormalizer.NormalizeSingleIdentifier(cteBody.From) : null);
+        CommonTableExpressionBody newBody = cteBody with
+        {
+            Name = ComponentNormalizer.NormalizeSingleIdentifier(cteBody.Name, _normalization.CteDeclarationNameQuotationHandling),
+            Columns = newColumns,
+            Query = newQuery,
+            From = cteBody.From != null ? ComponentNormalizer.NormalizeSingleIdentifier(cteBody.From) : null,
+            Search = cteBody.Search == null ? null : cteBody.Search with
+            {
+                Columns = NormalizeAliasColumns(cteBody.Search.Columns)!,
+                SequenceColumn = ComponentNormalizer.NormalizeSingleIdentifier(cteBody.Search.SequenceColumn)
+            },
+            Cycle = cteBody.Cycle == null ? null : cteBody.Cycle with
+            {
+                Columns = NormalizeAliasColumns(cteBody.Cycle.Columns)!,
+                MarkColumn = ComponentNormalizer.NormalizeSingleIdentifier(cteBody.Cycle.MarkColumn),
+                PathColumn = ComponentNormalizer.NormalizeSingleIdentifier(cteBody.Cycle.PathColumn),
+                Mark = cteBody.Cycle.Mark == null ? null : cteBody.Cycle.Mark with
+                {
+                    Value = NormalizeExpression(cteBody.Cycle.Mark.Value, inSelect: false, flatten: flatten),
+                    DefaultValue = NormalizeExpression(cteBody.Cycle.Mark.DefaultValue, inSelect: false, flatten: flatten)
+                }
+            }
+        };
         return (newBody, pseudoTables);
     }
 
-    private CommonTableExpression NormalizeCte(CommonTableExpression cte)
+    private CommonTableExpression NormalizeCte(CommonTableExpression cte, bool flatten)
     {
         PseudoTableSet? pseudoTables = _pseudoTables?.CloneExternalOnly();
         var newTables = new SqlValueList<CommonTableExpressionBody>();
 
         foreach (CommonTableExpressionBody table in cte.Tables)
         {
-            (CommonTableExpressionBody newBody, PseudoTableSet? newPseudoTables) = NormalizeCteBody(table, pseudoTables);
+            (CommonTableExpressionBody newBody, PseudoTableSet? newPseudoTables) = NormalizeCteBody(table, pseudoTables, flatten);
             pseudoTables = newPseudoTables;
             newTables.Add(newBody);
-            PseudoTable newPseudoTable = newBody.Columns != null
-                ? new PseudoTable(newBody.Name.Name, null, [.. newBody.Columns.Select(x => x.Name)], PseudoTableType.CommonTableExpression)
-                : newBody.Query.ToPseudoTable(newBody.Name.Name, null, _sourceRef, PseudoTableType.CommonTableExpression);
+            PseudoTable newPseudoTable = newBody.ToPseudoTable(_sourceRef, relaxed: false);
             _pseudoTables?.AddExternalSource(newBody.Name.Name, newPseudoTable);
         }
 
@@ -619,6 +872,25 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             Limit.ExpressionLimit el => new Limit.ExpressionLimit(NormalizeExpression(el.Expression, inSelect: true, flatten: flatten)),
             Limit.MyCommaSeparated cs => new Limit.MyCommaSeparated(NormalizeExpression(cs.LimitExpression, inSelect: true, flatten: flatten), cs.OffsetExpression != null ? NormalizeExpression(cs.OffsetExpression, inSelect: true, flatten: flatten) : null),
             Limit.MyLimitOffset lo => new Limit.MyLimitOffset(NormalizeExpression(lo.LimitExpression, inSelect: true, flatten: flatten), lo.OffsetExpression != null ? NormalizeExpression(lo.OffsetExpression, inSelect: true, flatten: flatten) : null),
+            Limit.OffsetFetch pagination => pagination with
+            {
+                Offset = NormalizeExpression(pagination.Offset, inSelect: true, flatten: flatten),
+                Fetch = NormalizeNullableExpression(pagination.Fetch, inSelect: true, flatten: flatten)
+            },
+            Limit.PgLimit pagination => pagination with
+            {
+                Count = NormalizeNullableExpression(pagination.Count, inSelect: true, flatten: flatten),
+                Offset = NormalizeNullableExpression(pagination.Offset, inSelect: true, flatten: flatten)
+            },
+            Limit.PgOffset pagination => pagination with
+            {
+                Offset = NormalizeExpression(pagination.Offset, inSelect: true, flatten: flatten)
+            },
+            Limit.PgFetch pagination => pagination with
+            {
+                Count = NormalizeNullableExpression(pagination.Count, inSelect: true, flatten: flatten),
+                Offset = NormalizeNullableExpression(pagination.Offset, inSelect: true, flatten: flatten)
+            },
             _ => throw new NotImplementedException()
         };
     }
@@ -633,7 +905,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
         _pseudoTables?.EnterSelectScope();
 
-        CommonTableExpression? cte = select.CommonTableExpression != null ? NormalizeCte(select.CommonTableExpression) : null;
+        CommonTableExpression? cte = select.CommonTableExpression != null ? NormalizeCte(select.CommonTableExpression, flatten) : null;
         SelectBody body = NormalizeSelectBody(select.Body, pseudoTablesAlreadyIsolated: true, returnsValues, flatten: flatten);
         // ORDER BY over a set operation or parenthesized query names output columns, not source tables.
         bool orderByUsesSources = select.Body is SelectBody.SimpleSelectQuery;
@@ -654,6 +926,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             CommonTableExpression = cte,
             OrderBy = orderBy,
             Limit = limit,
+            RowLocks = select.RowLocks?.Map(l => l with { Of = l.Of?.Map(ComponentNormalizer.NormalizeSingleIdentifier) }),
         };
     }
 
@@ -664,14 +937,14 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
     }
 
     /// <inheritdoc />
-    public Select NormalizeSelect(Select selectStatement, SchemaIdentifier? activeSchema = null, PseudoTableSet? pseudoTables = null, ObjectIdentifier? name = null, SourceRef? sourceRef = null)
+    public Select NormalizeSelect(Select selectStatement, SchemaIdentifier? activeSchema = null, PseudoTableSet? pseudoTables = null, ObjectIdentifier? name = null, SourceRef? sourceRef = null, bool flatten = true)
     {
         _name = name;
         _activeSchema = activeSchema;
         _pseudoTables = pseudoTables;
         _sourceRef = sourceRef;
 
-        Select newSelect = NormalizeSelect(selectStatement, topLevel: true, returnsValues: true, flatten: true);
+        Select newSelect = NormalizeSelect(selectStatement, topLevel: true, returnsValues: true, flatten: flatten);
 
         _pseudoTables = null;
         _sourceRef = null;

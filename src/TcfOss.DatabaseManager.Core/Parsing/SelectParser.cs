@@ -45,7 +45,8 @@ public class SelectParser
 
         state.ExpectKeyword(Keyword.AS);
 
-        Select query = state.ParseParenthesized((s) => ParseSelect(s, null));
+        bool? materialized = ParseOptionalCteMaterialization(state);
+        Statement query = state.ParseParenthesized(ParseCteBodyQuery);
 
         Identifier? from = null;
         if (state.ParseKeyword(Keyword.FROM))
@@ -53,7 +54,131 @@ public class SelectParser
             from = _parseIdentifier(state);
         }
 
-        return new CommonTableExpressionBody(name, columns, query, from);
+        PgCteSearch? search = ParseOptionalCteSearch(state);
+        PgCteCycle? cycle = ParseOptionalCteCycle(state);
+
+        return new CommonTableExpressionBody(name, columns, query, from)
+        {
+            Materialized = materialized,
+            Search = search,
+            Cycle = cycle
+        };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ SEARCH { BREADTH | DEPTH } FIRST BY column_name [, ...] SET sequence_column ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgCteSearch? ParseOptionalCteSearch(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.SEARCH))
+        {
+            return null;
+        }
+        Keyword order = state.ParseKeywordsAny(Keyword.BREADTH, Keyword.DEPTH);
+        if (order == Keyword.undefined)
+        {
+            throw state.ExpectedException("BREADTH", "DEPTH");
+        }
+        state.ExpectKeywordsAll(Keyword.FIRST, Keyword.BY);
+        SqlValueList<Identifier> columns = state.ParseCommaSeparated(_parseIdentifier);
+        state.ExpectKeyword(Keyword.SET);
+        Identifier sequenceColumn = _parseIdentifier(state);
+        return new PgCteSearch(order == Keyword.BREADTH ? PgCteSearchOrder.BreadthFirst : PgCteSearchOrder.DepthFirst, columns, sequenceColumn);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ CYCLE column_name [, ...] SET mark_column [ TO constant DEFAULT constant ] USING path_column ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgCteCycle? ParseOptionalCteCycle(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.CYCLE))
+        {
+            return null;
+        }
+        SqlValueList<Identifier> columns = state.ParseCommaSeparated(_parseIdentifier);
+        state.ExpectKeyword(Keyword.SET);
+        Identifier markColumn = _parseIdentifier(state);
+        PgCteCycleMark? mark = null;
+        if (state.ParseKeyword(Keyword.TO))
+        {
+            Expression value = ParseCteCycleConstant(state);
+            state.ExpectKeyword(Keyword.DEFAULT);
+            mark = new PgCteCycleMark(value, ParseCteCycleConstant(state));
+        }
+        state.ExpectKeyword(Keyword.USING);
+        Identifier pathColumn = _parseIdentifier(state);
+        return new PgCteCycle(columns, markColumn, pathColumn) { Mark = mark };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// literal | [ + | - ] numeric_literal | type_name string_literal
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual Expression ParseCteCycleConstant(ParserState state)
+    {
+        Token token = state.Peek();
+        Expression expression = _expr.ParseExpr(state);
+        if (expression is LiteralValue or TypedString or PgIntervalLiteral
+            || expression is Expressions.UnaryOperator { Expression: LiteralValue { Value: Value.Number }, Operator: var op }
+            && (op == BuiltIn.UnaryOperator.Plus || op == BuiltIn.UnaryOperator.Minus))
+        {
+            return expression;
+        }
+        throw ParserState.ExpectedCategoryException("constant", token);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// SELECT ... | VALUES ... | WITH ... | ( select_statement ) | INSERT ... | UPDATE ... | DELETE ...
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual Statement ParseCteBodyQuery(ParserState state)
+    {
+        if (state.Peek() is not (Word { Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH or Keyword.INSERT or Keyword.UPDATE or Keyword.DELETE } or ParenOpen))
+        {
+            throw state.ExpectedException("SELECT", "VALUES", "WITH", "INSERT", "UPDATE", "DELETE");
+        }
+        Statement query = _p.ParseStatement(state);
+        if (state.Peek() is ParenClose close && close.PreNonSql.SafeAny()
+            && close.PreNonSql.Items.Any(nonSql => nonSql is Statements.Components.NonSql.Comment))
+        {
+            query.Meta.PostNonSql = close.PreNonSql.Items;
+        }
+        return query;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ [ NOT ] MATERIALIZED ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual bool? ParseOptionalCteMaterialization(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.MATERIALIZED))
+        {
+            return true;
+        }
+        if (state.ParseKeyword(Keyword.NOT))
+        {
+            state.ExpectKeyword(Keyword.MATERIALIZED);
+            return false;
+        }
+        return null;
     }
 
     public Select ParseSelect(ParserState state, CommonTableExpression? cte)
@@ -66,16 +191,9 @@ public class SelectParser
             orderBy = state.ParseCommaSeparated(_p.ComponentParser.ParseOrderBy);
         }
 
-        Limit? limit = null;
-        if (state.PeekKeyword(Keyword.LIMIT))
-        {
-            limit = _p.ComponentParser.ParseLimit(state);
-        }
-        else if (state.PeekKeyword(Keyword.OFFSET))
-        {
-            limit = _p.ComponentParser.ParseOffsetFetch(state);
-        }
-
+        SqlValueList<RowLockingClause>? rowLocks = ParseRowLocks(state);
+        Limit? limit = _p.ComponentParser.ParseOptionalSelectLimit(state);
+        rowLocks ??= ParseRowLocks(state);
 
         SelectInto? intoLate = null;
         if (state.PeekKeyword(Keyword.INTO))
@@ -88,8 +206,25 @@ public class SelectParser
             CommonTableExpression = cte,
             OrderBy = orderBy,
             Limit = limit,
+            RowLocks = rowLocks,
             SelectInto = intoLate
         };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ FOR lock_strength [ OF name [, ...] ] [ NOWAIT | SKIP LOCKED ] ] ...
+    /// ]]></code>
+    /// </summary>
+    private SqlValueList<RowLockingClause>? ParseRowLocks(ParserState state)
+    {
+        SqlValueList<RowLockingClause>? clauses = null;
+        while (_p.ComponentParser.ParseOptionalRowLock(state) is { } clause)
+        {
+            clauses ??= [];
+            clauses.Add(clause);
+        }
+        return clauses;
     }
 
     protected virtual SelectInto ParseSelectInto(ParserState state)
@@ -147,6 +282,7 @@ public class SelectParser
         }
 
         Expression? having = state.ParseInit(state.ParseKeyword(Keyword.HAVING), _expr.ParseExpr);
+        SqlValueList<WindowDefinition>? windows = state.ParseInit(state.ParseKeyword(Keyword.WINDOW), inner => inner.ParseCommaSeparated(ParseWindowDefinition));
 
         return new SimpleSelect(selections)
         {
@@ -156,6 +292,7 @@ public class SelectParser
             Where = where,
             GroupBy = groupBy,
             Having = having,
+            Windows = windows,
             SelectInto = intoEarly,
         };
     }
@@ -197,6 +334,18 @@ public class SelectParser
         return new Top(expression, percent, withTies);
     }
 
+    /// <summary>
+    /// <code><![CDATA[
+    /// window_name AS window_specification
+    /// ]]></code>
+    /// </summary>
+    private WindowDefinition ParseWindowDefinition(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        state.ExpectKeyword(Keyword.AS);
+        return new WindowDefinition(name, _expr.ParseWindowSpec(state));
+    }
+
     private SelectBody ParseSelectBody(ParserState state, short precedence)
     {
         SelectBody? body;
@@ -214,7 +363,7 @@ public class SelectParser
         }
         else if (state.PeekKeyword(Keyword.VALUES))
         {
-            body = new SelectBody.ValuesQuery(ParseValues(state, true));
+            body = new SelectBody.ValuesQuery(ParseValues(state));
         }
         else
         {
@@ -303,7 +452,7 @@ public class SelectParser
         return item;
     }
 
-    private Values ParseValues(ParserState state, bool allowEmpty)
+    private Values ParseValues(ParserState state)
     {
         bool rowConstructor = false;
         state.ExpectKeyword(Keyword.VALUES);
@@ -316,7 +465,7 @@ public class SelectParser
 
             s.ExpectLeftParen();
 
-            if (allowEmpty && s.PeekIs<ParenClose>())
+            if (s.PeekIs<ParenClose>())
             {
                 s.Next();
                 return [];
@@ -419,11 +568,39 @@ public class SelectParser
         return new TableWithJoins(relation) { Joins = joins };
     }
 
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ LATERAL ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual bool ParseOptionalLateral(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.LATERAL);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ LATERAL ] { table_name
+    ///                 | ( select )
+    ///                 | function_name ( [ argument [, ...] ] )
+    ///                 | ROWS FROM ( function_call [, ...] ) }
+    /// ]]>
+    /// </code>
+    /// </summary>
     private TableFactor ParseTableFactor(ParserState state)
     {
+        bool lateral = ParseOptionalLateral(state);
+
+        if (state.PeekKeywordsAll(Keyword.ROWS, Keyword.FROM))
+        {
+            return ParseRowsFrom(state, lateral);
+        }
         if (state.ConsumeTokenIs<ParenOpen>())
         {
-            if (MaybeDerivedTableFactorUpcoming(state) && state.TryParse(ParseDerivedTableFactor, out TableFactor? derivedTable))
+            if (MaybeDerivedTableFactorUpcoming(state) && state.TryParse((s) => ParseDerivedTableFactor(s, lateral), out TableFactor? derivedTable))
             {
                 return derivedTable;
             }
@@ -437,7 +614,9 @@ public class SelectParser
                 return new TableFactor.NestedJoin
                 {
                     TableWithJoins = tableAndJoins,
-                    Alias = alias
+                    Alias = alias,
+                    AliasColumns = ParseOptionalAliasColumns(state, alias),
+                    IsLateral = lateral
                 };
             }
 
@@ -448,7 +627,9 @@ public class SelectParser
                 return new TableFactor.NestedJoin
                 {
                     TableWithJoins = tableAndJoins,
-                    Alias = alias
+                    Alias = alias,
+                    AliasColumns = ParseOptionalAliasColumns(state, alias),
+                    IsLateral = lateral
                 };
             }
 
@@ -468,22 +649,125 @@ public class SelectParser
 
         // TODO: Parse potential version qualifier
 
-        // TODO: Parse table-valued function
-        // Todo Parse ordinality
+        if (state.PeekIs<ParenOpen>())
+        {
+            return ParseTableFunction(state, name, lateral);
+        }
 
         Identifier? tableAlias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
+        SqlValueList<Identifier>? aliasColumns = ParseOptionalAliasColumns(state, tableAlias);
 
         SqlValueList<TableHint>? hints = ParseOptionalTableHints(state);
 
         TableFactor table = new TableFactor.Table(name)
         {
             Alias = tableAlias,
+            AliasColumns = aliasColumns,
             Hints = hints,
+            IsLateral = lateral
         };
 
         // TODO Parse PIVOT/UNPIVOT
 
         return table;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// function_name ( [ argument [, ...] ] ) [ WITH ORDINALITY ] [ [ AS ] alias [ ( column_alias [, ...] ) ] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual TableFactor ParseTableFunction(ParserState state, ObjectName name, bool lateral)
+    {
+        FunctionCall call = _expr.ParseFunction(state, name);
+        bool ordinality = ParseOptionalWithOrdinality(state);
+        Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
+        return new TableFactor.TableFunction(new TableFunctionCall(call))
+        {
+            WithOrdinality = ordinality,
+            Alias = alias,
+            AliasColumns = ParseOptionalAliasColumns(state, alias),
+            IsLateral = lateral
+        };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// ROWS FROM ( function_call [ AS ( column_name data_type [, ...] ) ] [, ...] ) [ WITH ORDINALITY ] [ [ AS ] alias [ ( column_alias [, ...] ) ] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual TableFactor ParseRowsFrom(ParserState state, bool lateral)
+    {
+        state.ExpectKeywordsAll(Keyword.ROWS, Keyword.FROM);
+        SqlValueList<TableFunctionCall> functions = state.ParseParenthesizedCommaSeparated(ParseRowsFromFunction, false);
+        bool ordinality = ParseOptionalWithOrdinality(state);
+        Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
+        return new TableFactor.RowsFrom(functions)
+        {
+            WithOrdinality = ordinality,
+            Alias = alias,
+            AliasColumns = ParseOptionalAliasColumns(state, alias),
+            IsLateral = lateral
+        };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// function_name ( [ argument [, ...] ] ) [ AS ( column_name data_type [ COLLATE collation ] [, ...] ) ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    private TableFunctionCall ParseRowsFromFunction(ParserState state)
+    {
+        FunctionCall call = _expr.ParseFunction(state, null);
+        SqlValueList<CompositeTypeField>? columns = state.ParseKeyword(Keyword.AS)
+            ? state.ParseParenthesizedCommaSeparated(ParseFunctionColumn, false)
+            : null;
+        return new TableFunctionCall(call, columns);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// column_name data_type [ COLLATE collation ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    private CompositeTypeField ParseFunctionColumn(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        ObjectName? collation = state.ParseKeyword(Keyword.COLLATE) ? _parseObjectName(state) : null;
+        return new CompositeTypeField(name, dataType, collation);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ WITH ORDINALITY ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual bool ParseOptionalWithOrdinality(ParserState state)
+    {
+        return state.ParseKeywordsAll(Keyword.WITH, Keyword.ORDINALITY);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ ( column_alias [, ...] ) ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual SqlValueList<Identifier>? ParseOptionalAliasColumns(ParserState state, Identifier? tableAlias)
+    {
+        return tableAlias == null ? null : state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
     }
 
     private static bool MaybeDerivedTableFactorUpcoming(ParserState state)
@@ -495,7 +779,7 @@ public class SelectParser
         };
     }
 
-    private TableFactor ParseDerivedTableFactor(ParserState state)
+    private TableFactor.Derived ParseDerivedTableFactor(ParserState state, bool lateral)
     {
         CommonTableExpression? cte = null;
         if (state.PeekKeyword(Keyword.WITH))
@@ -507,7 +791,9 @@ public class SelectParser
         Identifier? alias = ParseOptionalAlias(state, KeywordHelper.IsReservedForTableAlias);
         return new TableFactor.Derived(subQuery)
         {
-            Alias = alias
+            Alias = alias,
+            AliasColumns = ParseOptionalAliasColumns(state, alias),
+            IsLateral = lateral
         };
     }
 

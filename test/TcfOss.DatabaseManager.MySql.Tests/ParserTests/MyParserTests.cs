@@ -1,5 +1,6 @@
 ﻿using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -304,10 +305,18 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("CALL my_stored_procedure(`param1`)")]
     [InlineData("CALL my_stored_procedure(param1, param2)")]
     [InlineData("CALL `my_stored_procedure`(@param1, @param2, @param3)")]
+    [InlineData("CALL app.run(1, @value)")]
+    [InlineData("CALL app.run(value = 1)")]
     public void CallStatement_TextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void CallStatement_RejectsPostgresVariadicArgumentSyntax()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CALL app.run(VARIADIC app.values_for(1))"));
     }
 
     [Theory]
@@ -636,6 +645,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
     [Theory]
     [InlineData("SELECT value OPERATOR(app.@>) other")]
+    [InlineData("SELECT OPERATOR(+) value")]
     [InlineData("SELECT value <-> other")]
     public void PostgresGeneralOperators_AreRejectedBySharedMySqlMariaDbParser(string sql)
     {
@@ -696,6 +706,35 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("ANY")]
+    [InlineData("ALL")]
+    [InlineData("SOME")]
+    public void QuantifiedComparisons_ParseScalarOperands(string quantifier)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a = {quantifier}(1)"));
+
+        Assert.Equal(Core.BuiltIn.BinaryOperator.Equal, expression.Operator);
+        Assert.Equal(quantifier, expression.Quantifier.ToString());
+        Assert.IsType<Core.Expressions.LiteralValue>(expression.Right);
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Fact]
+    public void LateralDerivedTables_ParseInSharedMySqlMariaDbGrammar()
+    {
+        const string sql = "SELECT * FROM LATERAL (SELECT 1 AS value) AS result (value)";
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM ROWS FROM (app.first())")]
+    [InlineData("SELECT * FROM app.first() WITH ORDINALITY")]
+    public void PostgresFromComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("SELECT stamp AT LOCAL + value")]
     [InlineData("SELECT value BETWEEN SYMMETRIC lower AND upper")]
     [InlineData("SELECT value ISNULL AND other")]
@@ -705,5 +744,116 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     public void PostgresPredicates_AreNarrowedBySharedMySqlMariaDbParser(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void DeleteUsing_ParsesInSharedMySqlMariaDbGrammar()
+    {
+        const string sql = "DELETE FROM items USING items INNER JOIN source ON items.id = source.id";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items DEFAULT VALUES")]
+    [InlineData("INSERT INTO items AS target VALUES (1)")]
+    [InlineData("INSERT INTO items OVERRIDING SYSTEM VALUE VALUES (1)")]
+    [InlineData("INSERT INTO items VALUES (1) ON CONFLICT DO NOTHING")]
+    public void PostgresDmlComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WITH changed AS (INSERT INTO items VALUES (1) RETURNING id) SELECT id FROM changed")]
+    [InlineData("WITH changed AS (UPDATE items SET id = 1) SELECT 1")]
+    [InlineData("WITH changed AS (DELETE FROM items) SELECT 1")]
+    [InlineData("WITH result AS MATERIALIZED (SELECT 1) SELECT 1")]
+    [InlineData("WITH result AS NOT MATERIALIZED (SELECT 1) SELECT 1")]
+    [InlineData("WITH RECURSIVE result (id) AS (SELECT 1) SEARCH DEPTH FIRST BY id SET position SELECT id FROM result")]
+    [InlineData("WITH RECURSIVE result (id) AS (SELECT 1) CYCLE id SET is_cycle USING path SELECT id FROM result")]
+    public void PostgresCteComponents_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM items", Label = "Shared rows frame")]
+    [InlineData("SELECT SUM(value) OVER result FROM items WINDOW result AS (ORDER BY id RANGE UNBOUNDED PRECEDING)", Label = "Shared named range window")]
+    public void WindowFrames_RemainSupportedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", Label = "Reject aggregate FILTER")]
+    [InlineData("SELECT f() WITHIN GROUP (ORDER BY id) FROM items", Label = "Reject WITHIN GROUP")]
+    [InlineData("SELECT SUM(value) OVER (ORDER BY id GROUPS CURRENT ROW) FROM items", Label = "Reject GROUPS frame")]
+    [InlineData("SELECT SUM(value) OVER (ROWS CURRENT ROW EXCLUDE TIES) FROM items", Label = "Reject EXCLUDE")]
+    [InlineData("SELECT id FROM items ORDER BY id NULLS FIRST", Label = "Reject NULLS ordering")]
+    public void AggregateWindows_AreNarrowedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 LIMIT 2, 3", Label = "Keep MySQL comma limit")]
+    [InlineData("SELECT 1 LIMIT 2 OFFSET 3", Label = "Keep MySQL offset limit")]
+    [InlineData("SELECT * FROM items LIMIT 2 FOR UPDATE NOWAIT", Label = "Shared update lock")]
+    [InlineData("SELECT * FROM items FOR SHARE SKIP LOCKED", Label = "Shared share lock")]
+    public void SelectTails_PreserveSharedMySqlMariaDbSyntax(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 LIMIT ALL", Label = "Reject unlimited PostgreSQL count")]
+    [InlineData("SELECT 1 OFFSET 2", Label = "Reject bare PostgreSQL offset")]
+    [InlineData("SELECT 1 FETCH FIRST ROW ONLY", Label = "Reject standalone fetch")]
+    [InlineData("SELECT 1 FOR NO KEY UPDATE", Label = "Reject no key update lock")]
+    [InlineData("SELECT 1 FOR KEY SHARE", Label = "Reject key share lock")]
+    public void SelectTails_NarrowPostgresSyntaxInSharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
+    [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]
+    [InlineData("WITH result AS ((SELECT 1 AS id)) SELECT id FROM result")]
+    [InlineData("WITH result AS (WITH source AS (SELECT 1 AS id) SELECT id FROM source) SELECT id FROM result")]
+    public void CteBodyQuery_PreservesAcceptedQueryStarters(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("INSERT")]
+    [InlineData("UPDATE")]
+    [InlineData("DELETE")]
+    public void CteBodyQuery_RejectsDmlAtOpeningTokenWithoutConsumingIt(string keyword)
+    {
+        string sql = $"WITH changed AS (\n  {keyword} invalid syntax\n) SELECT 1";
+        var state = GetState(sql);
+        var first = state.PeekNth(4);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().ParseStatement(state));
+
+        Assert.Same(first, state.Peek());
+        ParseException expected = ParserState.ExpectedException("SELECT", first);
+        Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
+    }
+
+    [Fact]
+    public void CteBodyQuery_RejectsNestedWithDmlAtOpeningToken()
+    {
+        const string sql = "WITH changed AS (\n  WITH source AS (SELECT 1 AS id) INSERT INTO items SELECT id FROM source\n) SELECT 1";
+        var state = GetState(sql);
+        var first = state.PeekNth(4);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().ParseStatement(state));
+
+        ParseException expected = ParserState.ExpectedException("SELECT", first);
+        Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
     }
 }

@@ -17,10 +17,10 @@ public class ParserTestsBase<TLexer, TParser>
         return [.. tokens];
     }
 
-    protected static ParserState GetState(string sql)
+    protected static ParserState GetState(string sql, int sourceId = 0)
     {
         var tokens = new TLexer().Tokenize(sql);
-        return new ParserState([.. tokens]);
+        return new ParserState([.. tokens], sourceId);
     }
 
     protected static SqlValueList<Statement> ParseStatements(string sql)
@@ -29,9 +29,20 @@ public class ParserTestsBase<TLexer, TParser>
         return new TParser().Parse(state, null);
     }
 
-    protected static IWriteSql ParseStatement(string sql)
+    protected static IWriteSql ParseStatement(string sql, bool assertAtEnd = true)
     {
-        return Assert.Single(ParseStatements(sql));
+        ParserState state = GetState(sql);
+        return ParseStatement(state, assertAtEnd);
+    }
+
+    protected static IWriteSql ParseStatement(ParserState state, bool assertAtEnd = true)
+    {
+        var statement = Assert.Single(new TParser().Parse(state, null));
+        if (assertAtEnd)
+        {
+            Assert.IsType<Eof>(state.Peek());
+        }
+        return statement;
     }
 
     protected static Expression ParseExpression(ParserState state, bool assertAtEnd = true)

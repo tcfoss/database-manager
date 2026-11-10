@@ -366,7 +366,9 @@ def _generate_report(config: _RunConfig, test_results_files: list[str]):
         cmd.append(f"-license:{config.license}")
 
     print("Running ReportGenerator...")
-    _shell_exec.run(cmd, cwd=config.solution.parent)
+    _shell_exec.run(
+        cmd, cwd=config.solution.parent, redactions=[config.license] if config.license else None
+    )
 
     print("Report generation complete.")
 

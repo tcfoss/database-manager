@@ -30,6 +30,7 @@ public class DmlParser
         bool into = state.ParseKeyword(Keyword.INTO);
 
         ObjectName tableName = _parseObjectName(state);
+        Identifier? alias = ParseOptionalInsertAlias(state);
 
         SqlValueList<Identifier>? columns = null;
         if (state.PeekIs<ParenOpen>())
@@ -37,20 +38,77 @@ public class DmlParser
             columns = _comp.ParseParenthisizedIdentifierList(state, false);
         }
 
+        PgIdentityOverride? overriding = ParseOptionalIdentityOverride(state);
         SqlValueList<SimpleSelectItem>? output = ParseOptionalOutputClause(state);
 
-        Select source = _p.SelectParser.ParseSelect(state, null);
+        Select? source = ParseInsertSource(state);
 
         SqlValueList<Assignment>? onDuplicateKeyUpdate = ParseOptionalOnDuplicateKeyUpdate(state);
+        PgOnConflict? onConflict = ParseOptionalOnConflict(state);
+        SqlValueList<SimpleSelectItem>? returning = ParseOptionalReturningClause(state);
 
         return new Insert(tableName, source)
         {
             CommonTableExpression = cte,
             Into = into,
+            Alias = alias,
             Columns = columns,
+            Overriding = overriding,
             Output = output,
             OnDuplicateKeyUpdate = onDuplicateKeyUpdate,
+            OnConflict = onConflict,
+            Returning = returning,
         };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ AS alias ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual Identifier? ParseOptionalInsertAlias(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.AS) ? _comp.ParseIdentifier(state) : null;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ OVERRIDING { SYSTEM | USER } VALUE ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgIdentityOverride? ParseOptionalIdentityOverride(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.OVERRIDING))
+        {
+            return null;
+        }
+        Keyword kind = state.ParseKeywordsAny(Keyword.SYSTEM, Keyword.USER);
+        if (kind == Keyword.undefined)
+        {
+            throw state.ExpectedException("SYSTEM", "USER");
+        }
+        state.ExpectKeyword(Keyword.VALUE);
+        return kind == Keyword.SYSTEM ? PgIdentityOverride.SystemValue : PgIdentityOverride.UserValue;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// DEFAULT VALUES | VALUES ( expression [, ...] ) [, ...] | select_statement
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual Select? ParseInsertSource(ParserState state)
+    {
+        if (state.ParseKeywordsAll(Keyword.DEFAULT, Keyword.VALUES))
+        {
+            return null;
+        }
+        return _p.SelectParser.ParseSelect(state, null);
     }
 
     public Update ParseUpdate(ParserState state, CommonTableExpression? cte)
@@ -63,15 +121,29 @@ public class DmlParser
 
         SqlValueList<SimpleSelectItem>? output = ParseOptionalOutputClause(state);
 
-        TableWithJoins? from = state.ParseInit(state.ParseKeyword(Keyword.FROM), _p.SelectParser.ParseTableWithJoins);
+        SqlValueList<TableWithJoins>? from = ParseOptionalUpdateFrom(state);
         Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), _expr.ParseExpr);
+        SqlValueList<SimpleSelectItem>? returning = ParseOptionalReturningClause(state);
 
         return new Update(table, assignments, where)
         {
             From = from,
             CommonTableExpression = cte,
             Output = output,
+            Returning = returning,
         };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ FROM from_item [, ...] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual SqlValueList<TableWithJoins>? ParseOptionalUpdateFrom(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.FROM) ? state.ParseCommaSeparated(_p.SelectParser.ParseTableWithJoins) : null;
     }
 
     public Delete ParseDelete(ParserState state, CommonTableExpression? cte)
@@ -91,6 +163,7 @@ public class DmlParser
 
         SqlValueList<SimpleSelectItem>? output = ParseOptionalOutputClause(state);
 
+        SqlValueList<TableWithJoins>? usingTables = ParseOptionalDeleteUsing(state);
         Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), _expr.ParseExpr);
         SqlValueList<OrderBy>? orderBy = state.ParseInit(state.ParseKeywordsAll(Keyword.ORDER, Keyword.BY), (s) => s.ParseCommaSeparated(_comp.ParseOrderBy));
         Expression? limit = state.ParseInit(state.ParseKeyword(Keyword.LIMIT), _expr.ParseExpr);
@@ -102,9 +175,22 @@ public class DmlParser
             DeleteTables = deleteTables,
             Output = output,
             Returning = returning,
+            Using = usingTables,
             OrderBy = orderBy,
             Limit = limit
         };
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ USING from_item [, ...] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual SqlValueList<TableWithJoins>? ParseOptionalDeleteUsing(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.USING) ? state.ParseCommaSeparated(_p.SelectParser.ParseTableWithJoins) : null;
     }
 
     protected virtual SqlValueList<SimpleSelectItem>? ParseOptionalOutputClause(ParserState state)
@@ -142,7 +228,7 @@ public class DmlParser
     {
         return keyword switch
         {
-            Keyword.VALUES or Keyword.FROM or Keyword.WHERE or Keyword.INTO
+            Keyword.DEFAULT or Keyword.VALUES or Keyword.FROM or Keyword.WHERE or Keyword.INTO
                 or Keyword.SELECT or Keyword.ORDER or Keyword.OPTION
                 or Keyword.GROUP or Keyword.HAVING or Keyword.UNION
                 or Keyword.EXCEPT or Keyword.INTERSECT => true,
@@ -157,6 +243,77 @@ public class DmlParser
             return null;
         }
         return state.ParseCommaSeparated(_comp.ParseAssignment);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ ON CONFLICT [ conflict_target ] DO NOTHING
+    ///     | ON CONFLICT conflict_target DO UPDATE SET assignment [, ...] [ WHERE condition ] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgOnConflict? ParseOptionalOnConflict(ParserState state)
+    {
+        if (!state.ParseKeywordsAll(Keyword.ON, Keyword.CONFLICT))
+        {
+            return null;
+        }
+        PgConflictTarget? target = ParseOptionalConflictTarget(state);
+        state.ExpectKeyword(Keyword.DO);
+        if (state.ParseKeyword(Keyword.NOTHING))
+        {
+            return new PgOnConflict.DoNothing(target);
+        }
+        state.ExpectKeyword(Keyword.UPDATE);
+        if (target == null)
+        {
+            throw state.ExpectedException("conflict target");
+        }
+        state.ExpectKeyword(Keyword.SET);
+        SqlValueList<Assignment> assignments = state.ParseCommaSeparated(_comp.ParseAssignment);
+        Expression? where = state.ParseKeyword(Keyword.WHERE) ? _expr.ParseExpr(state) : null;
+        return new PgOnConflict.DoUpdate(target, assignments, where);
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// [ ( index_element [, ...] ) [ WHERE predicate ]
+    ///     | ON CONSTRAINT constraint_name ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgConflictTarget? ParseOptionalConflictTarget(ParserState state)
+    {
+        if (state.PeekIs<ParenOpen>())
+        {
+            SqlValueList<PgConflictIndexElement> elements = state.ParseParenthesizedCommaSeparated(ParseConflictIndexElement, false);
+            Expression? where = state.ParseKeyword(Keyword.WHERE) ? _expr.ParseExpr(state) : null;
+            return new PgConflictTarget.IndexInference(elements, where);
+        }
+        if (state.ParseKeywordsAll(Keyword.ON, Keyword.CONSTRAINT))
+        {
+            return new PgConflictTarget.Constraint(_comp.ParseIdentifier(state));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// <code>
+    /// <![CDATA[
+    /// { column_name | ( expression ) } [ COLLATE collation ] [ operator_class [ ( assignment [, ...] ) ] ]
+    /// ]]>
+    /// </code>
+    /// </summary>
+    protected virtual PgConflictIndexElement ParseConflictIndexElement(ParserState state)
+    {
+        Expression expression = _expr.ParseExpr(state);
+        ObjectName? operatorClass = state.PeekIs<Word>() ? _parseObjectName(state) : null;
+        SqlValueList<Assignment>? parameters = operatorClass != null && state.PeekIs<ParenOpen>()
+            ? state.ParseParenthesizedCommaSeparated(_comp.ParseAssignment, false)
+            : null;
+        return new PgConflictIndexElement(expression, operatorClass) { OperatorClassParameters = parameters };
     }
 
     protected virtual SqlValueList<SimpleSelectItem>? ParseOptionalReturningClause(ParserState state)

@@ -91,11 +91,12 @@ ldev-coverage compare --baseline test-results/<before-run>/OpenCover.xml --curre
 - Refresh reports with `dbman-dev-coverage --solution solutions/BasicTests.slnx`.
    This runs unit tests and the configured lightweight/containerless integration
    tests, writes a timestamped report, and refreshes `test-results/latest`.
-- ReportGenerator prints its license in arguments. Redact it when capturing output,
-  and preserve failure status with `pipefail`; do not inspect raw logs containing it:
+- `dbman-dev-coverage` redacts the license when echoing commands. Run it directly,
+  without `sed` or `pipefail`. ReportGenerator's six-character license prefix
+  does not require additional redaction:
 
    ```sh
-   set -o pipefail && dbman-dev-coverage --solution solutions/BasicTests.slnx 2>&1 | sed -E 's/(-license:)[^[:space:]]+/\1[REDACTED]/g'
+   dbman-dev-coverage --solution solutions/BasicTests.slnx
    ```
 - Start branch triage with a narrow query, for example:
 

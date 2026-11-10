@@ -16,6 +16,7 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
     public CommonTableExpression? CommonTableExpression { get; init; }
     public SqlValueList<OrderBy>? OrderBy { get; init; }
     public Limit? Limit { get; init; }
+    public SqlValueList<RowLockingClause>? RowLocks { get; init; }
     public SelectInto? SelectInto { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
@@ -35,6 +36,11 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
         if (Limit != null)
         {
             writer.WriteSql($" {Limit}");
+        }
+
+        if (RowLocks != null)
+        {
+            writer.WriteSql($" {RowLocks.ToSqlDelimited(" ")}");
         }
 
         if (SelectInto != null)
@@ -72,6 +78,15 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
                 Limit.FormatSql(writer, manager);
             }
 
+            if (RowLocks != null)
+            {
+                foreach (RowLockingClause rowLock in RowLocks)
+                {
+                    writer.WriteLine();
+                    rowLock.FormatSql(writer, manager);
+                }
+            }
+
             if (SelectInto != null)
             {
                 writer.WriteLine();
@@ -101,36 +116,34 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
+        IEnumerable<ItemRef> bodyReferencedItems = GetBodyReferencedItems(context);
+        return CommonTableExpression?.GetReferencedItems(context, bodyReferencedItems) ?? bodyReferencedItems;
+    }
+
+    private IEnumerable<ItemRef> GetBodyReferencedItems(ReferencedItemsManager context)
+    {
         using (context.EnterTableScope())
         {
-            HashSet<Identifier> cteNames = [];
-            if (CommonTableExpression != null)
+            foreach (ItemRef r in Body.GetReferencedItems(context))
             {
-                foreach (CommonTableExpressionBody body in CommonTableExpression.Tables)
+                yield return r;
+            }
+            if (OrderBy != null)
+            {
+                foreach (OrderBy order in OrderBy)
                 {
-                    cteNames.Add(body.Name);
-                    foreach (ItemRef r in body.Query.GetReferencedItems(context))
+                    foreach (ItemRef item in order.GetReferencedItems(context))
                     {
-                        yield return r;
-                    }
-
-                    if (context.PseudoTables != null)
-                    {
-                        PseudoTable ctePseudoTable = body.Columns != null
-                            ? new PseudoTable(body.Name.Name, null, [.. body.Columns.Select(x => x.Name)], PseudoTableType.CommonTableExpression)
-                            : body.Query.ToPseudoTableRelaxed(body.Name.Name, null, null, PseudoTableType.CommonTableExpression);
-                        context.PseudoTables.AddExternalSource(body.Name.Name, ctePseudoTable);
+                        yield return item;
                     }
                 }
             }
-
-            foreach (ItemRef r in Body.GetReferencedItems(context))
+            if (Limit != null)
             {
-                if (r.Identifiers.Count == 1 && cteNames.Contains(r.Identifiers[0]))
+                foreach (ItemRef item in Limit.GetReferencedItems(context))
                 {
-                    continue;
+                    yield return item;
                 }
-                yield return r;
             }
         }
     }

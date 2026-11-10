@@ -8,5 +8,6 @@ public enum ParseContext
     DefaultExpression = 1 << 1,
     StringLiteralAsStatement = 1 << 2,
     BeginAtomic = 1 << 3,
-    BetweenBound = 1 << 4
+    BetweenBound = 1 << 4,
+    NarrowSqlOnly = 1 << 5
 }

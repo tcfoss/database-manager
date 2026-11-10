@@ -224,6 +224,62 @@ public class SqlTextWriterTests
         Assert.Equal(expected, actual);
     }
 
+    [Fact]
+    public void DelimitedWriter_WriteSeparatesItems()
+    {
+        var writer = new SqlTextWriter(new StringBuilder());
+        var delimited = new DelimitedWriter(writer, ", ");
+
+        Assert.Empty(writer.ToString());
+        delimited.Write("first");
+        Assert.Equal("first", writer.ToString());
+        delimited.Write("second");
+
+        Assert.Equal("first, second", writer.ToString());
+    }
+
+    [Fact]
+    public void DelimitedWriter_FormatSqlSharesDelimitersWithOtherWrites()
+    {
+        var writer = new SqlTextWriter(new StringBuilder());
+        var delimited = new DelimitedWriter(writer, " | ");
+
+        delimited.FormatSql(new Identifier("first"), GetFormatManager());
+        delimited.WriteSql($"{new Value.SingleQuotedString("second")}");
+        delimited.Write("third");
+        delimited.FormatSql(new Identifier("fourth"), GetFormatManager());
+
+        Assert.Equal("\"first\" | 'second' | third | \"fourth\"", writer.ToString());
+    }
+
+    [Fact]
+    public void DelimitedWriter_WriteSqlCanStartTheSequence()
+    {
+        var writer = new SqlTextWriter(new StringBuilder());
+        var delimited = new DelimitedWriter(writer, " ");
+
+        delimited.WriteSql($"{new Identifier("first")}");
+        delimited.Write("PARTITION BY ");
+        new Identifier("column").FormatSql(writer, GetFormatManager());
+
+        Assert.Equal("first PARTITION BY \"column\"", writer.ToString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void DelimitedWriter_EmptyWritesCountAsItems(string? text)
+    {
+        var writer = new SqlTextWriter(new StringBuilder());
+        var delimited = new DelimitedWriter(writer, "|");
+
+        delimited.Write(text);
+        delimited.WriteSql($"{text}");
+        delimited.FormatSql(new Identifier("last"), GetFormatManager());
+
+        Assert.Equal("||\"last\"", writer.ToString());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
