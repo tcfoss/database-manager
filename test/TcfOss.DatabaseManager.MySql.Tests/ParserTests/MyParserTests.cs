@@ -789,6 +789,27 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("SELECT 1 LIMIT 2, 3", Label = "Keep MySQL comma limit")]
+    [InlineData("SELECT 1 LIMIT 2 OFFSET 3", Label = "Keep MySQL offset limit")]
+    [InlineData("SELECT * FROM items LIMIT 2 FOR UPDATE NOWAIT", Label = "Shared update lock")]
+    [InlineData("SELECT * FROM items FOR SHARE SKIP LOCKED", Label = "Shared share lock")]
+    public void SelectTails_PreserveSharedMySqlMariaDbSyntax(string sql)
+    {
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 LIMIT ALL", Label = "Reject unlimited PostgreSQL count")]
+    [InlineData("SELECT 1 OFFSET 2", Label = "Reject bare PostgreSQL offset")]
+    [InlineData("SELECT 1 FETCH FIRST ROW ONLY", Label = "Reject standalone fetch")]
+    [InlineData("SELECT 1 FOR NO KEY UPDATE", Label = "Reject no key update lock")]
+    [InlineData("SELECT 1 FOR KEY SHARE", Label = "Reject key share lock")]
+    public void SelectTails_NarrowPostgresSyntaxInSharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
     [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]
     [InlineData("WITH result AS ((SELECT 1 AS id)) SELECT id FROM result")]

@@ -160,6 +160,7 @@
     "CommonTableExpression": null,
     "OrderBy": null,
     "Limit": null,
+    "RowLocks": null,
     "SelectInto": null,
     "Meta": {
       "PreNonSql": null,
@@ -331,6 +332,7 @@
     "CommonTableExpression": null,
     "OrderBy": null,
     "Limit": null,
+    "RowLocks": null,
     "SelectInto": null,
     "Meta": {
       "PreNonSql": null,

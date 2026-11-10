@@ -290,9 +290,97 @@ public class ComponentParser(Parser parser)
         return new Comment(commentValue);
     }
 
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ LIMIT { expression | ALL } [ OFFSET expression [ ROW | ROWS ] ]
+    ///     | OFFSET expression [ ROW | ROWS ] [ LIMIT { expression | ALL } ]
+    ///     | [ OFFSET expression [ ROW | ROWS ] ] FETCH { FIRST | NEXT } [ expression ] { ROW | ROWS } { ONLY | WITH TIES }
+    ///     | FETCH { FIRST | NEXT } [ expression ] { ROW | ROWS } { ONLY | WITH TIES } [ OFFSET expression [ ROW | ROWS ] ] ]
+    /// ]]></code>
+    /// </summary>
+    public virtual Limit? ParseOptionalSelectLimit(ParserState state)
+    {
+        Expression? count = null;
+        Expression? offset = null;
+        bool hasLimit = false;
+        bool hasOffset = false;
+        bool fetch = false;
+        bool withTies = false;
+        while (true)
+        {
+            if (!hasLimit && state.ParseKeyword(Keyword.LIMIT))
+            {
+                hasLimit = true;
+                count = state.ParseKeyword(Keyword.ALL) ? null : _p.ExpressionParser.ParseExpr(state);
+                Limit? commaLimit = ParseOptionalCommaLimit(state, count);
+                if (commaLimit != null)
+                {
+                    return commaLimit;
+                }
+            }
+            else if (!hasLimit && state.ParseKeyword(Keyword.FETCH))
+            {
+                hasLimit = true;
+                fetch = true;
+                if (state.ParseKeywordsAny(Keyword.FIRST, Keyword.NEXT) == Keyword.undefined)
+                {
+                    throw state.ExpectedException("FIRST", "NEXT");
+                }
+                count = state.Peek() is Word { Keyword: Keyword.ROW or Keyword.ROWS }
+                    ? null
+                    : _p.ExpressionParser.ParseExpr(state);
+                if (state.ParseKeywordsAny(Keyword.ROW, Keyword.ROWS) == Keyword.undefined)
+                {
+                    throw state.ExpectedException("ROW", "ROWS");
+                }
+                withTies = state.ParseKeyword(Keyword.WITH);
+                state.ExpectKeyword(withTies ? Keyword.TIES : Keyword.ONLY);
+            }
+            else if (!hasOffset && state.ParseKeyword(Keyword.OFFSET))
+            {
+                hasOffset = true;
+                offset = _p.ExpressionParser.ParseExpr(state);
+                state.ParseKeywordsAny(Keyword.ROW, Keyword.ROWS);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (fetch)
+        {
+            return new Limit.PgFetch(count, offset) { WithTies = withTies };
+        }
+        if (hasLimit)
+        {
+            return new Limit.PgLimit(count, offset);
+        }
+
+        return offset == null ? null : new Limit.PgOffset(offset);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ , expression ]
+    /// ]]></code>
+    /// </summary>
+    protected virtual Limit? ParseOptionalCommaLimit(ParserState state, Expression? offset)
+    {
+        if (offset == null || !state.ConsumeTokenIs<Comma>())
+        {
+            return null;
+        }
+        return new Limit.MyCommaSeparated(_p.ExpressionParser.ParseExpr(state), offset);
+    }
+
     public Limit ParseLimit(ParserState state)
     {
         state.ExpectKeyword(Keyword.LIMIT);
+        if (state.PeekKeyword(Keyword.ALL))
+        {
+            throw ParserState.ExpectedCategoryException("limit expression", state.Peek());
+        }
         Expression limitExpression = _p.ExpressionParser.ParseExpr(state);
 
         if (state.ConsumeTokenIs<Comma>())
@@ -312,8 +400,9 @@ public class ComponentParser(Parser parser)
     }
 
     /// <summary>
-    /// Parses an ANSI <c>OFFSET n {ROW|ROWS} [FETCH {FIRST|NEXT} m {ROW|ROWS} ONLY]</c>
-    /// pagination clause. The <c>OFFSET</c> keyword must be the next token.
+    /// <code><![CDATA[
+    /// OFFSET n { ROW | ROWS } [ FETCH { FIRST | NEXT } m { ROW | ROWS } ONLY ]
+    /// ]]></code>
     /// </summary>
     public Limit.OffsetFetch ParseOffsetFetch(ParserState state)
     {
@@ -340,6 +429,77 @@ public class ComponentParser(Parser parser)
         }
 
         return new Limit.OffsetFetch(offset, fetch);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ FOR lock_strength [ OF name [, ...] ] [ NOWAIT | SKIP LOCKED ] ]
+    /// ]]></code>
+    /// </summary>
+    public virtual RowLockingClause? ParseOptionalRowLock(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.FOR))
+        {
+            return null;
+        }
+
+        RowLockStrength strength = ParseRowLockStrength(state);
+        SqlValueList<Identifier>? of = state.ParseKeyword(Keyword.OF)
+            ? state.ParseCommaSeparated(ParseIdentifier)
+            : null;
+
+        RowLockWait? wait = null;
+        if (state.ParseKeyword(Keyword.NOWAIT))
+        {
+            wait = RowLockWait.Nowait;
+        }
+        else if (state.ParseKeyword(Keyword.SKIP))
+        {
+            state.ExpectKeyword(Keyword.LOCKED);
+            wait = RowLockWait.SkipLocked;
+        }
+
+        return new RowLockingClause(strength)
+        {
+            Of = of,
+            Wait = wait
+        };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// UPDATE | NO KEY UPDATE | SHARE | KEY SHARE
+    /// ]]></code>
+    /// </summary>
+    protected virtual RowLockStrength ParseRowLockStrength(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.NO))
+        {
+            state.ExpectKeyword(Keyword.KEY);
+            state.ExpectKeyword(Keyword.UPDATE);
+            return RowLockStrength.NoKeyUpdate;
+        }
+        if (state.ParseKeyword(Keyword.KEY))
+        {
+            state.ExpectKeyword(Keyword.SHARE);
+            return RowLockStrength.KeyShare;
+        }
+        return ParseBasicRowLockStrength(state);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// UPDATE | SHARE
+    /// ]]></code>
+    /// </summary>
+    protected static RowLockStrength ParseBasicRowLockStrength(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.UPDATE))
+        {
+            return RowLockStrength.Update;
+        }
+        state.ExpectKeyword(Keyword.SHARE);
+        return RowLockStrength.Share;
     }
 
     public static SetQuantifier? ParseSetQuantifier(ParserState state)

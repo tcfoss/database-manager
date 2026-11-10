@@ -90,6 +90,19 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData("SELECT 1 LIMIT ALL", Label = "Unlimited count")]
+    [InlineData("SELECT 1 OFFSET 2 FETCH FIRST ROWS ONLY", Label = "Implicit fetch")]
+    [InlineData("SELECT 1 FOR NO KEY UPDATE NOWAIT", Label = "No key update")]
+    [InlineData("SELECT 1 FOR KEY SHARE SKIP LOCKED", Label = "Key share")]
+    public void Statement_SelectWithLimitAndLock(string sql)
+    {
+        var state = GetState(sql);
+        var statement = Assert.IsType<Select>(ParseStatement(state));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
     /* Values */
     [Theory]
     [InlineData("VALUES (1, 2, 3)", Label = "VALUES numeric row")]

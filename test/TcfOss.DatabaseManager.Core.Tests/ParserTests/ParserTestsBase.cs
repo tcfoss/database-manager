@@ -29,14 +29,20 @@ public class ParserTestsBase<TLexer, TParser>
         return new TParser().Parse(state, null);
     }
 
-    protected static IWriteSql ParseStatement(string sql)
+    protected static IWriteSql ParseStatement(string sql, bool assertAtEnd = true)
     {
-        return Assert.Single(ParseStatements(sql));
+        ParserState state = GetState(sql);
+        return ParseStatement(state, assertAtEnd);
     }
 
-    protected static IWriteSql ParseStatement(ParserState state)
+    protected static IWriteSql ParseStatement(ParserState state, bool assertAtEnd = true)
     {
-        return Assert.Single(new TParser().Parse(state, null));
+        var statement = Assert.Single(new TParser().Parse(state, null));
+        if (assertAtEnd)
+        {
+            Assert.IsType<Eof>(state.Peek());
+        }
+        return statement;
     }
 
     protected static Expression ParseExpression(ParserState state, bool assertAtEnd = true)

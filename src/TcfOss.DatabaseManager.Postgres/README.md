@@ -92,6 +92,32 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Pagination And Row Locking
+
+SELECT supports LIMIT expressions or ALL, OFFSET with optional ROW/ROWS, either
+LIMIT/OFFSET order, and FETCH FIRST/NEXT with an optional count and ONLY or WITH
+TIES. FETCH may stand alone or accompany OFFSET in either order. Canonical SQL
+emits LIMIT before OFFSET and uses FETCH FIRST with ROWS. `Limit.PgLimit` uses a
+null count for ALL; an explicit SQL NULL remains a literal expression.
+`Limit.PgFetch` uses a null count for the omitted, implicit-one form.
+
+Row-lock clauses retain FOR UPDATE, NO KEY UPDATE, SHARE, or KEY SHARE; optional
+OF relation identifiers; NOWAIT or SKIP LOCKED; and multiple clauses. Input may
+place locks before or after pagination; canonical output places locks last.
+OF names are local relation identifiers, not additional object dependencies.
+
+SQL/JSON round trips, recursive formatting/idempotence, normalization with both
+flattening modes, select-tail expression dependencies, identifier sources, and
+atomic-body spans/terminators are unit-tested. Core owns shared parsing; provider
+component overrides preserve legacy MySQL/MariaDB LIMIT and basic row locking,
+and SQL Server OFFSET/FETCH, while narrowing PostgreSQL-specific syntax.
+PostgreSQL rejects MySQL comma LIMIT.
+
+Lock-target lookup, lockable-query/relation checks, WITH TIES ordering and locking
+restrictions, count/offset types and nonnegative values, execution semantics, and
+exhaustive dialect/version validation remain deferred. No integration tests or
+database-execution support were added.
+
 ## Aggregate And Window Parsing
 
 Function calls retain aggregate `FILTER (WHERE ...)`, ordered-set

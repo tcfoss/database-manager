@@ -67,4 +67,16 @@ public sealed class SqlValueList<T> : ValueList<T>, IEquatable<SqlValueList<T>>,
     {
         return base.GetHashCode();
     }
+
+    public SqlValueList<TNew> Map<TNew>(Func<T, TNew> selector)
+        where TNew : IEquatable<TNew>?
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        var mapped = new SqlValueList<TNew>(Count);
+        foreach (T item in this)
+        {
+            mapped.Add(selector(item));
+        }
+        return mapped;
+    }
 }

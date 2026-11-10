@@ -491,6 +491,25 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Fact]
+    public void SelectTails_PreserveSqlServerOffsetFetch()
+    {
+        const string sql = "SELECT id FROM items ORDER BY id OFFSET 2 ROWS FETCH NEXT 3 ROWS ONLY";
+
+        Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 OFFSET 2", Label = "Reject offset without rows")]
+    [InlineData("SELECT 1 FETCH FIRST ROW ONLY", Label = "Reject standalone fetch")]
+    [InlineData("SELECT 1 OFFSET 2 ROWS FETCH NEXT 3 ROWS WITH TIES", Label = "Reject fetch with ties")]
+    [InlineData("SELECT 1 FOR UPDATE", Label = "Reject PostgreSQL update lock")]
+    [InlineData("SELECT 1 FOR SHARE", Label = "Reject PostgreSQL share lock")]
+    public void SelectTails_NarrowPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Theory]
     [InlineData("WITH result AS (SELECT 1 AS id) SELECT id FROM result")]
     [InlineData("WITH result AS (VALUES (1)) SELECT column1 FROM result")]

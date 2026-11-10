@@ -16,6 +16,7 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
     public CommonTableExpression? CommonTableExpression { get; init; }
     public SqlValueList<OrderBy>? OrderBy { get; init; }
     public Limit? Limit { get; init; }
+    public SqlValueList<RowLockingClause>? RowLocks { get; init; }
     public SelectInto? SelectInto { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
@@ -35,6 +36,11 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
         if (Limit != null)
         {
             writer.WriteSql($" {Limit}");
+        }
+
+        if (RowLocks != null)
+        {
+            writer.WriteSql($" {RowLocks.ToSqlDelimited(" ")}");
         }
 
         if (SelectInto != null)
@@ -70,6 +76,15 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
             {
                 writer.WriteLine();
                 Limit.FormatSql(writer, manager);
+            }
+
+            if (RowLocks != null)
+            {
+                foreach (RowLockingClause rowLock in RowLocks)
+                {
+                    writer.WriteLine();
+                    rowLock.FormatSql(writer, manager);
+                }
             }
 
             if (SelectInto != null)
@@ -112,6 +127,23 @@ public record Select(SelectBody Body) : Statement, IAddTablesToContext
             foreach (ItemRef r in Body.GetReferencedItems(context))
             {
                 yield return r;
+            }
+            if (OrderBy != null)
+            {
+                foreach (OrderBy order in OrderBy)
+                {
+                    foreach (ItemRef item in order.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+            if (Limit != null)
+            {
+                foreach (ItemRef item in Limit.GetReferencedItems(context))
+                {
+                    yield return item;
+                }
             }
         }
     }

@@ -453,4 +453,25 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("SELECT 1 FROM app.items AS i LIMIT ALL FOR UPDATE OF i NOWAIT", "LIMIT ALL FOR UPDATE OF \"i\" NOWAIT", Label = "Format unlimited count and lock target")]
+    [InlineData("SELECT 1 OFFSET (app.skip_rows())", "OFFSET (\"app\".\"skip_rows\"())", Label = "Format offset expression recursively")]
+    [InlineData("SELECT 1 LIMIT (app.count_rows()) OFFSET (app.skip_rows())", "LIMIT (\"app\".\"count_rows\"()) OFFSET (\"app\".\"skip_rows\"())", Label = "Format count and offset recursively")]
+    [InlineData("SELECT 1 FETCH NEXT ROW ONLY", "FETCH FIRST ROWS ONLY", Label = "Format implicit fetch count")]
+    [InlineData("SELECT id FROM items ORDER BY id OFFSET 2 ROWS FETCH NEXT 3 ROWS WITH TIES", "OFFSET 2 FETCH FIRST 3 ROWS WITH TIES", Label = "Format fetch with ties")]
+    [InlineData("SELECT 1 FROM items AS a FOR NO KEY UPDATE OF a NOWAIT FOR KEY SHARE OF a SKIP LOCKED", "FOR NO KEY UPDATE OF \"a\" NOWAIT FOR KEY SHARE OF \"a\" SKIP LOCKED", Label = "Format multiple locks")]
+    public void SelectTails_FormatAndReparseWithoutLosingClauses(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Select>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

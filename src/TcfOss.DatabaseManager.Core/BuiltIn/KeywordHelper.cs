@@ -50,6 +50,7 @@ public static class KeywordHelper
         Keyword.LIMIT,
         Keyword.OFFSET,
         Keyword.FETCH,
+        Keyword.FOR,
         Keyword.UNION,
         Keyword.EXCEPT,
         Keyword.INTERSECT,

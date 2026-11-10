@@ -871,6 +871,25 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             Limit.ExpressionLimit el => new Limit.ExpressionLimit(NormalizeExpression(el.Expression, inSelect: true, flatten: flatten)),
             Limit.MyCommaSeparated cs => new Limit.MyCommaSeparated(NormalizeExpression(cs.LimitExpression, inSelect: true, flatten: flatten), cs.OffsetExpression != null ? NormalizeExpression(cs.OffsetExpression, inSelect: true, flatten: flatten) : null),
             Limit.MyLimitOffset lo => new Limit.MyLimitOffset(NormalizeExpression(lo.LimitExpression, inSelect: true, flatten: flatten), lo.OffsetExpression != null ? NormalizeExpression(lo.OffsetExpression, inSelect: true, flatten: flatten) : null),
+            Limit.OffsetFetch pagination => pagination with
+            {
+                Offset = NormalizeExpression(pagination.Offset, inSelect: true, flatten: flatten),
+                Fetch = NormalizeNullableExpression(pagination.Fetch, inSelect: true, flatten: flatten)
+            },
+            Limit.PgLimit pagination => pagination with
+            {
+                Count = NormalizeNullableExpression(pagination.Count, inSelect: true, flatten: flatten),
+                Offset = NormalizeNullableExpression(pagination.Offset, inSelect: true, flatten: flatten)
+            },
+            Limit.PgOffset pagination => pagination with
+            {
+                Offset = NormalizeExpression(pagination.Offset, inSelect: true, flatten: flatten)
+            },
+            Limit.PgFetch pagination => pagination with
+            {
+                Count = NormalizeNullableExpression(pagination.Count, inSelect: true, flatten: flatten),
+                Offset = NormalizeNullableExpression(pagination.Offset, inSelect: true, flatten: flatten)
+            },
             _ => throw new NotImplementedException()
         };
     }
@@ -906,6 +925,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             CommonTableExpression = cte,
             OrderBy = orderBy,
             Limit = limit,
+            RowLocks = select.RowLocks?.Map(l => l with { Of = l.Of?.Map(ComponentNormalizer.NormalizeSingleIdentifier) }),
         };
     }
 

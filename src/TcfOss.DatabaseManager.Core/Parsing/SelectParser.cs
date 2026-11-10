@@ -191,16 +191,9 @@ public class SelectParser
             orderBy = state.ParseCommaSeparated(_p.ComponentParser.ParseOrderBy);
         }
 
-        Limit? limit = null;
-        if (state.PeekKeyword(Keyword.LIMIT))
-        {
-            limit = _p.ComponentParser.ParseLimit(state);
-        }
-        else if (state.PeekKeyword(Keyword.OFFSET))
-        {
-            limit = _p.ComponentParser.ParseOffsetFetch(state);
-        }
-
+        SqlValueList<RowLockingClause>? rowLocks = ParseRowLocks(state);
+        Limit? limit = _p.ComponentParser.ParseOptionalSelectLimit(state);
+        rowLocks ??= ParseRowLocks(state);
 
         SelectInto? intoLate = null;
         if (state.PeekKeyword(Keyword.INTO))
@@ -213,8 +206,25 @@ public class SelectParser
             CommonTableExpression = cte,
             OrderBy = orderBy,
             Limit = limit,
+            RowLocks = rowLocks,
             SelectInto = intoLate
         };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ FOR lock_strength [ OF name [, ...] ] [ NOWAIT | SKIP LOCKED ] ] ...
+    /// ]]></code>
+    /// </summary>
+    private SqlValueList<RowLockingClause>? ParseRowLocks(ParserState state)
+    {
+        SqlValueList<RowLockingClause>? clauses = null;
+        while (_p.ComponentParser.ParseOptionalRowLock(state) is { } clause)
+        {
+            clauses ??= [];
+            clauses.Add(clause);
+        }
+        return clauses;
     }
 
     protected virtual SelectInto ParseSelectInto(ParserState state)

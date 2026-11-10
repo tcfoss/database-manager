@@ -30,6 +30,94 @@ public class PgSelectParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("SELECT result.value AS value FROM LATERAL app.expand(($1)) WITH ORDINALITY AS result (value, ordinal)", Label = "Normalize lateral function")]
+    [InlineData("SELECT result.value AS value FROM LATERAL ROWS FROM (app.first(($1)) AS (value INT), app.second()) WITH ORDINALITY AS result (value, other, ordinal)", Label = "Normalize lateral rows from")]
+    [InlineData("SELECT result.value AS value FROM LATERAL (SELECT $1 AS original) AS result (value)", Label = "Normalize lateral derived table")]
+    public void FromRelations_NormalizeWithoutLosingComponents(string sql)
+    {
+        var config = PgTestConfig.GetTestConfig();
+        var normalizer = new Normalizer(config, new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider()));
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+
+        Select normalized = normalizer.NormalizeSelect(statement);
+        string normalizedSql = normalized.ToSql();
+
+        Assert.Contains("LATERAL ", normalizedSql);
+        Assert.Contains("AS \"result\" (\"value\"", normalizedSql);
+        if (sql.Contains("WITH ORDINALITY", StringComparison.Ordinal))
+        {
+            Assert.Contains("WITH ORDINALITY", normalizedSql);
+        }
+        Assert.Equal(normalized, normalizer.NormalizeSelect(normalized));
+    }
+
+    [Fact]
+    public void RowsFrom_PreservesPerFunctionColumnDefinitions()
+    {
+        var state = GetState("ROWS FROM (app.records() AS (id INT, label TEXT), app.other())");
+        var relation = Assert.IsType<TableFactor.RowsFrom>(new PgParser().SelectParser.ParseTableWithJoins(state).Relation);
+
+        Assert.Equal(2, relation.Functions.Count);
+        Assert.Equal(new[] { "id", "label" }, relation.Functions[0].Columns!.Select(column => column.Name.Name));
+        Assert.Null(relation.Functions[1].Columns);
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Fact]
+    public void FromFunctions_ReportFunctionsAndArgumentReferencesWithoutInventingTables()
+    {
+        var statement = Assert.IsType<Select>(ParseStatement("SELECT result.value FROM app.items CROSS JOIN LATERAL app.expand(items.value) AS result (value)"));
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        ItemRef[] references = [.. statement.GetReferencedItems(context)];
+        string[] objects = [.. references.OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Contains("app.items", objects);
+        Assert.Contains("app.expand", objects);
+        Assert.DoesNotContain("result", objects);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM generate_series(1, 3)", Label = "Unaliased table function")]
+    [InlineData("SELECT value FROM app.values_for($1) AS result (value)", Label = "Function with argument and column alias")]
+    [InlineData("SELECT * FROM unnest(ARRAY[1, 2]) WITH ORDINALITY AS result (value, ordinal)", Label = "Function with ordinality")]
+    [InlineData("SELECT * FROM LATERAL unnest(ARRAY[1, 2]) AS result (value)", Label = "Lateral function")]
+    [InlineData("SELECT * FROM items CROSS JOIN LATERAL app.expand(items.value) AS result (value)", Label = "Cross join lateral function")]
+    [InlineData("SELECT * FROM items LEFT OUTER JOIN LATERAL (SELECT items.id) AS result (value) ON TRUE", Label = "Left join lateral subquery")]
+    [InlineData("SELECT * FROM ROWS FROM (app.first($1), app.second($2))", Label = "Rows from functions with arguments")]
+    [InlineData("SELECT * FROM ROWS FROM (app.first(), app.second()) WITH ORDINALITY AS result (first, second, ordinal)", Label = "Rows from with ordinality")]
+    [InlineData("SELECT * FROM LATERAL ROWS FROM (app.first(), app.second()) AS result (first, second)", Label = "Lateral rows from")]
+    [InlineData("SELECT * FROM ROWS FROM (app.records() AS (id INT, label TEXT COLLATE app.locale)) AS result", Label = "Rows from with column definitions")]
+    [InlineData("SELECT * FROM items AS result (value)", Label = "Table with column alias")]
+    [InlineData("SELECT * FROM (SELECT 1 AS original) AS result (value)", Label = "Derived table with column alias")]
+    [InlineData("SELECT * FROM (items INNER JOIN other ON TRUE) AS result (value)", Label = "Nested join with column alias")]
+    public void FromRelations_ParseAndRoundTrip(string sql)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Fact]
+    public void FromFunction_PreservesLateralOrdinalityArgumentsAndAliasColumns()
+    {
+        var state = GetState("LATERAL app.expand($1) WITH ORDINALITY AS result (value, ordinal)", 37);
+        var relation = Assert.IsType<TableFactor.TableFunction>(new PgParser().SelectParser.ParseTableWithJoins(state).Relation);
+
+        Assert.True(relation.IsLateral);
+        Assert.True(relation.WithOrdinality);
+        Assert.Equal("app.expand", relation.Function.Call.Name.ToSql());
+        Assert.IsType<FunctionArguments.List>(relation.Function.Call.Arguments);
+        Assert.Equal("result", relation.Alias!.Name);
+        Assert.Equal(new[] { "value", "ordinal" }, relation.AliasColumns!.Select(column => column.Name));
+        Assert.Equal(37, relation.Alias.Source!.Value.SourceId);
+        Assert.IsType<Eof>(state.Peek());
+    }
+
+    [Theory]
     [InlineData("SELECT COUNT(*) FILTER (WHERE active) FROM items", Label = "Filtered aggregate")]
     [InlineData("SELECT SUM(value) FILTER (WHERE active) OVER (PARTITION BY category) FROM items", Label = "Filtered window aggregate")]
     [InlineData("SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value DESC NULLS LAST) FROM items", Label = "Ordered set aggregate")]
@@ -215,6 +303,164 @@ public class PgSelectParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("SELECT id ORDER BY id NULLS MIDDLE", Label = "Invalid null ordering")]
     [InlineData("SELECT id ORDER BY id NULLS FIRST NULLS LAST", Label = "Duplicate null ordering")]
     public void AggregateWindows_RejectMalformedSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+
+    [Theory]
+    [InlineData("SELECT 1 FOR UPDATE", "SELECT 1 FOR UPDATE", Label = "Update lock without from")]
+    [InlineData("SELECT * FROM items FOR NO KEY UPDATE OF items NOWAIT", "SELECT * FROM items FOR NO KEY UPDATE OF items NOWAIT", Label = "No key update with target and nowait")]
+    [InlineData("SELECT * FROM items FOR SHARE SKIP LOCKED", "SELECT * FROM items FOR SHARE SKIP LOCKED", Label = "Share skips locked rows")]
+    [InlineData("SELECT * FROM items AS a JOIN other AS b ON TRUE FOR KEY SHARE OF a, b", "SELECT * FROM items AS a INNER JOIN other AS b ON TRUE FOR KEY SHARE OF a, b", Label = "Key share with multiple aliases")]
+    [InlineData("SELECT * FROM items FOR UPDATE OF items NOWAIT FOR SHARE OF items SKIP LOCKED", "SELECT * FROM items FOR UPDATE OF items NOWAIT FOR SHARE OF items SKIP LOCKED", Label = "Multiple locking clauses")]
+    [InlineData("SELECT * FROM items FOR UPDATE LIMIT 2", "SELECT * FROM items LIMIT 2 FOR UPDATE", Label = "Lock before limit")]
+    [InlineData("SELECT * FROM items LIMIT 2 FOR UPDATE", "SELECT * FROM items LIMIT 2 FOR UPDATE", Label = "Lock after limit")]
+    [InlineData("SELECT * FROM (SELECT * FROM items LIMIT ALL FOR KEY SHARE) AS result FOR UPDATE", "SELECT * FROM (SELECT * FROM items LIMIT ALL FOR KEY SHARE) AS result FOR UPDATE", Label = "Nested lock scope")]
+    public void RowLocking_ParseAndRoundTrip(string sql, string expected)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+
+        Assert.Equal(expected, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 LIMIT ALL", "SELECT 1 LIMIT ALL", Label = "Unlimited count")]
+    [InlineData("SELECT 1 LIMIT NULL OFFSET 2", "SELECT 1 LIMIT NULL OFFSET 2", Label = "Null count and offset")]
+    [InlineData("SELECT 1 OFFSET 2 ROWS LIMIT 3", "SELECT 1 LIMIT 3 OFFSET 2", Label = "Offset before limit")]
+    [InlineData("SELECT 1 OFFSET $1", "SELECT 1 OFFSET $1", Label = "Offset alone")]
+    [InlineData("SELECT 1 FETCH NEXT ROW ONLY", "SELECT 1 FETCH FIRST ROWS ONLY", Label = "Implicit fetch count")]
+    [InlineData("SELECT 1 FETCH FIRST (2 + 3) ROWS ONLY OFFSET 1", "SELECT 1 OFFSET 1 FETCH FIRST (2 + 3) ROWS ONLY", Label = "Fetch before offset")]
+    [InlineData("SELECT id FROM items ORDER BY id OFFSET 2 ROW FETCH NEXT 3 ROWS WITH TIES", "SELECT id FROM items ORDER BY id OFFSET 2 FETCH FIRST 3 ROWS WITH TIES", Label = "Fetch with ties")]
+    [InlineData("SELECT 1 UNION ALL SELECT 2 LIMIT 1", "SELECT 1 UNION ALL SELECT 2 LIMIT 1", Label = "Limit applies to set operation")]
+    [InlineData("(SELECT 1 LIMIT 1) OFFSET 2", "(SELECT 1 LIMIT 1) OFFSET 2", Label = "Outer offset preserves inner limit")]
+    [InlineData("SELECT 1 OFFSET NULL LIMIT ALL", "SELECT 1 LIMIT ALL OFFSET NULL", Label = "Null offset before unlimited count")]
+    [InlineData("WITH result AS (SELECT id FROM items LIMIT ALL FOR KEY SHARE) SELECT id FROM result OFFSET 1", "WITH result AS (SELECT id FROM items LIMIT ALL FOR KEY SHARE) SELECT id FROM result OFFSET 1", Label = "CTE body and consumer tails")]
+    public void Pagination_ParseAndRoundTrip(string sql, string expected)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+
+        Assert.Equal(expected, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+
+
+    [Theory]
+    [InlineData("SELECT 1 AS value FROM app.items AS i ORDER BY (app.sort_value()) LIMIT (app.count_rows()) OFFSET (app.skip_rows()) FOR NO KEY UPDATE OF i NOWAIT", false, Label = "Limit without flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i ORDER BY (app.sort_value()) LIMIT (app.count_rows()) OFFSET (app.skip_rows()) FOR NO KEY UPDATE OF i NOWAIT", true, Label = "Limit with flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i ORDER BY (app.sort_value()) OFFSET (app.skip_rows()) FETCH FIRST (app.count_rows()) ROWS WITH TIES FOR KEY SHARE OF i SKIP LOCKED", false, Label = "Fetch without flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i ORDER BY (app.sort_value()) OFFSET (app.skip_rows()) FETCH FIRST (app.count_rows()) ROWS WITH TIES FOR KEY SHARE OF i SKIP LOCKED", true, Label = "Fetch with flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i OFFSET (app.skip_rows()) FOR UPDATE OF i", false, Label = "Offset without flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i OFFSET (app.skip_rows()) FOR UPDATE OF i", true, Label = "Offset with flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i LIMIT ALL FOR SHARE OF i", false, Label = "Unlimited count without flattening")]
+    [InlineData("SELECT 1 AS value FROM app.items AS i LIMIT ALL FOR SHARE OF i", true, Label = "Unlimited count with flattening")]
+    public void SelectTails_NormalizationPreservesClausesAndFlattening(string sql, bool flatten)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+        var normalizer = new Normalizer(PgTestConfig.GetTestConfig(), new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider()));
+
+        Select normalized = normalizer.NormalizeSelect(statement, flatten: flatten);
+        Expression? count = normalized.Limit switch
+        {
+            Limit.PgLimit limit => limit.Count,
+            Limit.PgFetch limit => limit.Count,
+            _ => null
+        };
+        Expression? offset = normalized.Limit switch
+        {
+            Limit.PgLimit limit => limit.Offset,
+            Limit.PgFetch limit => limit.Offset,
+            Limit.PgOffset limit => limit.Offset,
+            _ => null
+        };
+        if (count != null)
+        {
+            Assert.Equal(!flatten, count is Nested);
+        }
+        if (offset != null)
+        {
+            Assert.Equal(!flatten, offset is Nested);
+        }
+        if (normalized.OrderBy != null)
+        {
+            Assert.Equal(!flatten, Assert.Single(normalized.OrderBy).Expression is Nested);
+        }
+        RowLockingClause originalLock = Assert.Single(statement.RowLocks!);
+        RowLockingClause normalizedLock = Assert.Single(normalized.RowLocks!);
+        Assert.Equal(originalLock.Strength, normalizedLock.Strength);
+        Assert.Equal(originalLock.Wait, normalizedLock.Wait);
+        Assert.Equal(QuoteStyle.Ansi, Assert.Single(normalizedLock.Of!).QuoteStyle);
+        if (statement.Limit is Limit.PgFetch originalFetch)
+        {
+            Assert.Equal(originalFetch.WithTies, Assert.IsType<Limit.PgFetch>(normalized.Limit).WithTies);
+        }
+        Assert.Equal(normalized, normalizer.NormalizeSelect(normalized, flatten: flatten));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 FROM app.items AS i ORDER BY app.sort_value() LIMIT app.count_rows() OFFSET app.skip_rows() FOR UPDATE OF i NOWAIT", Label = "Limit dependency traversal")]
+    [InlineData("SELECT 1 FROM app.items AS i ORDER BY app.sort_value() OFFSET app.skip_rows() FETCH FIRST app.count_rows() ROWS ONLY FOR SHARE OF i", Label = "Fetch dependency traversal")]
+    public void SelectTails_CollectExpressionDependenciesWithoutLockAliasObjects(string sql)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(new[] { "app.items", "app.sort_value", "app.count_rows", "app.skip_rows" }.Order(), names.Order());
+        Assert.DoesNotContain("i", names);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData(false, Label = "Legacy offset fetch without flattening")]
+    [InlineData(true, Label = "Legacy offset fetch with flattening")]
+    public void SelectTails_NormalizeLegacyOffsetFetch(bool flatten)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement("SELECT 1 AS value OFFSET (1 + 2) FETCH FIRST (3 + 4) ROWS ONLY"));
+        var fetch = Assert.IsType<Limit.PgFetch>(statement.Limit);
+        statement = statement with { Limit = new Limit.OffsetFetch(fetch.Offset!, fetch.Count) };
+        var normalizer = new Normalizer(PgTestConfig.GetTestConfig(), new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider()));
+
+        Select normalized = normalizer.NormalizeSelect(statement, flatten: flatten);
+        var limit = Assert.IsType<Limit.OffsetFetch>(normalized.Limit);
+
+        Assert.Equal(!flatten, limit.Offset is Nested);
+        Assert.Equal(!flatten, limit.Fetch is Nested);
+        Assert.Equal(normalized, normalizer.NormalizeSelect(normalized, flatten: flatten));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 LIMIT", Label = "Missing limit count")]
+    [InlineData("SELECT 1 LIMIT 1, 2", Label = "Reject MySQL comma limit")]
+    [InlineData("SELECT 1 LIMIT ALL, 2", Label = "Comma after unlimited count")]
+    [InlineData("SELECT 1 OFFSET", Label = "Missing offset")]
+    [InlineData("SELECT 1 LIMIT 1 LIMIT 2", Label = "Duplicate limit")]
+    [InlineData("SELECT 1 OFFSET 1 OFFSET 2", Label = "Duplicate offset")]
+    [InlineData("SELECT 1 FETCH", Label = "Missing fetch mode")]
+    [InlineData("SELECT 1 FETCH 2 ROWS ONLY", Label = "Missing first or next")]
+    [InlineData("SELECT 1 FETCH FIRST 2 ONLY", Label = "Missing fetch row keyword")]
+    [InlineData("SELECT 1 FETCH FIRST 2 ROWS", Label = "Missing fetch ending")]
+    [InlineData("SELECT 1 FETCH FIRST 2 ROWS WITH", Label = "Missing ties")]
+    [InlineData("SELECT 1 FETCH FIRST 2 ROWS ONLY LIMIT 2", Label = "Fetch and limit conflict")]
+    [InlineData("SELECT 1 LIMIT 2 FETCH FIRST 2 ROWS ONLY", Label = "Limit and fetch conflict")]
+    [InlineData("SELECT 1 FETCH FIRST ROWS ONLY FETCH FIRST ROWS ONLY", Label = "Duplicate fetch")]
+    [InlineData("SELECT 1 FOR", Label = "Missing lock strength")]
+    [InlineData("SELECT 1 FOR NO UPDATE", Label = "Missing key in lock strength")]
+    [InlineData("SELECT 1 FOR KEY UPDATE", Label = "Invalid key lock strength")]
+    [InlineData("SELECT 1 FOR UPDATE OF", Label = "Missing lock target")]
+    [InlineData("SELECT 1 FOR UPDATE OF a,", Label = "Trailing lock target comma")]
+    [InlineData("SELECT 1 FOR UPDATE OF app.items", Label = "Qualified lock target")]
+    [InlineData("SELECT 1 FOR SHARE SKIP", Label = "Missing locked keyword")]
+    [InlineData("SELECT 1 FOR SHARE NOWAIT SKIP LOCKED", Label = "Conflicting lock wait modes")]
+    [InlineData("SELECT 1 FOR SHARE NOWAIT NOWAIT", Label = "Duplicate lock wait mode")]
+    [InlineData("SELECT 1 FOR UPDATE LIMIT 1 FOR SHARE", Label = "Locks on both sides of limit")]
+    public void SelectTails_RejectMalformedClauses(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
