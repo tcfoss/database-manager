@@ -8,6 +8,7 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 [StringEnum("TRIGGER")]
 [StringEnum("VIEW")]
 [StringEnum("MATERIALIZED VIEW")]
+[StringEnum("SEQUENCE")]
 [StringEnum("EVENT")]
 [StringEnum("SCHEMA")]
 [StringEnum("DATABASE")]

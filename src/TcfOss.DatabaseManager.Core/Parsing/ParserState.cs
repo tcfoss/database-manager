@@ -385,7 +385,13 @@ public class ParserState
         return result != null;
     }
 
-    public T? TryParseStringEnum<T>() where T : class, IStringEnum<T>
+    public T ParseStringEnum<T>() where T : class, IStringEnum<T>
+    {
+        T? result = MaybeParseStringEnum<T>() ?? throw ExpectedException<T>();
+        return result;
+    }
+
+    public T? MaybeParseStringEnum<T>() where T : class, IStringEnum<T>
     {
         if (Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word
             && T.TryParse(word.Value, out T? parsed))

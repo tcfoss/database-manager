@@ -578,6 +578,22 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Theory]
+    [InlineData("CREATE SEQUENCE ids")]
+    [InlineData("CREATE TEMPORARY SEQUENCE ids")]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("ALTER SEQUENCE ids RESTART WITH 10")]
+    [InlineData("DROP SEQUENCE ids")]
+    [InlineData("ALTER TABLE items ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY")]
+    [InlineData("ALTER TABLE items ALTER id SET GENERATED ALWAYS")]
+    [InlineData("ALTER TABLE items ALTER id RESTART WITH 10")]
+    [InlineData("ALTER TABLE items ALTER id SET INCREMENT BY 2")]
+    [InlineData("ALTER TABLE items ALTER id DROP IDENTITY IF EXISTS")]
+    public void SequenceSyntax_RemainsUnsupportedBySqlServerParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Fact]
     public void AlterDispatch_AcceptsTable()
     {

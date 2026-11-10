@@ -73,7 +73,8 @@ public class ReferencedItemsManager
             || ctx == ReferencedItemsContext.AlterTableTarget
             || ctx == ReferencedItemsContext.DropObjectStatement
             || ctx == ReferencedItemsContext.TruncateTarget
-            || ctx == ReferencedItemsContext.CreateTriggerTable;
+            || ctx == ReferencedItemsContext.CreateTriggerTable
+            || ctx == ReferencedItemsContext.SequenceOwnedBy;
     }
 
     // private bool MaybeExpectingAnyObject()

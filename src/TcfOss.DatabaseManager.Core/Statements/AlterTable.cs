@@ -8,15 +8,26 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record AlterTable(ObjectName Table, SqlValueList<AlterTableOperation> Operations) : Statement
 {
+    public bool IfExists { get; init; }
+    public bool Only { get; init; }
+
     public override void ToSql(SqlTextWriter writer)
     {
-        writer.WriteSql($"ALTER TABLE {Table} {Operations.ToSqlDelimited()}");
+        writer.WriteSql($"ALTER TABLE{(IfExists ? " IF EXISTS" : "")}{(Only ? " ONLY" : "")} {Table} {Operations.ToSqlDelimited()}");
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
         writer.WriteSqlI("ALTER TABLE ");
+        if (IfExists)
+        {
+            writer.Write("IF EXISTS ");
+        }
+        if (Only)
+        {
+            writer.Write("ONLY ");
+        }
         Table.FormatSql(writer, manager);
         writer.WriteLine();
         manager.IncreaseIndent();

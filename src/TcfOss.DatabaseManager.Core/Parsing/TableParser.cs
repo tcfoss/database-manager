@@ -377,34 +377,7 @@ public class TableParser
 
     protected virtual PgStatementSequenceOption ParseNextPostgresIdentityOption(ParserState state)
     {
-        if (state.ParseKeyword(Keyword.START))
-        {
-            bool useWith = state.ParseKeyword(Keyword.WITH);
-            return new PgStatementSequenceOption.Start(ValueParser.ParseLiteralLong(state)) { UseWith = useWith };
-        }
-        if (state.ParseKeyword(Keyword.INCREMENT))
-        {
-            bool useBy = state.ParseKeyword(Keyword.BY);
-            return new PgStatementSequenceOption.Increment(ValueParser.ParseLiteralLong(state)) { UseBy = useBy };
-        }
-        bool no = state.ParseKeyword(Keyword.NO);
-        if (state.ParseKeyword(Keyword.MINVALUE))
-        {
-            return new PgStatementSequenceOption.MinValue(no ? null : ValueParser.ParseLiteralLong(state));
-        }
-        if (state.ParseKeyword(Keyword.MAXVALUE))
-        {
-            return new PgStatementSequenceOption.MaxValue(no ? null : ValueParser.ParseLiteralLong(state));
-        }
-        if (state.ParseKeyword(Keyword.CYCLE))
-        {
-            return new PgStatementSequenceOption.Cycle(!no);
-        }
-        if (!no && state.ParseKeyword(Keyword.CACHE))
-        {
-            return new PgStatementSequenceOption.Cache(ValueParser.ParseLiteralLong(state));
-        }
-        throw state.ExpectedException("identity sequence option");
+        return _p.ComponentParser.ParseSequenceOption(state) ?? throw state.ExpectedException("identity sequence option");
     }
 
     public StatementTableConstraint? ParseOptionalTableConstraint(ParserState state)
@@ -1026,6 +999,8 @@ public class TableParser
     {
         state.ExpectKeyword(Keyword.TABLE);
 
+        bool ifExists = _p.SupportsPostgresIdentitySyntax && state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
+        bool only = _p.SupportsPostgresIdentitySyntax && state.ParseKeyword(Keyword.ONLY);
         ObjectName tableName = _objname(state);
 
         var operations = new SqlValueList<AlterTableOperation>();
@@ -1045,7 +1020,7 @@ public class TableParser
             }
         }
 
-        return new AlterTable(tableName, operations);
+        return new AlterTable(tableName, operations) { IfExists = ifExists, Only = only };
     }
 
     private AlterTableOperation ParseNextAlterOperation(ParserState state)
@@ -1097,7 +1072,7 @@ public class TableParser
             // CHECK ENFORCED | NOT ENFORCED
             // INDEX VISIBLE | INVISIBLE
             // COLUMN VISIBLE | INVISIBLE
-            _ = state.ParseKeyword(Keyword.COLUMN);
+            bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
             Identifier columnName = _ident(state);
             if (state.ParseKeywordsAll(Keyword.SET, Keyword.DEFAULT))
             {
@@ -1107,6 +1082,11 @@ public class TableParser
             if (state.ParseKeywordsAll(Keyword.DROP, Keyword.DEFAULT))
             {
                 return new AlterTableOperation.DropDefault(columnName);
+            }
+            AlterTableOperation.PgIdentity? identity = ParseOptionalAlterIdentity(state, columnName, useColumnKeyword);
+            if (identity != null)
+            {
+                return identity;
             }
             throw state.ExpectedException("SET DEFAULT", "DROP DEFAULT");
         }
@@ -1143,6 +1123,65 @@ public class TableParser
         }
 
         throw ParserState.ExpectedCategoryException("alter_table_operation", next);
+    }
+
+    private AlterTableOperation.PgIdentity? ParseOptionalAlterIdentity(ParserState state, Identifier column, bool useColumnKeyword)
+    {
+        if (!_p.SupportsPostgresIdentitySyntax)
+        {
+            return null;
+        }
+        SqlValueList<PgAlterIdentityOperation> operations = [];
+        if (state.ParseKeyword(Keyword.ADD))
+        {
+            if (ParseNextColumnOption(state) is not StatementColumnOption.Generated.PgIdentity identity)
+            {
+                throw state.ExpectedCategoryException("GENERATED AS IDENTITY clause");
+            }
+            operations.Add(new PgAlterIdentityOperation.Add(identity));
+        }
+        else if (state.ParseKeywordsAll(Keyword.DROP, Keyword.IDENTITY))
+        {
+            operations.Add(new PgAlterIdentityOperation.Drop(state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS)));
+        }
+        else
+        {
+            var used = new HashSet<string>(StringComparer.Ordinal);
+            while (state.Peek() is Word { Keyword: Keyword.SET or Keyword.RESTART })
+            {
+                Location location = state.Peek().Location;
+                bool set = state.ParseKeyword(Keyword.SET);
+                string key;
+                PgAlterIdentityOperation operation;
+                if (set && state.ParseKeyword(Keyword.GENERATED))
+                {
+                    bool always = state.ParseKeyword(Keyword.ALWAYS);
+                    if (!always)
+                    {
+                        state.ExpectKeywordsAll(Keyword.BY, Keyword.DEFAULT);
+                    }
+                    operation = new PgAlterIdentityOperation.SetGenerated(always);
+                    key = "GENERATED";
+                }
+                else
+                {
+                    PgStatementSequenceOption option = _p.ComponentParser.ParseSequenceOption(state, allowRestart: !set)
+                        ?? throw state.ExpectedException("identity sequence option");
+                    operation = new PgAlterIdentityOperation.SequenceOption(option);
+                    key = option.UniqueName;
+                }
+                if (!used.Add(key))
+                {
+                    throw new ParseException.Duplicate(key, location);
+                }
+                operations.Add(operation);
+            }
+            if (operations.Count == 0)
+            {
+                return null;
+            }
+        }
+        return new AlterTableOperation.PgIdentity(column, operations) { UseColumnKeyword = useColumnKeyword };
     }
 
     private AlterTableOperation? SubParseAlterCharSetOrCollation(ParserState state, bool includeDefault)

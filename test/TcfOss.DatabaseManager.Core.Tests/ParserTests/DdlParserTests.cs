@@ -669,4 +669,85 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(sql, statement.ToSql());
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
+
+    [Theory]
+    [InlineData("CREATE SEQUENCE app.ids AS SMALLINT START WITH 10 INCREMENT BY 2 OWNED BY app.items.id")]
+    [InlineData("CREATE TEMPORARY SEQUENCE IF NOT EXISTS ids NO MINVALUE NO MAXVALUE CACHE 5 NO CYCLE")]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("ALTER SEQUENCE ids RESTART WITH -5 CACHE 2")]
+    [InlineData("ALTER SEQUENCE ids OWNER TO CURRENT_ROLE")]
+    [InlineData("DROP SEQUENCE IF EXISTS ids, app.more_ids CASCADE")]
+    [InlineData("ALTER TABLE IF EXISTS ONLY app.items ALTER COLUMN id SET GENERATED ALWAYS RESTART WITH 10")]
+    public static void SequenceSyntax_PreservesKitchenSinkGrammar(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void SequenceOptions_CollectOptionsFromVirtualHook(bool alter)
+    {
+        var state = GetState("SEQUENCE ids RESET CACHE 2");
+        var parser = new ExtendedSequenceDdlParser(new Parser());
+        SqlValueList<PgStatementSequenceOption> options;
+        if (alter)
+        {
+            AlterSequence statement = parser.ParseAlterSequence(state);
+            options = Assert.IsType<PgAlterSequenceOperation.Parameters>(statement.Operation).Options;
+        }
+        else
+        {
+            options = parser.ParseCreateSequence(state, null, false).Options;
+        }
+
+        Assert.Equal(2, options.Count);
+        Assert.False(Assert.IsType<PgStatementSequenceOption.Cycle>(options[0]).Enabled);
+        Assert.Equal(2, Assert.IsType<PgStatementSequenceOption.Cache>(options[1]).Value);
+        Assert.True(state.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void SequenceOptions_DetectDuplicateOptionsFromVirtualHook(bool alter)
+    {
+        var state = GetState("SEQUENCE ids RESET CYCLE");
+        var parser = new ExtendedSequenceDdlParser(new Parser());
+
+        if (alter)
+        {
+            Assert.Throws<ParseException.Duplicate>(() => parser.ParseAlterSequence(state));
+        }
+        else
+        {
+            Assert.Throws<ParseException.Duplicate>(() => parser.ParseCreateSequence(state, null, false));
+        }
+    }
+
+    [Theory]
+    [InlineData("AS")]
+    [InlineData("OWNED")]
+    [InlineData("OWNED NONE")]
+    [InlineData("OWNED BY")]
+    [InlineData("NO")]
+    public static void SequenceOptions_RejectMalformedRecognizedClauses(string clause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE SEQUENCE ids {clause}"));
+    }
+
+    private sealed class ExtendedSequenceDdlParser(Parser parser) : DdlParser(parser)
+    {
+        protected override PgStatementSequenceOption? ParseNextSequenceOption(ParserState state, bool alter)
+        {
+            if (state.ParseKeyword(Keyword.RESET))
+            {
+                return new PgStatementSequenceOption.Cycle(false);
+            }
+            return base.ParseNextSequenceOption(state, alter);
+        }
+    }
 }

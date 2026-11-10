@@ -448,6 +448,7 @@ public enum Keyword
     LOCATION,
     LOCK,
     LOCKED,
+    LOGGED,
     LOGIN,
     LOGS,
     LONGBLOB,

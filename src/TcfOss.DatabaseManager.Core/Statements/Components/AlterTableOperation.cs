@@ -136,6 +136,30 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
+    public record PgIdentity(Identifier Column, SqlValueList<PgAlterIdentityOperation> Operations) : AlterTableOperation
+    {
+        public bool UseColumnKeyword { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(UseColumnKeyword ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} ");
+            writer.WriteDelimited(Operations, " ");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(UseColumnKeyword ? "ALTER COLUMN " : "ALTER ");
+            Column.FormatSql(writer, manager);
+            foreach (PgAlterIdentityOperation operation in Operations)
+            {
+                writer.Write(" ");
+                operation.FormatSql(writer, manager);
+            }
+        }
+    }
+
     public record SetDefault(Identifier Column, StatementColumnOption.Default NewDefault) : AlterTableOperation
     {
         public override void ToSql(SqlTextWriter writer)

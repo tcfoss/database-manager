@@ -58,7 +58,9 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
     {
         using (context.Enter(ObjectType == DroppableObject.MaterializedView
             ? ReferencedItemsContext.DropMaterializedViewTarget
-            : ReferencedItemsContext.DropObjectStatement))
+            : ObjectType == DroppableObject.Sequence
+                ? ReferencedItemsContext.SequenceTarget
+                : ReferencedItemsContext.DropObjectStatement))
         {
             foreach (ObjectName name in Names)
             {

@@ -262,6 +262,49 @@ public class ComponentParser(Parser parser)
         return new Assignment(target, value);
     }
 
+    public virtual PgStatementSequenceOption? ParseSequenceOption(ParserState state, bool allowRestart = true)
+    {
+        if (allowRestart && state.ParseKeyword(Keyword.RESTART))
+        {
+            bool useWith = state.ParseKeyword(Keyword.WITH);
+            long? value = useWith || state.Peek() is NumericLiteral or Plus or Minus
+                ? ValueParser.ParseLiteralLong(state) : null;
+            return new PgStatementSequenceOption.Restart(value) { UseWith = useWith };
+        }
+        if (state.ParseKeyword(Keyword.START))
+        {
+            bool useWith = state.ParseKeyword(Keyword.WITH);
+            return new PgStatementSequenceOption.Start(ValueParser.ParseLiteralLong(state)) { UseWith = useWith };
+        }
+        if (state.ParseKeyword(Keyword.INCREMENT))
+        {
+            bool useBy = state.ParseKeyword(Keyword.BY);
+            return new PgStatementSequenceOption.Increment(ValueParser.ParseLiteralLong(state)) { UseBy = useBy };
+        }
+        bool no = state.ParseKeyword(Keyword.NO);
+        if (state.ParseKeyword(Keyword.MINVALUE))
+        {
+            return new PgStatementSequenceOption.MinValue(no ? null : ValueParser.ParseLiteralLong(state));
+        }
+        if (state.ParseKeyword(Keyword.MAXVALUE))
+        {
+            return new PgStatementSequenceOption.MaxValue(no ? null : ValueParser.ParseLiteralLong(state));
+        }
+        if (state.ParseKeyword(Keyword.CYCLE))
+        {
+            return new PgStatementSequenceOption.Cycle(!no);
+        }
+        if (!no && state.ParseKeyword(Keyword.CACHE))
+        {
+            return new PgStatementSequenceOption.Cache(ValueParser.ParseLiteralLong(state));
+        }
+        if (no)
+        {
+            throw state.ExpectedException("identity sequence option");
+        }
+        return null;
+    }
+
     public virtual CreateOrLabel? ParseCreateOrLabel(ParserState state)
     {
         if (state.ParseKeywordsAll(Keyword.OR, Keyword.REPLACE))

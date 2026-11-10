@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Postgres.Parsing;
@@ -62,12 +63,14 @@ public class PgParser : Parser
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
     {
         CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);
+        TemporaryLabel? temporaryLabel = ParseTemporaryLabel(state);
         return new CreateObjectOptions
         {
             CreateOrLabel = createOrLabel,
-            TemporaryLabel = ParseTemporaryLabel(state),
+            TemporaryLabel = temporaryLabel,
+            Unlogged = temporaryLabel == null && state.ParseKeyword(Keyword.UNLOGGED),
             Recursive = state.ParseKeyword(Keyword.RECURSIVE),
-            AllSupportedTypes = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
+            AllSupportedTypes = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN", "SEQUENCE"]
         };
     }
 
@@ -122,9 +125,13 @@ public class PgParser : Parser
         {
             throw state.ExpectedException("VIEW", "FUNCTION", "PROCEDURE", "TRIGGER");
         }
-        if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW))
+        if (options.Unlogged && kw != Keyword.SEQUENCE)
         {
-            throw state.ExpectedException("TABLE", "VIEW");
+            throw state.ExpectedException("SEQUENCE");
+        }
+        if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.SEQUENCE))
+        {
+            throw state.ExpectedException("TABLE", "VIEW", "SEQUENCE");
         }
     }
 
@@ -142,6 +149,7 @@ public class PgParser : Parser
         return objectTypeToken.Keyword switch
         {
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
+            Keyword.SEQUENCE => DdlParser.ParseCreateSequence(state, options.TemporaryLabel, options.Unlogged),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
             Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel),
             Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel),

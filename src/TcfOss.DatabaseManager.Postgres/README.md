@@ -92,6 +92,48 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Sequences And Identity Alterations
+
+`CREATE [TEMP | TEMPORARY | UNLOGGED] SEQUENCE [IF NOT EXISTS] name ...`
+produces Core's `CreateSequence`, retaining persistence spelling and ordered
+`PgStatementSequenceOption` nodes. Options cover AS SMALLINT/INTEGER/BIGINT,
+START [WITH], INCREMENT [BY], MINVALUE/MAXVALUE and their NO forms, CACHE,
+CYCLE/NO CYCLE, and OWNED BY a qualified column or NONE. INT/INT2/INT4/INT8 type
+aliases normalize to canonical spellings. The numeric option parser is shared
+with existing identity-column declarations through `ComponentParser`.
+
+`AlterSequence` retains IF EXISTS and a typed `PgAlterSequenceOperation`:
+ordered parameter changes (including RESTART with an optional value), OWNER TO,
+RENAME TO, SET SCHEMA, and SET LOGGED/UNLOGGED. Owner specifications reuse
+`Account`, including CURRENT_ROLE, CURRENT_USER, SESSION_USER, and quoted names.
+`DROP SEQUENCE` reuses `DropObject` with multiple targets, IF EXISTS, and optional
+CASCADE/RESTRICT. Ordinary-view and materialized-view syntax remains separate.
+
+`ALTER TABLE [IF EXISTS] [ONLY] name ALTER [COLUMN] column ...` supports ADD
+GENERATED ALWAYS/BY DEFAULT AS IDENTITY with optional sequence options, SET
+GENERATED, RESTART, SET numeric/bounds/cache/cycle options, and DROP IDENTITY
+[IF EXISTS]. Ordered grouped SET/RESTART changes and comma-separated column
+alterations retain their structure. Core owns the grammar; the MySQL/MariaDB
+and SQL Server parsers retain their previous rejection of these sequence and
+PostgreSQL identity forms rather than acquiring them through shared dispatch.
+
+SQL/JSON round trips, formatting, identifier sources, comments and statement
+boundaries, SQL atomic bodies, signed 64-bit bounds, and provider distinctions
+are unit-tested. Dependency traversal reports existing ALTER/DROP targets and
+OWNED BY table references, not newly declared sequence names, owner roles, or
+rename/schema destinations; sequence targets remain unknown until resolution
+exists. Dependency filters and caller scopes are preserved.
+
+This completes the bounded sequence/identity ALTER parsing milestone, not
+sequence execution or semantic validation. Increment/cache validity, bound and
+type compatibility, ownership/schema restrictions, identity eligibility,
+temporary lifetimes, privileges, and locking are not resolved. Schema-qualified
+or quoted sequence type names and alternate numeric literal spellings remain
+grammar extensions. Definition construction explicitly rejects sequence
+lifecycle and identity ALTER statements with sourced diagnostics. Resolved
+sequences, implicit serial/identity sequence construction, catalog loading,
+migrations, and execution remain deferred.
+
 ## Ordinary Views
 
 `CREATE [OR REPLACE] VIEW name [(columns)] WITH (options) AS query` retains an

@@ -23,5 +23,7 @@ public enum ReferencedItemsContext
     CreateIndexTable,
     RefreshMaterializedViewTarget,
     DropMaterializedViewTarget,
-    AlterMaterializedViewTarget
+    AlterMaterializedViewTarget,
+    SequenceTarget,
+    SequenceOwnedBy
 }

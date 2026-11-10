@@ -263,6 +263,7 @@ public class Parser : IParser
         SecurityContext? securityContext = DdlParser.ParseSecurityContext(state);
         bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
         TemporaryLabel? temporaryLabel = ParseTemporaryLabel(state);
+        bool unlogged = temporaryLabel == null && state.ParseKeyword(Keyword.UNLOGGED);
         bool recursive = state.ParseKeyword(Keyword.RECURSIVE);
 
         return new CreateObjectOptions
@@ -273,7 +274,8 @@ public class Parser : IParser
             SecurityContext = securityContext,
             Aggregate = aggregate,
             TemporaryLabel = temporaryLabel,
-            Recursive = recursive
+            Recursive = recursive,
+            Unlogged = unlogged
         };
     }
 
@@ -313,9 +315,13 @@ public class Parser : IParser
         {
             throw state.ExpectedException("FUNCTION");
         }
-        if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW))
+        if (options.Unlogged && kw != Keyword.SEQUENCE)
         {
-            throw state.ExpectedException("TABLE", "VIEW");
+            throw state.ExpectedException("SEQUENCE");
+        }
+        if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.SEQUENCE))
+        {
+            throw state.ExpectedException("TABLE", "VIEW", "SEQUENCE");
         }
         if (options.CreateOrLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.TRIGGER or Keyword.CONSTRAINT or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.EVENT or Keyword.INDEX))
         {
@@ -338,6 +344,7 @@ public class Parser : IParser
         return objectTypeWord.Keyword switch
         {
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
+            Keyword.SEQUENCE => DdlParser.ParseCreateSequence(state, options.TemporaryLabel, options.Unlogged),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
             Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel),
             Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
@@ -359,7 +366,8 @@ public class Parser : IParser
         {
             Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
             Word { Keyword: Keyword.MATERIALIZED } => DdlParser.ParseAlterMaterializedView(state),
-            _ => throw state.ExpectedException("TABLE", "PROCEDURE", "VIEW", "MATERIALIZED VIEW")
+            Word { Keyword: Keyword.SEQUENCE } => DdlParser.ParseAlterSequence(state),
+            _ => throw state.ExpectedException("TABLE", "PROCEDURE", "VIEW", "MATERIALIZED VIEW", "SEQUENCE")
         };
     }
 
