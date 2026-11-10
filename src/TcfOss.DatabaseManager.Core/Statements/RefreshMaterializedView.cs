@@ -42,7 +42,7 @@ public record RefreshMaterializedView(ObjectName Name) : Statement
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
-        using var scope = context.Enter(ReferencedItemsContext.RefreshMaterializedViewTarget);
+        using ReferencedItemsManager.ContextScope scope = context.Enter(ReferencedItemsContext.RefreshMaterializedViewTarget);
         ItemRef? item = context.CreateObjectRef(Name);
         if (item != null)
         {

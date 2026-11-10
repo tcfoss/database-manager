@@ -1423,17 +1423,30 @@ public class DdlParser
         }
         else if (state.ParseKeyword(Keyword.SET))
         {
-            Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
-            operation = target switch
+            if (state.PeekIs<ParenOpen>())
             {
-                Keyword.SCHEMA => new PgAlterMaterializedViewOperation.SetSchema(_parseIdentifier(state)),
-                Keyword.TABLESPACE => new PgAlterMaterializedViewOperation.SetTablespace(_parseIdentifier(state)),
-                _ => throw state.ExpectedException("SCHEMA", "TABLESPACE")
-            };
+                operation = new PgAlterMaterializedViewOperation.SetStorageParameters(
+                    state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false));
+            }
+            else
+            {
+                Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
+                operation = target switch
+                {
+                    Keyword.SCHEMA => new PgAlterMaterializedViewOperation.SetSchema(_parseIdentifier(state)),
+                    Keyword.TABLESPACE => new PgAlterMaterializedViewOperation.SetTablespace(_parseIdentifier(state)),
+                    _ => throw state.ExpectedException("SCHEMA", "TABLESPACE", "(")
+                };
+            }
+        }
+        else if (state.ParseKeyword(Keyword.RESET))
+        {
+            operation = new PgAlterMaterializedViewOperation.ResetStorageParameters(
+                state.ParseParenthesizedCommaSeparated(ParseStorageParameterName, false));
         }
         else
         {
-            throw state.ExpectedException("RENAME", "SET");
+            throw state.ExpectedException("RENAME", "SET", "RESET");
         }
         return new AlterMaterializedView(name, operation) { IfExists = ifExists };
     }
@@ -1463,14 +1476,20 @@ public class DdlParser
 
     private PgStorageParameter ParseStorageParameter(ParserState state)
     {
+        ObjectName name = ParseStorageParameterName(state);
+        Value? value = state.ConsumeTokenIs<Equal>() ? ParseRoutineSettingValue(state) : null;
+        return new PgStorageParameter(name, value);
+    }
+
+    private ObjectName ParseStorageParameterName(ParserState state)
+    {
         Token start = state.Peek();
         ObjectName name = _parseObjectName(state);
         if (name.Values.Count > 2)
         {
             throw ParserState.ExpectedCategoryException("storage parameter", start);
         }
-        Value? value = state.ConsumeTokenIs<Equal>() ? ParseRoutineSettingValue(state) : null;
-        return new PgStorageParameter(name, value);
+        return name;
     }
 
     private EventSchedule ParseEventSchedule(ParserState state)

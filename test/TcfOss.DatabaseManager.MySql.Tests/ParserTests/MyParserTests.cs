@@ -892,6 +892,8 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor)")]
     public void AlterMaterializedViews_AreRejectedBySharedMySqlMariaDbParser(string sql)
     {
         var state = GetState(sql);

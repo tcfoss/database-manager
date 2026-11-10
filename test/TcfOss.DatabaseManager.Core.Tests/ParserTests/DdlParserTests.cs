@@ -595,6 +595,8 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("ALTER MATERIALIZED VIEW summary RENAME id TO item_id")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70, autovacuum_enabled)")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RESET (fillfactor, toast.autovacuum_enabled)")]
     public void AlterMaterializedViews_CoreParserRoundTrips(string sql)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));

@@ -69,4 +69,34 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
             Name.FormatSql(writer, manager);
         }
     }
+
+    public record SetStorageParameters(SqlValueList<PgStorageParameter> Parameters) : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"SET ({Parameters})");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("SET (");
+            writer.FormatDelimited(Parameters, manager);
+            writer.Write(")");
+        }
+    }
+
+    public record ResetStorageParameters(SqlValueList<ObjectName> Parameters) : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"RESET ({Parameters})");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("RESET (");
+            writer.FormatDelimited(Parameters, manager);
+            writer.Write(")");
+        }
+    }
 }

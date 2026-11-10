@@ -140,7 +140,8 @@ variables. Behavior suffixes on other DROP targets remain outside this slice.
 
 `ALTER MATERIALIZED VIEW [IF EXISTS] name` supports `RENAME TO`, column renaming
 with or without the COLUMN keyword, `SET SCHEMA`, and a single `SET TABLESPACE`
-action. A separate `AlterMaterializedView` statement and typed
+action, plus storage-parameter `SET (...)` and `RESET (...)`. A separate
+`AlterMaterializedView` statement and typed
 `PgAlterMaterializedViewOperation` variants retain each form and its identifier
 fields. Core owns parsing; MySQL/MariaDB and SQL Server reject these statements
 without changing their existing ALTER TABLE behavior. SQL/JSON round trips,
@@ -148,7 +149,17 @@ recursive identifier formatting/idempotence, sources/comments/terminators,
 atomic SQL bodies, and dependency filters are unit-tested. Dependencies report
 only the unresolved target, not destination names, in an isolated context.
 
-Ownership, storage/column settings, extension dependencies, multi-action lists,
+Storage SET and RESET retain parameter order and one- or two-part names,
+including `toast.autovacuum_enabled`. SET shares CREATE's optional scalar-value
+model, preserving omitted values and normalizing bare words to quoted strings.
+RESET accepts names only. Lists must be nonempty; expression values, additional
+storage-argument forms, and RESET assignments are rejected. Storage names are
+not object dependencies. SQL/JSON, formatting, source boundaries, atomic bodies,
+provider rejection, and sourced builder rejection are unit-tested. Parameter
+applicability, duplicates, and value types/ranges are not catalog-validated.
+
+Ownership, access-method/clustering operations, column settings, extension
+dependencies, multi-action lists,
 and bulk `ALL IN TABLESPACE` forms remain unsupported. Target, column and
 destination lookup, name collisions, privileges, dependency updates, tablespace
 eligibility, and ALTER execution are not implemented. Parsing these statements

@@ -635,6 +635,11 @@ public class FormatComponentsTests
     [InlineData("ALTER MATERIALIZED VIEW \"App\".\"Summary\" RENAME COLUMN \"Id\" TO \"ItemId\"", "RENAME COLUMN \"Id\" TO \"ItemId\"")]
     [InlineData("/* lead */ ALTER MATERIALIZED VIEW summary RENAME TO summary_next /* tail */", "/* tail */")]
     [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO \"next; DROP TABLE items; --\"", "RENAME TO \"next; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary SET (fillfactor = 70, autovacuum_enabled)", "SET (\"fillfactor\" = 70, \"autovacuum_enabled\")")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (toast.autovacuum_enabled = false)", "SET (\"toast\".\"autovacuum_enabled\" = FALSE)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor, toast.autovacuum_enabled)", "RESET (\"fillfactor\", \"toast\".\"autovacuum_enabled\")")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (\"setting; DROP TABLE items; --\" = 'it''s; opaque')", "SET (\"setting; DROP TABLE items; --\" = 'it''s; opaque')")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (\"setting; DROP TABLE items; --\")", "RESET (\"setting; DROP TABLE items; --\")")]
     public void AlterMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
     {
         using var formatter = Helpers.CreateFormatter();
@@ -650,15 +655,18 @@ public class FormatComponentsTests
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
-    [Fact]
-    public void AlterMaterializedViews_FormatAtomicBodyIdempotently()
+    [Theory]
+    [InlineData("SET SCHEMA archive", "SET SCHEMA \"archive\"")]
+    [InlineData("SET (fillfactor = 70)", "SET (\"fillfactor\" = 70)")]
+    [InlineData("RESET (fillfactor)", "RESET (\"fillfactor\")")]
+    public void AlterMaterializedViews_FormatAtomicBodyIdempotently(string clause, string expectedClause)
     {
-        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ ALTER MATERIALIZED VIEW app.summary SET SCHEMA archive /* tail */; SELECT 2; END";
+        string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ ALTER MATERIALIZED VIEW app.summary {clause} /* tail */; SELECT 2; END";
         using var formatter = Helpers.CreateFormatter();
 
         string formatted = formatter.GetFormatted(sql);
 
-        Assert.Contains("ALTER MATERIALIZED VIEW \"app\".\"summary\" SET SCHEMA \"archive\"", formatted);
+        Assert.Contains($"ALTER MATERIALIZED VIEW \"app\".\"summary\" {expectedClause}", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
         var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
