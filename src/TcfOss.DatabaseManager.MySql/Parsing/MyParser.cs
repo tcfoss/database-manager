@@ -196,6 +196,17 @@ public class MyParser : Parser
         return base.ParseKeywordStatement(state, first);
     }
 
+    protected override Statement ParseAlter(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ALTER);
+
+        return state.Peek() switch
+        {
+            Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
+            _ => throw state.ExpectedException("TABLE")
+        };
+    }
+
     private static Statements.SetDelimiter ParseSetDelimiter(ParserState state)
     {
         var next = (SetDelimiter)state.Next();

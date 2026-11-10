@@ -11,6 +11,7 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
     public bool Temporary { get; init; }
     public bool IfExists { get; init; }
     public ObjectName? OnObject { get; init; }
+    public PgDropBehavior? PgBehavior { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
@@ -18,6 +19,10 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
         string? temporary = Temporary ? " TEMPORARY" : null;
         string? onObject = OnObject != null ? $" ON {OnObject}" : null;
         writer.WriteSql($"DROP{temporary} {ObjectType}{ifNotExists} {Names}{onObject}");
+        if (PgBehavior != null)
+        {
+            writer.WriteSql($" {PgBehavior}");
+        }
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -42,12 +47,18 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
         {
             writer.Write($" ON {OnObject}");
         }
+        if (PgBehavior != null)
+        {
+            writer.WriteSql($" {PgBehavior}");
+        }
         Meta.FormatPostNonSql(writer, manager);
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
-        using (context.Enter(ReferencedItemsContext.DropObjectStatement))
+        using (context.Enter(ObjectType == DroppableObject.MaterializedView
+            ? ReferencedItemsContext.DropMaterializedViewTarget
+            : ReferencedItemsContext.DropObjectStatement))
         {
             foreach (ObjectName name in Names)
             {

@@ -12,6 +12,11 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
 
+    protected override bool SupportsDropObjectType(DroppableObject objectType)
+    {
+        return objectType != DroppableObject.MaterializedView;
+    }
+
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
     {
         return isFunction ? RoutineParamsSupportStyle.MySqlFunction : RoutineParamsSupportStyle.MySqlProcedure;

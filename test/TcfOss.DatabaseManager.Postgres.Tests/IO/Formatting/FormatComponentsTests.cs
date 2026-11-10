@@ -584,4 +584,88 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("DROP MATERIALIZED VIEW summary", "DROP MATERIALIZED VIEW \"summary\"")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS app.summary, app.other CASCADE", "IF EXISTS \"app\".\"summary\", \"app\".\"other\" CASCADE")]
+    [InlineData("DROP MATERIALIZED VIEW \"App\".\"Summary\" RESTRICT", "\"App\".\"Summary\" RESTRICT")]
+    [InlineData("/* lead */ DROP MATERIALIZED VIEW summary CASCADE /* tail */", "/* tail */")]
+    [InlineData("DROP MATERIALIZED VIEW \"summary; DROP TABLE items; --\"", "\"summary; DROP TABLE items; --\"")]
+    public void DropMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<DropObject>(new PgParser().ParseStatement(state));
+        Assert.Equal(DroppableObject.MaterializedView, statement.ObjectType);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void DropMaterializedViews_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ DROP MATERIALIZED VIEW app.summary, app.other CASCADE /* tail */; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("DROP MATERIALIZED VIEW \"app\".\"summary\", \"app\".\"other\" CASCADE", formatted);
+        Assert.Contains("/* lead */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
+        Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<DropObject>());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW app.summary RENAME TO summary_next", "\"app\".\"summary\" RENAME TO \"summary_next\"")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id", "IF EXISTS \"summary\" RENAME COLUMN \"id\" TO \"item_id\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME id TO item_id", "RENAME \"id\" TO \"item_id\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive", "SET SCHEMA \"archive\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast", "SET TABLESPACE \"fast\"")]
+    [InlineData("ALTER MATERIALIZED VIEW \"App\".\"Summary\" RENAME COLUMN \"Id\" TO \"ItemId\"", "RENAME COLUMN \"Id\" TO \"ItemId\"")]
+    [InlineData("/* lead */ ALTER MATERIALIZED VIEW summary RENAME TO summary_next /* tail */", "/* tail */")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO \"next; DROP TABLE items; --\"", "RENAME TO \"next; DROP TABLE items; --\"")]
+    public void AlterMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<AlterMaterializedView>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void AlterMaterializedViews_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ ALTER MATERIALIZED VIEW app.summary SET SCHEMA archive /* tail */; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("ALTER MATERIALIZED VIEW \"app\".\"summary\" SET SCHEMA \"archive\"", formatted);
+        Assert.Contains("/* lead */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
+        Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<AlterMaterializedView>());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

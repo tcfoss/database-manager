@@ -555,4 +555,61 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements("REFRESH MATERIALIZED VIEW CONCURRENTLY summary WITH NO DATA"));
     }
+
+    [Theory]
+    [InlineData("DROP MATERIALIZED VIEW app.summary")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS summary")]
+    [InlineData("DROP MATERIALIZED VIEW app.summary, app.other CASCADE")]
+    [InlineData("DROP MATERIALIZED VIEW summary RESTRICT")]
+    public void DropMaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(DroppableObject.MaterializedView, statement.ObjectType);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void DropMaterializedViews_LeaveOrdinaryViewIdentityUnchanged()
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement("DROP VIEW app.summary"));
+
+        Assert.Equal(DroppableObject.View, statement.ObjectType);
+        Assert.Null(statement.PgBehavior);
+        Assert.False(statement.IfExists);
+        Assert.False(statement.Temporary);
+        Assert.Null(statement.OnObject);
+        Assert.Equal("DROP VIEW app.summary", statement.ToSql());
+    }
+
+    [Fact]
+    public void DropMaterializedViews_CoreParserRejectsTemporaryModifier()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("DROP TEMPORARY MATERIALIZED VIEW summary"));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW app.summary RENAME TO summary_next")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    public void AlterMaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void AlterMaterializedViews_LeaveAlterTableDispatchUnchanged()
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement("ALTER TABLE items ADD COLUMN label TEXT"));
+
+        Assert.Equal("items", statement.Table.ToSql());
+        Assert.IsType<AlterTableOperation.AddColumn>(Assert.Single(statement.Operations));
+        Assert.Equal("ALTER TABLE items ADD COLUMN label TEXT", statement.ToSql());
+    }
 }

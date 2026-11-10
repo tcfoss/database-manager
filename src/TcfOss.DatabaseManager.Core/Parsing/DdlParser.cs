@@ -1396,6 +1396,48 @@ public class DdlParser
         };
     }
 
+    public virtual AlterMaterializedView ParseAlterMaterializedView(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.MATERIALIZED, Keyword.VIEW);
+        bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
+
+        ObjectName name = _parseObjectName(state);
+
+        PgAlterMaterializedViewOperation operation;
+        if (state.ParseKeyword(Keyword.RENAME))
+        {
+            if (state.ParseKeyword(Keyword.TO))
+            {
+                operation = new PgAlterMaterializedViewOperation.RenameTo(_parseIdentifier(state));
+            }
+            else
+            {
+                bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
+                Identifier oldName = _parseIdentifier(state);
+                state.ExpectKeyword(Keyword.TO);
+                operation = new PgAlterMaterializedViewOperation.RenameColumn(oldName, _parseIdentifier(state))
+                {
+                    UseColumnKeyword = useColumnKeyword
+                };
+            }
+        }
+        else if (state.ParseKeyword(Keyword.SET))
+        {
+            Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
+            operation = target switch
+            {
+                Keyword.SCHEMA => new PgAlterMaterializedViewOperation.SetSchema(_parseIdentifier(state)),
+                Keyword.TABLESPACE => new PgAlterMaterializedViewOperation.SetTablespace(_parseIdentifier(state)),
+                _ => throw state.ExpectedException("SCHEMA", "TABLESPACE")
+            };
+        }
+        else
+        {
+            throw state.ExpectedException("RENAME", "SET");
+        }
+        return new AlterMaterializedView(name, operation) { IfExists = ifExists };
+    }
+
     public virtual RefreshMaterializedView ParseRefreshMaterializedView(ParserState state)
     {
         state.ExpectKeywordsAll(Keyword.REFRESH, Keyword.MATERIALIZED, Keyword.VIEW);
@@ -1782,13 +1824,16 @@ public class DdlParser
         return null;
     }
 
+    protected virtual bool SupportsDropObjectType(DroppableObject objectType) => true;
+
     public DropObject ParseDropObject(ParserState state)
     {
         state.ExpectKeyword(Keyword.DROP);
 
         bool temporary = state.ParseKeyword(Keyword.TEMPORARY);
 
-        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX);
+        Token typeToken = state.Peek();
+        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.MATERIALIZED, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX);
 
         DroppableObject typeToDrop = typeToDropKw switch
         {
@@ -1797,6 +1842,7 @@ public class DdlParser
             Keyword.FUNCTION => DroppableObject.Function,
             Keyword.TRIGGER => DroppableObject.Trigger,
             Keyword.VIEW => DroppableObject.View,
+            Keyword.MATERIALIZED => DroppableObject.MaterializedView,
             Keyword.EVENT => DroppableObject.Event,
             Keyword.SCHEMA => DroppableObject.Schema,
             Keyword.DATABASE => DroppableObject.Database,
@@ -1804,9 +1850,22 @@ public class DdlParser
             _ => throw state.ExpectedException<DroppableObject>()
         };
 
+        if (!SupportsDropObjectType(typeToDrop))
+        {
+            throw ParserState.ExpectedCategoryException("DROP target", typeToken);
+        }
+        if (typeToDrop == DroppableObject.MaterializedView)
+        {
+            if (temporary)
+            {
+                throw ParserState.ExpectedCategoryException("non-temporary DROP target", typeToken);
+            }
+            state.ExpectKeyword(Keyword.VIEW);
+        }
+
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
 
-        SqlValueList<ObjectName> names = typeToDropKw is Keyword.TABLE or Keyword.VIEW
+        SqlValueList<ObjectName> names = typeToDropKw is Keyword.TABLE or Keyword.VIEW or Keyword.MATERIALIZED
             ? state.ParseCommaSeparated(_parseObjectName)
             : [_parseObjectName(state)];
 
@@ -1817,11 +1876,22 @@ public class DdlParser
             onObject = _parseObjectName(state);
         }
 
+        PgDropBehavior? pgBehavior = null;
+        if (typeToDrop == DroppableObject.MaterializedView)
+        {
+            Keyword behavior = state.ParseKeywordsAny(Keyword.CASCADE, Keyword.RESTRICT);
+            if (behavior != Keyword.undefined)
+            {
+                pgBehavior = PgDropBehavior.Parse(behavior.ToString());
+            }
+        }
+
         return new DropObject(names, typeToDrop)
         {
             IfExists = ifExists,
             Temporary = temporary,
-            OnObject = onObject
+            OnObject = onObject,
+            PgBehavior = pgBehavior
         };
     }
 

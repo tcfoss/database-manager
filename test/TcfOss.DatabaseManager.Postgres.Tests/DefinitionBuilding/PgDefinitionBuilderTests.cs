@@ -81,6 +81,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("SELECT 1")]
     [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH NO DATA")]
     [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS app.summary, app.other CASCADE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO summary_next")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME COLUMN id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
     public void ProcessStatements_RejectsUnsupportedStatements(string sql)
     {
         var builder = CreateBuilder();

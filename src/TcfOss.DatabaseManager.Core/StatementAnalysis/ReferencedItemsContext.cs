@@ -21,5 +21,7 @@ public enum ReferencedItemsContext
     TruncateTarget,
     CreateTriggerTable,
     CreateIndexTable,
-    RefreshMaterializedViewTarget
+    RefreshMaterializedViewTarget,
+    DropMaterializedViewTarget,
+    AlterMaterializedViewTarget
 }

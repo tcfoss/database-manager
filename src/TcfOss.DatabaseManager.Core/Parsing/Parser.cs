@@ -332,14 +332,15 @@ public class Parser : IParser
         };
     }
 
-    private AlterTable ParseAlter(ParserState state)
+    protected virtual Statement ParseAlter(ParserState state)
     {
         state.ExpectKeyword(Keyword.ALTER);
 
         return state.Peek() switch
         {
             Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
-            _ => throw state.ExpectedException("TABLE", "PROCEDURE", "VIEW")
+            Word { Keyword: Keyword.MATERIALIZED } => DdlParser.ParseAlterMaterializedView(state),
+            _ => throw state.ExpectedException("TABLE", "PROCEDURE", "VIEW", "MATERIALIZED VIEW")
         };
     }
 

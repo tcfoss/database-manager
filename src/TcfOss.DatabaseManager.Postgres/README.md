@@ -127,9 +127,37 @@ filters are unit-tested. Dependency traversal reports the target as unknown
 and isolates it from enclosing column/variable contexts; it does not pretend
 that the target has been resolved as an ordinary view or table.
 
-Definition construction also rejects refresh commands with source information.
-Resolved materialized-view objects, catalog loading, ALTER/DROP lifecycle
-support, and migrations remain deferred. Refresh target lookup, unique-index
+`DROP MATERIALIZED VIEW [IF EXISTS] name [, ...] [CASCADE | RESTRICT]` reuses
+Core's `DropObject` with a distinct `DroppableObject.MaterializedView` target
+kind. Nullable `PgBehavior` retains omission versus explicit RESTRICT; multiple
+targets keep their order and quoting. MySQL/MariaDB and SQL Server reject this
+target through the shared DROP parser's provider hook. TEMPORARY, CONCURRENTLY,
+and repeated/conflicting behaviors are rejected. SQL/JSON round trips,
+formatting/idempotence, source/comment/terminator boundaries, atomic SQL bodies,
+and dependency filters are unit-tested. A separate reference context keeps
+unresolved materialized-view targets distinct from ordinary views and local
+variables. Behavior suffixes on other DROP targets remain outside this slice.
+
+`ALTER MATERIALIZED VIEW [IF EXISTS] name` supports `RENAME TO`, column renaming
+with or without the COLUMN keyword, `SET SCHEMA`, and a single `SET TABLESPACE`
+action. A separate `AlterMaterializedView` statement and typed
+`PgAlterMaterializedViewOperation` variants retain each form and its identifier
+fields. Core owns parsing; MySQL/MariaDB and SQL Server reject these statements
+without changing their existing ALTER TABLE behavior. SQL/JSON round trips,
+recursive identifier formatting/idempotence, sources/comments/terminators,
+atomic SQL bodies, and dependency filters are unit-tested. Dependencies report
+only the unresolved target, not destination names, in an isolated context.
+
+Ownership, storage/column settings, extension dependencies, multi-action lists,
+and bulk `ALL IN TABLESPACE` forms remain unsupported. Target, column and
+destination lookup, name collisions, privileges, dependency updates, tablespace
+eligibility, and ALTER execution are not implemented. Parsing these statements
+inside atomic SQL bodies does not validate their executability.
+
+Definition construction rejects refresh, DROP, and ALTER commands with source
+information. Resolved materialized-view objects, catalog loading, remaining ALTER
+forms, index support, and migrations remain deferred. DROP does not check target existence,
+ownership, or dependencies, or execute cascades. Refresh target lookup, unique-index
 and existing-population prerequisites, privileges, locking, and execution are
 not implemented. Parsing refresh commands in atomic SQL bodies does not check
 whether those bodies can execute on PostgreSQL.

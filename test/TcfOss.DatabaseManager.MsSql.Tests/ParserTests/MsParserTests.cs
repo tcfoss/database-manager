@@ -568,4 +568,39 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("DROP MATERIALIZED VIEW summary")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS app.summary, app.other CASCADE")]
+    [InlineData("DROP MATERIALIZED VIEW summary RESTRICT")]
+    public void DropMaterializedViews_AreRejectedBySqlServer(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void AlterDispatch_AcceptsTable()
+    {
+        const string sql = "ALTER TABLE items ADD COLUMN label TEXT";
+
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO summary_next")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    public void AlterMaterializedViews_AreRejectedBySqlServer(string sql)
+    {
+        var state = GetState(sql);
+        var target = state.PeekNth(1);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new MsParser().ParseStatement(state));
+
+        Assert.Contains("Expected TABLE.", exception.Message);
+        Assert.Same(target, state.Peek());
+    }
 }

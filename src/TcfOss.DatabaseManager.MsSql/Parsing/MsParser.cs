@@ -178,6 +178,17 @@ public class MsParser : Parser
         };
     }
 
+    protected override Statement ParseAlter(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ALTER);
+
+        return state.Peek() switch
+        {
+            Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
+            _ => throw state.ExpectedException("TABLE")
+        };
+    }
+
     private static MsBatchSeparatorStatement ParseBatchSeparator(ParserState state, MsBatchSeparatorToken token)
     {
         state.Next(); // Consume the GO token
