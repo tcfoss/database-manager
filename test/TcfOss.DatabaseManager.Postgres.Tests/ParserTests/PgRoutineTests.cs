@@ -7,6 +7,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -208,6 +209,39 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("BEGIN SELECT 1; END;", Label = "Plain procedural block")]
+    [InlineData("DECLARE value INT;", Label = "Local declaration")]
+    [InlineData("DECLARE failed CONDITION FOR SQLSTATE '45000';", Label = "Condition declaration")]
+    [InlineData("DECLARE CONTINUE HANDLER FOR SQLSTATE '45000' SELECT 1;", Label = "Handler declaration")]
+    [InlineData("IF TRUE THEN SELECT 1; END IF;", Label = "Conditional")]
+    [InlineData("LOOP SELECT 1; END LOOP;", Label = "Loop")]
+    [InlineData("WHILE TRUE LOOP SELECT 1; END LOOP;", Label = "While loop")]
+    [InlineData("FOR value IN SELECT 1 LOOP SELECT 1; END LOOP;", Label = "For loop")]
+    [InlineData("LEAVE outer_loop;", Label = "MySQL leave")]
+    [InlineData("ITERATE outer_loop;", Label = "MySQL iterate")]
+    [InlineData("OPEN cursor_name;", Label = "Procedural cursor open")]
+    [InlineData("FETCH cursor_name INTO value;", Label = "Procedural cursor fetch")]
+    [InlineData("value := 1;", Label = "Assignment")]
+    [InlineData("RAISE NOTICE 'message';", Label = "Raise")]
+    [InlineData("PERFORM app.work();", Label = "Perform")]
+    [InlineData("EXECUTE 'SELECT 1';", Label = "Dynamic execution")]
+    [InlineData("RETURN NEXT 1;", Label = "Return next")]
+    [InlineData("RETURN QUERY SELECT 1;", Label = "Return query")]
+    [InlineData("EXCEPTION WHEN OTHERS THEN SELECT 1;", Label = "Exception handler")]
+    [InlineData("label: SELECT 1;", Label = "Statement label")]
+    [InlineData("USE app;", Label = "MySQL use")]
+    public void AtomicBodies_RejectProceduralStatements(string contents)
+    {
+        string[] declarations = ["FUNCTION f() RETURNS INT", "PROCEDURE p()"];
+        foreach (string declaration in declarations)
+        {
+            Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE {declaration} LANGUAGE SQL BEGIN ATOMIC {contents} END"));
+            Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE {declaration} BEGIN ATOMIC {contents} END LANGUAGE SQL"));
+            Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE {declaration} BEGIN ATOMIC {contents} END"));
+        }
+    }
+
+    [Theory]
     [InlineData("CREATE FUNCTION f() RETURNS INT AS RETURN 1")]
     [InlineData("CREATE FUNCTION f() RETURNS INT AS 'RETURN 1'")]
     [InlineData("CREATE FUNCTION f() RETURNS INT LANGUAGE sql SELECT 1")]
@@ -377,6 +411,11 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("LANGUAGE sql BEGIN ATOMIC SELECT 1; END")]
     [InlineData("LANGUAGE sql RETURN 1")]
     [InlineData("RETURN 1")]
+    [InlineData("BEGIN ATOMIC BEGIN SELECT 1; END; END")]
+    [InlineData("BEGIN ATOMIC label: SELECT 1; END")]
+    [InlineData("BEGIN ATOMIC DECLARE failed CONDITION FOR SQLSTATE '45000'; END")]
+    [InlineData("BEGIN ATOMIC DECLARE CONTINUE HANDLER FOR SQLSTATE '45000' SELECT 1; END")]
+    [InlineData("BEGIN ATOMIC OPEN cursor_name; FETCH cursor_name INTO value; LEAVE outer_loop; ITERATE outer_loop; END")]
     public void CoreParser_KitchenSinkDispatch_AcceptsSharedRoutineShapes(string tail)
     {
         string sql = "CREATE FUNCTION f() RETURNS INT " + tail;
@@ -545,6 +584,171 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         var error = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatement("CREATE FUNCTION f() RETURNS INT " + tail));
 
         Assert.Contains("set-returning function for ROWS", error.Message);
+    }
+
+    [Theory]
+    [InlineData("BEGIN SELECT 1; END", Label = "Plain block")]
+    [InlineData("label: SELECT 1", Label = "Statement label")]
+    [InlineData("DECLARE failed CONDITION FOR SQLSTATE '45000'", Label = "Condition declaration")]
+    [InlineData("DECLARE CONTINUE HANDLER FOR SQLSTATE '45000' SELECT 1", Label = "Handler declaration")]
+    [InlineData("OPEN cursor_name", Label = "Cursor open")]
+    [InlineData("FETCH cursor_name INTO value", Label = "Procedural fetch")]
+    [InlineData("LEAVE outer_loop", Label = "Leave")]
+    [InlineData("ITERATE outer_loop", Label = "Iterate")]
+    [InlineData("USE app", Label = "Use")]
+    public void SqlOnlyContext_NarrowsOnlyWhenEnabled(string sql)
+    {
+        Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+
+        ParserState state = GetState(sql);
+        using (state.EnterContext(ParseContext.NarrowSqlOnly))
+        {
+            Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+            Assert.Equal(ParseContext.NarrowSqlOnly, state.Context);
+            Assert.Null(state.StatementLabel);
+        }
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("BEGIN ATOMIC SELECT 1; END", Label = "Atomic body")]
+    [InlineData("RETURN 1", Label = "Return body")]
+    [InlineData("AS $$BEGIN SELECT 1; END$$", Label = "Opaque body")]
+    public void SqlOnlyContext_RoutineScopeRestoresPreviousFlags(string body)
+    {
+        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL {body}; BEGIN SELECT 2; END; label: SELECT 3");
+        using (state.EnterContext(ParseContext.DomainCheck))
+        {
+            var statements = new PgParser().Parse(state, null);
+            Assert.Equal(3, statements.Count);
+            Assert.IsType<CreateFunction>(statements[0]);
+            Assert.IsType<BeginEnd>(statements[1]);
+            Assert.IsType<LabeledStatement>(statements[2]);
+            Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Null(state.StatementLabel);
+            Assert.IsType<Eof>(state.Peek());
+        }
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("BEGIN ATOMIC BEGIN SELECT 1; END; END", Label = "Rejected procedural block")]
+    [InlineData("BEGIN ATOMIC label: SELECT 1; END", Label = "Rejected label")]
+    [InlineData("BEGIN ATOMIC SELECT 1 END", Label = "Missing terminator")]
+    [InlineData("RETURN", Label = "Missing return expression")]
+    public void SqlOnlyContext_RoutineScopeRestoresPreviousFlagsAfterFailure(string body)
+    {
+        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL {body}");
+        using (state.EnterContext(ParseContext.DomainCheck))
+        {
+            Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+            Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Null(state.StatementLabel);
+        }
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData(true, false, Label = "Function with leading language")]
+    [InlineData(true, true, Label = "Function with trailing language")]
+    [InlineData(false, false, Label = "Procedure with leading language")]
+    [InlineData(false, true, Label = "Procedure with trailing language")]
+    public void AtomicBodies_PreserveMixedStatementBoundariesAndDependencies(bool isFunction, bool languageAfterBody)
+    {
+        string[] contents =
+        [
+            "/* first */ WITH seed (id) AS (SELECT app.seed($1)) SELECT seed.id FROM seed",
+            "INSERT INTO app.items DEFAULT VALUES RETURNING id",
+            "UPDATE app.items SET id = app.next(id) WHERE id = $1 RETURNING id",
+            "DELETE FROM app.items WHERE app.expired(id) RETURNING id",
+            "CALL app.audit(message => $$text; END; BEGIN ATOMIC$$) /* tail */",
+            isFunction ? "RETURN app.finish($1)" : "SELECT app.finish($1)"
+        ];
+        string declaration = isFunction ? "FUNCTION app.run(value INT) RETURNS INT" : "PROCEDURE app.run(value INT)";
+        string sql = $"CREATE {declaration} {(languageAfterBody ? "" : "LANGUAGE SQL ")}BEGIN ATOMIC ;\n    "
+            + string.Join(";\n    ", contents)
+            + $"; ; /* closing */ END{(languageAfterBody ? " LANGUAGE SQL" : "")}; SELECT app.after_body();";
+        ParserState state = GetState(sql, 137);
+        var parsed = new PgParser().Parse(state, null);
+        Assert.Equal(2, parsed.Count);
+        Assert.IsType<Eof>(state.Peek());
+        Assert.Equal(ParseContext.None, state.Context);
+        Assert.Null(state.StatementLabel);
+        IWriteSql routineBody = isFunction
+            ? Assert.IsType<CreateFunction>(parsed[0]).Body
+            : Assert.IsType<CreateProcedure>(parsed[0]).Body;
+        var body = Assert.IsType<BeginAtomic>(routineBody);
+        Statement[] statements = [.. body.Statements.Where(statement => statement is not InertOnly)];
+        Assert.Equal(contents.Length, statements.Length);
+        for (int index = 0; index < statements.Length; index++)
+        {
+            Statement statement = statements[index];
+            Assert.Equal(contents[index], sql[statement.Meta.Start!.Value..statement.Meta.End!.Value].Trim());
+            Assert.Equal(statement.Meta.End + 1, statement.Meta.EndPlusTerminatorLength);
+            Assert.Equal(';', sql[statement.Meta.EndPlusTerminatorLength!.Value - 1]);
+        }
+        Assert.IsType<Select>(statements[0]);
+        Assert.IsType<Insert>(statements[1]);
+        Assert.IsType<Update>(statements[2]);
+        Assert.IsType<Delete>(statements[3]);
+        var call = Assert.IsType<Call>(statements[4]);
+        var invocation = Assert.IsType<FunctionCall>(call.Expression);
+        Assert.All(invocation.Name.Values, identifier => Assert.Equal(137, identifier.Source!.Value.SourceId));
+        Assert.StartsWith("BEGIN ATOMIC", SourceManager.GetText(sql, body.Meta)!.Trim());
+        Assert.EndsWith("END", SourceManager.GetText(sql, body.Meta)!.Trim());
+        Assert.IsType<InertOnly>(body.Statements[^1]);
+        string[] names = [.. body.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql()).Distinct().Order()];
+        Assert.Equal(new[] { "app.audit", "app.expired", "app.finish", "app.items", "app.next", "app.seed" }, names);
+        Assert.Equal("SELECT app.after_body()", parsed[1].ToSql());
+        string canonical = parsed[0].ToSql();
+        Assert.Equal(canonical, ParseStatement(canonical).ToSql());
+        string formatted = Format(parsed[0]);
+        Assert.Contains("/* first */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        Assert.Contains("/* closing */", formatted);
+        Assert.DoesNotContain("/* closing */;", formatted);
+        Assert.Equal(canonical, ParseStatement(formatted).ToSql());
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 END", Label = "Missing final terminator")]
+    [InlineData("SELECT 1 SELECT 2; END", Label = "Missing middle terminator")]
+    [InlineData("CALL app.work() END", Label = "Unterminated call")]
+    [InlineData("RETURN 1 END", Label = "Unterminated return")]
+    [InlineData("SELECT 1;", Label = "Missing end")]
+    [InlineData("BEGIN ATOMIC SELECT 1; END; END", Label = "Nested atomic body")]
+    public void AtomicBodies_RejectIncompleteBoundariesAndRestoreScope(string contents)
+    {
+        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL BEGIN ATOMIC {contents}");
+        Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+        Assert.Equal(ParseContext.None, state.Context);
+        Assert.Null(state.StatementLabel);
+    }
+
+    [Theory]
+    [InlineData("sql", Label = "Quoted SQL stays opaque")]
+    [InlineData("plpgsql", Label = "Quoted PL/pgSQL stays opaque")]
+    public void LiteralBodies_DoNotApplyStructuredSqlRestrictions(string language)
+    {
+        const string contents = "DECLARE value INT; BEGIN value := app.work(); IF TRUE THEN RETURN value; END IF; END";
+        var function = Assert.IsType<CreateFunction>(ParseStatement($"CREATE FUNCTION f() RETURNS INT LANGUAGE {language} AS $body${contents}$body$"));
+        var body = Assert.IsType<RoutineBodyLiteral>(function.Body);
+        Assert.Equal(contents, body.Value);
+        Assert.Empty(body.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Fact]
+    public void AtomicBodies_RetainSqlCursorDeclarationSyntax()
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement("CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC DECLARE result CURSOR FOR SELECT id FROM app.items; CLOSE result; END"));
+        var body = Assert.IsType<BeginAtomic>(procedure.Body);
+        Assert.IsType<DeclareCursor>(body.Statements[0]);
+        Assert.IsType<Close>(body.Statements[1]);
+        Assert.Equal(procedure.ToSql(), ParseStatement(procedure.ToSql()).ToSql());
     }
 
     private static string Format(IWriteSql statement)

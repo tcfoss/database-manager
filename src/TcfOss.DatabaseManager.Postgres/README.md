@@ -92,6 +92,29 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## SQL-Body Context
+
+Unquoted SQL routine bodies enable `ParseContext.NarrowSqlOnly` for their
+statements. PostgreSQL rejects procedural blocks, statement labels, handler and
+condition declarations, and legacy procedural cursor/loop-control commands only
+while this flag is set. Core retains its broader grammar. The existing
+`BeginAtomic` flag permits the opener and is cleared before parsing its contents;
+`NarrowSqlOnly` remains active until body parsing finishes. Both flags restore
+their previous values when the scope exits, including after parse errors.
+
+Quoted routine bodies remain opaque. A future entry point for parsing extracted
+body text must select SQL-only narrowing or procedural grammar explicitly;
+leaving the flag unset does not implement the deferred PL/pgSQL grammar.
+
+Mixed CTE/query, INSERT, UPDATE, DELETE, CALL, and RETURN bodies are unit-tested
+for statement spans, terminators, identifier sources, dependencies, comments,
+canonical SQL round trips, and formatter idempotence. Tests cover leading or
+trailing LANGUAGE SQL, quoted semicolons/END text, empty terminators, closing
+comments, and following top-level statements. Missing statement terminators/END
+and nested atomic bodies are rejected. SQL cursor declarations remain accepted;
+statement eligibility and language-specific execution/transaction semantics
+are deferred.
+
 ## Procedure Invocation
 
 CALL supports parenthesized positional arguments, named arguments using `=>` or
@@ -113,9 +136,8 @@ model, formatting, dependency traversal, and normalization.
 
 Procedure lookup and overload resolution, argument binding/types/defaults,
 OUT/INOUT semantics, transaction-control restrictions, and execution remain
-deferred. CALL support does not complete the final SQL-body restriction audit;
-PL/pgSQL bodies remain opaque. No integration tests or database execution were
-added.
+deferred. Structured SQL-body restrictions are described above; PL/pgSQL bodies
+remain opaque. No integration tests or database execution were added.
 
 ## Pagination And Row Locking
 

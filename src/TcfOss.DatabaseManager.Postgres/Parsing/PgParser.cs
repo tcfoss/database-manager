@@ -25,6 +25,40 @@ public class PgParser : Parser
         ControlFlowParser = new ControlFlowParser(this);
     }
 
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
+    {
+        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && state.StatementLabel != null)
+        {
+            throw ParserState.ExpectedException("SQL statement", token);
+        }
+        return base.ParseNormalStatement(state, token);
+    }
+
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
+    {
+        if (!state.Context.HasFlag(ParseContext.NarrowSqlOnly))
+        {
+            return base.ParseKeywordStatement(state, first);
+        }
+        return first.Keyword switch
+        {
+            Keyword.DECLARE when state.PeekNth(2) is not Word { Keyword: Keyword.CURSOR } =>
+                throw ParserState.ExpectedException("SQL statement", first),
+            Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.FETCH or Keyword.USE =>
+                throw ParserState.ExpectedException("SQL statement", first),
+            _ => base.ParseKeywordStatement(state, first)
+        };
+    }
+
+    protected override Statement ParseBegin(ParserState state)
+    {
+        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
+        {
+            throw state.ExpectedException("BEGIN ATOMIC");
+        }
+        return base.ParseBegin(state);
+    }
+
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
     {
         CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);

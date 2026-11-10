@@ -1275,14 +1275,17 @@ public class DdlParser
         }
         else if (state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            using (state.EnterContext(ParseContext.BeginAtomic))
+            using (state.EnterContext(ParseContext.BeginAtomic | ParseContext.NarrowSqlOnly))
             {
                 body = _p.ParseStatement(state);
             }
         }
         else if (isFunction && state.PeekKeyword(Keyword.RETURN))
         {
-            body = _p.ParseStatement(state);
+            using (state.EnterContext(ParseContext.NarrowSqlOnly))
+            {
+                body = _p.ParseStatement(state);
+            }
         }
         else
         {

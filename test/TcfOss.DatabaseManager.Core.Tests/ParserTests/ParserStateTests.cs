@@ -916,6 +916,8 @@ public static class ParserStateTests
     [InlineData(ParseContext.DefaultExpression)]
     [InlineData(ParseContext.StringLiteralAsStatement)]
     [InlineData(ParseContext.BeginAtomic)]
+    [InlineData(ParseContext.NarrowSqlOnly)]
+    [InlineData(ParseContext.BeginAtomic | ParseContext.NarrowSqlOnly)]
     [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.BeginAtomic)]
     public static void EnterContext_RestoresNestedEnablingAndDisabling(ParseContext context)
     {
