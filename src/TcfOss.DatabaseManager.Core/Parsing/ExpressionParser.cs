@@ -706,7 +706,12 @@ public class ExpressionParser
         return WindowFrameExclusion.NoOthers;
     }
 
-    private FunctionArguments.List ParseFunctionArgumentList(ParserState state)
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ [ ALL | DISTINCT ] argument [, ...] [ ORDER BY ... ] [ LIMIT ... ] [ SEPARATOR ... ] ] )
+    /// ]]></code>
+    /// </summary>
+    public FunctionArguments.List ParseFunctionArgumentList(ParserState state)
     {
         if (state.ConsumeTokenIs<ParenClose>())
         {
@@ -742,13 +747,13 @@ public class ExpressionParser
 
     private FunctionArgument ParseFunctionArgument(ParserState state)
     {
-        FunctionArgumentOperator? op = state.PeekNth(1) switch
+        FunctionArgument? variadic = ParseOptionalVariadicArgument(state);
+        if (variadic != null)
         {
-            Equal => FunctionArgumentOperator.EqualSign,
-            FatArrow => FunctionArgumentOperator.FatArrow,
-            Walrus => FunctionArgumentOperator.Assignment,
-            _ => null
-        };
+            return variadic;
+        }
+
+        FunctionArgumentOperator? op = PeekOptionalFunctionArgumentOperator(state);
 
         if (op != null)
         {
@@ -770,6 +775,32 @@ public class ExpressionParser
                 _ => new FunctionArgumentExpression.FunctionExpression(expr)
             };
         }
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// name { = | => | := } expression
+    /// ]]></code>
+    /// </summary>
+    protected virtual FunctionArgumentOperator? PeekOptionalFunctionArgumentOperator(ParserState state)
+    {
+        return state.PeekNth(1) switch
+        {
+            Equal => FunctionArgumentOperator.EqualSign,
+            FatArrow => FunctionArgumentOperator.FatArrow,
+            Walrus => FunctionArgumentOperator.Assignment,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ VARIADIC argument ]
+    /// ]]></code>
+    /// </summary>
+    protected virtual FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.VARIADIC) ? new FunctionArgument.Variadic(ParseFunctionArgument(state)) : null;
     }
 
     private Case ParseCaseExpr(ParserState state)

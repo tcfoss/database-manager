@@ -30,4 +30,9 @@ public class MsExpressionParser(MsParser parser) : ExpressionParser(parser)
     {
         return IsComparisonOperator(op);
     }
+
+    protected override Core.Expressions.Components.FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
+    {
+        return null;
+    }
 }

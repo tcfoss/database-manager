@@ -586,4 +586,15 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("CALL app.run()", Label = "Shared CALL invocation")]
+    [InlineData("CALL app.run(value = 1)", Label = "Kitchen sink equals named argument")]
+    [InlineData("CALL app.run(value => 1)", Label = "Shared arrow named argument")]
+    [InlineData("CALL app.run(VARIADIC app.values_for(1))", Label = "Shared variadic argument")]
+    [InlineData("CALL app.run(DISTINCT value ORDER BY id)", Label = "Kitchen sink broader invocation arguments")]
+    public void Statement_Call_TextMatch(string sql)
+    {
+        Assert.Equal(sql, Assert.IsType<Call>(ParseStatement(sql)).ToSql());
+    }
 }

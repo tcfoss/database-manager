@@ -1,11 +1,13 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
@@ -171,6 +173,7 @@ public class Parser : IParser
             Keyword.SET => ParseSet(state),
             Keyword.BEGIN => ParseBegin(state),
             Keyword.RETURN => ParseReturn(state),
+            Keyword.CALL => ParseCall(state),
             Keyword.USE => ParseUse(state),
             Keyword.LEAVE => ParseLeave(state),
             Keyword.ITERATE => ParseIterate(state),
@@ -400,6 +403,19 @@ public class Parser : IParser
     private SetVariable ParseSet(ParserState state)
     {
         return ControlFlowParser.ParseSetVariable(state);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// CALL procedure_name ( [ argument [, ...] ] )
+    /// ]]></code>
+    /// </summary>
+    protected virtual Call ParseCall(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.CALL);
+        ObjectName name = ComponentParser.ParseObjectName(state);
+        state.ExpectLeftParen();
+        return new Call(new FunctionCall(name) { Arguments = ExpressionParser.ParseFunctionArgumentList(state) });
     }
 
     protected virtual Return ParseReturn(ParserState state)

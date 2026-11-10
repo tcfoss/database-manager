@@ -173,7 +173,10 @@ internal static class RoutineFormatter
 
     public static void FormatBody(SqlTextWriter writer, FormatManager manager, Statement body, bool useAsBeforeBody = false)
     {
-        writer.WriteLine();
+        if (body is not BeginAtomic || body.Meta.PreNonSql?.OfType<NonSql.Newlines>().Any() != true)
+        {
+            writer.WriteLine();
+        }
         if (useAsBeforeBody)
         {
             writer.WriteSqlI("AS");

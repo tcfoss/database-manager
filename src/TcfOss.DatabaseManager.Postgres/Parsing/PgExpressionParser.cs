@@ -26,4 +26,9 @@ public class PgExpressionParser(PgParser parser) : ExpressionParser(parser)
     {
         return new PatternEscape.Expression(ParseSubExpression(state, _pm.GetPrecedence(Precedence.Escape)));
     }
+
+    protected override Core.Expressions.Attributes.FunctionArgumentOperator? PeekOptionalFunctionArgumentOperator(ParserState state)
+    {
+        return state.PeekNth(1) is Equal ? null : base.PeekOptionalFunctionArgumentOperator(state);
+    }
 }

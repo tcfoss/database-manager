@@ -903,6 +903,7 @@ public enum Keyword
     VARBIT,
     VARCHAR,
     VARIABLES,
+    VARIADIC,
     VARYING,
     VERBOSE,
     VERSION,

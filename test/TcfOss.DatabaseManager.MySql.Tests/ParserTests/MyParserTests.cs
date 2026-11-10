@@ -305,10 +305,18 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("CALL my_stored_procedure(`param1`)")]
     [InlineData("CALL my_stored_procedure(param1, param2)")]
     [InlineData("CALL `my_stored_procedure`(@param1, @param2, @param3)")]
+    [InlineData("CALL app.run(1, @value)")]
+    [InlineData("CALL app.run(value = 1)")]
     public void CallStatement_TextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void CallStatement_RejectsPostgresVariadicArgumentSyntax()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CALL app.run(VARIADIC app.values_for(1))"));
     }
 
     [Theory]

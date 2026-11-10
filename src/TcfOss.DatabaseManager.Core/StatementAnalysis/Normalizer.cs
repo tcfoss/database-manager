@@ -55,6 +55,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
         {
             FunctionArgument.Unnamed un => new FunctionArgument.Unnamed(NormalizeFunctionArgumentExpression(un.Argument, inSelect: inSelect, flatten: flatten)),
             FunctionArgument.Named named => new FunctionArgument.Named(ComponentNormalizer.NormalizeSingleIdentifier(named.Name), NormalizeFunctionArgumentExpression(named.Argument, inSelect: inSelect, flatten: flatten), named.Operator),
+            FunctionArgument.Variadic variadic => new FunctionArgument.Variadic(NormalizeFunctionArgument(variadic.Argument, inSelect, flatten)),
             _ => throw new DefensiveGuardException(true, "function argument type", arg.GetType())
         };
     }

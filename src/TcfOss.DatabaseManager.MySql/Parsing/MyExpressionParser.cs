@@ -96,4 +96,9 @@ public class MyExpressionParser(MyParser parser)
     {
         return token is DoublePipe ? BinaryOperatorOp.Or : base.GetBinaryOperator(token);
     }
+
+    protected override Core.Expressions.Components.FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
+    {
+        return null;
+    }
 }

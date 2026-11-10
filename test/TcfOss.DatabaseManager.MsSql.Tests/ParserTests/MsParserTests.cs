@@ -549,4 +549,12 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         ParseException expected = ParserState.ExpectedException("SELECT", first);
         Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
     }
+
+    [Theory]
+    [InlineData("CALL app.run()", Label = "Reject standalone CALL")]
+    [InlineData("CREATE PROCEDURE app.run AS CALL app.other()", Label = "Reject CALL in TSQL routine")]
+    public void Call_IsNotSqlServerInvocationSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

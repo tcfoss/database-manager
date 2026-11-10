@@ -92,6 +92,31 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Procedure Invocation
+
+CALL supports parenthesized positional arguments, named arguments using `=>` or
+`:=`, positional arguments followed by named arguments, and a final VARIADIC
+argument. Equality inside an argument is a positional boolean expression, not a
+named argument. PostgreSQL rejects aggregate-only argument syntax, root FILTER,
+WITHIN GROUP or OVER modifiers, positional arguments after named arguments, and
+misplaced or repeated VARIADIC modifiers. Core retains its broader argument
+grammar; MySQL/MariaDB preserve legacy CALL parsing and exclude VARIADIC, while
+SQL Server rejects CALL.
+
+Procedure names retain source identifiers and are not rewritten or formatted as
+built-in function names. Dependency traversal distinguishes catalog-resolved
+procedure targets from argument functions; unresolved targets remain unknown.
+SQL/JSON round trips, recursive formatting/idempotence, argument normalization
+with both flattening modes, and atomic-body comments/spans/terminators and
+dependencies are unit-tested. VARIADIC also uses the shared function-argument
+model, formatting, dependency traversal, and normalization.
+
+Procedure lookup and overload resolution, argument binding/types/defaults,
+OUT/INOUT semantics, transaction-control restrictions, and execution remain
+deferred. CALL support does not complete the final SQL-body restriction audit;
+PL/pgSQL bodies remain opaque. No integration tests or database execution were
+added.
+
 ## Pagination And Row Locking
 
 SELECT supports LIMIT expressions or ALL, OFFSET with optional ROW/ROWS, either

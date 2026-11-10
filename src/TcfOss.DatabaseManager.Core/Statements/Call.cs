@@ -16,13 +16,34 @@ public record Call(Expression Expression) : Statement
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
-        writer.Write("CALL ");
-        Expression.FormatSql(writer, manager);
+        writer.WriteSql($"{manager.Indent}CALL ");
+        if (Expression is FunctionCall invocation)
+        {
+            invocation.Name.FormatSql(writer, manager);
+            invocation.Arguments.FormatSql(writer, manager);
+        }
+        else
+        {
+            Expression.FormatSql(writer, manager);
+        }
         Meta.FormatPostNonSql(writer, manager);
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
+        if (Expression is FunctionCall invocation)
+        {
+            ItemRef? procedure = context.CreateProcedureRef(invocation.Name);
+            if (procedure != null)
+            {
+                yield return procedure;
+            }
+            foreach (ItemRef item in invocation.Arguments.GetReferencedItems(context))
+            {
+                yield return item;
+            }
+            yield break;
+        }
         foreach (ItemRef item in Expression.GetReferencedItems(context))
         {
             yield return item;

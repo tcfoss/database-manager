@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -53,6 +54,11 @@ public class MsParser : Parser
             CreateOrLabel = createOrLabel,
             AllSupportedTypes = ["TABLE", "TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX"]
         };
+    }
+
+    protected override Call ParseCall(ParserState state)
+    {
+        throw ParserState.ExpectedException("SQL statement".Italic(), state.Peek());
     }
 
     protected override void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)

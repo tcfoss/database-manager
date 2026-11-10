@@ -474,4 +474,24 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("CALL app.run(1, app.compute($1))", "CALL \"app\".\"run\"(1, \"app\".\"compute\"($1))", Label = "Format qualified procedure and argument function")]
+    [InlineData("CALL lower('text')", "CALL \"lower\"('text')", Label = "Do not format procedure as built-in function")]
+    [InlineData("CALL app.run(value => (1 + 2))", "CALL \"app\".\"run\"(\"value\" => (1 + 2))", Label = "Format named procedure argument")]
+    [InlineData("CALL app.run(VARIADIC values_arg => ARRAY[1, 2])", "VARIADIC \"values_arg\" => ARRAY[1, 2]", Label = "Format variadic procedure argument")]
+    [InlineData("CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ CALL app.first(1) /* tail */; CALL app.second(NULL); END", "CALL \"app\".\"first\"(1) /* tail */", Label = "Format atomic calls and comments")]
+    public void Call_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

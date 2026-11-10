@@ -35,6 +35,25 @@ public abstract record FunctionArgument() : IWriteSql
         }
     }
 
+    public record Variadic(FunctionArgument Argument) : FunctionArgument
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"VARIADIC {Argument}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("VARIADIC ");
+            Argument.FormatSql(writer, manager);
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            return Argument.GetReferencedItems(context);
+        }
+    }
+
     public record Unnamed(FunctionArgumentExpression Argument) : FunctionArgument
     {
         public override void ToSql(SqlTextWriter writer)
