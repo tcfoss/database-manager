@@ -149,6 +149,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
+    [InlineData("CREATE VIEW myview WITH (security_barrier = TRUE, security_invoker) AS SELECT a, b", Label = "CREATE VIEW PostgreSQL options")]
     [InlineData("CREATE OR REPLACE VIEW myview AS SELECT a, b", Label = "CREATE OR REPLACE VIEW")]
     [InlineData("CREATE OR ALTER VIEW myview AS SELECT a, b", Label = "CREATE OR ALTER VIEW")]
     [InlineData("CREATE VIEW IF NOT EXISTS myview AS SELECT a, b", Label = "CREATE VIEW IF NOT EXISTS")]

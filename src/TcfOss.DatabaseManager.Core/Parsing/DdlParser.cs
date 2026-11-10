@@ -259,7 +259,7 @@ public class DdlParser
     /// ]]>
     /// </code>
     /// </summary>
-    private static MsViewWithOptions? ParseOptionalViewWithOptions(ParserState state)
+    protected virtual MsViewWithOptions? ParseOptionalViewWithOptions(ParserState state)
     {
         if (!state.ParseKeyword(Keyword.WITH))
         {
@@ -1324,6 +1324,7 @@ public class DdlParser
         ObjectName name = _parseObjectName(state);
         SqlValueList<Identifier>? columns = state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
 
+        SqlValueList<PgStorageParameter>? pgOptions = ParseOptionalPgViewOptions(state);
         MsViewWithOptions? msOptions = ParseOptionalViewWithOptions(state);
 
         state.ExpectKeyword(Keyword.AS);
@@ -1342,7 +1343,18 @@ public class DdlParser
             SecurityContext = securityContext,
             ViewCheckOption = viewCheckOption,
             MsOptions = msOptions,
+            PgOptions = pgOptions,
         };
+    }
+
+    protected virtual SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    {
+        if (!state.PeekKeyword(Keyword.WITH) || !state.PeekNthIs<ParenOpen>(1))
+        {
+            return null;
+        }
+        state.ExpectKeyword(Keyword.WITH);
+        return state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false);
     }
 
     public virtual CreateMaterializedView ParseCreateMaterializedView(ParserState state)

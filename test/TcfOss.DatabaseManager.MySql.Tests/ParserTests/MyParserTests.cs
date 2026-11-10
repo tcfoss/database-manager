@@ -922,4 +922,12 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.IsType<DropObject>(ParseStatement("DROP INDEX summary_idx ON summary"));
         Assert.ThrowsAny<ParseException>(() => ParseStatement("DROP INDEX summary_idx"));
     }
+
+    [Theory]
+    [InlineData("CREATE VIEW v WITH (security_barrier = TRUE) AS SELECT 1")]
+    [InlineData("CREATE VIEW v WITH (security_invoker) AS SELECT 1")]
+    public void OrdinaryViewOptions_RejectPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

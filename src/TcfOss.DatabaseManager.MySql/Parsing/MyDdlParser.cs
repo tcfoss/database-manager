@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -54,5 +55,10 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     {
         eventsUseOr = false;
         return [];
+    }
+
+    protected override SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    {
+        return null;
     }
 }

@@ -521,6 +521,26 @@ public class FormatComponentsTests
     }
 
     [Theory]
+    [InlineData("CREATE VIEW app.visible WITH (security_barrier = TRUE, security_invoker) AS SELECT * FROM app.items", "WITH (\"security_barrier\" = TRUE, \"security_invoker\")")]
+    [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (check_option = 'local') AS SELECT id FROM app.items WITH LOCAL CHECK OPTION", "WITH LOCAL CHECK OPTION")]
+    [InlineData("CREATE VIEW \"v; DROP TABLE items; --\" WITH (\"setting; --\" = 'it''s; opaque') AS SELECT 1", "WITH (\"setting; --\" = 'it''s; opaque')")]
+    [InlineData("/* lead */ CREATE VIEW v WITH (security_barrier) AS /* body */ SELECT 1 WITH LOCAL CHECK OPTION /* tail */", "/* tail */")]
+    public void OrdinaryViewOptions_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
+        Assert.NotEmpty(statement.PgOptions!);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
     [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1", "CREATE MATERIALIZED VIEW \"summary\"")]
     [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1) WITH NO DATA", "IF NOT EXISTS \"summary\" (\"id\")")]
     [InlineData("CREATE MATERIALIZED VIEW app.summary USING heap WITH (fillfactor = 70, autovacuum_enabled) TABLESPACE fast AS SELECT id FROM app.items WITH DATA", "USING \"heap\" WITH (\"fillfactor\" = 70, \"autovacuum_enabled\") TABLESPACE \"fast\"")]

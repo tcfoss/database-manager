@@ -182,6 +182,8 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("CREATE VIEW v WITH FOO AS SELECT 1 AS a", Label = "Unknown WITH option")]
+    [InlineData("CREATE VIEW v WITH (security_barrier = TRUE) AS SELECT 1 AS a", Label = "PostgreSQL parenthesized options")]
+    [InlineData("CREATE VIEW v WITH (security_invoker) AS SELECT 1 AS a", Label = "PostgreSQL valueless option")]
     [InlineData("CREATE VIEW v WITH ENCRYPTION, ENCRYPTION AS SELECT 1 AS a", Label = "Duplicate ENCRYPTION")]
     [InlineData("CREATE ALGORITHM = MERGE VIEW v AS SELECT 1 AS a", Label = "MySQL ALGORITHM rejected")]
     [InlineData("CREATE DEFINER = `u`@`%` VIEW v AS SELECT 1 AS a", Label = "MySQL DEFINER rejected")]

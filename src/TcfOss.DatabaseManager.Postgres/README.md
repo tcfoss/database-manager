@@ -92,6 +92,33 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Ordinary Views
+
+`CREATE [OR REPLACE] VIEW name [(columns)] WITH (options) AS query` retains an
+ordered option list in nullable `CreateView.PgOptions`. It reuses Core's
+`PgStorageParameter` representation for optional scalar assignments, including
+`security_barrier`, `security_invoker`, and `check_option`. Omitted options remain
+null; names and optional values retain their order. Bare word values normalize
+to quoted strings. Known option names, value types, duplicates, conflicts, and
+query eligibility are not semantically validated.
+
+Core owns the shared grammar. MySQL/MariaDB and SQL Server reject PostgreSQL's
+parenthesized options; PostgreSQL rejects SQL Server's ENCRYPTION/SCHEMABINDING
+view options. Existing explicit `WITH LOCAL CHECK OPTION` and
+`WITH CASCADED CHECK OPTION` clauses compose with the declaration options.
+Materialized-view population, access-method, and tablespace clauses do not become
+ordinary-view clauses.
+
+SQL/JSON round trips, ordered fields, identifier sources, statement boundaries,
+query-only dependencies, recursive identifier formatting, and formatter
+idempotence are unit-tested. A pre-existing shared nested-query formatter issue
+can duplicate comments trailing a bare query; comment idempotence here covers
+the trailing CHECK OPTION boundary instead. Recursive views, temporary-view
+preservation, unqualified `WITH CHECK OPTION`, fuller PostgreSQL syntax narrowing,
+expanded scalar argument forms, and resolved view construction remain follow-ups.
+Definition construction explicitly rejects ordinary views rather than discarding
+their options. Catalog loading, migrations, and execution remain deferred.
+
 ## Materialized Views
 
 `CREATE MATERIALIZED VIEW` supports `IF NOT EXISTS`, an optional column list,

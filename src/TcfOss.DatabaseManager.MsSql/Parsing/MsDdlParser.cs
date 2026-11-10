@@ -97,4 +97,8 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
         return true;
     }
 
+    protected override SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    {
+        return null;
+    }
 }

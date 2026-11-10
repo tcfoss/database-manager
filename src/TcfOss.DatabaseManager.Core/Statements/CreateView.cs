@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
@@ -18,6 +19,7 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
     public SecurityContext? SecurityContext { get; init; }
     public ViewCheckOption? ViewCheckOption { get; init; }
     public MsViewWithOptions? MsOptions { get; init; }
+    public SqlValueList<PgStorageParameter>? PgOptions { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
@@ -56,6 +58,10 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         if (MsOptions != null)
         {
             writer.WriteSql($" {MsOptions}");
+        }
+        if (PgOptions != null)
+        {
+            writer.WriteSql($" WITH ({PgOptions})");
         }
         if (options.PreferRawText && Meta.RawText != null)
         {
@@ -128,11 +134,21 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
             writer.WriteLine();
             writer.WriteSqlI($"{MsOptions}");
         }
+        if (PgOptions != null)
+        {
+            writer.WriteLine();
+            writer.WriteSqlI("WITH (");
+            writer.FormatDelimited(PgOptions, manager);
+            writer.Write(")");
+        }
         // AS
         writer.WriteLine();
         writer.WriteSqlI("AS");
         // Body (Select)
-        writer.WriteLine();
+        if (!Body.StartsWithNewLines)
+        {
+            writer.WriteLine();
+        }
         Body.FormatSql(writer, manager);
         // WITH CHECK OPTION
         if (ViewCheckOption != null)
