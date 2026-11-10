@@ -363,7 +363,7 @@ public class SelectParser
         }
         else if (state.PeekKeyword(Keyword.VALUES))
         {
-            body = new SelectBody.ValuesQuery(ParseValues(state, true));
+            body = new SelectBody.ValuesQuery(ParseValues(state));
         }
         else
         {
@@ -452,7 +452,7 @@ public class SelectParser
         return item;
     }
 
-    private Values ParseValues(ParserState state, bool allowEmpty)
+    private Values ParseValues(ParserState state)
     {
         bool rowConstructor = false;
         state.ExpectKeyword(Keyword.VALUES);
@@ -465,7 +465,7 @@ public class SelectParser
 
             s.ExpectLeftParen();
 
-            if (allowEmpty && s.PeekIs<ParenClose>())
+            if (s.PeekIs<ParenClose>())
             {
                 s.Next();
                 return [];

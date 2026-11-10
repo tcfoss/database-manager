@@ -230,6 +230,31 @@ public class FormatComponentsTests
 
         Assert.Contains(expected, actual);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void AtomicRoutineBody_SeparatesHeaderWithoutDuplicatingPreservedNewline(int triviaKind)
+    {
+        var body = new BeginAtomic([]);
+        body.Meta.PreNonSql = triviaKind switch
+        {
+            0 => null,
+            1 => [],
+            2 => [new NonSql.Spaces(1)],
+            3 => [new NonSql.Newlines()],
+            _ => throw new ArgumentOutOfRangeException(nameof(triviaKind))
+        };
+        var procedure = new CreateProcedure(new ObjectName(new Identifier("routine")), [], body);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        procedure.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal("CREATE\nPROCEDURE \"routine\" ()\nBEGIN ATOMIC\nEND", writer.ToString().ReplaceLineEndings("\n"));
+    }
+
     [Theory]
     [InlineData("0x_Ff_01")]
     [InlineData("0O_7_5_5")]

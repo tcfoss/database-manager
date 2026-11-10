@@ -125,4 +125,15 @@ public class MsSelectParserTests : ParserTestsBase<MsLexer, MsParser>
         var (expected, actual) = GetExpectedActual(text, expectedSql: expectedSql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
     }
+
+    [Theory]
+    [InlineData("SELECT 1 LIMIT 5")]
+    [InlineData("SELECT 1 LIMIT 5 OFFSET 2")]
+    [InlineData("SELECT 1 LIMIT 2, 5")]
+    public void LegacyLimit_TextMatch(string text)
+    {
+        var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
+
+        Assert.Equal(expected, actual);
+    }
 }

@@ -1201,4 +1201,96 @@ public class NormalizerTests
         Assert.Equal(expectedUnary, normalizedUnary.ToSql());
         Assert.Equal(AggregateQuantifier.Any, Assert.IsType<PgBinaryOperator>(normalizedBinary).Quantifier);
     }
+
+    [Theory]
+    [InlineData("WITH changed (id) AS (INSERT INTO items DEFAULT VALUES ON CONFLICT ON CONSTRAINT unique_key DO NOTHING RETURNING items.*) SELECT 1 AS result", "ON CONSTRAINT `unique_key` DO NOTHING RETURNING `items`.*")]
+    [InlineData("WITH changed (id) AS (UPDATE items SET (left_id, right_id) = (source_left, source_right) RETURNING id AS result) SELECT 1 AS result", "SET (`left_id`, `right_id`) = (`source_left`, `source_right`)")]
+    [InlineData("WITH changed (id) AS (WITH seed AS (SELECT 1 AS id) INSERT INTO items SELECT id FROM seed RETURNING *) SELECT 1 AS result", "INSERT INTO `items`")]
+    [InlineData("WITH changed (id) AS (WITH seed AS (SELECT 1 AS id) UPDATE items SET id = 1 RETURNING id) SELECT 1 AS result", "UPDATE `items` SET `id` = 1")]
+    [InlineData("WITH changed (id) AS (WITH seed AS (SELECT 1 AS id) DELETE FROM items RETURNING id) SELECT 1 AS result", "DELETE FROM `items`")]
+    [InlineData("WITH changed (id) AS (DELETE items FROM items RETURNING id) SELECT 1 AS result", "DELETE `items` FROM `items`")]
+    [InlineData("WITH changed (id) AS (INSERT INTO items VALUES (1) ON CONFLICT (id app.int_ops) DO NOTHING RETURNING id) SELECT 1 AS result", "ON CONFLICT (`id` `app`.`int_ops`) DO NOTHING")]
+    [InlineData("WITH changed (id) AS (INSERT INTO items VALUES (1) ON CONFLICT (id app.int_ops (option = 1)) DO NOTHING RETURNING id) SELECT 1 AS result", "ON CONFLICT (`id` `app`.`int_ops` (`option` = 1)) DO NOTHING")]
+    [InlineData("WITH changed (id) AS (INSERT INTO items VALUES (1) ON DUPLICATE KEY UPDATE id = 2 RETURNING id) SELECT 1 AS result", "ON DUPLICATE KEY UPDATE `id` = 2")]
+    [InlineData("WITH changed (id) AS (SELECT 1 AS id) CYCLE id SET is_cycle USING path SELECT 1 AS result", "CYCLE `id` SET `is_cycle` USING `path`")]
+    public void CteDml_NormalizesOptionalTargetsAndNestedClauses(string sql, string expected)
+    {
+        Select normalized = GetNormalizedSelect(sql, usePseudoTables: false);
+
+        Assert.Contains(expected, normalized.ToSql());
+        Assert.Equal(normalized.ToSql(), GetNormalizedSelect(normalized, usePseudoTables: false).ToSql());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void RowsFrom_NormalizesTypedColumnsAndOptionalCollations(bool usePseudoTables, bool withAlias)
+    {
+        var parser = new TextParser(new GenericLexer(), new Parser());
+        string alias = withAlias ? " AS mapped (first, second)" : "";
+        var statement = Assert.IsType<Select>(Assert.Single(parser.ParseText($"SELECT 1 AS result FROM ROWS FROM (app.records() AS (first INT, second INT)){alias}")));
+        var query = Assert.IsType<SelectBody.SimpleSelectQuery>(statement.Body);
+        var rows = Assert.IsType<TableFactor.RowsFrom>(Assert.Single(query.Query.From!).Relation);
+        rows.Functions[0].Columns![0] = rows.Functions[0].Columns![0] with
+        {
+            Collation = new ObjectName([new Identifier("app"), new Identifier("locale")])
+        };
+
+        Select normalized = GetNormalizedSelect(statement, usePseudoTables: usePseudoTables);
+
+        Assert.Contains("`first` INT COLLATE `app`.`locale`, `second` INT", normalized.ToSql());
+        if (withAlias)
+        {
+            Assert.Contains("AS `mapped` (`first`, `second`)", normalized.ToSql());
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "LIMIT `row_count`")]
+    [InlineData(true, "LIMIT `row_offset`, `row_count`")]
+    public void LegacyLimits_NormalizeExpressionAndCommaSeparatedOffset(bool commaSeparated, string expected)
+    {
+        Select select = GetNormalizedSelect("SELECT 1 AS result", usePseudoTables: false);
+        var count = new Nested(new SingleIdentifier(new Identifier("row_count")));
+        Limit limit = commaSeparated
+            ? new Limit.MyCommaSeparated(count, new Nested(new SingleIdentifier(new Identifier("row_offset"))))
+            : new Limit.ExpressionLimit(count);
+
+        Select normalized = GetNormalizedSelect(select with { Limit = limit }, usePseudoTables: false);
+
+        Assert.Equal(limit.GetType(), normalized.Limit!.GetType());
+        Assert.Equal(expected, normalized.Limit.ToSql());
+    }
+
+    [Fact]
+    public void UnknownLimit_HasNoKnownReferencesAndCannotBeNormalized()
+    {
+        Select select = GetNormalizedSelect("SELECT 1 AS result", usePseudoTables: false);
+        var limit = new UnknownLimit();
+
+        Assert.Empty(limit.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+        Assert.Throws<NotImplementedException>(() => GetNormalizedSelect(select with { Limit = limit }, usePseudoTables: false));
+    }
+
+    [Fact]
+    public void CteNormalization_RejectsUnsupportedStatementBodies()
+    {
+        var parser = new TextParser(new GenericLexer(), new Parser());
+        var statement = Assert.IsType<Select>(Assert.Single(parser.ParseText("WITH changed (id) AS (SELECT 1) SELECT 1 AS result")));
+        var call = Assert.IsType<Call>(Assert.Single(parser.ParseText("CALL audit()")));
+        CommonTableExpressionBody body = Assert.Single(statement.CommonTableExpression!.Tables);
+        statement.CommonTableExpression.Tables[0] = body with { Query = call };
+
+        Assert.Throws<NotSupportedException>(() => GetNormalizedSelect(statement, usePseudoTables: false));
+    }
+
+    private sealed record UnknownLimit : Limit
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("LIMIT CUSTOM");
+        }
+    }
 }
