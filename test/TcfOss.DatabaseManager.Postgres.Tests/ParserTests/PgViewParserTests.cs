@@ -58,7 +58,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("TRUE", Assert.IsType<Value.Boolean>(options[0].Value).ToSql());
         Assert.Null(options[1].Value);
         Assert.Equal("'local'", options[2].Value!.ToSql());
-        Assert.Equal("LOCAL", statement.ViewCheckOption!.ToSql());
+        Assert.Equal("LOCAL", Assert.IsType<ViewCheckOption.Specified>(statement.ViewCheckOption).Scope.ToSql());
         Assert.NotNull(statement.CreateOrLabel);
         Assert.Equal("id", Assert.Single(statement.Columns!).Name);
         foreach (PgStorageParameter option in options)
@@ -106,6 +106,85 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
 
+    [Theory]
+    [InlineData("", null, false)]
+    [InlineData(" WITH CHECK OPTION", "CASCADED", true)]
+    [InlineData(" WITH CASCADED CHECK OPTION", "CASCADED", false)]
+    [InlineData(" WITH LOCAL CHECK OPTION", "LOCAL", false)]
+    public void OrdinaryViewCheckOptions_PreserveModeAndSpelling(string suffix, string? expectedMode, bool omittedMode)
+    {
+        string sql = $"CREATE VIEW v AS SELECT id FROM items{suffix}";
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+
+        if (expectedMode == null)
+        {
+            Assert.Null(statement.ViewCheckOption);
+        }
+        else if (omittedMode)
+        {
+            Assert.IsType<ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        }
+        else
+        {
+            Assert.Equal(expectedMode, Assert.IsType<ViewCheckOption.Specified>(statement.ViewCheckOption).Scope.ToSql());
+        }
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (security_barrier = TRUE) AS SELECT id FROM app.items WITH CHECK OPTION")]
+    [InlineData("CREATE VIEW v AS WITH seed AS (SELECT id FROM items) SELECT id FROM seed WITH CHECK OPTION")]
+    [InlineData("CREATE VIEW v AS (SELECT id FROM items) WITH CHECK OPTION")]
+    public void OrdinaryViewCheckOptions_ComposeWithExistingViewSyntax(string sql)
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+
+        Assert.IsType<ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        Assert.Equal("WITH CHECK OPTION", statement.ViewCheckOption.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void OrdinaryViewCheckOptions_PreserveSourcesBoundariesAndQueryDependencies()
+    {
+        const string sql = "/* lead */ CREATE VIEW app.visible (id) AS SELECT id FROM app.items WITH CHECK OPTION /* tail */; SELECT 2";
+        // var state = GetState(sql, sourceId: 151);
+        // var parser = new PgParser();
+        // var statement = Assert.IsType<CreateView>(ParseStatement(state));
+        var statements = ParseStatements(sql, sourceId: 151);
+        var statement = Assert.IsType<CreateView>(statements[0]);
+
+        Assert.IsType<ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        Assert.Equal(151, Assert.Single(statement.Columns!).Source!.Value.SourceId);
+        Assert.Equal(';', sql[statement.Meta.EndPlusTerminatorLength!.Value - 1]);
+        Assert.Contains("WITH CHECK OPTION", sql[statement.Meta.Start!.Value..statement.Meta.End!.Value]);
+        // Assert.True(state.ConsumeTokenIs<Semicolon>());
+        // Assert.IsType<Select>(parser.ParseStatement(state));
+        Assert.IsType<Select>(statements[1]);
+        // Assert.IsType<Eof>(state.Peek());
+        string[] dependencies = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+        Assert.Equal(new[] { "app.items" }, dependencies);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH CHECK")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH OPTION")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH CHECK OPTION LOCAL")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH CHECK OPTION WITH CHECK OPTION")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH LOCAL CASCADED CHECK OPTION")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH DEFAULT CHECK OPTION")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH \"LOCAL\" CHECK OPTION")]
+    [InlineData("CREATE MATERIALIZED VIEW v AS SELECT 1 WITH CHECK OPTION")]
+    public void OrdinaryViewCheckOptions_RejectMalformedAndMaterializedForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 
     [Theory]
     [InlineData("REFRESH MATERIALIZED VIEW app.summary", false, null)]

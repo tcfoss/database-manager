@@ -149,6 +149,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
+    [InlineData("CREATE VIEW myview AS SELECT a, b WITH CHECK OPTION", Label = "CREATE VIEW implicit check mode")]
     [InlineData("CREATE VIEW myview WITH (security_barrier = TRUE, security_invoker) AS SELECT a, b", Label = "CREATE VIEW PostgreSQL options")]
     [InlineData("CREATE OR REPLACE VIEW myview AS SELECT a, b", Label = "CREATE OR REPLACE VIEW")]
     [InlineData("CREATE OR ALTER VIEW myview AS SELECT a, b", Label = "CREATE OR ALTER VIEW")]
@@ -337,7 +338,6 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TRIGGER mytrigger UPDATE ON mytable FOR EACH ROW SELECT 1", "{ BEFORE | AFTER | INSTEAD OF | FOR }")]
     [InlineData("CREATE TRIGGER mytrigger AFTER ON mytable FOR EACH ROW SELECT 1", "{ INSERT | UPDATE | DELETE | TRUNCATE }")]
     [InlineData("CREATE ALGORITHM = INVALID VIEW myview AS SELECT 1 FROM mytable", "{ UNDEFINED | MERGE | TEMPTABLE }")]
-    [InlineData("CREATE VIEW myview AS SELECT 1 FROM mytable WITH MISSING CHECK OPTION", "{ CASCADED | LOCAL }")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE MISSING", "{ AT | EVERY }")]
     [InlineData("CREATE PROCEDURE myproc () SQL SECURITY MISSING SELECT 1", "{ DEFINER | INVOKER }")]
     [InlineData("CREATE FUNCTION myfunc () RETURNS INT SQL SECURITY MISSING RETURN 1", "{ DEFINER | INVOKER }")]
@@ -351,6 +351,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("CREATE VIEW myview AS SELECT 1 FROM mytable WITH MISSING CHECK OPTION", "CHECK")]
     [InlineData("CREATE PROCEDURE myproc () LANGUAGE MISSING SELECT 1", "SQL")]
     public static void MissingAttributes_Single_Throws(string sql, string missingParameter)
     {

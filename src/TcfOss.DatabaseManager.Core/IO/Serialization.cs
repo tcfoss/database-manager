@@ -178,7 +178,7 @@ public static partial class Serialization
             .WithTypeConverter(new YamlStringEnumConverter<ReferentialAction>())
             .WithTypeConverter(new YamlStringEnumConverter<SecurityContext>())
             .WithTypeConverter(new YamlStringEnumConverter<ViewAlgorithm>())
-            .WithTypeConverter(new YamlStringEnumConverter<ViewCheckOption>())
+            .WithTypeConverter(new YamlStringEnumConverter<ViewCheckOptionScope>())
             .WithTypeConverter(new YamlStringEnumConverter<SqlDataRelation>())
             .WithTypeConverter(new YamlStringEnumConverter<RoutineParameterDirection>())
             .WithTypeConverter(new YamlStringEnumConverter<EventEnabledStatus>())

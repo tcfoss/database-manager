@@ -569,7 +569,7 @@ public class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         var body = (Select)_helper.ParseStatement(isView.ViewDefinition);
 
         SecurityContext securityContext = SecurityContext.Parse(isView.SecurityType);
-        ViewCheckOption? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOption.Parse(isView.CheckOption);
+        ViewCheckOptionScope? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOptionScope.Parse(isView.CheckOption);
         ViewAlgorithm algorithm = ViewAlgorithm.Parse(isView.Algorithm);
 
         return new MyView(viewId, body)

@@ -79,6 +79,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("SELECT 1")]
+    [InlineData("CREATE VIEW visible AS SELECT 1 WITH CHECK OPTION")]
     [InlineData("CREATE VIEW visible WITH (security_barrier = TRUE) AS SELECT 1")]
     [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH NO DATA")]
     [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]

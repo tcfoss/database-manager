@@ -502,7 +502,7 @@ public abstract class BaseInfoSchemaRepoTests
 
         Assert.Equal("view_with_options", view.Name.Name);
         Assert.Equal(ViewAlgorithm.Merge, view.Algorithm);
-        Assert.Equal(ViewCheckOption.Local, view.CheckOption);
+        Assert.Equal((ViewCheckOptionScope)ViewCheckOptionScope.Local, view.CheckOption);
     }
 
     [Fact]

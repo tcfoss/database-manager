@@ -4,4 +4,4 @@ namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 
 [StringEnum("CASCADED")]
 [StringEnum("LOCAL")]
-public sealed partial class ViewCheckOption;
+public sealed partial class ViewCheckOptionScope;

@@ -238,7 +238,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
 
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "parse_error_not_droppable.sql");
         var expected = $$"""
-            Parse Error: Expected one of { TABLE | PROCEDURE | FUNCTION | TRIGGER | VIEW | EVENT | SCHEMA | DATABASE | INDEX }. Found CARROT. (In file '{{filePath}}' at line 1, column 6)
+            Parse Error: Expected one of { TABLE | PROCEDURE | FUNCTION | TRIGGER | VIEW | MATERIALIZED VIEW | EVENT | SCHEMA | DATABASE | INDEX }. Found CARROT. (In file '{{filePath}}' at line 1, column 6)
             DROP CARROT cant_drop;
                  ^
             """;

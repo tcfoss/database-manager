@@ -168,6 +168,8 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("CREATE VIEW v AS SELECT 1 AS a", Label = "Bare")]
+    [InlineData("CREATE VIEW v AS SELECT 1 AS a WITH CHECK OPTION", Label = "Implicit check mode")]
+    [InlineData("CREATE VIEW v WITH SCHEMABINDING AS SELECT 1 AS a WITH CHECK OPTION", Label = "Schema binding and implicit check mode")]
     [InlineData("CREATE VIEW v (a) AS SELECT 1", Label = "Column list")]
     [InlineData("CREATE OR ALTER VIEW v AS SELECT 1 AS a", Label = "CREATE OR ALTER")]
     [InlineData("CREATE VIEW v WITH ENCRYPTION AS SELECT 1 AS a", Label = "WITH ENCRYPTION")]

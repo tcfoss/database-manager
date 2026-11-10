@@ -629,19 +629,19 @@ public class DdlParser
 
     private static ViewCheckOption? ParseViewCheckOption(ParserState state)
     {
-        ViewCheckOption? option = null;
-        if (state.ParseKeyword(Keyword.WITH))
+        if (!state.ParseKeyword(Keyword.WITH))
         {
-            option = state.Peek() switch
-            {
-                Word { Keyword: Keyword.CASCADED } => ViewCheckOption.Cascaded,
-                Word { Keyword: Keyword.LOCAL } => ViewCheckOption.Local,
-                _ => throw state.ExpectedException<ViewCheckOption>()
-            };
-            state.Next();
-            state.ExpectKeywordsAll(Keyword.CHECK, Keyword.OPTION);
+            return null;
         }
-        return option;
+
+        ViewCheckOptionScope? scope = state.TryParseStringEnum<ViewCheckOptionScope>();
+        state.ExpectKeywordsAll(Keyword.CHECK, Keyword.OPTION);
+
+        if (scope is not null)
+        {
+            return new ViewCheckOption.Specified(scope);
+        }
+        return new ViewCheckOption.Unspecified();
     }
 
     protected virtual SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state, bool isFunction)

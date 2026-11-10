@@ -1,7 +1,9 @@
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.MySql.Configuration;
 
@@ -25,7 +27,13 @@ public class MyConstructPreView(MyConfig config, MyAttributeNormalizer normalize
             Definer = definer,
             SecurityContext = createViewStatement.SecurityContext ?? _config.AttributeDefaults.ViewSecurityContext,
             Algorithm = createViewStatement.ViewAlgorithm ?? ViewAlgorithm.Undefined,
-            CheckOption = createViewStatement.ViewCheckOption,
+            CheckOption = createViewStatement.ViewCheckOption switch
+            {
+                null => null,
+                ViewCheckOption.Specified specified => specified.Scope,
+                ViewCheckOption.Unspecified => ViewCheckOptionScope.Cascaded,
+                _ => throw new DefensiveGuardException("view check option type", createViewStatement.ViewCheckOption.GetType())
+            },
             RawBodyText = rawBodyText,
             SourceRef = sourceRef,
         };

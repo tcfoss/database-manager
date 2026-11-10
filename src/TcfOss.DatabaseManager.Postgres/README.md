@@ -104,8 +104,17 @@ query eligibility are not semantically validated.
 
 Core owns the shared grammar. MySQL/MariaDB and SQL Server reject PostgreSQL's
 parenthesized options; PostgreSQL rejects SQL Server's ENCRYPTION/SCHEMABINDING
-view options. Existing explicit `WITH LOCAL CHECK OPTION` and
-`WITH CASCADED CHECK OPTION` clauses compose with the declaration options.
+view options. `WITH [LOCAL | CASCADED] CHECK OPTION` composes with the declaration
+options. `CreateView.ViewCheckOption` uses the statement variants
+`ViewCheckOption.Unspecified` and `ViewCheckOption.Specified(ViewCheckOptionScope)`
+to retain omitted versus explicit scopes for SQL/JSON round trips and formatting.
+No clause has a null check option. Canonical MySQL/MariaDB views use nullable
+`ViewCheckOptionScope`, resolving an unspecified scope to CASCADED and emitting
+explicit scopes when converted back to statements.
+Core also accepts this valid unqualified form for MySQL/MariaDB and SQL Server;
+MySQL/MariaDB definition construction keeps the effective mode rather than the
+statement spelling. PostgreSQL updateability/check-option eligibility validation
+remains deferred.
 Materialized-view population, access-method, and tablespace clauses do not become
 ordinary-view clauses.
 
@@ -114,7 +123,7 @@ query-only dependencies, recursive identifier formatting, and formatter
 idempotence are unit-tested. A pre-existing shared nested-query formatter issue
 can duplicate comments trailing a bare query; comment idempotence here covers
 the trailing CHECK OPTION boundary instead. Recursive views, temporary-view
-preservation, unqualified `WITH CHECK OPTION`, fuller PostgreSQL syntax narrowing,
+preservation, fuller PostgreSQL syntax narrowing,
 expanded scalar argument forms, and resolved view construction remain follow-ups.
 Definition construction explicitly rejects ordinary views rather than discarding
 their options. Catalog loading, migrations, and execution remain deferred.

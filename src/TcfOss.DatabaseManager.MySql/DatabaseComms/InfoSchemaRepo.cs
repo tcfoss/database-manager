@@ -596,7 +596,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             algorithm = ViewAlgorithm.Parse(agloMatch.Groups[1].Value);
         }
 
-        ViewCheckOption? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOption.Parse(isView.CheckOption!);
+        ViewCheckOptionScope? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOptionScope.Parse(isView.CheckOption!);
 
         return new MyView(viewId, body)
         {

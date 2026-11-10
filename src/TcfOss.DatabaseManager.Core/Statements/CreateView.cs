@@ -75,12 +75,11 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         }
         else
         {
-
             writer.WriteSql($" AS {Body}");
 
             if (ViewCheckOption != null)
             {
-                writer.WriteSql($" WITH {ViewCheckOption} CHECK OPTION");
+                writer.WriteSql($" {ViewCheckOption}");
             }
         }
     }
@@ -154,7 +153,7 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         if (ViewCheckOption != null)
         {
             writer.WriteLine();
-            writer.WriteSqlI($"WITH {ViewCheckOption} CHECK OPTION");
+            writer.WriteSqlI($"{ViewCheckOption}");
         }
         Meta.FormatPostNonSql(writer, manager);
     }

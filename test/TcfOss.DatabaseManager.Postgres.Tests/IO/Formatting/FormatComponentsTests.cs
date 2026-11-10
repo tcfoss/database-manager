@@ -521,6 +521,29 @@ public class FormatComponentsTests
     }
 
     [Theory]
+    [InlineData("CREATE VIEW app.visible AS SELECT id FROM app.items WITH CHECK OPTION")]
+    [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (security_barrier) AS SELECT id FROM app.items WITH CHECK OPTION")]
+    [InlineData("/* lead */ CREATE VIEW v AS /* body */ SELECT 1 WITH CHECK OPTION /* tail */")]
+    [InlineData("CREATE VIEW \"v; DROP TABLE items; --\" AS SELECT 1 WITH CHECK OPTION")]
+    public void OrdinaryViewCheckOptions_FormatAndReparseIdempotently(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("WITH CHECK OPTION", formatted.NormalizeWhitespace());
+        Assert.DoesNotContain("WITH CASCADED CHECK OPTION", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
+        Assert.IsType<Core.Statements.Components.ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        Assert.Equal("WITH CHECK OPTION", statement.ViewCheckOption.ToSql());
+        Assert.Contains("\nWITH CHECK OPTION", formatted.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
     [InlineData("CREATE VIEW app.visible WITH (security_barrier = TRUE, security_invoker) AS SELECT * FROM app.items", "WITH (\"security_barrier\" = TRUE, \"security_invoker\")")]
     [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (check_option = 'local') AS SELECT id FROM app.items WITH LOCAL CHECK OPTION", "WITH LOCAL CHECK OPTION")]
     [InlineData("CREATE VIEW \"v; DROP TABLE items; --\" WITH (\"setting; --\" = 'it''s; opaque') AS SELECT 1", "WITH (\"setting; --\" = 'it''s; opaque')")]

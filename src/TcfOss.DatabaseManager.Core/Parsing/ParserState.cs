@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
@@ -382,6 +383,17 @@ public class ParserState
             result = null;
         }
         return result != null;
+    }
+
+    public T? TryParseStringEnum<T>() where T : class, IStringEnum<T>
+    {
+        if (Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word
+            && T.TryParse(word.Value, out T? parsed))
+        {
+            Next();
+            return parsed;
+        }
+        return null;
     }
 
     /// <summary>

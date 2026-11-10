@@ -860,6 +860,28 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("WITH CHECK OPTION", true)]
+    [InlineData("WITH CASCADED CHECK OPTION", false)]
+    [InlineData("WITH LOCAL CHECK OPTION", false)]
+    public void OrdinaryViewCheckOptions_PreserveImplicitAndExplicitModes(string clause, bool omittedMode)
+    {
+        string sql = $"CREATE VIEW v AS SELECT id FROM items {clause}";
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+
+        if (omittedMode)
+        {
+            Assert.IsType<ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        }
+        else
+        {
+            Assert.IsType<ViewCheckOption.Specified>(statement.ViewCheckOption);
+        }
+        Assert.Equal(clause, statement.ViewCheckOption!.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("REFRESH MATERIALIZED VIEW summary")]
     [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA")]
     [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]
