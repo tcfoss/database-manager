@@ -1345,6 +1345,69 @@ public class DdlParser
         };
     }
 
+    public virtual CreateMaterializedView ParseCreateMaterializedView(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.MATERIALIZED, Keyword.VIEW);
+        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+
+        ObjectName name = _parseObjectName(state);
+
+        SqlValueList<Identifier>? columns = state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
+
+        Identifier? accessMethod = state.ParseKeyword(Keyword.USING) ? _parseIdentifier(state) : null;
+
+        SqlValueList<PgStorageParameter>? storageParameters = state.ParseKeyword(Keyword.WITH)
+            ? state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false)
+            : null;
+
+        Identifier? tablespace = state.ParseKeyword(Keyword.TABLESPACE) ? _parseIdentifier(state) : null;
+
+        state.ExpectKeyword(Keyword.AS);
+        if (state.Peek() is not (Word { Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH } or ParenOpen))
+        {
+            throw state.ExpectedException("SELECT", "VALUES", "WITH", "subquery");
+        }
+
+        if (_p.ParseStatement(state) is not Select body)
+        {
+            throw state.ExpectedException("SELECT", "VALUES");
+        }
+
+        bool? withData = null;
+        Token populationToken = state.Peek();
+        if (state.ParseKeyword(Keyword.WITH))
+        {
+            if (populationToken.PreNonSql?.Items.Any(nonSql => nonSql is Statements.Components.NonSql.Comment) == true)
+            {
+                body.Meta.PostNonSql = populationToken.PreNonSql.Items;
+            }
+            withData = !state.ParseKeyword(Keyword.NO);
+            state.ExpectKeyword(Keyword.DATA);
+        }
+
+        return new CreateMaterializedView(name, body)
+        {
+            Columns = columns,
+            IfNotExists = ifNotExists,
+            AccessMethod = accessMethod,
+            StorageParameters = storageParameters,
+            Tablespace = tablespace,
+            WithData = withData
+        };
+    }
+
+    private PgStorageParameter ParseStorageParameter(ParserState state)
+    {
+        Token start = state.Peek();
+        ObjectName name = _parseObjectName(state);
+        if (name.Values.Count > 2)
+        {
+            throw ParserState.ExpectedCategoryException("storage parameter", start);
+        }
+        Value? value = state.ConsumeTokenIs<Equal>() ? ParseRoutineSettingValue(state) : null;
+        return new PgStorageParameter(name, value);
+    }
+
     private EventSchedule ParseEventSchedule(ParserState state)
     {
         state.ExpectKeywordsAll(Keyword.ON, Keyword.SCHEDULE);

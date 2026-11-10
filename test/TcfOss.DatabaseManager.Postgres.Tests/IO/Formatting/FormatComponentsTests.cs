@@ -519,4 +519,27 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1", "CREATE MATERIALIZED VIEW \"summary\"")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1) WITH NO DATA", "IF NOT EXISTS \"summary\" (\"id\")")]
+    [InlineData("CREATE MATERIALIZED VIEW app.summary USING heap WITH (fillfactor = 70, autovacuum_enabled) TABLESPACE fast AS SELECT id FROM app.items WITH DATA", "USING \"heap\" WITH (\"fillfactor\" = 70, \"autovacuum_enabled\") TABLESPACE \"fast\"")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (toast.autovacuum_enabled = false) AS SELECT 1", "WITH (\"toast\".\"autovacuum_enabled\" = FALSE)")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS WITH seed (id) AS (SELECT 1) SELECT id FROM seed WITH NO DATA", "WITH NO DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS /* body */ SELECT 1 /* tail */ WITH NO DATA", "/* tail */")]
+    [InlineData("CREATE MATERIALIZED VIEW \"summary; DROP TABLE items; --\" WITH (setting = 'it''s; opaque') AS SELECT 1", "\"summary; DROP TABLE items; --\"")]
+    public void MaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateMaterializedView>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

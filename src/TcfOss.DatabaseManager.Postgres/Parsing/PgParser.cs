@@ -67,7 +67,7 @@ public class PgParser : Parser
         {
             CreateOrLabel = createOrLabel,
             Temporary = temporary,
-            AllSupportedTypes = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
+            AllSupportedTypes = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "PROCEDURE", "INDEX", "TYPE", "DOMAIN"]
         };
     }
 
@@ -144,6 +144,7 @@ public class PgParser : Parser
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, false, options.CreateOrLabel, null),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, null),
             Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, null, null, null),
+            Keyword.MATERIALIZED => DdlParser.ParseCreateMaterializedView(state),
             Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
             _ => throw state.ExpectedException(options.AllSupportedTypes),
         };

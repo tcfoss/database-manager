@@ -420,7 +420,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
         var tokens = lexer.Tokenize("CREATE UNKNOWN OBJECT");
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.Parse([.. tokens]));
-        var expectedMessage = "Expected one of { TABLE | TRIGGER | CONSTRAINT TRIGGER | VIEW | FUNCTION | PROCEDURE | EVENT | INDEX | TYPE | DOMAIN }. Found UNKNOWN.";
+        var expectedMessage = "Expected one of { TABLE | TRIGGER | CONSTRAINT TRIGGER | VIEW | MATERIALIZED VIEW | FUNCTION | PROCEDURE | EVENT | INDEX | TYPE | DOMAIN }. Found UNKNOWN.";
 
         Assert.Equal(expectedMessage, exception.Message);
     }

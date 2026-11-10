@@ -92,6 +92,32 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Materialized Views
+
+`CREATE MATERIALIZED VIEW` supports `IF NOT EXISTS`, an optional column list,
+`USING` an access method, `WITH (...)` storage parameters, `TABLESPACE`, and
+`WITH DATA` / `WITH NO DATA`. Its separate Core `CreateMaterializedView` AST
+retains the query and declaration options without treating it as an ordinary
+view. Nullable `WithData` distinguishes omission from either explicit clause.
+Core owns the shared grammar; PostgreSQL dispatch enables it while the shared
+MySQL/MariaDB parser and SQL Server reject materialized-view declarations.
+
+Queries reuse SELECT, VALUES, WITH, and parenthesized query parsing. Storage
+parameters retain their names, optional scalar values, and qualified parameter
+names such as `toast.autovacuum_enabled`. Bare word values normalize to quoted
+strings. TABLE query shorthand, additional storage-argument forms, expression
+values, catalog-backed option/access-method validation, and query eligibility
+checks are not implemented in this slice. PostgreSQL's unsupported OR REPLACE
+and temporary materialized-view forms are rejected.
+
+SQL/JSON round trips, recursive identifier formatting, formatter idempotence,
+query dependencies, source spans, query-boundary comments, invalid syntax, and
+provider boundaries are unit-tested. Dependency traversal follows the query,
+not the target, storage parameters, access method, or tablespace. Definition
+construction raises a sourced unsupported-statement error rather than dropping
+the declaration. Resolved materialized-view objects, catalog loading, REFRESH,
+ALTER/DROP lifecycle support, and migrations remain deferred.
+
 ## SQL-Body Context
 
 Unquoted SQL routine bodies enable `ParseContext.NarrowSqlOnly` for their

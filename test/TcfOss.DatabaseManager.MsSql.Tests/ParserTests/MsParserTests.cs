@@ -194,6 +194,8 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("CREATE TYPE address AS (street TEXT)")]
     [InlineData("CREATE DOMAIN postcode AS TEXT")]
     [InlineData("CREATE EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary AS SELECT 1 WITH NO DATA")]
     public void UnsupportedCreateDeclarations_AreRejected(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));

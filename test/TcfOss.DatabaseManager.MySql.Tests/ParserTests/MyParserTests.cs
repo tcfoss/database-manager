@@ -421,7 +421,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TYPE address AS (street TEXT)")]
     [InlineData("CREATE DOMAIN postcode AS TEXT")]
-    public void CreateTypeAndDomain_AreNotSupported(string sql)
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary AS SELECT 1 WITH NO DATA")]
+    public void PostgresCreateDeclarations_AreNotSupported(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

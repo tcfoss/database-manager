@@ -77,12 +77,18 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.NotNull(sourceManager.GetSourceRef(new ObjectHandle("catalog", "other", "mood")));
     }
 
-    [Fact]
-    public void ProcessStatements_RejectsUnsupportedStatements()
+    [Theory]
+    [InlineData("SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH NO DATA")]
+    public void ProcessStatements_RejectsUnsupportedStatements(string sql)
     {
         var builder = CreateBuilder();
+        var statements = ParseStatements(sql);
 
-        Assert.Throws<DefinitionException>(() => builder.ProcessStatements(ParseStatements("SELECT 1"), GetSchema(), 0));
+        var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 17));
+
+        Assert.Contains(statements[0].GetType().Name, exception.Message);
+        Assert.Equal(new SourceRef(17, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Fact]

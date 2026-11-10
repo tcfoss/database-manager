@@ -514,4 +514,25 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1) WITH NO DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW app.summary USING heap WITH (fillfactor = 70) TABLESPACE fast AS SELECT id FROM app.items WITH DATA")]
+    public void MaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE OR REPLACE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE OR ALTER MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY MATERIALIZED VIEW summary AS SELECT 1")]
+    public void MaterializedViews_CoreParserRejectsUnsupportedOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

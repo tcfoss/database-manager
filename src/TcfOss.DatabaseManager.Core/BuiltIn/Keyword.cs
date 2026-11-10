@@ -805,6 +805,7 @@ public enum Keyword
     TABLE_NAME,
     TABLES,
     TABLESAMPLE,
+    TABLESPACE,
     TAG,
     TARGET,
     TBLPROPERTIES,
