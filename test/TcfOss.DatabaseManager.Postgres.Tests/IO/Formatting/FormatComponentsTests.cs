@@ -521,6 +521,53 @@ public class FormatComponentsTests
     }
 
     [Theory]
+    [InlineData("CREATE TEMP VIEW visible AS SELECT 1", "CREATE TEMP VIEW", false, "TEMP")]
+    [InlineData("CREATE TEMPORARY VIEW visible AS SELECT 1 WITH CHECK OPTION", "CREATE TEMPORARY VIEW", false, "TEMPORARY")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id) AS SELECT 1 UNION ALL SELECT id FROM walk", "CREATE RECURSIVE VIEW", true, null)]
+    [InlineData("CREATE OR REPLACE TEMP RECURSIVE VIEW app.walk (id) WITH (security_invoker = TRUE) AS SELECT 1 UNION ALL SELECT id FROM walk", "CREATE OR REPLACE TEMP RECURSIVE VIEW", true, "TEMP")]
+    [InlineData("/* lead */ CREATE TEMPORARY RECURSIVE VIEW \"Walk; --\" (id) AS /* body */ SELECT 1 UNION ALL SELECT id FROM \"Walk; --\"", "CREATE TEMPORARY RECURSIVE VIEW", true, "TEMPORARY")]
+    public void OrdinaryViewModifiers_FormatAndReparseIdempotently(string sql, string expectedPrefix, bool recursive, string? temporary)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedPrefix, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
+        Assert.Equal(recursive, statement.Recursive);
+        Assert.Equal(temporary, statement.TemporaryLabel?.ToSql());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("TEMP")]
+    [InlineData("TEMPORARY")]
+    public void OrdinaryViewModifiers_FormatTemporaryTablesIdempotently(string modifier)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted($"CREATE {modifier} TABLE items (id INT)");
+
+        Assert.Contains($"CREATE {modifier} TABLE", formatted.NormalizeWhitespace());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void OrdinaryViewModifiers_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC CREATE TEMP VIEW visible AS SELECT 1; CREATE TEMP RECURSIVE VIEW walk (id) AS SELECT 1 UNION ALL SELECT id FROM walk; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("CREATE TEMP RECURSIVE", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
     [InlineData("CREATE VIEW app.visible AS SELECT id FROM app.items WITH CHECK OPTION")]
     [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (security_barrier) AS SELECT id FROM app.items WITH CHECK OPTION")]
     [InlineData("/* lead */ CREATE VIEW v AS /* body */ SELECT 1 WITH CHECK OPTION /* tail */")]

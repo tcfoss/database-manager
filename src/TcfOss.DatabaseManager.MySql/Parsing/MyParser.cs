@@ -11,6 +11,7 @@ using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
@@ -52,7 +53,7 @@ public class MyParser : Parser
         Definer? definer = ComponentParser.ParseOptionalDefiner(state);
         SecurityContext? securityContext = DdlParser.ParseSecurityContext(state);
         bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
-        bool temporary = state.ParseKeywordsAny(Keyword.TEMPORARY, Keyword.TEMP) != Keyword.undefined;
+        TemporaryLabel? temporaryLabel = state.ParseKeyword(Keyword.TEMPORARY) ? TemporaryLabel.Temporary : null;
 
         return new CreateObjectOptions
         {
@@ -61,9 +62,18 @@ public class MyParser : Parser
             Definer = definer,
             SecurityContext = securityContext,
             Aggregate = aggregate,
-            Temporary = temporary,
+            TemporaryLabel = temporaryLabel,
             AllSupportedTypes = ["TABLE", "TRIGGER", "FUNCTION", "PROCEDURE", "VIEW", "EVENT", "INDEX"]
         };
+    }
+
+    protected override void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
+    {
+        if (options.TemporaryLabel != null && objectTypeToken.Keyword != Keyword.TABLE)
+        {
+            throw state.ExpectedException("TABLE");
+        }
+        base.GuardCreateOptions(state, objectTypeToken, options);
     }
 
     protected override Statement ParseCreate(ParserState state)
@@ -79,11 +89,11 @@ public class MyParser : Parser
 
         return objectTypeWord.Keyword switch
         {
-            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel),
             Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
             Keyword.PROCEDURE => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
-            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext, options.TemporaryLabel, options.Recursive),
             Keyword.EVENT => DdlParser.ParseCreateEvent(state, options.CreateOrLabel, options.Definer),
             Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
             _ => throw state.ExpectedException(options.AllSupportedTypes),

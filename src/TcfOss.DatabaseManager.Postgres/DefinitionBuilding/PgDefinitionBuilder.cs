@@ -51,7 +51,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             switch (statement)
             {
                 case CreateTable table:
-                    if (table.Temporary)
+                    if (table.Temporary != null)
                     {
                         throw new DefinitionException.TempTable(table.Name.ToString(), sourceRef);
                     }

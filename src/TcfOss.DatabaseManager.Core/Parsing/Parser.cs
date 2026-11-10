@@ -7,7 +7,7 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
-
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
@@ -262,7 +262,8 @@ public class Parser : IParser
         Definer? definer = ComponentParser.ParseOptionalDefiner(state);
         SecurityContext? securityContext = DdlParser.ParseSecurityContext(state);
         bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
-        bool temporary = state.ParseKeywordsAny(Keyword.TEMPORARY, Keyword.TEMP) != Keyword.undefined;
+        TemporaryLabel? temporaryLabel = ParseTemporaryLabel(state);
+        bool recursive = state.ParseKeyword(Keyword.RECURSIVE);
 
         return new CreateObjectOptions
         {
@@ -271,13 +272,31 @@ public class Parser : IParser
             Definer = definer,
             SecurityContext = securityContext,
             Aggregate = aggregate,
-            Temporary = temporary
+            TemporaryLabel = temporaryLabel,
+            Recursive = recursive
         };
+    }
+
+    protected virtual TemporaryLabel? ParseTemporaryLabel(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TEMPORARY))
+        {
+            return TemporaryLabel.Temporary;
+        }
+        if (state.ParseKeyword(Keyword.TEMP))
+        {
+            return TemporaryLabel.Temp;
+        }
+        return null;
     }
 
     protected virtual void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
     {
         Keyword kw = objectTypeToken.Keyword;
+        if (options.Recursive && kw != Keyword.VIEW)
+        {
+            throw state.ExpectedException("VIEW");
+        }
         if (options.ViewAlgorithm != null && kw != Keyword.VIEW)
         {
             throw state.ExpectedException("VIEW");
@@ -294,9 +313,9 @@ public class Parser : IParser
         {
             throw state.ExpectedException("FUNCTION");
         }
-        if (options.Temporary && kw is not Keyword.TABLE)
+        if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW))
         {
-            throw state.ExpectedException("TABLE");
+            throw state.ExpectedException("TABLE", "VIEW");
         }
         if (options.CreateOrLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.TRIGGER or Keyword.CONSTRAINT or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.EVENT or Keyword.INDEX))
         {
@@ -320,11 +339,11 @@ public class Parser : IParser
         {
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
-            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel),
             Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
-            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext, options.TemporaryLabel, options.Recursive),
             Keyword.MATERIALIZED => DdlParser.ParseCreateMaterializedView(state),
             Keyword.EVENT => DdlParser.ParseCreateEvent(state, options.CreateOrLabel, options.Definer),
             Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),

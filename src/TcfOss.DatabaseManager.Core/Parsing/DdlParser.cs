@@ -1316,12 +1316,16 @@ public class DdlParser
         };
     }
 
-    public virtual CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext)
+    public virtual CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext, TemporaryLabel? temporaryLabel, bool recursive)
     {
         state.ExpectKeyword(Keyword.VIEW);
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
+        if (recursive && !state.PeekIs<ParenOpen>())
+        {
+            throw state.ExpectedException("(");
+        }
         SqlValueList<Identifier>? columns = state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
 
         SqlValueList<PgStorageParameter>? pgOptions = ParseOptionalPgViewOptions(state);
@@ -1331,7 +1335,11 @@ public class DdlParser
 
         Select body = (Select)_p.ParseStatement(state);
 
-        ViewCheckOption? viewCheckOption = ParseViewCheckOption(state);
+        ViewCheckOption? viewCheckOption = null;
+        if (!recursive)
+        {
+            viewCheckOption = ParseViewCheckOption(state);
+        }
 
         return new CreateView(name, body)
         {
@@ -1341,6 +1349,8 @@ public class DdlParser
             Definer = definer,
             ViewAlgorithm = viewAlgorithm,
             SecurityContext = securityContext,
+            TemporaryLabel = temporaryLabel,
+            Recursive = recursive,
             ViewCheckOption = viewCheckOption,
             MsOptions = msOptions,
             PgOptions = pgOptions,

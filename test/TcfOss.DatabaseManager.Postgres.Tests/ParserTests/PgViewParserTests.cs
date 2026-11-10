@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
+using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -15,6 +16,119 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.ParserTests;
 
 public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
 {
+    [Theory]
+    [InlineData("CREATE VIEW app.walk AS SELECT 1", false, null)]
+    [InlineData("CREATE RECURSIVE VIEW app.walk (id) AS SELECT 1", true, null)]
+    [InlineData("CREATE TEMP VIEW app.walk AS SELECT 1", false, "TEMP")]
+    [InlineData("CREATE TEMPORARY VIEW app.walk AS SELECT 1", false, "TEMPORARY")]
+    [InlineData("CREATE OR REPLACE TEMP RECURSIVE VIEW app.walk (id) AS SELECT 1", true, "TEMP")]
+    [InlineData("CREATE TEMPORARY RECURSIVE VIEW walk (id) AS SELECT id FROM app.items UNION ALL SELECT id FROM walk", true, "TEMPORARY")]
+    [InlineData("CREATE OR REPLACE TEMPORARY VIEW visible (id) WITH (security_barrier) AS SELECT id FROM app.items WITH CHECK OPTION", false, "TEMPORARY")]
+    [InlineData("CREATE RECURSIVE VIEW \"App\".\"Walk\" (\"Id\") WITH (security_invoker = TRUE) AS SELECT 1 UNION ALL SELECT \"Id\" FROM \"Walk\"", true, null)]
+    public void OrdinaryViewModifiers_RoundTripSqlAndJson(string sql, bool recursive, string? temporary)
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+
+        Assert.Equal(recursive, statement.Recursive);
+        Assert.Equal(temporary, statement.TemporaryLabel?.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("CREATE RECURSIVE VIEW app.walk (id) AS SELECT id FROM app.items UNION ALL SELECT id FROM walk", "app.items")]
+    [InlineData("CREATE TEMP RECURSIVE VIEW app.walk (id) AS SELECT id FROM app.items UNION ALL SELECT id FROM walk", "app.items")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id) AS SELECT id FROM app.walk", "app.walk")]
+    [InlineData("CREATE RECURSIVE VIEW app.walk (id) AS SELECT id FROM app.walk UNION ALL SELECT id FROM walk", "app.walk")]
+    [InlineData("CREATE RECURSIVE VIEW \"Walk\" (id) AS SELECT id FROM app.items UNION ALL SELECT id FROM \"Walk\"", "app.items")]
+    [InlineData("CREATE VIEW walk AS SELECT id FROM walk", "walk")]
+    [InlineData("CREATE TEMP VIEW walk AS SELECT id FROM walk", "walk")]
+    public void OrdinaryViewModifiers_ReportOnlyExternalObjectDependencies(string sql, string expected)
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        var references = statement.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>().ToArray();
+
+        Assert.Equal(expected, Assert.Single(references).Name.ToSql());
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        Assert.Null(context.CurrentContext);
+        Assert.Null(context.PseudoTables);
+    }
+
+    [Fact]
+    public void OrdinaryViewModifiers_PreserveSourcesCommentsAndFollowingStatements()
+    {
+        const string sql = "/* lead */ CREATE OR REPLACE TEMP RECURSIVE VIEW app.walk (id) AS /* body */ SELECT id FROM app.items UNION ALL SELECT id FROM walk /* tail */; SELECT 2";
+        var statements = ParseStatements(sql, sourceId: 157);
+        var statement = Assert.IsType<CreateView>(statements[0]);
+
+        Assert.Equal(2, statements.Count);
+        Assert.True(statement.Recursive);
+        Assert.Equal("TEMP", statement.TemporaryLabel!.ToSql());
+        Assert.NotNull(statement.CreateOrLabel);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.All(statement.Name.Values, identifier => Assert.Equal(157, identifier.Source!.Value.SourceId));
+        Assert.Equal(157, Assert.Single(statement.Columns!).Source!.Value.SourceId);
+        Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " tail " });
+        Assert.IsType<Select>(statements[1]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OrdinaryViewModifiers_RestoreDependencyScopes(bool stopEarly)
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement("CREATE RECURSIVE VIEW walk (id) AS SELECT id FROM app.items UNION ALL SELECT id FROM walk"));
+        var tables = new PseudoTableSet(null, []);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All, PseudoTables = tables };
+        using var scope = context.Enter(ReferencedItemsContext.WhereClause);
+
+        var references = statement.GetReferencedItems(context);
+        _ = stopEarly ? [.. references.Take(1)] : references.ToArray();
+
+        Assert.Same(tables, context.PseudoTables);
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+        Assert.Empty(tables.GetPseudoTables("walk"));
+    }
+
+    [Theory]
+    [InlineData("TEMP")]
+    [InlineData("TEMPORARY")]
+    public void OrdinaryViewModifiers_TemporaryTablesPreserveSpelling(string modifier)
+    {
+        string sql = $"CREATE {modifier} TABLE items (id INT)";
+        var table = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(modifier, table.Temporary!.ToSql());
+        Assert.Equal(sql, table.ToSql());
+        Assert.Equal(table, ParseStatement(table.ToSql()));
+        Statement[] statements = [table];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("CREATE RECURSIVE VIEW walk AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE VIEW walk () AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id,) AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id) AS SELECT 1 WITH CHECK OPTION")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id) AS SELECT 1 WITH LOCAL CHECK OPTION")]
+    [InlineData("CREATE TEMP RECURSIVE VIEW walk (id) AS SELECT 1 WITH CASCADED CHECK OPTION")]
+    [InlineData("CREATE RECURSIVE TEMP VIEW walk (id) AS SELECT 1")]
+    [InlineData("CREATE TEMP TEMPORARY VIEW walk AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE RECURSIVE VIEW walk (id) AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE TABLE walk (id INT)")]
+    [InlineData("CREATE RECURSIVE MATERIALIZED VIEW walk (id) AS SELECT 1")]
+    [InlineData("CREATE TEMP MATERIALIZED VIEW walk AS SELECT 1")]
+    public void OrdinaryViewModifiers_RejectMalformedAndUnsupportedCombinations(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Theory]
     [InlineData("CREATE VIEW app.visible WITH (security_barrier = TRUE) AS SELECT * FROM app.items")]
     [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (security_invoker = FALSE, check_option = 'local') AS SELECT id FROM app.items")]

@@ -30,7 +30,7 @@ public class TableParser
     }
 
 
-    public CreateTable ParseCreate(ParserState state, bool orReplace, bool temporary)
+    public CreateTable ParseCreate(ParserState state, bool orReplace, TemporaryLabel? temporary)
     {
         state.ExpectKeyword(Keyword.TABLE);
 

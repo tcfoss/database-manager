@@ -952,4 +952,25 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("CREATE TEMP VIEW v AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY VIEW v AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE VIEW v (id) AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY RECURSIVE VIEW v (id) AS SELECT 1")]
+    public void OrdinaryViewModifiers_RejectPostgresDeclarations(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void OrdinaryViewModifiers_KeepTemporaryTablesSupported()
+    {
+        const string sql = "CREATE TEMPORARY TABLE items (id INT)";
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal("TEMPORARY", statement.Temporary!.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
 }

@@ -149,6 +149,10 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
+    [InlineData("CREATE TEMP VIEW myview AS SELECT a, b", Label = "CREATE VIEW temporary abbreviation")]
+    [InlineData("CREATE TEMPORARY VIEW myview AS SELECT a, b", Label = "CREATE VIEW temporary")]
+    [InlineData("CREATE RECURSIVE VIEW myview (id) AS SELECT 1 UNION ALL SELECT id FROM myview", Label = "CREATE VIEW recursive")]
+    [InlineData("CREATE OR REPLACE TEMP RECURSIVE VIEW myview (id) AS SELECT 1", Label = "CREATE VIEW combined modifiers")]
     [InlineData("CREATE VIEW myview AS SELECT a, b WITH CHECK OPTION", Label = "CREATE VIEW implicit check mode")]
     [InlineData("CREATE VIEW myview WITH (security_barrier = TRUE, security_invoker) AS SELECT a, b", Label = "CREATE VIEW PostgreSQL options")]
     [InlineData("CREATE OR REPLACE VIEW myview AS SELECT a, b", Label = "CREATE OR REPLACE VIEW")]

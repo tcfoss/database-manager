@@ -184,6 +184,10 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("CREATE VIEW v WITH FOO AS SELECT 1 AS a", Label = "Unknown WITH option")]
+    [InlineData("CREATE TEMP VIEW v AS SELECT 1", Label = "PostgreSQL TEMP view")]
+    [InlineData("CREATE TEMPORARY VIEW v AS SELECT 1", Label = "PostgreSQL TEMPORARY view")]
+    [InlineData("CREATE RECURSIVE VIEW v (id) AS SELECT 1", Label = "PostgreSQL recursive view")]
+    [InlineData("CREATE TEMP RECURSIVE VIEW v (id) AS SELECT 1", Label = "PostgreSQL combined view modifiers")]
     [InlineData("CREATE VIEW v WITH (security_barrier = TRUE) AS SELECT 1 AS a", Label = "PostgreSQL parenthesized options")]
     [InlineData("CREATE VIEW v WITH (security_invoker) AS SELECT 1 AS a", Label = "PostgreSQL valueless option")]
     [InlineData("CREATE VIEW v WITH ENCRYPTION, ENCRYPTION AS SELECT 1 AS a", Label = "Duplicate ENCRYPTION")]

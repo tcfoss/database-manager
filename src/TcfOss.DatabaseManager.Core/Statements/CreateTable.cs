@@ -3,13 +3,14 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns, SqlValueList<StatementTableConstraint> Constraints) : Statement, ICreateStatement
 {
     public bool OrReplace { get; init; }
-    public bool Temporary { get; init; }
+    public TemporaryLabel? Temporary { get; init; }
     public bool IfNotExists { get; init; }
 
     public bool PrintAs { get; init; }
@@ -20,7 +21,7 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
     public override void ToSql(SqlTextWriter writer)
     {
         string? orReplace = OrReplace ? "OR REPLACE " : null;
-        string? temporary = Temporary ? "TEMPORARY " : null;
+        string? temporary = Temporary != null ? $"{Temporary} " : null;
         string? ifNotExists = IfNotExists ? "IF NOT EXISTS " : null;
 
         writer.WriteSql($"CREATE {orReplace}{temporary}TABLE {ifNotExists}{Name}");
@@ -68,7 +69,7 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
     {
         Meta.FormatPreNonSql(writer, manager);
         string? orReplace = OrReplace ? "OR REPLACE " : null;
-        string? temporary = Temporary ? "TEMPORARY " : null;
+        string? temporary = Temporary != null ? $"{Temporary} " : null;
         string? ifNotExists = IfNotExists ? "IF NOT EXISTS " : null;
 
         writer.WriteSql($"{manager.Indent}CREATE {orReplace}{temporary}TABLE {ifNotExists}");

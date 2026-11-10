@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
@@ -13,6 +14,8 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
 {
     public SqlValueList<Identifier>? Columns { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
+    public TemporaryLabel? TemporaryLabel { get; init; }
+    public bool Recursive { get; init; }
     public bool IfNotExists { get; init; }
     public Definer? Definer { get; init; }
     public ViewAlgorithm? ViewAlgorithm { get; init; }
@@ -44,6 +47,14 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         if (SecurityContext != null)
         {
             writer.WriteSql($" SQL SECURITY {SecurityContext}");
+        }
+        if (TemporaryLabel != null)
+        {
+            writer.WriteSql($" {TemporaryLabel}");
+        }
+        if (Recursive)
+        {
+            writer.Write(" RECURSIVE");
         }
         writer.Write(" VIEW");
         if (IfNotExists)
@@ -91,6 +102,14 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         if (CreateOrLabel != null)
         {
             writer.WriteSql($" {CreateOrLabel}");
+        }
+        if (TemporaryLabel != null)
+        {
+            writer.WriteSql($" {TemporaryLabel}");
+        }
+        if (Recursive)
+        {
+            writer.Write(" RECURSIVE");
         }
         // Indented modifiers: ALGORITHM, DEFINER, SQL SECURITY
         bool hasModifiers = ViewAlgorithm != null || Definer != null || SecurityContext != null;
@@ -160,9 +179,11 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
-        foreach (ItemRef item in Body.GetReferencedItems(context))
+        if (Recursive)
         {
-            yield return item;
+            var recursiveQuery = new CommonTableExpression([new CommonTableExpressionBody(Name.Values[^1], Columns, Body)], true);
+            return recursiveQuery.GetReferencedItems(context, []);
         }
+        return Body.GetReferencedItems(context);
     }
 }

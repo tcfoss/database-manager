@@ -118,13 +118,24 @@ remains deferred.
 Materialized-view population, access-method, and tablespace clauses do not become
 ordinary-view clauses.
 
+`CREATE [OR REPLACE] [TEMP | TEMPORARY] [RECURSIVE] VIEW ...` preserves temporary
+spelling in nullable `CreateView.TemporaryLabel` and recursion in `Recursive`.
+Recursive views require a nonempty column list and do not accept a trailing
+CHECK OPTION clause. Their implicit unqualified self-reference is handled through
+the existing recursive CTE dependency traversal; external and schema-qualified
+references remain dependencies. The statement body is not rewritten into a CTE.
+MySQL/MariaDB and SQL Server reject temporary and recursive view declarations.
+TEMPORARY TABLE remains supported in MySQL/MariaDB, and Core/PostgreSQL temporary
+table statements also retain TEMP versus TEMPORARY spelling.
+
 SQL/JSON round trips, ordered fields, identifier sources, statement boundaries,
 query-only dependencies, recursive identifier formatting, and formatter
 idempotence are unit-tested. A pre-existing shared nested-query formatter issue
 can duplicate comments trailing a bare query; comment idempotence here covers
-the trailing CHECK OPTION boundary instead. Recursive views, temporary-view
-preservation, fuller PostgreSQL syntax narrowing,
+the trailing CHECK OPTION boundary instead. Fuller PostgreSQL syntax narrowing,
 expanded scalar argument forms, and resolved view construction remain follow-ups.
+Recursive-query eligibility, temporary-object lifetime/schema restrictions, and
+automatic temporariness from referenced objects are not semantically resolved.
 Definition construction explicitly rejects ordinary views rather than discarding
 their options. Catalog loading, migrations, and execution remain deferred.
 
