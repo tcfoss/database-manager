@@ -117,6 +117,11 @@ statement spelling. PostgreSQL updateability/check-option eligibility validation
 remains deferred.
 Materialized-view population, access-method, and tablespace clauses do not become
 ordinary-view clauses.
+PostgreSQL also rejects IF NOT EXISTS, OR ALTER, and MySQL ALGORITHM/DEFINER/SQL
+SECURITY declaration modifiers. Core retains its kitchen-sink IF NOT EXISTS
+grammar through a provider hook. Both view kinds require query bodies rather
+than arbitrary statements: SELECT, VALUES, WITH queries, and parenthesized
+queries are covered, with parse diagnostics for non-query bodies.
 
 `CREATE [OR REPLACE] [TEMP | TEMPORARY] [RECURSIVE] VIEW ...` preserves temporary
 spelling in nullable `CreateView.TemporaryLabel` and recursion in `Recursive`.
@@ -132,8 +137,10 @@ SQL/JSON round trips, ordered fields, identifier sources, statement boundaries,
 query-only dependencies, recursive identifier formatting, and formatter
 idempotence are unit-tested. A pre-existing shared nested-query formatter issue
 can duplicate comments trailing a bare query; comment idempotence here covers
-the trailing CHECK OPTION boundary instead. Fuller PostgreSQL syntax narrowing,
-expanded scalar argument forms, and resolved view construction remain follow-ups.
+the trailing CHECK OPTION boundary instead. The bounded ordinary-view declaration
+parsing milestone is complete. Shared query grammar extensions (including TABLE
+shorthand), expanded scalar argument forms, and resolved view construction remain
+follow-ups.
 Recursive-query eligibility, temporary-object lifetime/schema restrictions, and
 automatic temporariness from referenced objects are not semantically resolved.
 Definition construction explicitly rejects ordinary views rather than discarding

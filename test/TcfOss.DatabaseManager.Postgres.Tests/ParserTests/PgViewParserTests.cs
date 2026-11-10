@@ -17,6 +17,61 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.ParserTests;
 public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
 {
     [Theory]
+    [InlineData("CREATE VIEW v AS SELECT 1")]
+    [InlineData("CREATE VIEW v (id) AS VALUES (1)")]
+    [InlineData("CREATE VIEW v AS WITH seed AS (SELECT 1 AS id) SELECT id FROM seed")]
+    [InlineData("CREATE VIEW v AS (SELECT 1)")]
+    public void OrdinaryViewSyntax_QueryBodiesRoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+
+        Assert.False(statement.IfNotExists);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW IF NOT EXISTS v AS SELECT 1")]
+    [InlineData("CREATE TEMP VIEW IF NOT EXISTS v AS SELECT 1")]
+    [InlineData("CREATE OR REPLACE VIEW IF NOT EXISTS v AS SELECT 1")]
+    [InlineData("CREATE OR ALTER VIEW v AS SELECT 1")]
+    [InlineData("CREATE UNLOGGED VIEW v AS SELECT 1")]
+    [InlineData("CREATE ALGORITHM = MERGE VIEW v AS SELECT 1")]
+    [InlineData("CREATE DEFINER = CURRENT_USER VIEW v AS SELECT 1")]
+    [InlineData("CREATE SQL SECURITY INVOKER VIEW v AS SELECT 1")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH DATA")]
+    [InlineData("CREATE VIEW v AS SELECT 1 WITH NO DATA")]
+    [InlineData("CREATE VIEW v AS SELECT 1 TABLESPACE fast")]
+    [InlineData("CREATE VIEW v AS")]
+    [InlineData("CREATE VIEW v (id INT) AS SELECT 1")]
+    [InlineData("CREATE VIEW v AS INSERT INTO items VALUES (1)")]
+    [InlineData("CREATE VIEW v AS UPDATE items SET id = 1")]
+    [InlineData("CREATE VIEW v AS DELETE FROM items")]
+    [InlineData("CREATE VIEW v AS WITH seed AS (SELECT 1) DELETE FROM items")]
+    [InlineData("CREATE VIEW v AS CALL app.run()")]
+    public void OrdinaryViewSyntax_RejectUnsupportedDeclarationsAndNonQueries(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items VALUES (1)")]
+    [InlineData("UPDATE items SET id = 1")]
+    [InlineData("DELETE FROM items")]
+    [InlineData("CALL app.run()")]
+    public void OrdinaryViewSyntax_NonQueryDiagnosticPointsToBody(string body)
+    {
+        string prefix = "/* lead */ CREATE VIEW app.v AS ";
+
+        var exception = Assert.ThrowsAny<ParseException>(() => ParseStatements(prefix + body));
+
+        var diagnostic = new ParseException.WithText(exception, "view.sql", prefix + body);
+        Assert.Contains($"\n{new string(' ', prefix.Length)}^", diagnostic.Message);
+    }
+
+    [Theory]
     [InlineData("CREATE VIEW app.walk AS SELECT 1", false, null)]
     [InlineData("CREATE RECURSIVE VIEW app.walk (id) AS SELECT 1", true, null)]
     [InlineData("CREATE TEMP VIEW app.walk AS SELECT 1", false, "TEMP")]

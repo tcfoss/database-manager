@@ -149,6 +149,8 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
+    [InlineData("CREATE VIEW myview AS VALUES (1)", Label = "CREATE VIEW values query")]
+    [InlineData("CREATE VIEW myview AS (SELECT 1)", Label = "CREATE VIEW parenthesized query")]
     [InlineData("CREATE TEMP VIEW myview AS SELECT a, b", Label = "CREATE VIEW temporary abbreviation")]
     [InlineData("CREATE TEMPORARY VIEW myview AS SELECT a, b", Label = "CREATE VIEW temporary")]
     [InlineData("CREATE RECURSIVE VIEW myview (id) AS SELECT 1 UNION ALL SELECT id FROM myview", Label = "CREATE VIEW recursive")]
@@ -169,6 +171,26 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void CreateView_IfNotExistsPreservesKitchenSinkGrammar()
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement("CREATE VIEW IF NOT EXISTS myview AS SELECT 1"));
+
+        Assert.True(statement.IfNotExists);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items VALUES (1)")]
+    [InlineData("UPDATE items SET id = 1")]
+    [InlineData("DELETE FROM items")]
+    [InlineData("WITH seed AS (SELECT 1) DELETE FROM items")]
+    [InlineData("CALL app.run()")]
+    public void CreateView_InvalidQueryBody_ThrowsParseException(string body)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE VIEW v AS {body}"));
     }
 
     [Theory]

@@ -18,6 +18,11 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
         return null;
     }
 
+    protected override bool ParseOptionalViewIfNotExists(ParserState state)
+    {
+        return false;
+    }
+
     protected override ObjectName? ParseDropIndexOnObject(ParserState state)
     {
         return null;

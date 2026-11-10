@@ -543,6 +543,22 @@ public class FormatComponentsTests
     }
 
     [Theory]
+    [InlineData("CREATE VIEW visible AS SELECT 1")]
+    [InlineData("CREATE VIEW visible (id) AS VALUES (1)")]
+    [InlineData("CREATE VIEW visible AS WITH seed AS (SELECT 1 AS id) SELECT id FROM seed")]
+    [InlineData("CREATE VIEW visible AS (SELECT 1)")]
+    public void OrdinaryViewSyntax_QueryBodiesFormatIdempotently(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        var statement = Assert.IsType<CreateView>(Assert.Single(new PgParser().Parse([.. new PgLexer().Tokenize(formatted)])));
+        Assert.False(statement.IfNotExists);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
     [InlineData("TEMP")]
     [InlineData("TEMPORARY")]
     public void OrdinaryViewModifiers_FormatTemporaryTablesIdempotently(string modifier)

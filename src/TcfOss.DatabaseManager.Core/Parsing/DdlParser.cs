@@ -1319,7 +1319,7 @@ public class DdlParser
     public virtual CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext, TemporaryLabel? temporaryLabel, bool recursive)
     {
         state.ExpectKeyword(Keyword.VIEW);
-        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+        bool ifNotExists = ParseOptionalViewIfNotExists(state);
 
         ObjectName name = _parseObjectName(state);
         if (recursive && !state.PeekIs<ParenOpen>())
@@ -1333,7 +1333,7 @@ public class DdlParser
 
         state.ExpectKeyword(Keyword.AS);
 
-        Select body = (Select)_p.ParseStatement(state);
+        Select body = ParseViewQuery(state);
 
         ViewCheckOption? viewCheckOption = null;
         if (!recursive)
@@ -1367,6 +1367,25 @@ public class DdlParser
         return state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false);
     }
 
+    protected virtual bool ParseOptionalViewIfNotExists(ParserState state)
+    {
+        return state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+    }
+
+    private Select ParseViewQuery(ParserState state)
+    {
+        Token start = state.Peek();
+        if (start is not (Word { Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH } or ParenOpen))
+        {
+            throw state.ExpectedException("SELECT", "VALUES", "WITH", "subquery");
+        }
+        if (_p.ParseStatement(state) is not Select body)
+        {
+            throw ParserState.ExpectedCategoryException("view query", start);
+        }
+        return body;
+    }
+
     public virtual CreateMaterializedView ParseCreateMaterializedView(ParserState state)
     {
         state.ExpectKeywordsAll(Keyword.MATERIALIZED, Keyword.VIEW);
@@ -1385,15 +1404,7 @@ public class DdlParser
         Identifier? tablespace = state.ParseKeyword(Keyword.TABLESPACE) ? _parseIdentifier(state) : null;
 
         state.ExpectKeyword(Keyword.AS);
-        if (state.Peek() is not (Word { Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH } or ParenOpen))
-        {
-            throw state.ExpectedException("SELECT", "VALUES", "WITH", "subquery");
-        }
-
-        if (_p.ParseStatement(state) is not Select body)
-        {
-            throw state.ExpectedException("SELECT", "VALUES");
-        }
+        Select body = ParseViewQuery(state);
 
         bool? withData = null;
         Token populationToken = state.Peek();
