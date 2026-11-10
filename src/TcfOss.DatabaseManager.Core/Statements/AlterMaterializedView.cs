@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record AlterMaterializedView(ObjectName Name, PgAlterMaterializedViewOperation Operation) : Statement
+public record AlterMaterializedView(ObjectName Name, SqlValueList<PgAlterMaterializedViewOperation> Operations) : Statement
 {
     public bool IfExists { get; init; }
 
@@ -17,7 +17,7 @@ public record AlterMaterializedView(ObjectName Name, PgAlterMaterializedViewOper
         {
             writer.Write("IF EXISTS ");
         }
-        writer.WriteSql($"{Name} {Operation}");
+        writer.WriteSql($"{Name} {Operations}");
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -30,7 +30,7 @@ public record AlterMaterializedView(ObjectName Name, PgAlterMaterializedViewOper
         }
         Name.FormatSql(writer, manager);
         writer.Write(" ");
-        Operation.FormatSql(writer, manager);
+        writer.FormatDelimited(Operations, manager);
         Meta.FormatPostNonSql(writer, manager);
     }
 

@@ -1396,15 +1396,64 @@ public class DdlParser
         };
     }
 
-    public virtual AlterMaterializedView ParseAlterMaterializedView(ParserState state)
+    public virtual Statement ParseAlterMaterializedView(ParserState state)
     {
         state.ExpectKeywordsAll(Keyword.MATERIALIZED, Keyword.VIEW);
+        if (state.ParseKeyword(Keyword.ALL))
+        {
+            state.ExpectKeywordsAll(Keyword.IN, Keyword.TABLESPACE);
+            Identifier tablespace = _parseIdentifier(state);
+            SqlValueList<Account>? ownedBy = state.ParseKeywordsAll(Keyword.OWNED, Keyword.BY)
+                ? state.ParseCommaSeparated(ParsePostgresOwner)
+                : null;
+            state.ExpectKeywordsAll(Keyword.SET, Keyword.TABLESPACE);
+            Identifier newTablespace = _parseIdentifier(state);
+            return new AlterMaterializedViewsInTablespace(tablespace, newTablespace)
+            {
+                OwnedBy = ownedBy,
+                Nowait = state.ParseKeyword(Keyword.NOWAIT)
+            };
+        }
+
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
 
+        PgAlterMaterializedViewOperation first = ParseAlterMaterializedViewOperation(state, ifExists);
+        SqlValueList<PgAlterMaterializedViewOperation> operations = [first];
+        if (IsCombinableMaterializedViewOperation(first))
+        {
+            while (state.ConsumeTokenIs<Comma>())
+            {
+                PgAlterMaterializedViewOperation next = ParseAlterMaterializedViewOperation(state, ifExists);
+                if (!IsCombinableMaterializedViewOperation(next))
+                {
+                    throw state.ExpectedCategoryException("combinable materialized-view action");
+                }
+                operations.Add(next);
+            }
+        }
+        return new AlterMaterializedView(name, operations) { IfExists = ifExists };
+    }
+
+    private static bool IsCombinableMaterializedViewOperation(PgAlterMaterializedViewOperation operation)
+    {
+        return operation is not (PgAlterMaterializedViewOperation.RenameTo
+            or PgAlterMaterializedViewOperation.RenameColumn
+            or PgAlterMaterializedViewOperation.SetSchema
+            or PgAlterMaterializedViewOperation.DependsOnExtension);
+    }
+
+    private PgAlterMaterializedViewOperation ParseAlterMaterializedViewOperation(ParserState state, bool ifExists)
+    {
         PgAlterMaterializedViewOperation operation;
-        if (state.ParseKeyword(Keyword.RENAME))
+        if (state.Peek() is Word { Keyword: Keyword.NO or Keyword.DEPENDS } && !ifExists)
+        {
+            bool no = state.ParseKeyword(Keyword.NO);
+            state.ExpectKeywordsAll(Keyword.DEPENDS, Keyword.ON, Keyword.EXTENSION);
+            operation = new PgAlterMaterializedViewOperation.DependsOnExtension(_parseIdentifier(state)) { No = no };
+        }
+        else if (state.ParseKeyword(Keyword.RENAME))
         {
             if (state.ParseKeyword(Keyword.TO))
             {
@@ -1428,6 +1477,18 @@ public class DdlParser
                 operation = new PgAlterMaterializedViewOperation.SetStorageParameters(
                     state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false));
             }
+            else if (state.ParseKeyword(Keyword.ACCESS))
+            {
+                state.ExpectKeyword(Keyword.METHOD);
+                operation = state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgAlterMaterializedViewOperation.SetDefaultAccessMethod()
+                    : new PgAlterMaterializedViewOperation.SetAccessMethod(_parseIdentifier(state));
+            }
+            else if (state.ParseKeyword(Keyword.WITHOUT))
+            {
+                state.ExpectKeyword(Keyword.CLUSTER);
+                operation = new PgAlterMaterializedViewOperation.SetWithoutCluster();
+            }
             else
             {
                 Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
@@ -1435,7 +1496,7 @@ public class DdlParser
                 {
                     Keyword.SCHEMA => new PgAlterMaterializedViewOperation.SetSchema(_parseIdentifier(state)),
                     Keyword.TABLESPACE => new PgAlterMaterializedViewOperation.SetTablespace(_parseIdentifier(state)),
-                    _ => throw state.ExpectedException("SCHEMA", "TABLESPACE", "(")
+                    _ => throw state.ExpectedException("SCHEMA", "TABLESPACE", "ACCESS", "WITHOUT", "(")
                 };
             }
         }
@@ -1447,21 +1508,85 @@ public class DdlParser
         else if (state.ParseKeyword(Keyword.OWNER))
         {
             state.ExpectKeyword(Keyword.TO);
-            Keyword role = state.ParseKeywordsAny(Keyword.CURRENT_ROLE, Keyword.CURRENT_USER, Keyword.SESSION_USER);
-            Account owner = role switch
+            operation = new PgAlterMaterializedViewOperation.OwnerTo(ParsePostgresOwner(state));
+        }
+        else if (state.ParseKeyword(Keyword.CLUSTER))
+        {
+            state.ExpectKeyword(Keyword.ON);
+            operation = new PgAlterMaterializedViewOperation.ClusterOn(_parseIdentifier(state));
+        }
+        else if (state.ParseKeyword(Keyword.ALTER))
+        {
+            bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
+            Identifier column = _parseIdentifier(state);
+            operation = new PgAlterMaterializedViewOperation.AlterColumn(column, ParseMaterializedViewColumnOperation(state))
             {
-                Keyword.CURRENT_ROLE => new Account.CurrentRole(),
-                Keyword.CURRENT_USER => new Account.CurrentUser(),
-                Keyword.SESSION_USER => new Account.SessionUser(),
-                _ => new Account.Identity(_parseIdentifier(state))
+                UseColumnKeyword = useColumnKeyword
             };
-            operation = new PgAlterMaterializedViewOperation.OwnerTo(owner);
         }
         else
         {
-            throw state.ExpectedException("RENAME", "SET", "RESET", "OWNER");
+            throw state.ExpectedException("RENAME", "SET", "RESET", "OWNER", "CLUSTER", "ALTER", "DEPENDS", "NO");
         }
-        return new AlterMaterializedView(name, operation) { IfExists = ifExists };
+        return operation;
+    }
+
+    private Account ParsePostgresOwner(ParserState state)
+    {
+        Keyword role = state.ParseKeywordsAny(Keyword.CURRENT_ROLE, Keyword.CURRENT_USER, Keyword.SESSION_USER);
+        return role switch
+        {
+            Keyword.CURRENT_ROLE => new Account.CurrentRole(),
+            Keyword.CURRENT_USER => new Account.CurrentUser(),
+            Keyword.SESSION_USER => new Account.SessionUser(),
+            _ => new Account.Identity(_parseIdentifier(state))
+        };
+    }
+
+    private PgMaterializedViewColumnOperation ParseMaterializedViewColumnOperation(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.RESET))
+        {
+            return new PgMaterializedViewColumnOperation.ResetOptions(state.ParseParenthesizedCommaSeparated(_parseIdentifier, false));
+        }
+        state.ExpectKeyword(Keyword.SET);
+        if (state.PeekIs<ParenOpen>())
+        {
+            return new PgMaterializedViewColumnOperation.SetOptions(state.ParseParenthesizedCommaSeparated(ParseMaterializedViewColumnOption, false));
+        }
+        Keyword kind = state.ParseKeywordsAny(Keyword.STATISTICS, Keyword.STORAGE, Keyword.COMPRESSION);
+        switch (kind)
+        {
+            case Keyword.STATISTICS:
+                return state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgMaterializedViewColumnOperation.SetDefaultStatistics()
+                    : new PgMaterializedViewColumnOperation.SetStatistics(ValueParser.ParseLiteralInt(state));
+            case Keyword.COMPRESSION:
+                return state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgMaterializedViewColumnOperation.SetDefaultCompression()
+                    : new PgMaterializedViewColumnOperation.SetCompression(_parseIdentifier(state));
+            case Keyword.STORAGE:
+                Token start = state.Peek();
+                Identifier mode = _parseIdentifier(state);
+                if (mode.QuoteStyle != QuoteStyle.None || !PgColumnStorageMode.TryParse(mode.Name, out PgColumnStorageMode? storageMode))
+                {
+                    throw ParserState.ExpectedCategoryException("column storage mode", start);
+                }
+                return new PgMaterializedViewColumnOperation.SetStorage(storageMode);
+            default:
+                throw state.ExpectedException("STATISTICS", "STORAGE", "COMPRESSION", "(");
+        }
+    }
+
+    private PgStorageParameter ParseMaterializedViewColumnOption(ParserState state)
+    {
+        Token start = state.Peek();
+        PgStorageParameter parameter = ParseStorageParameter(state);
+        if (parameter.Name.Values.Count != 1 || parameter.Value == null)
+        {
+            throw ParserState.ExpectedCategoryException("column option assignment", start);
+        }
+        return parameter;
     }
 
     public virtual RefreshMaterializedView ParseRefreshMaterializedView(ParserState state)
@@ -1858,6 +1983,11 @@ public class DdlParser
 
     protected virtual bool SupportsDropObjectType(DroppableObject objectType) => true;
 
+    protected virtual ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.ON) ? _parseObjectName(state) : null;
+    }
+
     public DropObject ParseDropObject(ParserState state)
     {
         state.ExpectKeyword(Keyword.DROP);
@@ -1904,8 +2034,7 @@ public class DdlParser
         ObjectName? onObject = null;
         if (typeToDrop == DroppableObject.Index)
         {
-            state.ExpectKeyword(Keyword.ON);
-            onObject = _parseObjectName(state);
+            onObject = ParseDropIndexOnObject(state);
         }
 
         PgDropBehavior? pgBehavior = null;

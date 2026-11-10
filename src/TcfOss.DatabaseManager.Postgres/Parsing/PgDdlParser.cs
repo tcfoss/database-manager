@@ -12,6 +12,11 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
     protected override bool UseSqlRoutineTail(ParserState state) => true;
     protected override bool SupportsQualifiedTriggerNames => false;
 
+    protected override ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        return null;
+    }
+
     public override TriggerTime ParseTriggerTime(ParserState state)
     {
         if (state.PeekKeyword(Keyword.FOR))

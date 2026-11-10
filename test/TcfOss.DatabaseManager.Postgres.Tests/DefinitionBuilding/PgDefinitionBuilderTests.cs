@@ -90,6 +90,16 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor)")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS 100, SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id RESET (n_distinct)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STORAGE EXTENDED")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET COMPRESSION lz4")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY CURRENT_USER SET TABLESPACE slow NOWAIT")]
     public void ProcessStatements_RejectsUnsupportedStatements(string sql)
     {
         var builder = CreateBuilder();

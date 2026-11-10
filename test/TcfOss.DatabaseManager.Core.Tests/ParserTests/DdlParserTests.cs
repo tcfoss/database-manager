@@ -602,6 +602,18 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET (n_distinct = -0.5)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id RESET (n_distinct)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STORAGE PLAIN")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET COMPRESSION DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast, ALTER id SET STATISTICS 100")]
     public void AlterMaterializedViews_CoreParserRoundTrips(string sql)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
@@ -618,5 +630,15 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal("items", statement.Table.ToSql());
         Assert.IsType<AlterTableOperation.AddColumn>(Assert.Single(statement.Operations));
         Assert.Equal("ALTER TABLE items ADD COLUMN label TEXT", statement.ToSql());
+    }
+
+    [Fact]
+    public void BulkMaterializedViews_CoreParserRoundTrips()
+    {
+        const string sql = "ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY owner_name, CURRENT_ROLE SET TABLESPACE slow NOWAIT";
+        var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 }

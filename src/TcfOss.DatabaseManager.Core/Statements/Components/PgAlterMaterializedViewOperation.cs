@@ -113,4 +113,94 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
             Owner.FormatSql(writer, manager);
         }
     }
+
+    public record SetAccessMethod(Identifier Name) : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"SET ACCESS METHOD {Name}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("SET ACCESS METHOD ");
+            Name.FormatSql(writer, manager);
+        }
+    }
+
+    public record SetDefaultAccessMethod : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("SET ACCESS METHOD DEFAULT");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            ToSql(writer);
+        }
+    }
+
+    public record ClusterOn(Identifier Name) : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"CLUSTER ON {Name}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("CLUSTER ON ");
+            Name.FormatSql(writer, manager);
+        }
+    }
+
+    public record SetWithoutCluster : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("SET WITHOUT CLUSTER");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            ToSql(writer);
+        }
+    }
+
+    public record DependsOnExtension(Identifier Name) : PgAlterMaterializedViewOperation
+    {
+        public bool No { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(No ? "NO DEPENDS ON EXTENSION " : "DEPENDS ON EXTENSION ");
+            Name.ToSql(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(No ? "NO DEPENDS ON EXTENSION " : "DEPENDS ON EXTENSION ");
+            Name.FormatSql(writer, manager);
+        }
+    }
+
+    public record AlterColumn(Identifier Name, PgMaterializedViewColumnOperation Operation) : PgAlterMaterializedViewOperation
+    {
+        public bool UseColumnKeyword { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(UseColumnKeyword ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Name} {Operation}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(UseColumnKeyword ? "ALTER COLUMN " : "ALTER ");
+            Name.FormatSql(writer, manager);
+            writer.Write(" ");
+            Operation.FormatSql(writer, manager);
+        }
+    }
 }

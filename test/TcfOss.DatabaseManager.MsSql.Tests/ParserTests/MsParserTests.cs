@@ -599,6 +599,13 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS 100, SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY CURRENT_USER SET TABLESPACE slow NOWAIT")]
     public void AlterMaterializedViews_AreRejectedBySqlServer(string sql)
     {
         var state = GetState(sql);
@@ -608,5 +615,12 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
 
         Assert.Contains("Expected TABLE.", exception.Message);
         Assert.Same(target, state.Peek());
+    }
+
+    [Fact]
+    public void DropIndex_RequiresOnTarget()
+    {
+        Assert.IsType<DropObject>(ParseStatement("DROP INDEX summary_idx ON summary"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("DROP INDEX summary_idx"));
     }
 }

@@ -215,6 +215,7 @@ public enum Keyword
     DELIMITED,
     DELIMITER,
     DENSE_RANK,
+    DEPENDS,
     DEPTH,
     DEREF,
     DESC,

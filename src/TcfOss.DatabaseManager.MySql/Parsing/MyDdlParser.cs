@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -11,6 +12,12 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     protected override bool UseSqlRoutineTail(ParserState state) => false;
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
+
+    protected override ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ON, advance: false);
+        return base.ParseDropIndexOnObject(state);
+    }
 
     protected override bool SupportsDropObjectType(DroppableObject objectType)
     {

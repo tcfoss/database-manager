@@ -17,6 +17,12 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
 
+    protected override ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ON, advance: false);
+        return base.ParseDropIndexOnObject(state);
+    }
+
     protected override bool SupportsDropObjectType(DroppableObject objectType)
     {
         return objectType != DroppableObject.MaterializedView;

@@ -539,8 +539,28 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"")]
     [InlineData("ALTER MATERIALIZED VIEW \"App\".\"Summary\" OWNER TO \"MixedCase\"")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"role; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"default\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW \"App\".\"Summary\" SET ACCESS METHOD \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON \"index; DROP TABLE items; --\"")]
     [InlineData("ALTER MATERIALIZED VIEW \"App\".\"Summary\" RENAME COLUMN \"Id\" TO \"ItemId\"")]
     [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO \"next; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW app.summary NO DEPENDS ON EXTENSION \"MyExtension\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast, SET TABLESPACE slow")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER COLUMN id SET STATISTICS 100")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER COLUMN body SET STORAGE EXTENDED")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET COMPRESSION lz4")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET COMPRESSION DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET (n_distinct = -0.5), ALTER COLUMN body RESET (n_distinct)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70), RESET (fillfactor)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name, OWNER TO other_owner")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx, SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap, SET (fillfactor = 70), OWNER TO owner_name")]
     public void AlterMaterializedViews_RoundTripSqlAndJson(string sql)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
@@ -560,7 +580,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(expected, statement.IfExists);
         Assert.Equal("app.summary", statement.Name.ToSql());
-        Assert.Equal("summary_next", Assert.IsType<PgAlterMaterializedViewOperation.RenameTo>(statement.Operation).Name.Name);
+        Assert.Equal("summary_next", Assert.IsType<PgAlterMaterializedViewOperation.RenameTo>(Assert.Single(statement.Operations)).Name.Name);
     }
 
     [Theory]
@@ -569,7 +589,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     public void AlterMaterializedViews_PreserveColumnRenameFields(string prefix, bool expected)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary RENAME {prefix}id TO item_id"));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.RenameColumn>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.RenameColumn>(Assert.Single(statement.Operations));
 
         Assert.Equal("id", operation.OldName.Name);
         Assert.Equal("item_id", operation.NewName.Name);
@@ -582,8 +602,8 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
         var schema = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary SET SCHEMA archive"));
         var tablespace = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast"));
 
-        Assert.Equal("archive", Assert.IsType<PgAlterMaterializedViewOperation.SetSchema>(schema.Operation).Name.Name);
-        Assert.Equal("fast", Assert.IsType<PgAlterMaterializedViewOperation.SetTablespace>(tablespace.Operation).Name.Name);
+        Assert.Equal("archive", Assert.IsType<PgAlterMaterializedViewOperation.SetSchema>(Assert.Single(schema.Operations)).Name.Name);
+        Assert.Equal("fast", Assert.IsType<PgAlterMaterializedViewOperation.SetTablespace>(Assert.Single(tablespace.Operations)).Name.Name);
     }
 
     [Theory]
@@ -598,6 +618,10 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("OWNER TO CURRENT_USER")]
     [InlineData("OWNER TO SESSION_USER")]
     [InlineData("OWNER TO \"CURRENT_USER\"")]
+    [InlineData("SET ACCESS METHOD heap")]
+    [InlineData("SET ACCESS METHOD DEFAULT")]
+    [InlineData("CLUSTER ON summary_idx")]
+    [InlineData("SET WITHOUT CLUSTER")]
     public void AlterMaterializedViews_ReportOnlyUnresolvedTargetAndRespectFilters(string clause)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary {clause}"));
@@ -627,7 +651,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
         const string sql = "/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary RENAME COLUMN id TO item_id /* tail */; SELECT 2;";
         var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.RenameColumn>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.RenameColumn>(Assert.Single(statement.Operations));
 
         Assert.Equal(2, statements.Count);
         Assert.Equal(0, statement.Meta.Start);
@@ -643,6 +667,10 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("SET SCHEMA archive", typeof(PgAlterMaterializedViewOperation.SetSchema))]
     [InlineData("OWNER TO owner_name", typeof(PgAlterMaterializedViewOperation.OwnerTo))]
     [InlineData("OWNER TO CURRENT_USER", typeof(PgAlterMaterializedViewOperation.OwnerTo))]
+    [InlineData("SET ACCESS METHOD heap", typeof(PgAlterMaterializedViewOperation.SetAccessMethod))]
+    [InlineData("SET ACCESS METHOD DEFAULT", typeof(PgAlterMaterializedViewOperation.SetDefaultAccessMethod))]
+    [InlineData("CLUSTER ON summary_idx", typeof(PgAlterMaterializedViewOperation.ClusterOn))]
+    [InlineData("SET WITHOUT CLUSTER", typeof(PgAlterMaterializedViewOperation.SetWithoutCluster))]
     public void AlterMaterializedViews_PreserveAtomicBodyBoundariesAndDependencies(string clause, Type operationType)
     {
         string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC ALTER MATERIALIZED VIEW app.summary {clause}; SELECT 2; END";
@@ -650,7 +678,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
         var body = Assert.IsType<BeginAtomic>(procedure.Body);
         var statement = Assert.Single(body.Statements.OfType<AlterMaterializedView>());
 
-        Assert.IsType(operationType, statement.Operation);
+        Assert.IsType(operationType, Assert.Single(statement.Operations));
         Assert.Equal(';', sql[statement.Meta.EndPlusTerminatorLength!.Value - 1]);
         Assert.Equal(statement.Meta.End + 1, statement.Meta.EndPlusTerminatorLength);
         var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(body.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));
@@ -679,10 +707,6 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA app.archive")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE app.fast")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast NOWAIT")]
-    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast, SET TABLESPACE slow")]
-    [InlineData("ALTER MATERIALIZED VIEW summary ALTER COLUMN id SET STATISTICS 100")]
-    [InlineData("ALTER MATERIALIZED VIEW summary DEPENDS ON EXTENSION ext")]
-    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast SET TABLESPACE slow")]
     [InlineData("ALTER MATERIALIZED VIEW 'summary' RENAME TO summary_next")]
     public void AlterMaterializedViews_RejectMalformedOrDeferredForms(string sql)
     {
@@ -694,7 +718,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         const string sql = "ALTER MATERIALIZED VIEW IF EXISTS app.summary SET (fillfactor = 70, autovacuum_enabled, toast.autovacuum_enabled = FALSE)";
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statement.Operations));
 
         Assert.True(statement.IfExists);
         Assert.Equal(new[] { "fillfactor", "autovacuum_enabled", "toast.autovacuum_enabled" }, operation.Parameters.Select(parameter => parameter.Name.ToSql()));
@@ -712,7 +736,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         const string sql = "ALTER MATERIALIZED VIEW summary RESET (fillfactor, toast.autovacuum_enabled, \"MixedCase\")";
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(Assert.Single(statement.Operations));
 
         Assert.Equal(new[] { "fillfactor", "toast.autovacuum_enabled", "\"MixedCase\"" }, operation.Parameters.Select(name => name.ToSql()));
         Assert.Equal(sql, statement.ToSql());
@@ -732,7 +756,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     public void MaterializedViewStorage_PreserveScalarValues(string input, string expected)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary SET (setting = {input})"));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statement.Operations));
 
         Assert.Equal(expected, Assert.Single(operation.Parameters).Value!.ToSql());
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
@@ -749,8 +773,8 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
         var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
         ObjectName[] parameterNames = isSet
-            ? [.. Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statement.Operation).Parameters.Select(parameter => parameter.Name)]
-            : [.. Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(statement.Operation).Parameters];
+            ? [.. Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statement.Operations)).Parameters.Select(parameter => parameter.Name)]
+            : [.. Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(Assert.Single(statement.Operations)).Parameters];
 
         Assert.Equal(2, statements.Count);
         Assert.Equal(0, statement.Meta.Start);
@@ -771,8 +795,8 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
         AlterMaterializedView[] statements = [.. body.Statements.OfType<AlterMaterializedView>()];
 
         Assert.Equal(2, statements.Length);
-        Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statements[0].Operation);
-        Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(statements[1].Operation);
+        Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statements[0].Operations));
+        Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(Assert.Single(statements[1].Operations));
         Assert.All(statements, statement =>
         {
             Assert.Equal(';', sql[statement.Meta.EndPlusTerminatorLength!.Value - 1]);
@@ -801,8 +825,6 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("RESET fillfactor")]
     [InlineData("RESET ALL")]
     [InlineData("RESET (fillfactor")]
-    [InlineData("SET (fillfactor = 70), RESET (fillfactor)")]
-    [InlineData("RESET (fillfactor), SET (fillfactor = 70)")]
     public void MaterializedViewStorage_RejectMalformedOrDeferredForms(string clause)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"ALTER MATERIALIZED VIEW summary {clause}"));
@@ -817,7 +839,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
         string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary OWNER TO {role} /* tail */; SELECT 2;";
         var statements = ParseStatements(sql, sourceId: 137);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.OwnerTo>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.OwnerTo>(Assert.Single(statement.Operations));
         var owner = Assert.IsType<Account.Identity>(operation.Owner);
 
         Assert.True(statement.IfExists);
@@ -842,7 +864,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     public void MaterializedViewOwnership_PreserveSpecialRoleVariants(string role, Type roleType, string expectedSql)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary OWNER TO {role}"));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.OwnerTo>(statement.Operation);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.OwnerTo>(Assert.Single(statement.Operations));
 
         Assert.False(statement.IfExists);
         Assert.IsType(roleType, operation.Owner);
@@ -862,11 +884,312 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("OWNER TO CURRENT_ROLE()")]
     [InlineData("OWNER TO SESSION_USER()")]
     [InlineData("OWNER TO (owner_name)")]
-    [InlineData("OWNER TO owner_name, OWNER TO other_owner")]
-    [InlineData("OWNER TO owner_name, SET (fillfactor = 70)")]
-    [InlineData("SET (fillfactor = 70), OWNER TO owner_name")]
     public void MaterializedViewOwnership_RejectMalformedOrDeferredForms(string clause)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"ALTER MATERIALIZED VIEW summary {clause}"));
+    }
+
+    [Theory]
+    [InlineData("SET ACCESS METHOD heap", "heap", QuoteStyle.None)]
+    [InlineData("SET ACCESS METHOD \"MixedCase\"", "MixedCase", QuoteStyle.Ansi)]
+    [InlineData("CLUSTER ON summary_idx", "summary_idx", QuoteStyle.None)]
+    [InlineData("CLUSTER ON \"SummaryIdx\"", "SummaryIdx", QuoteStyle.Ansi)]
+    public void MaterializedViewMaintenance_PreserveNamedFieldsSourcesAndBoundaries(string clause, string expectedName, QuoteStyle expectedQuoteStyle)
+    {
+        string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary {clause} /* tail */; SELECT 2;";
+        var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
+        var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
+        Identifier name = Assert.Single(statement.Operations) is PgAlterMaterializedViewOperation.SetAccessMethod accessMethod
+            ? accessMethod.Name
+            : Assert.IsType<PgAlterMaterializedViewOperation.ClusterOn>(Assert.Single(statement.Operations)).Name;
+
+        Assert.True(statement.IfExists);
+        Assert.Equal(expectedName, name.Name);
+        Assert.Equal(expectedQuoteStyle, name.QuoteStyle);
+        Assert.All(statement.Name.Values.Append(name), identifier => Assert.Equal(137, identifier.Source!.Value.SourceId));
+        Assert.Equal(2, statements.Count);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.IndexOf(';'), statement.Meta.End);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " tail " });
+        Assert.Equal("SELECT 2", statements[1].ToSql());
+    }
+
+    [Fact]
+    public void MaterializedViewMaintenance_DistinguishDefaultFromNamedAccessMethod()
+    {
+        var defaultMethod = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW IF EXISTS summary SET ACCESS METHOD DEFAULT"));
+        var namedMethod = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"default\""));
+
+        Assert.True(defaultMethod.IfExists);
+        Assert.IsType<PgAlterMaterializedViewOperation.SetDefaultAccessMethod>(Assert.Single(defaultMethod.Operations));
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetAccessMethod>(Assert.Single(namedMethod.Operations));
+        Assert.Equal("default", operation.Name.Name);
+        Assert.Equal(QuoteStyle.Ansi, operation.Name.QuoteStyle);
+        Assert.NotEqual(defaultMethod.Operations, namedMethod.Operations);
+    }
+
+    [Theory]
+    [InlineData("SET ACCESS")]
+    [InlineData("SET ACCESS heap")]
+    [InlineData("SET ACCESS METHOD")]
+    [InlineData("SET ACCESS METHOD app.heap")]
+    [InlineData("SET ACCESS METHOD 'heap'")]
+    [InlineData("SET ACCESS METHOD \"\"")]
+    [InlineData("SET ACCESS METHOD heap()")]
+    [InlineData("SET ACCESS METHOD DEFAULT heap")]
+    [InlineData("SET ACCESS METHOD heap NOWAIT")]
+    [InlineData("SET WITHOUT")]
+    [InlineData("SET WITHOUT OIDS")]
+    [InlineData("SET WITHOUT CLUSTER summary_idx")]
+    [InlineData("CLUSTER")]
+    [InlineData("CLUSTER summary_idx")]
+    [InlineData("CLUSTER ON")]
+    [InlineData("CLUSTER ON app.summary_idx")]
+    [InlineData("CLUSTER ON 'summary_idx'")]
+    [InlineData("CLUSTER ON \"\"")]
+    [InlineData("CLUSTER ON (summary_idx)")]
+    [InlineData("CLUSTER ON summary_idx NOWAIT")]
+    public void MaterializedViewMaintenance_RejectMalformedOrDeferredForms(string clause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"ALTER MATERIALIZED VIEW summary {clause}"));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast SET TABLESPACE slow")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE \"OldSpace\" OWNED BY owner_name, CURRENT_ROLE, \"CURRENT_USER\" SET TABLESPACE \"NewSpace\" NOWAIT")]
+    public void BulkMaterializedViews_RoundTripSqlAndJson(string sql)
+    {
+        var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Theory]
+    [InlineData("ALTER COLUMN id SET STATISTICS -1", typeof(PgMaterializedViewColumnOperation.SetStatistics), true)]
+    [InlineData("ALTER id SET STATISTICS DEFAULT", typeof(PgMaterializedViewColumnOperation.SetDefaultStatistics), false)]
+    [InlineData("ALTER COLUMN id SET (n_distinct = -0.5, n_distinct_inherited = 100)", typeof(PgMaterializedViewColumnOperation.SetOptions), true)]
+    [InlineData("ALTER id RESET (n_distinct, n_distinct_inherited)", typeof(PgMaterializedViewColumnOperation.ResetOptions), false)]
+    [InlineData("ALTER id SET STORAGE PLAIN", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE EXTERNAL", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE EXTENDED", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE MAIN", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE DEFAULT", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
+    [InlineData("ALTER id SET COMPRESSION lz4", typeof(PgMaterializedViewColumnOperation.SetCompression), false)]
+    [InlineData("ALTER id SET COMPRESSION \"default\"", typeof(PgMaterializedViewColumnOperation.SetCompression), false)]
+    [InlineData("ALTER id SET COMPRESSION DEFAULT", typeof(PgMaterializedViewColumnOperation.SetDefaultCompression), false)]
+    public void MaterializedViewLifecycle_ColumnVariantsPreserveSourcesAndBoundaries(string clause, Type operationType, bool useColumnKeyword)
+    {
+        string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary {clause} /* tail */; SELECT 2;";
+        var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
+        var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(Assert.Single(statement.Operations));
+
+        Assert.True(statement.IfExists);
+        Assert.Equal("id", operation.Name.Name);
+        Assert.Equal(137, operation.Name.Source!.Value.SourceId);
+        Assert.Equal(useColumnKeyword, operation.UseColumnKeyword);
+        Assert.IsType(operationType, operation.Operation);
+        Assert.Equal(2, statements.Count);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.IndexOf(';'), statement.Meta.End);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " tail " });
+        Assert.Equal("SELECT 2", statements[1].ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] serialized = [statement];
+        Assert.Equal(serialized, Serialization.FromJson<Statement[]>(Serialization.ToJson(serialized)));
+    }
+
+    [Fact]
+    public void MaterializedViewLifecycle_PreserveActionOrderAndColumnFields()
+    {
+        var statement = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary ALTER COLUMN id SET STATISTICS 100, ALTER body SET STORAGE EXTENDED, SET (fillfactor = 70)"));
+
+        Assert.Equal(3, statement.Operations.Count);
+        var statistics = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(statement.Operations[0]);
+        Assert.Equal(100, Assert.IsType<PgMaterializedViewColumnOperation.SetStatistics>(statistics.Operation).Target);
+        Assert.Equal("id", statistics.Name.Name);
+        var storage = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(statement.Operations[1]);
+        Assert.Equal(PgColumnStorageMode.Extended, Assert.IsType<PgMaterializedViewColumnOperation.SetStorage>(storage.Operation).Mode);
+        Assert.Equal("body", storage.Name.Name);
+        Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statement.Operations[2]);
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));
+        Assert.Equal("summary", reference.Name.ToSql());
+        Assert.Equal(ItemType.Unknown, reference.Type);
+    }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("NO ", true)]
+    public void MaterializedViewLifecycle_PreserveExtensionDependencyFields(string prefix, bool expectedNo)
+    {
+        var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary {prefix}DEPENDS ON EXTENSION \"MyExtension\""));
+        var operation = Assert.IsType<PgAlterMaterializedViewOperation.DependsOnExtension>(Assert.Single(statement.Operations));
+
+        Assert.Equal(expectedNo, operation.No);
+        Assert.Equal("MyExtension", operation.Name.Name);
+        Assert.Equal(QuoteStyle.Ansi, operation.Name.QuoteStyle);
+        Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Theory]
+    [InlineData("", false, false)]
+    [InlineData("", false, true)]
+    [InlineData(" OWNED BY owner_name, CURRENT_USER", true, false)]
+    [InlineData(" OWNED BY owner_name, CURRENT_USER", true, true)]
+    public void BulkMaterializedViews_PreserveFieldsSourcesAndBoundaries(string ownerClause, bool hasOwners, bool useNowait)
+    {
+        string nowait = useNowait ? " NOWAIT" : "";
+        string sql = $"/* lead */ ALTER MATERIALIZED VIEW ALL IN TABLESPACE \"OldSpace\"{ownerClause} SET TABLESPACE \"NewSpace\"{nowait} /* tail */; SELECT 2;";
+        var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
+        var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(statements[0]);
+
+        Assert.Equal("OldSpace", statement.Tablespace.Name);
+        Assert.Equal("NewSpace", statement.NewTablespace.Name);
+        Assert.Equal(137, statement.Tablespace.Source!.Value.SourceId);
+        Assert.Equal(137, statement.NewTablespace.Source!.Value.SourceId);
+        Assert.Equal(useNowait, statement.Nowait);
+        if (hasOwners)
+        {
+            Assert.Equal(2, statement.OwnedBy!.Count);
+            Assert.Equal(137, Assert.IsType<Account.Identity>(statement.OwnedBy[0]).Name.Source!.Value.SourceId);
+            Assert.IsType<Account.CurrentUser>(statement.OwnedBy[1]);
+        }
+        else
+        {
+            Assert.Null(statement.OwnedBy);
+        }
+        Assert.Equal(2, statements.Count);
+        Assert.Equal(sql.IndexOf(';'), statement.Meta.End);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is Core.Statements.Components.NonSql.BlockComment { Body: " tail " });
+        Assert.Equal("SELECT 2", statements[1].ToSql());
+    }
+
+    [Fact]
+    public void MaterializedViewLifecycle_AtomicBodyPreservesBoundariesAndTargetOnlyDependencies()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC ALTER MATERIALIZED VIEW app.summary ALTER id SET STATISTICS 100, SET (fillfactor = 70); ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY CURRENT_USER SET TABLESPACE slow NOWAIT; SELECT 2; END";
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement(sql));
+        var body = Assert.IsType<BeginAtomic>(procedure.Body);
+
+        Statement[] commands = [.. body.Statements.Where(statement => statement is not InertOnly)];
+        Assert.Equal(3, commands.Length);
+        Assert.Equal(2, Assert.IsType<AlterMaterializedView>(commands[0]).Operations.Count);
+        Assert.IsType<AlterMaterializedViewsInTablespace>(commands[1]);
+        Assert.All(commands, statement => Assert.Equal(';', sql[statement.Meta.EndPlusTerminatorLength!.Value - 1]));
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(body.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));
+        Assert.Equal("app.summary", reference.Name.ToSql());
+        Assert.Equal(procedure.ToSql(), ParseStatement(procedure.ToSql()).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX summary_idx ON app.summary (id)")]
+    [InlineData("CREATE UNIQUE INDEX summary_idx ON app.summary (id)")]
+    [InlineData("CREATE INDEX IF NOT EXISTS summary_idx ON app.summary (id) INCLUDE (label) WHERE id > 0")]
+    public void MaterializedViewLifecycle_IndexDeclarationsReuseExistingAst(string sql)
+    {
+        var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal("app.summary", statement.TableName.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));
+        Assert.Equal("app.summary", reference.Name.ToSql());
+    }
+
+    [Fact]
+    public void MaterializedViewLifecycle_DeclarationIndexRefreshAndDropIndexWorkflow()
+    {
+        const string sql = "CREATE MATERIALIZED VIEW app.summary AS SELECT items.id FROM items WITH NO DATA; CREATE UNIQUE INDEX summary_idx ON app.summary (id); REFRESH MATERIALIZED VIEW app.summary; DROP INDEX summary_idx;";
+        var statements = ParseStatements(sql);
+
+        Assert.Collection(statements,
+            statement => Assert.IsType<CreateMaterializedView>(statement),
+            statement => Assert.IsType<CreateIndex.Unique>(statement),
+            statement => Assert.IsType<RefreshMaterializedView>(statement),
+            statement => Assert.IsType<DropObject>(statement));
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.All(statements, statement => Assert.Equal(statement, ParseStatement(statement.ToSql())));
+    }
+
+    [Theory]
+    [InlineData("DROP INDEX summary_idx")]
+    [InlineData("DROP INDEX IF EXISTS app.summary_idx")]
+    public void DropIndex_PostgresRoundTripsWithoutOnTarget(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(DroppableObject.Index, statement.ObjectType);
+        Assert.Null(statement.OnObject);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void DropIndex_PostgresRejectsOnTarget()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("DROP INDEX summary_idx ON app.summary"));
+    }
+
+    [Theory]
+    [InlineData("ALTER COLUMN id")]
+    [InlineData("ALTER COLUMN id SET STATISTICS 1.5")]
+    [InlineData("ALTER COLUMN id SET STATISTICS 2147483648")]
+    [InlineData("ALTER COLUMN id SET STORAGE invalid")]
+    [InlineData("ALTER COLUMN id SET STORAGE 'PLAIN'")]
+    [InlineData("ALTER COLUMN id SET STORAGE \"PLAIN\"")]
+    [InlineData("ALTER COLUMN id SET COMPRESSION app.lz4")]
+    [InlineData("ALTER COLUMN id SET COMPRESSION 'lz4'")]
+    [InlineData("ALTER COLUMN id SET ()")]
+    [InlineData("ALTER COLUMN id SET (n_distinct)")]
+    [InlineData("ALTER COLUMN id SET (app.n_distinct = 1)")]
+    [InlineData("ALTER COLUMN id SET (n_distinct = 1 + 2)")]
+    [InlineData("ALTER COLUMN id RESET ()")]
+    [InlineData("ALTER COLUMN id RESET (n_distinct = 1)")]
+    [InlineData("ALTER COLUMN id RESET (app.n_distinct)")]
+    [InlineData("ALTER COLUMN id SET NOT NULL")]
+    [InlineData("DEPENDS EXTENSION ext")]
+    [InlineData("NO DEPENDS ON EXTENSION")]
+    [InlineData("DEPENDS ON EXTENSION app.ext")]
+    [InlineData("DEPENDS ON EXTENSION 'ext'")]
+    [InlineData("SET (fillfactor = 70),")]
+    [InlineData("SET (fillfactor = 70), RENAME TO other")]
+    [InlineData("RENAME TO other, SET (fillfactor = 70)")]
+    [InlineData("SET SCHEMA archive, SET TABLESPACE fast")]
+    [InlineData("SET TABLESPACE fast, SET SCHEMA archive")]
+    [InlineData("DEPENDS ON EXTENSION ext, SET (fillfactor = 70)")]
+    [InlineData("SET (fillfactor = 70), NO DEPENDS ON EXTENSION ext")]
+    public void MaterializedViewLifecycle_RejectInvalidColumnOrStandaloneActions(string clause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"ALTER MATERIALIZED VIEW summary {clause}"));
+    }
+
+    [Theory]
+    [InlineData("IF EXISTS summary DEPENDS ON EXTENSION ext")]
+    [InlineData("IF EXISTS summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALL IN TABLESPACE")]
+    [InlineData("ALL IN TABLESPACE fast")]
+    [InlineData("ALL IN TABLESPACE app.fast SET TABLESPACE slow")]
+    [InlineData("ALL IN TABLESPACE fast SET TABLESPACE app.slow")]
+    [InlineData("ALL IN TABLESPACE fast OWNED BY SET TABLESPACE slow")]
+    [InlineData("ALL IN TABLESPACE fast OWNED BY owner_name, SET TABLESPACE slow")]
+    [InlineData("ALL IN TABLESPACE fast OWNED BY 'owner_name' SET TABLESPACE slow")]
+    [InlineData("ALL IN TABLESPACE fast OWNED BY owner_name@host SET TABLESPACE slow")]
+    [InlineData("ALL IN TABLESPACE fast SET TABLESPACE slow NOWAIT NOWAIT")]
+    [InlineData("ALL IN TABLESPACE fast SET TABLESPACE slow, SET TABLESPACE other")]
+    public void BulkMaterializedViews_RejectMalformedForms(string clause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"ALTER MATERIALIZED VIEW {clause}"));
     }
 }

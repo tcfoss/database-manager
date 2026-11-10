@@ -139,11 +139,13 @@ unresolved materialized-view targets distinct from ordinary views and local
 variables. Behavior suffixes on other DROP targets remain outside this slice.
 
 `ALTER MATERIALIZED VIEW [IF EXISTS] name` supports `RENAME TO`, column renaming
-with or without the COLUMN keyword, `SET SCHEMA`, and a single `SET TABLESPACE`
-action, storage-parameter `SET (...)` / `RESET (...)`, and `OWNER TO`. A separate
-`AlterMaterializedView` statement and typed
-`PgAlterMaterializedViewOperation` variants retain each form and its identifier
-fields. Core owns parsing; MySQL/MariaDB and SQL Server reject these statements
+with or without the COLUMN keyword, `SET SCHEMA`, `SET TABLESPACE`,
+storage-parameter `SET (...)` / `RESET (...)`, `OWNER TO`,
+`SET ACCESS METHOD`, `CLUSTER ON`, and `SET WITHOUT CLUSTER`. A separate
+`AlterMaterializedView` statement with ordered `Operations` and typed
+`PgAlterMaterializedViewOperation` variants retains each form and its identifier
+fields; the single-action constructor remains available. Core owns parsing;
+MySQL/MariaDB and SQL Server reject these statements
 without changing their existing ALTER TABLE behavior. SQL/JSON round trips,
 recursive identifier formatting/idempotence, sources/comments/terminators,
 atomic SQL bodies, and dependency filters are unit-tested. Dependencies report
@@ -171,15 +173,57 @@ and special-role function-call syntax are rejected. Role lookup, ownership
 checks, SET ROLE eligibility, schema privileges, and ownership execution are
 not implemented.
 
-Access-method/clustering operations, column settings, extension dependencies,
-multi-action lists, and bulk `ALL IN TABLESPACE` forms remain unsupported. Target, column and
-destination lookup, name collisions, privileges, dependency updates, tablespace
+`SET ACCESS METHOD` accepts a method identifier or DEFAULT; separate typed
+operations keep DEFAULT distinct from a quoted method named `"default"`.
+`CLUSTER ON` retains a single index identifier, while `SET WITHOUT CLUSTER`
+clears the default clustering-index selection. Neither clustering action runs
+CLUSTER. SQL/JSON round trips, identifier formatting/idempotence, sources,
+comments/terminators, atomic bodies, target-only dependencies, provider rejection,
+and sourced builder rejection are unit-tested. Method and index names do not add
+independent object dependencies. Qualified names, string literals, missing
+operands and unsupported modifiers are rejected. Method
+eligibility, index existence/ownership/suitability, privileges, locking, physical
+rewrites, and execution are not implemented.
+
+Column actions support `ALTER [COLUMN] name SET STATISTICS` with a signed integer
+or DEFAULT, `SET (...)` option assignments, `RESET (...)` option names,
+`SET STORAGE` with PLAIN / EXTERNAL / EXTENDED / MAIN / DEFAULT, and
+`SET COMPRESSION` with a method identifier or DEFAULT. Typed column operations
+preserve COLUMN spelling, parameters, identifier sources, and default selections.
+Option values reuse scalar storage-value parsing; expressions, qualified option
+names, missing assignments, and empty lists are rejected. Statistics ranges,
+option applicability, and compression eligibility remain semantic checks.
+
+`[NO] DEPENDS ON EXTENSION name` retains the extension identifier and NO flag;
+it is a standalone form without IF EXISTS. Combinable actions retain their order
+in a comma-separated list. Renames, schema moves, and extension dependencies
+remain standalone and are rejected inside action lists.
+
+`ALTER MATERIALIZED VIEW ALL IN TABLESPACE source [OWNED BY role [, ...]]
+SET TABLESPACE destination [NOWAIT]` produces a separate
+`AlterMaterializedViewsInTablespace` statement. It retains tablespace identifiers,
+optional ordered Account filters, NOWAIT, and source metadata, without inventing
+individual-object dependencies. Bulk forms, column/extension actions, ordered
+lists, SQL/JSON round trips, formatting/idempotence, comments/terminators, atomic
+bodies, invalid syntax, provider boundaries, and sourced builder rejection are
+unit-tested.
+
+Basic standard/unique index declarations reuse `CreateIndex` with the
+materialized-view target name, including supported INCLUDE/filter syntax.
+PostgreSQL `DROP INDEX [IF EXISTS] name` does not accept ON; MySQL/MariaDB and
+SQL Server still require their ON target. The declaration/index/refresh/drop-index
+workflow is unit-tested. Broader PostgreSQL index grammar, including CONCURRENTLY
+and additional index/drop options, remains separate index work; TABLE query
+shorthand and expanded storage-argument forms remain explicit shared follow-ups.
+
+The bounded materialized-view lifecycle parsing milestone is complete. Target,
+column and destination lookup, name collisions, privileges, dependency updates, tablespace
 eligibility, and ALTER execution are not implemented. Parsing these statements
 inside atomic SQL bodies does not validate their executability.
 
 Definition construction rejects refresh, DROP, and ALTER commands with source
-information. Resolved materialized-view objects, catalog loading, remaining ALTER
-forms, index support, and migrations remain deferred. DROP does not check target existence,
+information. Resolved materialized-view objects, catalog loading, index resolution,
+and migrations remain deferred. DROP does not check target existence,
 ownership, or dependencies, or execute cascades. Refresh target lookup, unique-index
 and existing-population prerequisites, privileges, locking, and execution are
 not implemented. Parsing refresh commands in atomic SQL bodies does not check

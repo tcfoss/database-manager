@@ -647,6 +647,22 @@ public class FormatComponentsTests
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER", "OWNER TO SESSION_USER")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"", "OWNER TO \"CURRENT_USER\"")]
     [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"role; DROP TABLE items; --\"", "OWNER TO \"role; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary SET ACCESS METHOD heap", "SET ACCESS METHOD \"heap\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"MixedCase\"", "SET ACCESS METHOD \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD DEFAULT", "SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"default\"", "SET ACCESS METHOD \"default\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx", "CLUSTER ON \"summary_idx\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON \"index; DROP TABLE items; --\"", "CLUSTER ON \"index; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER", "SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary DEPENDS ON EXTENSION ext", "DEPENDS ON EXTENSION \"ext\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION \"MixedCase\"", "NO DEPENDS ON EXTENSION \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER COLUMN id SET STATISTICS 100", "ALTER COLUMN \"id\" SET STATISTICS 100")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS DEFAULT", "ALTER \"id\" SET STATISTICS DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET STORAGE EXTENDED", "ALTER \"body\" SET STORAGE EXTENDED")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET COMPRESSION lz4", "ALTER \"body\" SET COMPRESSION \"lz4\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET COMPRESSION DEFAULT", "ALTER \"body\" SET COMPRESSION DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET (n_distinct = -0.5), ALTER id RESET (n_distinct)", "SET (\"n_distinct\" = -0.5), ALTER \"id\" RESET (\"n_distinct\")")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER \"column; DROP TABLE items; --\" SET STATISTICS 100", "ALTER \"column; DROP TABLE items; --\" SET STATISTICS 100")]
     public void AlterMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
     {
         using var formatter = Helpers.CreateFormatter();
@@ -669,6 +685,12 @@ public class FormatComponentsTests
     [InlineData("OWNER TO owner_name", "OWNER TO \"owner_name\"")]
     [InlineData("OWNER TO CURRENT_ROLE", "OWNER TO CURRENT_ROLE")]
     [InlineData("OWNER TO \"CURRENT_USER\"", "OWNER TO \"CURRENT_USER\"")]
+    [InlineData("SET ACCESS METHOD heap", "SET ACCESS METHOD \"heap\"")]
+    [InlineData("SET ACCESS METHOD DEFAULT", "SET ACCESS METHOD DEFAULT")]
+    [InlineData("CLUSTER ON summary_idx", "CLUSTER ON \"summary_idx\"")]
+    [InlineData("SET WITHOUT CLUSTER", "SET WITHOUT CLUSTER")]
+    [InlineData("ALTER id SET STATISTICS 100, SET (fillfactor = 70)", "ALTER \"id\" SET STATISTICS 100, SET (\"fillfactor\" = 70)")]
+    [InlineData("NO DEPENDS ON EXTENSION ext", "NO DEPENDS ON EXTENSION \"ext\"")]
     public void AlterMaterializedViews_FormatAtomicBodyIdempotently(string clause, string expectedClause)
     {
         string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ ALTER MATERIALIZED VIEW app.summary {clause} /* tail */; SELECT 2; END";
@@ -684,6 +706,24 @@ public class FormatComponentsTests
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<AlterMaterializedView>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast SET TABLESPACE slow", "TABLESPACE \"fast\" SET TABLESPACE \"slow\"")]
+    [InlineData("/* lead */ ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY owner_name, CURRENT_USER SET TABLESPACE slow NOWAIT /* tail */", "OWNED BY \"owner_name\", CURRENT_USER SET TABLESPACE \"slow\" NOWAIT")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE \"old; space\" OWNED BY \"CURRENT_USER\" SET TABLESPACE \"NewSpace\"", "OWNED BY \"CURRENT_USER\" SET TABLESPACE \"NewSpace\"")]
+    public void BulkMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 }
