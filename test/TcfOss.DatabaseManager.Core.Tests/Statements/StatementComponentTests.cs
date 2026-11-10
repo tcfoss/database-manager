@@ -869,6 +869,28 @@ public class StatementComponentTests
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData("owner_name", "\"owner_name\"")]
+    [InlineData("\"MixedCase\"", "\"MixedCase\"")]
+    [InlineData("`owner_name`", "\"owner_name\"")]
+    [InlineData("[owner_name]", "\"owner_name\"")]
+    [InlineData("'owner_name'", "'owner_name'")]
+    [InlineData("CURRENT_ROLE", "CURRENT_ROLE")]
+    [InlineData("CURRENT_USER", "CURRENT_USER")]
+    [InlineData("SESSION_USER", "SESSION_USER")]
+    [InlineData("'username'@'hostname'", "'username'@'hostname'")]
+    [InlineData("[username]@`hostname`", "[username]@`hostname`")]
+    [InlineData("\"CURRENT_USER\"", "\"CURRENT_USER\"")]
+    public void Account_FormattingPreservesSpecialRolesAndHostAccounts(string sql, string expected)
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
+        Account account = ComponentParser.ParseAccount(state);
+
+        Assert.Equal(sql, account.ToSql());
+        Assert.Equal(expected, FormatComponent(account));
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();

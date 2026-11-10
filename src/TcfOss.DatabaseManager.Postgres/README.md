@@ -140,7 +140,7 @@ variables. Behavior suffixes on other DROP targets remain outside this slice.
 
 `ALTER MATERIALIZED VIEW [IF EXISTS] name` supports `RENAME TO`, column renaming
 with or without the COLUMN keyword, `SET SCHEMA`, and a single `SET TABLESPACE`
-action, plus storage-parameter `SET (...)` and `RESET (...)`. A separate
+action, storage-parameter `SET (...)` / `RESET (...)`, and `OWNER TO`. A separate
 `AlterMaterializedView` statement and typed
 `PgAlterMaterializedViewOperation` variants retain each form and its identifier
 fields. Core owns parsing; MySQL/MariaDB and SQL Server reject these statements
@@ -158,9 +158,21 @@ not object dependencies. SQL/JSON, formatting, source boundaries, atomic bodies,
 provider rejection, and sourced builder rejection are unit-tested. Parameter
 applicability, duplicates, and value types/ranges are not catalog-validated.
 
-Ownership, access-method/clustering operations, column settings, extension
-dependencies, multi-action lists,
-and bulk `ALL IN TABLESPACE` forms remain unsupported. Target, column and
+`OWNER TO` accepts an explicit role identifier, `CURRENT_ROLE`, `CURRENT_USER`,
+or `SESSION_USER`. It reuses Core's `Account` variants to distinguish named
+roles from special roles: `"CURRENT_USER"` remains an `Account.Identity` with
+identifier source metadata preserved through `ExtendedIdentifier` conversion.
+PostgreSQL role parsing stays narrower than shared account parsing. SQL/JSON
+round trips, quoted/special-role formatting and idempotence,
+sources/comments/terminators, atomic bodies, target-only dependencies, provider
+rejection, and sourced builder rejection are unit-tested. Role names do not add
+database-object dependencies. Qualified roles, string literals, host accounts,
+and special-role function-call syntax are rejected. Role lookup, ownership
+checks, SET ROLE eligibility, schema privileges, and ownership execution are
+not implemented.
+
+Access-method/clustering operations, column settings, extension dependencies,
+multi-action lists, and bulk `ALL IN TABLESPACE` forms remain unsupported. Target, column and
 destination lookup, name collisions, privileges, dependency updates, tablespace
 eligibility, and ALTER execution are not implemented. Parsing these statements
 inside atomic SQL bodies does not validate their executability.

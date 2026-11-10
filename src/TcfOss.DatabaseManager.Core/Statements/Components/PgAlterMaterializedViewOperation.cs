@@ -99,4 +99,18 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
             writer.Write(")");
         }
     }
+
+    public record OwnerTo(Account Owner) : PgAlterMaterializedViewOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"OWNER TO {Owner}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write("OWNER TO ");
+            Owner.FormatSql(writer, manager);
+        }
+    }
 }

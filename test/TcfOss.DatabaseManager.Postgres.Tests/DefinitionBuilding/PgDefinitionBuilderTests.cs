@@ -88,6 +88,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70)")]
     [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE")]
     public void ProcessStatements_RejectsUnsupportedStatements(string sql)
     {
         var builder = CreateBuilder();

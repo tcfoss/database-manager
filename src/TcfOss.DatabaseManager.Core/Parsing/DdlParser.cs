@@ -1444,9 +1444,22 @@ public class DdlParser
             operation = new PgAlterMaterializedViewOperation.ResetStorageParameters(
                 state.ParseParenthesizedCommaSeparated(ParseStorageParameterName, false));
         }
+        else if (state.ParseKeyword(Keyword.OWNER))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            Keyword role = state.ParseKeywordsAny(Keyword.CURRENT_ROLE, Keyword.CURRENT_USER, Keyword.SESSION_USER);
+            Account owner = role switch
+            {
+                Keyword.CURRENT_ROLE => new Account.CurrentRole(),
+                Keyword.CURRENT_USER => new Account.CurrentUser(),
+                Keyword.SESSION_USER => new Account.SessionUser(),
+                _ => new Account.Identity(_parseIdentifier(state))
+            };
+            operation = new PgAlterMaterializedViewOperation.OwnerTo(owner);
+        }
         else
         {
-            throw state.ExpectedException("RENAME", "SET", "RESET");
+            throw state.ExpectedException("RENAME", "SET", "RESET", "OWNER");
         }
         return new AlterMaterializedView(name, operation) { IfExists = ifExists };
     }

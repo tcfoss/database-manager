@@ -640,6 +640,13 @@ public class FormatComponentsTests
     [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor, toast.autovacuum_enabled)", "RESET (\"fillfactor\", \"toast\".\"autovacuum_enabled\")")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET (\"setting; DROP TABLE items; --\" = 'it''s; opaque')", "SET (\"setting; DROP TABLE items; --\" = 'it''s; opaque')")]
     [InlineData("ALTER MATERIALIZED VIEW summary RESET (\"setting; DROP TABLE items; --\")", "RESET (\"setting; DROP TABLE items; --\")")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary OWNER TO owner_name", "OWNER TO \"owner_name\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"MixedCase\"", "OWNER TO \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE", "OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER", "OWNER TO CURRENT_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER", "OWNER TO SESSION_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"", "OWNER TO \"CURRENT_USER\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"role; DROP TABLE items; --\"", "OWNER TO \"role; DROP TABLE items; --\"")]
     public void AlterMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
     {
         using var formatter = Helpers.CreateFormatter();
@@ -659,6 +666,9 @@ public class FormatComponentsTests
     [InlineData("SET SCHEMA archive", "SET SCHEMA \"archive\"")]
     [InlineData("SET (fillfactor = 70)", "SET (\"fillfactor\" = 70)")]
     [InlineData("RESET (fillfactor)", "RESET (\"fillfactor\")")]
+    [InlineData("OWNER TO owner_name", "OWNER TO \"owner_name\"")]
+    [InlineData("OWNER TO CURRENT_ROLE", "OWNER TO CURRENT_ROLE")]
+    [InlineData("OWNER TO \"CURRENT_USER\"", "OWNER TO \"CURRENT_USER\"")]
     public void AlterMaterializedViews_FormatAtomicBodyIdempotently(string clause, string expectedClause)
     {
         string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ ALTER MATERIALIZED VIEW app.summary {clause} /* tail */; SELECT 2; END";

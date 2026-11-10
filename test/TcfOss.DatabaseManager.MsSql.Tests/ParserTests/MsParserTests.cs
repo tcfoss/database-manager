@@ -595,6 +595,10 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70)")]
     [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER")]
     public void AlterMaterializedViews_AreRejectedBySqlServer(string sql)
     {
         var state = GetState(sql);

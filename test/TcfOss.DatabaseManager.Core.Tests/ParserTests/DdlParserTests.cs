@@ -597,6 +597,11 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
     [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70, autovacuum_enabled)")]
     [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RESET (fillfactor, toast.autovacuum_enabled)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"")]
     public void AlterMaterializedViews_CoreParserRoundTrips(string sql)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
