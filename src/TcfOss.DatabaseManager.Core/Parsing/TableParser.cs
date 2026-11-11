@@ -656,7 +656,7 @@ public class TableParser
 
     private Identifier? ParseConstraintIndexTablespace(ParserState state)
     {
-        if (SupportsPostgresConstraintSyntax && state.ParseKeywordsAll(Keyword.USING, Keyword.INDEX, Keyword.TABLESPACE))
+        if (state.ParseKeywordsAll(Keyword.USING, Keyword.INDEX, Keyword.TABLESPACE))
         {
             return _ident(state);
         }

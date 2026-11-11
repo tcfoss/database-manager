@@ -139,6 +139,21 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ParseStorageParameter_RejectsInvalidNamePartLimits(int maxParts)
+    {
+        var state = GetState("fillfactor = 70");
+        var parser = new Parser();
+
+        var exception = Assert.ThrowsAny<ParseException>(() => parser.ComponentParser.ParseStorageParameter(state,
+            maxParts, requireValue: true, label: "storage parameter"));
+
+        Assert.Contains("storage parameter", exception.Message);
+        Assert.Equal("fillfactor", state.Peek().ToString());
+    }
+
+    [Theory]
     [InlineData("(`aardvark`)")]
     [InlineData("(`aardvark`, \"bobcat\")")]
     [InlineData("(`aardvark`, \"bobcat\", [cat])")]

@@ -73,6 +73,34 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Throws<NotImplementedException>(() => builder.ApplyCreateTable(statement));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AddIndexOrConstraint_RejectsUsingIndexWithSource(bool primaryKey)
+    {
+        var builder = CreateBuilder();
+        var source = new SourceRef(7, 0, 10);
+        var constraint = new StatementTableConstraint.PgUsingIndex(new Identifier("items_idx"), primaryKey);
+
+        var exception = Assert.Throws<DefinitionException>(() => builder.AddIndexOrConstraint(constraint, source));
+
+        Assert.Equal(source, exception.ObjectSourceRef);
+        Assert.Contains(nameof(CreateTable), exception.Message);
+    }
+
+    [Fact]
+    public void AddIndexOrConstraint_RejectsExclusionWithoutAttributesWithSource()
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, EXCLUDE (id WITH =))"));
+        var builder = CreateBuilder();
+        var source = new SourceRef(7, 0, 10);
+
+        var exception = Assert.Throws<DefinitionException>(() => builder.AddIndexOrConstraint(Assert.Single(statement.Constraints), source));
+
+        Assert.Equal(source, exception.ObjectSourceRef);
+        Assert.Contains(nameof(CreateTable), exception.Message);
+    }
+
     [Fact]
     public void ApplyCreateTable_RejectsUnimplementedOptions()
     {

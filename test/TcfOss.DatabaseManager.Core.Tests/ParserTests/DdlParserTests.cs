@@ -582,12 +582,46 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("WITH DATA", true)]
+    [InlineData("WITH NO DATA", false)]
+    public void MaterializedViews_PopulationClauseWithoutLeadingTrivia(string population, bool expected)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement($"CREATE MATERIALIZED VIEW summary AS (SELECT 1){population}"));
+
+        Assert.Equal(expected, statement.WithData);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("CREATE OR REPLACE MATERIALIZED VIEW summary AS SELECT 1")]
     [InlineData("CREATE OR ALTER MATERIALIZED VIEW summary AS SELECT 1")]
     [InlineData("CREATE TEMPORARY MATERIALIZED VIEW summary AS SELECT 1")]
     public void MaterializedViews_CoreParserRejectsUnsupportedOptions(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE RECURSIVE TABLE items (id INT)")]
+    [InlineData("CREATE TEMPORARY INDEX ix ON items (id)")]
+    [InlineData("CREATE TEMP FUNCTION f() RETURNS INT RETURN 1")]
+    [InlineData("CREATE UNLOGGED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE UNLOGGED INDEX ix ON items (id)")]
+    [InlineData("CREATE UNLOGGED FUNCTION f() RETURNS INT RETURN 1")]
+    public void CreateModifiers_RejectUnsupportedTargets(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("CREATE TEMP SEQUENCE ids")]
+    public void SequencePersistence_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<CreateSequence>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 
     [Theory]
@@ -763,6 +797,28 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     public static void SequenceOptions_RejectMalformedRecognizedClauses(string clause)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE SEQUENCE ids {clause}"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void DropRoutine_SingleTargetHookPreservesSignatureAndTargetBoundary(bool additionalTarget)
+    {
+        var state = GetState($"DROP FUNCTION app.run(INT){(additionalTarget ? ", app.other()" : "")}");
+        var parser = new SingleTargetDdlParser(new Parser());
+
+        var statement = Assert.IsType<DropRoutine>(parser.ParseDropObject(state));
+
+        PgRoutineReference routine = Assert.Single(statement.Routines);
+        Assert.Equal("app.run", routine.Name.ToSql());
+        Assert.Single(routine.Parameters!);
+        Assert.Equal(additionalTarget, state.PeekIs<Core.Lexing.Tokens.Comma>());
+        Assert.Equal(!additionalTarget, state.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
+    private sealed class SingleTargetDdlParser(Parser parser) : DdlParser(parser)
+    {
+        protected override bool SupportsDropObjectList(DroppableObject objectType) => false;
     }
 
     private sealed class ExtendedSequenceDdlParser(Parser parser) : DdlParser(parser)

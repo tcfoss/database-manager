@@ -891,6 +891,62 @@ public class StatementComponentTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
     }
 
+    [Theory]
+    [InlineData("CREATE FULLTEXT INDEX ix ON items (id)", "FULLTEXT INDEX")]
+    [InlineData("CREATE FULLTEXT INDEX ix ON items (id) COMMENT 'full text'", "COMMENT 'full text'")]
+    [InlineData("CREATE SPATIAL INDEX ix ON items (id)", "SPATIAL INDEX")]
+    [InlineData("CREATE SPATIAL INDEX ix ON items (id) COMMENT 'spatial'", "COMMENT 'spatial'")]
+    [InlineData("CREATE UNIQUE INDEX ix ON items (id) COMMENT 'unique'", "COMMENT 'unique'")]
+    [InlineData("CREATE UNIQUE NONCLUSTERED INDEX ix USING BTREE ON items (id) INCLUDE (payload) WHERE id > 0 WITH (FILLFACTOR = 80) ON [PRIMARY]", "WITH (FILLFACTOR = 80)")]
+    [InlineData("CREATE NONCLUSTERED INDEX ix USING BTREE ON items (id) INCLUDE (payload) WHERE id > 0 WITH (FILLFACTOR = 80) ON [PRIMARY] COMMENT 'standard'", "COMMENT 'standard'")]
+    public void CreateIndex_FormattingPreservesVariantPayloads(string sql, string expected)
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
+        var statement = Assert.IsType<CreateIndex>(new Parser().ParseStatement(state), exactMatch: false);
+
+        string formatted = FormatComponent(statement);
+
+        Assert.Contains(expected, formatted);
+        var formattedState = new ParserState([.. new GenericLexer().Tokenize(formatted)]);
+        var reparsed = Assert.IsType<CreateIndex>(new Parser().ParseStatement(formattedState), exactMatch: false);
+        Assert.IsType(statement.GetType(), reparsed);
+        Assert.IsType<Core.Lexing.Tokens.Eof>(formattedState.Peek());
+        Assert.Equal(formatted, FormatComponent(reparsed));
+    }
+
+    [Fact]
+    public void IndexMethod_OnlyBuiltInBtreeMatchesTheDefault()
+    {
+        Assert.True(IndexMethod.IsBtree(IndexMethod.Default));
+        Assert.False(IndexMethod.IsBtree(null));
+        Assert.False(IndexMethod.IsBtree(new IndexMethod.Custom(new Identifier("btree"))));
+        Assert.False(IndexMethod.IsBtree(new IndexMethod.BuiltIn(BuiltInIndexMethod.Hash)));
+    }
+
+    [Fact]
+    public void CreateView_FormatsIfNotExists()
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize("CREATE TEMP VIEW IF NOT EXISTS summary AS SELECT 1")]);
+        var statement = Assert.IsType<CreateView>(new Parser().ParseStatement(state));
+
+        string formatted = FormatComponent(statement);
+
+        Assert.Contains("VIEW IF NOT EXISTS \"summary\"", formatted);
+        var formattedState = new ParserState([.. new GenericLexer().Tokenize(formatted)]);
+        Assert.Equal(formatted, FormatComponent(new Parser().ParseStatement(formattedState)));
+    }
+
+    [Fact]
+    public void PgAddConstraint_FormatsAnOrdinaryConstraint()
+    {
+        var state = new ParserState([.. new GenericLexer().Tokenize("CREATE TABLE items (id INT, CHECK (id > 0))")]);
+        var statement = Assert.IsType<CreateTable>(new Parser().ParseStatement(state));
+        var operation = new AlterTableOperation.PgAddConstraint(Assert.Single(statement.Constraints));
+
+        Assert.Equal("ADD CHECK (id > 0)", operation.ToSql());
+        Assert.Equal("ADD CHECK (\"id\" > 0)", FormatComponent(operation));
+    }
+
     private static string FormatComponent(IWriteSql component)
     {
         var functionNames = new FunctionNameProvider();

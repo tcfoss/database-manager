@@ -207,12 +207,15 @@ public class PgDropParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("FUNCTION")]
-    [InlineData("PROCEDURE")]
-    [InlineData("ROUTINE")]
-    public void DropRoutine_ReportsTargetsAndNamedTypesWithoutTableOrVariableConfusion(string target)
+    [InlineData("FUNCTION", true)]
+    [InlineData("PROCEDURE", true)]
+    [InlineData("ROUTINE", true)]
+    [InlineData("FUNCTION", false)]
+    [InlineData("PROCEDURE", false)]
+    [InlineData("ROUTINE", false)]
+    public void DropRoutine_ReportsTargetsAndNamedTypesWithoutTableOrVariableConfusion(string target, bool signature)
     {
-        var statement = Assert.IsType<DropRoutine>(ParseStatement($"DROP {target} app.run(IN argument app.label[], OUT result TEXT), app.run(INT) CASCADE"));
+        var statement = Assert.IsType<DropRoutine>(ParseStatement($"DROP {target} app.run(IN argument app.label[], OUT result TEXT), app.run{(signature ? "(INT)" : "")} CASCADE"));
         var schema = new SchemaIdentifier("app", new CatalogIdentifier("def"));
         var tables = new PseudoTableSet(schema,
         [

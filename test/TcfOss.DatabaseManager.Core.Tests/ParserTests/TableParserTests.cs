@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -52,6 +53,7 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT PRESERVE ROWS")]
     [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DELETE ROWS")]
     [InlineData("CREATE TEMP TABLE items ON COMMIT DROP AS SELECT 1")]
+    [InlineData("CREATE TABLE items SELECT 1")]
     public void TablePersistence_RoundTrip(string sql)
     {
         var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
@@ -75,6 +77,24 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(sql, statement.ToSql());
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("DEFAULT (app.compute(1))", "parent,app.compute")]
+    [InlineData("GENERATED ALWAYS AS (app.compute(1)) STORED", "parent,app.compute")]
+    [InlineData("NOT NULL", "parent")]
+    public void TablePartitions_OverrideExpressionsReportDependencies(string options, string expected)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE child PARTITION OF parent (id WITH OPTIONS {options}) DEFAULT"));
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        using var scope = context.Enter(ReferencedItemsContext.WhereClause);
+
+        ItemRef[] references = [.. statement.GetReferencedItems(context)];
+
+        Assert.Equal(expected.Split(','), references.OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql()));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        _ = statement.GetReferencedItems(context).Take(1).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
     }
 
     [Theory]
@@ -111,6 +131,8 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE TABLE items (id INT, UNIQUE NULLS NOT DISTINCT (id) DEFERRABLE INITIALLY DEFERRED)")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (FILLFACTOR = 70) USING INDEX TABLESPACE fast)")]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id) WITH (FILLFACTOR = 70) USING INDEX TABLESPACE fast)")]
     [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
     [InlineData("ALTER TABLE items ADD CONSTRAINT ck CHECK (id > 0) NOT VALID")]
     [InlineData("ALTER TABLE items ADD CONSTRAINT pk PRIMARY KEY USING INDEX items_idx")]

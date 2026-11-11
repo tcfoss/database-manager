@@ -142,7 +142,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     public override void AddIndexOrConstraint(StatementTableConstraint constraint, SourceRef? sourceRef)
     {
         sourceRef ??= SourceRef;
-        if (constraint.PgOptions != null || constraint is StatementTableConstraint.PgExclusion or StatementTableConstraint.PgUsingIndex)
+        if (constraint.PgOptions != null || constraint is StatementTableConstraint.PgExclusion || constraint is StatementTableConstraint.PgUsingIndex)
         {
             throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL constraint options", sourceRef);
         }

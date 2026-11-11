@@ -20,6 +20,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE INDEX items_idx ON items (id)")]
     [InlineData("CREATE INDEX ON items (id)")]
+    [InlineData("CREATE UNIQUE INDEX ON items (id)")]
     [InlineData("CREATE INDEX CONCURRENTLY ON ONLY app.items (id)")]
     [InlineData("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON items (id)")]
     [InlineData("CREATE INDEX items_idx ON items (label COLLATE app.casefold)")]
@@ -71,6 +72,18 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.True(statement.IndexMethodAfterTableName);
         Assert.Null(statement.PgOptions);
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void ExpandedIndexes_DirectDdlParserRejectsReplacement()
+    {
+        var parser = new PgParser();
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize("INDEX items_idx ON items (id)")]);
+
+        var exception = Assert.ThrowsAny<ParseException>(() => parser.DdlParser.ParseCreateIndex(state,
+            Core.Statements.LabelAttributes.CreateOrLabel.OrReplace));
+
+        Assert.Contains("CREATE [UNIQUE] INDEX", exception.Message);
     }
 
     [Fact]
@@ -141,11 +154,13 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
-    [Fact]
-    public void ExpandedIndexes_ReportsTargetAndExpressionFunctionsWithoutCapturingCallerScope()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExpandedIndexes_ReportsTargetAndExpressionFunctionsWithoutCapturingCallerScope(bool unique)
     {
-        const string sql = "CREATE INDEX items_idx ON items USING bloom (id, app.compute(id) COLLATE app.casefold app.int_ops (bits = 4)) INCLUDE (payload) WITH (custom_parameter = 1) TABLESPACE fast WHERE app.keep(id)";
-        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement(sql));
+        string sql = $"CREATE{(unique ? " UNIQUE" : "")} INDEX items_idx ON items USING bloom (id, app.compute(id) COLLATE app.casefold app.int_ops (bits = 4)) INCLUDE (payload) WITH (custom_parameter = 1) TABLESPACE fast WHERE app.keep(id)";
+        var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false);
         var schema = new SchemaIdentifier("app", new CatalogIdentifier("def"));
         var tables = new PseudoTableSet(schema,
         [new PseudoTable("items", new ObjectIdentifier("items", schema), ["id", "payload"], PseudoTableType.Table)]);

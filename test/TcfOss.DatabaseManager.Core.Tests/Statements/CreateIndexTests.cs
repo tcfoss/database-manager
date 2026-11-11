@@ -120,6 +120,22 @@ public class CreateIndexTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SpecializedIndexes_ReferenceOnlyTheTargetTable(bool spatial)
+    {
+        CreateIndex index = spatial
+            ? new CreateIndex.Spatial(s_columns, s_name, s_table)
+            : new CreateIndex.FullText(s_columns, s_name, s_table);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(index.GetReferencedItems(context)));
+
+        Assert.Equal(s_table, reference.Name);
+        Assert.Empty(index.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
     private static CreateIndex.Unique CreateUnique(bool options)
     {
         return new CreateIndex.Unique(s_columns, s_name, s_table)

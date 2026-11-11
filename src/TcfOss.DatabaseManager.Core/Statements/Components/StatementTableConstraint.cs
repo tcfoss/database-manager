@@ -126,13 +126,13 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" {IncludedColumns}");
             }
-            if (IndexParameters != null)
-            {
-                writer.WriteSql($" {IndexParameters}");
-            }
             if (Options != null)
             {
                 writer.WriteSql($" WITH ({Options})");
+            }
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
             }
             if (StorageLocation != null)
             {
@@ -159,16 +159,16 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.Write(" ");
                 IncludedColumns.FormatSql(writer, manager);
             }
-            if (IndexParameters != null)
-            {
-                writer.Write(" ");
-                IndexParameters.FormatSql(writer, manager);
-            }
             if (Options != null)
             {
                 writer.Write(" WITH (");
                 writer.FormatDelimited(Options, manager);
                 writer.Write(")");
+            }
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
             }
             if (StorageLocation != null)
             {
@@ -222,13 +222,13 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" {IncludedColumns}");
             }
-            if (IndexParameters != null)
-            {
-                writer.WriteSql($" {IndexParameters}");
-            }
             if (Options != null)
             {
                 writer.WriteSql($" WITH ({Options})");
+            }
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
             }
             if (StorageLocation != null)
             {
@@ -266,16 +266,16 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.Write(" ");
                 IncludedColumns.FormatSql(writer, manager);
             }
-            if (IndexParameters != null)
-            {
-                writer.Write(" ");
-                IndexParameters.FormatSql(writer, manager);
-            }
             if (Options != null)
             {
                 writer.Write(" WITH (");
                 writer.FormatDelimited(Options, manager);
                 writer.Write(")");
+            }
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
             }
             if (StorageLocation != null)
             {

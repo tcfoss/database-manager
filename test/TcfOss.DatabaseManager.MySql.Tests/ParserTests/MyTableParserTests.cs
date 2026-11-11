@@ -33,6 +33,17 @@ public class MyTableParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) USING BTREE)", "CREATE TABLE items (id INT, PRIMARY KEY USING BTREE (id))")]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id) USING BTREE)", "CREATE TABLE items (id INT, UNIQUE USING BTREE (id))")]
+    public void Constraints_IndexMethodAfterColumns_RoundTrips(string sql, string expectedSql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("ALTER TABLE items DROP label")]
     [InlineData("ALTER TABLE items DROP COLUMN label")]
     [InlineData("ALTER TABLE items ALTER label SET DEFAULT 5")]

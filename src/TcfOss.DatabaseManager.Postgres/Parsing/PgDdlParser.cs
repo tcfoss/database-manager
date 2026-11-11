@@ -23,7 +23,7 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
 
     protected override void ValidateCreateIndex(ParserState state, CreateIndex statement)
     {
-        if (statement.CreateOrLabel != null || statement is not (CreateIndex.Standard or CreateIndex.Unique))
+        if (statement.CreateOrLabel != null)
         {
             throw state.ExpectedException("CREATE [UNIQUE] INDEX");
         }
@@ -31,7 +31,7 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
         {
             CreateIndex.Standard standard => (standard.IndexMethod, standard.IndexOrganization, standard.StorageLocation, standard.Comment),
             CreateIndex.Unique unique => (unique.IndexMethod, unique.IndexOrganization, unique.StorageLocation, unique.Comment),
-            _ => throw new InvalidOperationException()
+            _ => throw state.ExpectedException("CREATE [UNIQUE] INDEX")
         };
         if (organization != null || storage != null || comment != null
             || method != null && statement.IndexMethodAfterTableName != true)
