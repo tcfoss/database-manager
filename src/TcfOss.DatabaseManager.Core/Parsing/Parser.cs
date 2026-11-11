@@ -370,7 +370,8 @@ public class Parser : IParser
             Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
             Word { Keyword: Keyword.MATERIALIZED } => DdlParser.ParseAlterMaterializedView(state),
             Word { Keyword: Keyword.SEQUENCE } => DdlParser.ParseAlterSequence(state),
-            _ => throw state.ExpectedException("TABLE", "PROCEDURE", "VIEW", "MATERIALIZED VIEW", "SEQUENCE")
+            Word { Keyword: Keyword.FUNCTION or Keyword.PROCEDURE } => DdlParser.ParseAlterRoutine(state),
+            _ => throw state.ExpectedException("TABLE", "FUNCTION", "PROCEDURE", "VIEW", "MATERIALIZED VIEW", "SEQUENCE")
         };
     }
 

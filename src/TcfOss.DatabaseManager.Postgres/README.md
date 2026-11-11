@@ -304,6 +304,45 @@ validation. Overload lookup, OUT/VARIADIC identity semantics, object existence,
 dependency/cascade effects, aggregate-specific DROP syntax, SQL Server DDL
 trigger targets, catalog loading, migrations, and execution remain deferred.
 
+## Routine ALTER Forms
+
+`ALTER FUNCTION` and `ALTER PROCEDURE` produce Core's `AlterRoutine`, with a
+`PgRoutineKind`, shared `PgRoutineReference`, ordered `PgAlterRoutineOperation`
+actions, and optional trailing RESTRICT for attribute/configuration lists.
+Omitted signatures remain distinct from `()`. Written arguments reuse the DROP
+signature parser, including modes, optional names, named/array types, and sources;
+defaults are not accepted.
+
+Functions support volatility, null-input behavior, PARALLEL, COST, ROWS, and
+security attributes through the existing routine-option parser. Procedures accept
+security attributes, not function-only options. Both support configuration SET
+with TO/=, scalar value lists, FROM CURRENT, or DEFAULT, plus RESET name and
+RESET ALL. Unquoted DEFAULT is a distinct action, not the quoted string
+`'DEFAULT'`; quoted `"ALL"` remains a parameter name rather than RESET ALL.
+Action order and delimiter spelling are retained. Shared SET head/value parsing
+also serves CREATE without changing its existing behavior.
+
+RENAME TO, OWNER TO, SET SCHEMA, and [NO] DEPENDS ON EXTENSION are standalone
+forms, reusing the relation-operation components and narrow owner parser. They
+do not combine with attributes or take trailing RESTRICT. Names use
+identifier-aware formatting; destinations and owner roles do not become object
+dependencies. Routine targets and written named signature types remain unresolved
+references, isolated from colliding tables/local variables and preserving filters
+and caller scopes even on partial enumeration.
+
+Core owns the grammar. Existing MySQL/MariaDB and SQL Server ALTER dispatch
+continues to reject these PostgreSQL forms. SQL/JSON, formatting/idempotence,
+typed settings/signatures, sources/comments, statement/atomic boundaries,
+dependency scopes, malformed and inapplicable actions, provider distinctions,
+Core reuse, and sourced unsupported construction are unit-tested.
+
+This bounded slice excludes generic ALTER ROUTINE, LEAKPROOF/SUPPORT and other
+advanced routine attributes, body/language/return-type replacement, overload
+lookup, argument identity, target/role/extension resolution, ROWS applicability,
+configuration semantics, privileges, definition-state mutation, catalog loading,
+migrations, and execution. Parsing inside an atomic body does not establish
+executability. PostgreSQL definition construction explicitly rejects AlterRoutine.
+
 ## Ordinary Views
 
 `CREATE [OR REPLACE] VIEW name [(columns)] WITH (options) AS query` retains an

@@ -201,7 +201,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 case PgStatementRoutineOption.RoutineSetting setting:
                     PgRoutineSetting canonicalSetting = setting.Setting switch
                     {
-                        PgRoutineSetting.ToValues values => values with { Values = [.. values.Values] },
+                        PgRoutineSetting.ToValues values => values with { Values = [.. values.Values], Op = SettingAssignmentOperator.To },
                         PgRoutineSetting.FromCurrent current => throw new DefinitionException.RoutineSettingFromCurrent(routine, current.Name, sourceRef),
                         _ => throw new DefensiveGuardException("routine setting type", setting.Setting.GetType())
                     };

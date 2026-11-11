@@ -13,6 +13,18 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 // ReSharper disable ClassNeverInstantiated.Global
 public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 {
+    [Theory]
+    [InlineData("ALTER FUNCTION app.calculate(INT) IMMUTABLE SECURITY INVOKER COST 10 SET work_mem = DEFAULT RESET ALL RESTRICT")]
+    [InlineData("ALTER PROCEDURE app.run SET search_path FROM CURRENT RESET search_path")]
+    [InlineData("ALTER FUNCTION app.calculate(app.amount ARRAY) OWNER TO CURRENT_ROLE")]
+    public void AlterRoutine_CoreGrammarRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<AlterRoutine>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
     [Fact]
     public void CreateFunction_RoutineParametersParseKitchenSinkUnion()
     {

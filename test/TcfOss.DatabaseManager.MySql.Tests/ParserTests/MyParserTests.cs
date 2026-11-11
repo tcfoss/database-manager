@@ -1019,6 +1019,21 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Theory]
+    [InlineData("ALTER FUNCTION app.calculate() IMMUTABLE")]
+    [InlineData("ALTER FUNCTION app.calculate() SECURITY DEFINER")]
+    [InlineData("ALTER PROCEDURE app.run() SECURITY INVOKER")]
+    [InlineData("ALTER PROCEDURE app.run() SET work_mem TO DEFAULT")]
+    [InlineData("ALTER FUNCTION app.calculate() RESET ALL")]
+    [InlineData("ALTER FUNCTION app.calculate() RENAME TO new_name")]
+    [InlineData("ALTER PROCEDURE app.run() OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER FUNCTION app.calculate() SET SCHEMA archive")]
+    [InlineData("ALTER PROCEDURE app.run() DEPENDS ON EXTENSION ext")]
+    public void AlterRoutine_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Fact]
     public void AlterDispatch_AcceptsTable()
     {

@@ -1092,6 +1092,104 @@ public class DdlParser
         };
     }
 
+    public AlterRoutine ParseAlterRoutine(ParserState state)
+    {
+        PgRoutineKind kind = state.ParseStringEnum<PgRoutineKind>();
+        PgRoutineReference routine = ParseRoutineReference(state);
+        PgAlterRelationOperation? standalone = null;
+        if (state.ParseKeyword(Keyword.RENAME))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            standalone = new PgAlterRelationOperation.RenameTo(_parseIdentifier(state));
+        }
+        else if (state.ParseKeyword(Keyword.OWNER))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            standalone = new PgAlterRelationOperation.OwnerTo(ParsePostgresOwner(state));
+        }
+        else if (state.ParseKeywordsAll(Keyword.SET, Keyword.SCHEMA))
+        {
+            standalone = new PgAlterRelationOperation.SetSchema(_parseIdentifier(state));
+        }
+        else if (state.Peek() is Word { Keyword: Keyword.NO or Keyword.DEPENDS })
+        {
+            bool no = state.ParseKeyword(Keyword.NO);
+            state.ExpectKeywordsAll(Keyword.DEPENDS, Keyword.ON, Keyword.EXTENSION);
+            standalone = new PgAlterRelationOperation.DependsOnExtension(_parseIdentifier(state)) { No = no };
+        }
+        if (standalone != null)
+        {
+            return new AlterRoutine(kind, routine, [new PgAlterRoutineOperation.Relation(standalone)]);
+        }
+
+        SqlValueList<PgAlterRoutineOperation> operations = [];
+        while (true)
+        {
+            PgAlterRoutineOperation? operation = ParseNextAlterRoutineOperation(state, kind == PgRoutineKind.Function);
+            if (operation == null)
+            {
+                break;
+            }
+            operations.Add(operation);
+        }
+        if (operations.Count == 0)
+        {
+            throw state.ExpectedException("ALTER routine action");
+        }
+        return new AlterRoutine(kind, routine, operations) { Restrict = state.ParseKeyword(Keyword.RESTRICT) };
+    }
+
+    protected virtual PgAlterRoutineOperation? ParseNextAlterRoutineOperation(ParserState state, bool isFunction)
+    {
+        if (state.ParseKeyword(Keyword.RESET))
+        {
+            return state.ParseKeyword(Keyword.ALL)
+                ? new PgAlterRoutineOperation.ResetAll()
+                : new PgAlterRoutineOperation.Reset(_parseObjectName(state));
+        }
+        if (state.ParseKeyword(Keyword.SET))
+        {
+            return new PgAlterRoutineOperation.SetOption(ParseStatementRoutineSetting(state, true));
+        }
+        if (state.PeekKeyword(Keyword.LANGUAGE))
+        {
+            return null;
+        }
+        PgStatementRoutineOption? option = ParseNextRoutineOption(state, isFunction);
+        return option == null ? null : new PgAlterRoutineOperation.SetOption(option);
+    }
+
+    private PgStatementRoutineOption.RoutineSetting ParseStatementRoutineSetting(ParserState state, bool allowToDefault)
+    {
+        ObjectName name = _parseObjectName(state);
+        if (state.ParseKeywordsAll(Keyword.FROM, Keyword.CURRENT))
+        {
+            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.FromCurrent(name));
+        }
+
+        SettingAssignmentOperator op;
+        if (state.ConsumeTokenIs<Equal>())
+        {
+            op = SettingAssignmentOperator.EqualTo;
+        }
+        else if (state.ParseKeyword(Keyword.TO))
+        {
+            op = SettingAssignmentOperator.To;
+        }
+        else
+        {
+            throw state.ExpectedException("=", "TO");
+        }
+
+        if (allowToDefault && state.ParseKeyword(Keyword.DEFAULT))
+        {
+            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToDefault(name) { Op = op });
+        }
+
+        SqlValueList<Value> values = state.ParseCommaSeparated(ParseRoutineSettingValue);
+        return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToValues(name, values) { Op = op });
+    }
+
     private void ParseRoutineOptions(ParserState state, SqlValueList<PgStatementRoutineOption> options, HashSet<string> seenOptions, bool isFunction)
     {
         while (true)
@@ -1119,27 +1217,7 @@ public class DdlParser
 
         if (state.ParseKeyword(Keyword.SET))
         {
-            ObjectName key = _parseObjectName(state);
-            if (state.ParseKeywordsAll(Keyword.FROM, Keyword.CURRENT))
-            {
-                return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.FromCurrent(key));
-            }
-            bool equalSign;
-            if (state.ConsumeTokenIs<Equal>())
-            {
-                equalSign = true;
-            }
-            else if (state.ParseKeyword(Keyword.TO))
-            {
-                equalSign = false;
-            }
-            else
-            {
-                throw state.ExpectedException("=", "TO");
-            }
-            SqlValueList<Value> values = state.ParseCommaSeparated(ParseRoutineSettingValue);
-            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToValues(key, values)) { UseEqualSign = equalSign };
-
+            return ParseStatementRoutineSetting(state, false);
         }
 
         List<Keyword> securityMatch = state.ParseKeywordSequence(KeywordSearchCondition.Optional(Keyword.EXTERNAL), Keyword.SECURITY);
@@ -1212,10 +1290,10 @@ public class DdlParser
             return new PgStatementRoutineOption.Rows(ParsePositiveRoutineNumber(state));
         }
 
-        Keyword volatility = state.ParseKeywordsAny(Keyword.IMMUTABLE, Keyword.STABLE, Keyword.VOLATILE);
-        if (volatility != Keyword.undefined)
+        PgRoutineVolatility? volatility = state.MaybeParseStringEnum<PgRoutineVolatility>();
+        if (volatility is not null)
         {
-            return new PgStatementRoutineOption.Volatility(PgRoutineVolatility.Parse(volatility.ToString()));
+            return new PgStatementRoutineOption.Volatility(volatility);
         }
 
         return null;
@@ -2220,8 +2298,8 @@ public class DdlParser
             || typeToDrop == DroppableObject.Procedure || typeToDrop == DroppableObject.Routine))
         {
             SqlValueList<PgRoutineReference> routines = SupportsDropObjectList(typeToDrop)
-                ? state.ParseCommaSeparated(ParseDropRoutineReference)
-                : [ParseDropRoutineReference(state)];
+                ? state.ParseCommaSeparated(ParseRoutineReference)
+                : [ParseRoutineReference(state)];
 
             return new DropRoutine(routines, typeToDrop)
             {
@@ -2256,7 +2334,7 @@ public class DdlParser
         };
     }
 
-    private PgRoutineReference ParseDropRoutineReference(ParserState state)
+    private PgRoutineReference ParseRoutineReference(ParserState state)
     {
         ObjectName name = _parseObjectName(state);
         SqlValueList<StatementRoutineParameter>? parameters = null;
