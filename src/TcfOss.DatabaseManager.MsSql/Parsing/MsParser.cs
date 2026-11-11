@@ -27,6 +27,7 @@ public class MsParser : Parser
     public override bool SupportsPostgresColumnCollationSyntax => false;
     public override bool SupportsPostgresColumnAlterSyntax => false;
     public override bool SupportsPostgresTableCreateSyntax => false;
+    public override bool SupportsPostgresConstraintSyntax => false;
     public override bool SupportsPostgresTableAlterSyntax => false;
     public override bool SupportsPostgresExpressionCollationSyntax => false;
     public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;

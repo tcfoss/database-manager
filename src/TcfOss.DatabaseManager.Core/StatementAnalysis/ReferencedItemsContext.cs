@@ -36,5 +36,7 @@ public enum ReferencedItemsContext
     CreateTablePartitionParent,
     CreateTablePartitionExpression,
     AlterPartitionBound,
-    CreateIndexExpression
+    CreateIndexExpression,
+    ConstraintExpression,
+    ConstraintTable
 }

@@ -33,6 +33,7 @@ public class Parser : IParser
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
     public virtual bool SupportsPostgresColumnAlterSyntax => true;
     public virtual bool SupportsPostgresTableCreateSyntax => true;
+    public virtual bool SupportsPostgresConstraintSyntax => true;
     public virtual bool SupportsPostgresTableAlterSyntax => true;
     public virtual bool SupportsDefaultExpressionsWithoutParentheses => true;
     public virtual bool SupportsPostgresExpressionCollationSyntax => true;

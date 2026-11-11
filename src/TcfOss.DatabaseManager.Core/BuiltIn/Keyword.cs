@@ -903,6 +903,7 @@ public enum Keyword
     USING,
     UUID,
     VALID,
+    VALIDATE,
     VALIDATION_MODE,
     VALUE,
     VALUE_OF,

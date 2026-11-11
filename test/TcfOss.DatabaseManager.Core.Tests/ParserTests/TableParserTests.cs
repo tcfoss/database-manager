@@ -110,6 +110,23 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE NULLS NOT DISTINCT (id) DEFERRABLE INITIALLY DEFERRED)")]
+    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT ck CHECK (id > 0) NOT VALID")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT pk PRIMARY KEY USING INDEX items_idx")]
+    [InlineData("ALTER TABLE items RENAME CONSTRAINT old_name TO new_name")]
+    [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
+    [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
+    [InlineData("ALTER TABLE items DROP CONSTRAINT IF EXISTS fk CASCADE")]
+    public void Constraints_RoundTrip(string sql)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
     [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
     [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2", "ALTER TABLE items ALTER COLUMN total SET DEFAULT (1 + 2)")]

@@ -212,8 +212,51 @@ transaction restrictions, locking, catalog loading, migrations, and execution
 remain separate. Atomic-body acceptance establishes syntax, not executability.
 Existing supported named indexes still construct; unnamed indexes and the new
 PostgreSQL index/key components raise a sourced `DefinitionException` rather
-than silently dropping their meaning. Constraint declaration/lifecycle and
-ALTER/DROP INDEX extensions are separate work.
+than silently dropping their meaning. ALTER/DROP INDEX extensions remain
+separate work.
+
+## Constraint Declarations And Lifecycle
+
+Table and inline constraints retain written DEFERRABLE/NOT DEFERRABLE and
+INITIALLY DEFERRED/IMMEDIATE options in nullable lists of typed
+`PgConstraintOption` entries, preserving their written order. Omitted
+attributes remain absent. UNIQUE directly retains NULLS DISTINCT/NULLS NOT DISTINCT
+before its key list; CHECK retains NO INHERIT. Inline REFERENCES retains its
+target, optional column list, referential actions, and deferrability options.
+
+`EXCLUDE [USING method] (... WITH operator, ...)` reuses index keys, expression
+ASTs, and operator references, including `OPERATOR(schema.symbol)`. Exclusion
+keys support parenthesized expressions, COLLATE, qualified operator classes and
+scalar parameters, direction, and null ordering. INCLUDE, storage parameters,
+USING INDEX TABLESPACE, and a parenthesized WHERE predicate are retained.
+Storage parameters and the index tablespace have a separate
+`PgConstraintIndexParameters` component with complete SQL and formatting output.
+Methods remain nullable rather than defaulting to BTREE or GIST.
+
+ALTER TABLE reuses existing ADD operations, with NOT VALID accepted after a
+constraint declaration. DROP CONSTRAINT retains IF EXISTS and CASCADE/RESTRICT.
+RENAME CONSTRAINT is standalone, while ALTER CONSTRAINT, VALIDATE CONSTRAINT,
+and ADD PRIMARY KEY/UNIQUE USING INDEX support the applicable action lists.
+ONLY and table-level IF EXISTS retain their existing behavior. Core owns shared
+grammar; MySQL/MariaDB and SQL Server reject the new PostgreSQL forms.
+
+SQL/JSON round trips, recursive identifier formatting/idempotence, typed payloads,
+quoted names, sources/comments, statement boundaries, atomic SQL bodies,
+malformed syntax, provider restrictions, and sourced unsupported construction
+are unit-tested. Dependencies include referenced foreign tables and functions
+in CHECK/exclusion expressions, not constraint labels, operators, operator
+classes, or tablespaces. Traversal preserves caller filters and scopes without
+capturing caller columns or local variables.
+
+New constraint options/exclusions/inline references and lifecycle statements
+raise sourced `DefinitionException` errors until resolved definitions retain
+their meaning. Existing supported plain constraints remain supported. Parsing
+does not establish constraint eligibility, operator/index suitability, catalog
+existence, expression typing, privileges, validation results, locking behavior,
+or transaction executability. Catalog loading, definition mutation, migration
+generation, and execution remain separate. Temporal WITHOUT OVERLAPS/PERIOD,
+ENFORCED/NOT ENFORCED, table-level NOT NULL constraints, and further foreign-key
+clause extensions are outside this slice.
 
 ## Sequences And Identity Alterations
 

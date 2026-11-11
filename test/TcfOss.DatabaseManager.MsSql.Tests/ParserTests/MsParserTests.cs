@@ -850,4 +850,19 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
+    [InlineData("CREATE TABLE items (id INT UNIQUE NULLS NOT DISTINCT)")]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id) DEFERRABLE)")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT ck CHECK (id > 0) NOT VALID")]
+    [InlineData("ALTER TABLE items ADD UNIQUE USING INDEX items_idx")]
+    [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
+    [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
+    [InlineData("ALTER TABLE items RENAME CONSTRAINT old_name TO new_name")]
+    [InlineData("ALTER TABLE items DROP CONSTRAINT IF EXISTS fk CASCADE")]
+    public void Constraints_RejectsPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

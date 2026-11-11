@@ -1,5 +1,7 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
@@ -11,13 +13,51 @@ public class PgTableParser(Parser parser) : TableParser(parser)
 {
     protected override bool SupportsPartitionAsSelect => false;
 
+    public override StatementTableConstraint? ParseOptionalTableConstraint(ParserState state, bool alterTable = false)
+    {
+        StatementTableConstraint? constraint = base.ParseOptionalTableConstraint(state, alterTable);
+        if (constraint is StatementTableConstraint.PrimaryKey { IndexMethod: not null }
+            or StatementTableConstraint.PrimaryKey { IndexOrganization: not null }
+            or StatementTableConstraint.PrimaryKey { StorageLocation: not null }
+            or StatementTableConstraint.UniqueConstraint { IndexMethod: not null }
+            or StatementTableConstraint.UniqueConstraint { IndexOrganization: not null }
+            or StatementTableConstraint.UniqueConstraint { IndexName: not null }
+            or StatementTableConstraint.UniqueConstraint { KeyLabel: not null }
+            or StatementTableConstraint.UniqueConstraint { StorageLocation: not null })
+        {
+            throw state.ExpectedException("PostgreSQL table constraint");
+        }
+        IEnumerable<KeyPart> columns = constraint switch
+        {
+            StatementTableConstraint.PrimaryKey primaryKey => primaryKey.Columns,
+            StatementTableConstraint.UniqueConstraint unique => unique.Columns,
+            _ => []
+        };
+        if (columns.Any(key => key is not KeyPart.Column { Length: null, Direction: null, PgOptions: null }))
+        {
+            throw state.ExpectedException("constraint column name");
+        }
+        if (constraint is StatementTableConstraint.PgExclusion exclusion)
+        {
+            foreach (KeyPart.IndexExpression key in exclusion.Elements.Select(element => element.Key).OfType<KeyPart.IndexExpression>())
+            {
+                Expression expression = key.Expression is Collate collate ? collate.Expression : key.Expression;
+                if (expression is not (SingleIdentifier or Nested))
+                {
+                    throw state.ExpectedException("column name or parenthesized exclusion expression");
+                }
+            }
+        }
+        return constraint;
+    }
+
     protected override bool SupportsAlterOperation(Keyword keyword)
     {
         return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME
             or Keyword.SET or Keyword.RESET or Keyword.OWNER or Keyword.CLUSTER
             or Keyword.INHERIT or Keyword.NO or Keyword.OF or Keyword.NOT
             or Keyword.ENABLE or Keyword.DISABLE or Keyword.FORCE or Keyword.REPLICA
-            or Keyword.ATTACH or Keyword.DETACH;
+            or Keyword.ATTACH or Keyword.DETACH or Keyword.VALIDATE;
     }
 
     protected override AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)
@@ -36,7 +76,7 @@ public class PgTableParser(Parser parser) : TableParser(parser)
 
     protected override bool IsStandaloneAlterOperation(AlterTableOperation operation)
     {
-        return operation is AlterTableOperation.RenameColumn or AlterTableOperation.Rename
+        return operation is AlterTableOperation.RenameColumn or AlterTableOperation.RenameConstraint or AlterTableOperation.Rename
             or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema }
             or AlterTableOperation.PgAttachPartition or AlterTableOperation.PgDetachPartition;
     }

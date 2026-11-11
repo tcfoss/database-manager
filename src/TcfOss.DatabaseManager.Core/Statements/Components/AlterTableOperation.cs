@@ -609,16 +609,101 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record DropConstraint(Identifier Name) : AlterTableOperation
     {
+        public bool IfExists { get; init; }
+        public PgDropBehavior? PgBehavior { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"DROP CONSTRAINT {Name}");
+            writer.WriteSql($"DROP CONSTRAINT{(IfExists ? " IF EXISTS" : "")} {Name}");
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("DROP CONSTRAINT ");
+            writer.Write(IfExists ? "DROP CONSTRAINT IF EXISTS " : "DROP CONSTRAINT ");
             Name.FormatSql(writer, manager);
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
+        }
+    }
+
+    public record RenameConstraint(Identifier OldName, Identifier NewName) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"RENAME CONSTRAINT {OldName} TO {NewName}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("RENAME CONSTRAINT ");
+            OldName.FormatSql(writer, manager);
+            writer.Write(" TO ");
+            NewName.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgAlterConstraint(Identifier Name, SqlValueList<PgConstraintOption> Options) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"ALTER CONSTRAINT {Name} {Options.ToSqlDelimited(" ")}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("ALTER CONSTRAINT ");
+            Name.FormatSql(writer, manager);
+            writer.WriteSql($" {Options.ToSqlDelimited(" ")}");
+        }
+    }
+
+    public record PgValidateConstraint(Identifier Name) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"VALIDATE CONSTRAINT {Name}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("VALIDATE CONSTRAINT ");
+            Name.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgAddConstraint(StatementTableConstraint Constraint) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"ADD {Constraint}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("ADD ");
+            switch (Constraint)
+            {
+                case StatementTableConstraint.PgExclusion exclusion:
+                    exclusion.FormatSqlBody(writer, manager);
+                    break;
+                case StatementTableConstraint.PgUsingIndex usingIndex:
+                    usingIndex.FormatSqlBody(writer, manager);
+                    break;
+                default:
+                    Constraint.FormatSql(writer, manager);
+                    break;
+            }
         }
     }
 

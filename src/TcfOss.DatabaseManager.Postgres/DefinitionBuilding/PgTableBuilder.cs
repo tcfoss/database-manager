@@ -55,6 +55,14 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         var seenOptions = new HashSet<string>();
         foreach (StatementColumnOption option in typedColumn.Options)
         {
+            if (option is StatementColumnOption.WithConstraint { PgOptions: not null }
+                or StatementColumnOption.PgReference
+                or StatementColumnOption.PrimaryKey { IndexParameters: not null }
+                or StatementColumnOption.Unique { IndexParameters: not null }
+                or StatementColumnOption.Unique { NullsDistinct: not null })
+            {
+                throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL column constraint options", sourceRef);
+            }
             if (!seenOptions.Add(option.DuplicateCheckKey))
             {
                 throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef);
@@ -134,6 +142,10 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     public override void AddIndexOrConstraint(StatementTableConstraint constraint, SourceRef? sourceRef)
     {
         sourceRef ??= SourceRef;
+        if (constraint.PgOptions != null || constraint is StatementTableConstraint.PgExclusion or StatementTableConstraint.PgUsingIndex)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL constraint options", sourceRef);
+        }
         switch (constraint)
         {
             case StatementTableConstraint.PrimaryKey primaryKey:
@@ -243,12 +255,20 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
 
     private static void ValidateTablePrimaryKey(StatementTableConstraint.PrimaryKey primaryKey, SourceRef? sourceRef)
     {
+        if (primaryKey.IncludedColumns != null || primaryKey.IndexParameters != null)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL primary key index parameters", sourceRef);
+        }
         ValidateConstraintIndexOptions(primaryKey.Comment, sourceRef, primaryKey.IndexMethod != null ? new IndexMethod.BuiltIn(primaryKey.IndexMethod) : null,
             primaryKey.IndexOrganization, primaryKey.Options, primaryKey.StorageLocation);
     }
 
     private static void ValidateTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef? sourceRef)
     {
+        if (unique.NullsDistinct != null || unique.IndexParameters != null)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL unique constraint options", sourceRef);
+        }
         ValidateConstraintIndexOptions(unique.Comment, sourceRef, unique.IndexMethod,
             unique.IndexOrganization, unique.Options, unique.StorageLocation);
         if (unique.IndexName != null)

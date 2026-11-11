@@ -56,6 +56,36 @@ public record AlterTable(ObjectName Table, SqlValueList<AlterTableOperation> Ope
         }
         foreach (AlterTableOperation operation in Operations)
         {
+            StatementTableConstraint? constraint = operation switch
+            {
+                AlterTableOperation.AddPrimaryKey add => add.PrimaryKey,
+                AlterTableOperation.AddUniqueKey add => add.UniqueKey,
+                AlterTableOperation.AddForeignKey add => add.ForeignKey,
+                AlterTableOperation.AddCheck add => add.Check,
+                AlterTableOperation.PgAddConstraint add => add.Constraint,
+                _ => null
+            };
+            if (constraint != null)
+            {
+                foreach (ItemRef item in constraint.GetReferencedItems(context))
+                {
+                    yield return item;
+                }
+            }
+            if (operation is AlterTableOperation.AddColumn addColumn)
+            {
+                using (context.Enter(ReferencedItemsContext.ConstraintTable))
+                {
+                    foreach (StatementColumnOption.PgReference reference in addColumn.Column.Options.OfType<StatementColumnOption.PgReference>())
+                    {
+                        ItemRef? item = context.CreateObjectRef(reference.Table);
+                        if (item != null)
+                        {
+                            yield return item;
+                        }
+                    }
+                }
+            }
             ObjectName? dependency = operation switch
             {
                 AlterTableOperation.PgInherit inherit => inherit.Parent,

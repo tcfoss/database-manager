@@ -93,7 +93,7 @@ public class ComponentParser(Parser parser)
         return new ObjectName(idents);
     }
 
-    private KeyPart.Column ParseKeyPartColumn(ParserState state, bool permitLength, bool postgres)
+    private KeyPart.Column ParseKeyPartColumn(ParserState state, bool permitLength, bool postgres, bool exclusion)
     {
         Identifier name = ParseIdentifier(state);
         uint? length = null;
@@ -105,16 +105,16 @@ public class ComponentParser(Parser parser)
         (PgIndexKeyOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
 
         Token peeked = state.Peek();
-        if (peeked is not Comma and not ParenClose)
+        if (peeked is not Comma and not ParenClose && !(exclusion && state.PeekKeyword(Keyword.WITH)))
         {
             throw state.ExpectedException(")", ",");
         }
         return new KeyPart.Column(name, length, direction) { PgOptions = options };
     }
 
-    private KeyPart ParseKeyPartInList(ParserState state, bool allowLength, bool postgres)
+    private KeyPart ParseKeyPartInList(ParserState state, bool allowLength, bool postgres, bool exclusion = false)
     {
-        if (state.TryParse(parserState => ParseKeyPartColumn(parserState, allowLength, postgres), out KeyPart.Column? keyPartColumn))
+        if (state.TryParse(parserState => ParseKeyPartColumn(parserState, allowLength, postgres, exclusion), out KeyPart.Column? keyPartColumn))
         {
             return keyPartColumn;
         }
@@ -129,7 +129,7 @@ public class ComponentParser(Parser parser)
     {
         ObjectName? operatorClass = null;
         SqlValueList<PgStorageParameter>? parameters = null;
-        if (postgres && state.Peek() is Word { Keyword: not (Keyword.ASC or Keyword.DESC or Keyword.NULLS or Keyword.COLLATE) })
+        if (postgres && state.Peek() is Word { Keyword: not (Keyword.ASC or Keyword.DESC or Keyword.NULLS or Keyword.COLLATE or Keyword.WITH) })
         {
             operatorClass = ParseObjectName(state);
             if (state.PeekIs<ParenOpen>())
@@ -154,6 +154,11 @@ public class ComponentParser(Parser parser)
     public SqlValueList<KeyPart> ParseParenthesizedKeyPartList(ParserState state, bool allowEmpty, bool allowLength = true, bool allowPgOptions = false)
     {
         return state.ParseParenthesizedCommaSeparated(parserState => ParseKeyPartInList(parserState, allowLength, allowPgOptions), allowEmpty);
+    }
+
+    public KeyPart ParseExclusionKeyPart(ParserState state)
+    {
+        return ParseKeyPartInList(state, allowLength: false, postgres: true, exclusion: true);
     }
 
     public static Direction? ParseDirection(ParserState state)

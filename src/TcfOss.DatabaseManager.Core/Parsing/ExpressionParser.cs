@@ -296,7 +296,7 @@ public class ExpressionParser
         return right;
     }
 
-    private PgOperatorReference ParsePostgresOperatorReference(ParserState state)
+    public PgOperatorReference ParsePostgresOperatorReference(ParserState state)
     {
         if (!_p.SupportsPostgresOperatorSyntax)
         {

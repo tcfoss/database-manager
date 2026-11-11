@@ -177,7 +177,6 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
                 {
                     StatementColumnOption.Default.DefaultExpression value => value.Expression,
                     StatementColumnOption.Generated.AsExpression generated => generated.Expression,
-                    StatementColumnOption.CheckConstraint check => check.Expression,
                     _ => null
                 }).OfType<Expression>())
                 {
@@ -187,15 +186,36 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
                     }
                 }
             }
-            if (PgOptions?.PartitionOf != null)
+        }
+        foreach (StatementColumnOption option in Columns.SelectMany(column => column.Options))
+        {
+            if (option is StatementColumnOption.PgReference reference)
             {
-                foreach (StatementTableConstraint.Check check in Constraints.OfType<StatementTableConstraint.Check>())
+                using (context.Enter(ReferencedItemsContext.ConstraintTable))
                 {
-                    foreach (ItemRef item in check.Expression.GetReferencedItems(context))
+                    ItemRef? item = context.CreateObjectRef(reference.Table);
+                    if (item != null)
                     {
                         yield return item;
                     }
                 }
+            }
+            if (option is StatementColumnOption.CheckConstraint check)
+            {
+                using (context.Enter(ReferencedItemsContext.ConstraintExpression))
+                {
+                    foreach (ItemRef item in check.Expression.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>())
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+        foreach (StatementTableConstraint constraint in Constraints)
+        {
+            foreach (ItemRef item in constraint.GetReferencedItems(context))
+            {
+                yield return item;
             }
         }
         if (AsSelect != null)

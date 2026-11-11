@@ -197,7 +197,10 @@ public class TableParser
 
         if (state.ParseKeywordsAll(Keyword.NOT, Keyword.NULL))
         {
-            return new StatementColumnOption.Nullability.NotNull(constraintName);
+            return new StatementColumnOption.Nullability.NotNull(constraintName)
+            {
+                PgOptions = ParseConstraintOptions(state, allowNoInherit: true)
+            };
         }
         if (state.ParseKeyword(Keyword.NULL))
         {
@@ -210,20 +213,45 @@ public class TableParser
         }
         if (state.ParseKeyword(Keyword.CHECK))
         {
-            return new StatementColumnOption.CheckConstraint(state.ParseParenthesized(_p.ExpressionParser.ParseExpr), constraintName);
+            Expression expression = state.ParseParenthesized(_p.ExpressionParser.ParseExpr);
+            return new StatementColumnOption.CheckConstraint(expression, constraintName)
+            {
+                PgOptions = ParseConstraintOptions(state, allowNoInherit: true)
+            };
         }
         if (state.ParseKeywordsAll(Keyword.PRIMARY, Keyword.KEY))
         {
+            PgConstraintIndexParameters? indexParameters = ParseConstraintIndexParameters(state);
             return new StatementColumnOption.PrimaryKey()
             {
-                Name = constraintName
+                Name = constraintName,
+                IndexParameters = indexParameters,
+                PgOptions = ParseConstraintOptions(state)
             };
         }
         if (state.ParseKeyword(Keyword.UNIQUE))
         {
+            bool? nullsDistinct = ParseConstraintNullsDistinct(state);
+            PgConstraintIndexParameters? indexParameters = ParseConstraintIndexParameters(state);
             return new StatementColumnOption.Unique()
             {
-                Name = constraintName
+                Name = constraintName,
+                NullsDistinct = nullsDistinct,
+                IndexParameters = indexParameters,
+                PgOptions = ParseConstraintOptions(state)
+            };
+        }
+        if (SupportsPostgresConstraintSyntax && state.ParseKeyword(Keyword.REFERENCES))
+        {
+            ObjectName table = _objname(state);
+            SqlValueList<Identifier>? columns = state.PeekIs<ParenOpen>()
+                ? _p.ComponentParser.ParseParenthisizedIdentifierList(state, false) : null;
+            (ReferentialAction? onDelete, ReferentialAction? onUpdate) = ParseReferenceActions(state);
+            return new StatementColumnOption.PgReference(table, columns, constraintName)
+            {
+                DeleteAction = onDelete,
+                UpdateAction = onUpdate,
+                PgOptions = ParseConstraintOptions(state)
             };
         }
         if (state.ParseKeyword(Keyword.GENERATED))
@@ -420,29 +448,45 @@ public class TableParser
         return _p.ComponentParser.ParseSequenceOption(state) ?? throw state.ExpectedException("identity sequence option");
     }
 
-    public StatementTableConstraint? ParseOptionalTableConstraint(ParserState state)
+    protected virtual bool SupportsPostgresConstraintSyntax => _p.SupportsPostgresConstraintSyntax;
+
+    public virtual StatementTableConstraint? ParseOptionalTableConstraint(ParserState state, bool alterTable = false)
     {
         Identifier? name = state.ParseInit(state.ParseKeyword(Keyword.CONSTRAINT), _p.ComponentParser.ParseIdentifier);
 
         Token token = state.Peek();
 
-        return token switch
+        StatementTableConstraint? constraint = token switch
         {
-            Word { Keyword: Keyword.PRIMARY } => ParsePrimary(state, name),
-            Word { Keyword: Keyword.UNIQUE } => ParseUnique(state, name),
+            Word { Keyword: Keyword.PRIMARY } => ParsePrimary(state, name, alterTable),
+            Word { Keyword: Keyword.UNIQUE } => ParseUnique(state, name, alterTable),
             Word { Keyword: Keyword.FOREIGN } => ParseForeign(state, name),
             Word { Keyword: Keyword.CHECK } => ParseTableCheck(state, name),
+            Word { Keyword: Keyword.EXCLUDE } when SupportsPostgresConstraintSyntax => ParseExclusion(state, name),
             Word { Keyword: Keyword.INDEX or Keyword.KEY } kwWord when name == null => ParseIndex(state, kwWord),
             Word { Keyword: Keyword.FULLTEXT } when name == null => ParseFullText(state),
             Word { Keyword: Keyword.SPATIAL } when name == null => ParseSpatial(state),
             _ when name != null => throw state.ExpectedCategoryException("table_constraint"),
             _ => null
         };
+        if (constraint != null && constraint is not StatementTableConstraint.NonConstraintKey)
+        {
+            constraint = constraint with
+            {
+                PgOptions = ParseConstraintOptions(state, allowNotValid: alterTable,
+                    allowNoInherit: constraint is StatementTableConstraint.Check)
+            };
+        }
+        return constraint;
     }
 
-    private StatementTableConstraint.PrimaryKey ParsePrimary(ParserState state, Identifier? name)
+    private StatementTableConstraint ParsePrimary(ParserState state, Identifier? name, bool alterTable)
     {
         state.ExpectKeywordsAll(Keyword.PRIMARY, Keyword.KEY);
+        if (SupportsPostgresConstraintSyntax && alterTable && state.ParseKeywordsAll(Keyword.USING, Keyword.INDEX))
+        {
+            return new StatementTableConstraint.PgUsingIndex(_ident(state), true, name);
+        }
 
         IndexOrganization? indexOrganization = ParseOptionalIndexOrganization(state);
         BuiltInIndexMethod? method = null;
@@ -452,7 +496,8 @@ public class TableParser
             method = ParseIndexMethod(state);
         }
         SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
-        if (state.Peek() is Word { Keyword: Keyword.USING })
+        if (state.PeekKeyword(Keyword.USING)
+            && !(SupportsPostgresConstraintSyntax && state.PeekNth(1) is Word { Keyword: Keyword.INDEX }))
         {
             if (method != null)
             {
@@ -462,11 +507,8 @@ public class TableParser
             method = ParseIndexMethod(state);
         }
 
-        SqlValueList<StatementIndexOption>? indexOptions = null;
-        if (state.PeekKeyword(Keyword.WITH))
-        {
-            indexOptions = ParseIndexOptions(state);
-        }
+        IncludedColumns? includedColumns = SupportsPostgresConstraintSyntax ? ParseOptionalIncludedColumns(state) : null;
+        (SqlValueList<StatementIndexOption>? indexOptions, PgConstraintIndexParameters? indexParameters) = ParseConstraintIndexOptions(state);
 
         IndexStorageLocation? storageLocation = ParseOptionalIndexStorageLocation(state);
 
@@ -474,6 +516,8 @@ public class TableParser
 
         return new StatementTableConstraint.PrimaryKey(cols, name)
         {
+            IncludedColumns = includedColumns,
+            IndexParameters = indexParameters,
             IndexMethod = method,
             Comment = comment,
             IndexOrganization = indexOrganization,
@@ -482,9 +526,14 @@ public class TableParser
         };
     }
 
-    private StatementTableConstraint.UniqueConstraint ParseUnique(ParserState state, Identifier? constraintName)
+    private StatementTableConstraint ParseUnique(ParserState state, Identifier? constraintName, bool alterTable)
     {
         state.ExpectKeyword(Keyword.UNIQUE);
+        if (SupportsPostgresConstraintSyntax && alterTable && state.ParseKeywordsAll(Keyword.USING, Keyword.INDEX))
+        {
+            return new StatementTableConstraint.PgUsingIndex(_ident(state), false, constraintName);
+        }
+        bool? nullsDistinct = ParseConstraintNullsDistinct(state);
 
         IndexOrganization? indexOrganization = ParseOptionalIndexOrganization(state);
 
@@ -507,7 +556,8 @@ public class TableParser
         while (true)
         {
             Location currentLocation = state.Peek().Location;
-            if (state.PeekKeyword(Keyword.USING))
+            if (state.PeekKeyword(Keyword.USING)
+                && !(columns != null && SupportsPostgresConstraintSyntax && state.PeekNth(1) is Word { Keyword: Keyword.INDEX }))
             {
                 if (method != null)
                 {
@@ -532,7 +582,7 @@ public class TableParser
                 }
                 columns = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
             }
-            else if (state.Peek() is Word { Keyword: Keyword.undefined })
+            else if (columns == null && state.Peek() is Word { Keyword: Keyword.undefined })
             {
                 indexName = _p.ComponentParser.ParseIdentifier(state);
             }
@@ -548,15 +598,13 @@ public class TableParser
         }
 
         IncludedColumns? includedColumns = ParseOptionalIncludedColumns(state);
-        SqlValueList<StatementIndexOption>? indexOptions = null;
-        if (state.PeekKeyword(Keyword.WITH))
-        {
-            indexOptions = ParseIndexOptions(state);
-        }
+        (SqlValueList<StatementIndexOption>? indexOptions, PgConstraintIndexParameters? indexParameters) = ParseConstraintIndexOptions(state);
         IndexStorageLocation? storageLocation = ParseOptionalIndexStorageLocation(state);
 
         return new StatementTableConstraint.UniqueConstraint(columns, constraintName)
         {
+            NullsDistinct = nullsDistinct,
+            IndexParameters = indexParameters,
             IndexMethod = method != null ? new IndexMethod.BuiltIn(method) : null,
             IndexOrganization = indexOrganization,
             Comment = comment,
@@ -565,6 +613,132 @@ public class TableParser
             IncludedColumns = includedColumns,
             Options = indexOptions,
             StorageLocation = storageLocation
+        };
+    }
+
+    private bool? ParseConstraintNullsDistinct(ParserState state)
+    {
+        if (!SupportsPostgresConstraintSyntax || !state.ParseKeyword(Keyword.NULLS))
+        {
+            return null;
+        }
+        bool not = state.ParseKeyword(Keyword.NOT);
+        state.ExpectKeyword(Keyword.DISTINCT);
+        return !not;
+    }
+
+    private (SqlValueList<StatementIndexOption>? Options, PgConstraintIndexParameters? Parameters) ParseConstraintIndexOptions(ParserState state)
+    {
+        if (!SupportsPostgresConstraintSyntax)
+        {
+            return (state.PeekKeyword(Keyword.WITH) ? ParseIndexOptions(state) : null, null);
+        }
+        if (state.PeekKeyword(Keyword.WITH) && state.TryParse(ParseIndexOptions, out SqlValueList<StatementIndexOption>? options))
+        {
+            Identifier? tablespace = ParseConstraintIndexTablespace(state);
+            return (options, tablespace == null ? null : new PgConstraintIndexParameters(null, tablespace));
+        }
+        return (null, ParseConstraintIndexParameters(state));
+    }
+
+    private PgConstraintIndexParameters? ParseConstraintIndexParameters(ParserState state)
+    {
+        if (!SupportsPostgresConstraintSyntax)
+        {
+            return null;
+        }
+        SqlValueList<PgStorageParameter>? storageParameters = state.ParseKeyword(Keyword.WITH)
+            ? state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false) : null;
+        Identifier? tablespace = ParseConstraintIndexTablespace(state);
+        return storageParameters == null && tablespace == null
+            ? null : new PgConstraintIndexParameters(storageParameters, tablespace);
+    }
+
+    private Identifier? ParseConstraintIndexTablespace(ParserState state)
+    {
+        if (SupportsPostgresConstraintSyntax && state.ParseKeywordsAll(Keyword.USING, Keyword.INDEX, Keyword.TABLESPACE))
+        {
+            return _ident(state);
+        }
+        return null;
+    }
+
+    private SqlValueList<PgConstraintOption>? ParseConstraintOptions(ParserState state,
+        bool allowNotValid = false, bool allowNoInherit = false)
+    {
+        if (!SupportsPostgresConstraintSyntax)
+        {
+            return null;
+        }
+        SqlValueList<PgConstraintOption> options = [];
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        if (allowNoInherit && state.ParseKeywordsAll(Keyword.NO, Keyword.INHERIT))
+        {
+            options.Add(new PgConstraintOption.NoInherit());
+        }
+        while (true)
+        {
+            Location location = state.Peek().Location;
+            PgConstraintOption option;
+            if (state.ParseKeyword(Keyword.DEFERRABLE))
+            {
+                option = new PgConstraintOption.Deferrable(true);
+            }
+            else if (state.ParseKeywordsAll(Keyword.NOT, Keyword.DEFERRABLE))
+            {
+                option = new PgConstraintOption.Deferrable(false);
+            }
+            else if (state.ParseKeyword(Keyword.INITIALLY))
+            {
+                bool deferred = state.ParseKeyword(Keyword.DEFERRED);
+                if (!deferred)
+                {
+                    state.ExpectKeyword(Keyword.IMMEDIATE);
+                }
+                option = new PgConstraintOption.InitiallyDeferred(deferred);
+            }
+            else if (allowNotValid && state.ParseKeywordsAll(Keyword.NOT, Keyword.VALID))
+            {
+                option = new PgConstraintOption.NotValid();
+            }
+            else
+            {
+                break;
+            }
+            if (!used.Add(option.UniqueName))
+            {
+                throw new ParseException.Duplicate(option.UniqueName, location);
+            }
+            options.Add(option);
+        }
+        return options.Count == 0 ? null : options;
+    }
+
+    private StatementTableConstraint.PgExclusion ParseExclusion(ParserState state, Identifier? name)
+    {
+        state.ExpectKeyword(Keyword.EXCLUDE);
+        IndexMethod? method = null;
+        if (state.ParseKeyword(Keyword.USING))
+        {
+            BuiltInIndexMethod? builtIn = state.MaybeParseStringEnum<BuiltInIndexMethod>();
+            method = builtIn != null ? new IndexMethod.BuiltIn(builtIn) : new IndexMethod.Custom(_ident(state));
+        }
+        SqlValueList<PgExclusionElement> elements = state.ParseParenthesizedCommaSeparated(parserState =>
+        {
+            KeyPart key = _p.ComponentParser.ParseExclusionKeyPart(parserState);
+            parserState.ExpectKeyword(Keyword.WITH);
+            return new PgExclusionElement(key, _p.ExpressionParser.ParsePostgresOperatorReference(parserState));
+        }, false);
+        IncludedColumns? includedColumns = ParseOptionalIncludedColumns(state);
+        PgConstraintIndexParameters? indexParameters = ParseConstraintIndexParameters(state);
+        Expression? predicate = state.ParseKeyword(Keyword.WHERE)
+            ? state.ParseParenthesized(_p.ExpressionParser.ParseExpr) : null;
+        return new StatementTableConstraint.PgExclusion(elements, name)
+        {
+            Method = method,
+            IncludedColumns = includedColumns,
+            IndexParameters = indexParameters,
+            Predicate = predicate
         };
     }
 
@@ -579,6 +753,24 @@ public class TableParser
 
         SqlValueList<Identifier> foreignCols = _p.ComponentParser.ParseParenthisizedIdentifierList(state, false);
 
+        (ReferentialAction? onDelete, ReferentialAction? onUpdate) = ParseReferenceActions(state);
+
+        Comment? comment = null;
+        if (state.PeekKeyword(Keyword.COMMENT))
+        {
+            comment = ComponentParser.ParseComment(state);
+        }
+
+        return new StatementTableConstraint.ForeignKey(cols, foreignTable, foreignCols, name)
+        {
+            OnDelete = onDelete,
+            OnUpdate = onUpdate,
+            Comment = comment,
+        };
+    }
+
+    private static (ReferentialAction? OnDelete, ReferentialAction? OnUpdate) ParseReferenceActions(ParserState state)
+    {
         ReferentialAction? onDelete = null;
         ReferentialAction? onUpdate = null;
         while (true)
@@ -597,18 +789,7 @@ public class TableParser
             }
         }
 
-        Comment? comment = null;
-        if (state.PeekKeyword(Keyword.COMMENT))
-        {
-            comment = ComponentParser.ParseComment(state);
-        }
-
-        return new StatementTableConstraint.ForeignKey(cols, foreignTable, foreignCols, name)
-        {
-            OnDelete = onDelete,
-            OnUpdate = onUpdate,
-            Comment = comment,
-        };
+        return (onDelete, onUpdate);
     }
 
     public static ReferentialAction ParseReferentialAction(ParserState state)
@@ -1349,6 +1530,13 @@ public class TableParser
         }
         if (nextKeyword == Keyword.ALTER)
         {
+            if (SupportsPostgresConstraintSyntax && state.ParseKeyword(Keyword.CONSTRAINT))
+            {
+                Identifier name = _ident(state);
+                SqlValueList<PgConstraintOption> options = ParseConstraintOptions(state)
+                    ?? throw state.ExpectedException("DEFERRABLE", "NOT DEFERRABLE", "INITIALLY");
+                return new AlterTableOperation.PgAlterConstraint(name, options);
+            }
             // CHECK ENFORCED | NOT ENFORCED
             // INDEX VISIBLE | INVISIBLE
             // COLUMN VISIBLE | INVISIBLE
@@ -1388,6 +1576,11 @@ public class TableParser
         {
             return SubParseDrop(state);
         }
+        if (SupportsPostgresConstraintSyntax && nextKeyword == Keyword.VALIDATE)
+        {
+            state.ExpectKeyword(Keyword.CONSTRAINT);
+            return new AlterTableOperation.PgValidateConstraint(_ident(state));
+        }
         if (nextKeyword == Keyword.RENAME)
         {
             return ParseAlterRename(state);
@@ -1414,6 +1607,12 @@ public class TableParser
 
     protected virtual AlterTableOperation ParseAlterRename(ParserState state)
     {
+        if (SupportsPostgresConstraintSyntax && state.ParseKeyword(Keyword.CONSTRAINT))
+        {
+            Identifier oldName = _ident(state);
+            state.ExpectKeyword(Keyword.TO);
+            return new AlterTableOperation.RenameConstraint(oldName, _ident(state));
+        }
         bool printColumn = state.ParseKeyword(Keyword.COLUMN);
         if (printColumn || (_p.SupportsPostgresColumnAlterSyntax && state.PeekNth(1) is Word { Keyword: Keyword.TO }))
         {
@@ -1559,7 +1758,7 @@ public class TableParser
 
     private AlterTableOperation? SubParseAlterAddConstraint(ParserState state)
     {
-        StatementTableConstraint? currentConstraint = ParseOptionalTableConstraint(state);
+        StatementTableConstraint? currentConstraint = ParseOptionalTableConstraint(state, alterTable: true);
         return currentConstraint switch
         {
             StatementTableConstraint.PrimaryKey pk =>
@@ -1570,6 +1769,8 @@ public class TableParser
                 new AlterTableOperation.AddForeignKey(fk),
             StatementTableConstraint.Check check =>
                 new AlterTableOperation.AddCheck(check),
+            StatementTableConstraint.PgExclusion or StatementTableConstraint.PgUsingIndex =>
+                new AlterTableOperation.PgAddConstraint(currentConstraint),
             StatementTableConstraint.Standard standardKey =>
                 new AlterTableOperation.AddStandardKey(standardKey),
             StatementTableConstraint.FullText fullTextKey =>
@@ -1623,8 +1824,13 @@ public class TableParser
         }
         if (state.ParseKeyword(Keyword.CONSTRAINT))
         {
+            bool constraintIfExists = SupportsPostgresConstraintSyntax && state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
             Identifier constraintName = _ident(state);
-            return new AlterTableOperation.DropConstraint(constraintName);
+            return new AlterTableOperation.DropConstraint(constraintName)
+            {
+                IfExists = constraintIfExists,
+                PgBehavior = SupportsPostgresConstraintSyntax ? state.MaybeParseStringEnum<PgDropBehavior>() : null
+            };
         }
 
         bool printColumn = state.ParseKeyword(Keyword.COLUMN);

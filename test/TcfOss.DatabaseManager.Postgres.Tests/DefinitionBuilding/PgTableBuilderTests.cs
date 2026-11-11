@@ -314,12 +314,12 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id DESC))")]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY ((id + 1)))")]
+    [InlineData("CREATE INDEX ix ON items (id DESC)")]
+    [InlineData("CREATE INDEX ix ON items ((id + 1))")]
     public void AddPrimaryKey_RejectsNonColumnKeyPartsWithSourcedSyntaxError(string sql)
     {
-        var table = Assert.IsType<CreateTable>(ParseStatement(sql));
-        var constraint = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints));
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement(sql));
+        var constraint = new StatementTableConstraint.PrimaryKey(index.Columns);
         var sourceRef = new SourceRef(4, 10, 20);
         var builder = CreateBuilder();
 
