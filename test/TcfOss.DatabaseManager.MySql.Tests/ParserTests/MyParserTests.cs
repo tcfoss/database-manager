@@ -915,6 +915,13 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
     [Theory]
     [InlineData("DROP TYPE app.mood")]
+    [InlineData("DROP ROUTINE app.run")]
+    [InlineData("DROP FUNCTION app.run()")]
+    [InlineData("DROP FUNCTION app.run(INT)")]
+    [InlineData("DROP PROCEDURE app.run(IN id INT)")]
+    [InlineData("DROP FUNCTION app.run CASCADE")]
+    [InlineData("DROP PROCEDURE app.run RESTRICT")]
+    [InlineData("DROP TRIGGER audit ON app.items")]
     [InlineData("DROP DOMAIN app.label")]
     [InlineData("DROP SCHEMA app, archive")]
     [InlineData("DROP SCHEMA app CASCADE")]
@@ -926,6 +933,22 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     public void DropSharedTargets_RejectsUnsupportedMySqlForms(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("DROP FUNCTION app.run")]
+    [InlineData("DROP FUNCTION IF EXISTS app.run")]
+    [InlineData("DROP PROCEDURE app.run")]
+    [InlineData("DROP PROCEDURE IF EXISTS app.run")]
+    [InlineData("DROP TRIGGER app.audit")]
+    public void DropRoutineAndTrigger_RetainNativeMySqlSimpleTargets(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Single(statement.Names);
+        Assert.Null(statement.OnObject);
+        Assert.Null(statement.PgBehavior);
     }
 
     [Theory]

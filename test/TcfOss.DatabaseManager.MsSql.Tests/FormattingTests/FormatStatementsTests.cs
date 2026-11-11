@@ -9,7 +9,8 @@ public class FormatStatementsTests
     [InlineData("SELECT ROW_NUMBER() OVER (ORDER BY y) AS rn", "SELECT\n    ROW_NUMBER() OVER (ORDER BY [y]) AS rn;")]
     [InlineData("CREATE VIEW myview (col1) WITH SCHEMABINDING AS SELECT 1", "CREATE\nVIEW [myview] ([col1])\nWITH SCHEMABINDING\nAS\nSELECT\n    1;")]
     [InlineData("CREATE TRIGGER mytrigger ON mytable AFTER INSERT AS PRINT 'changed'", "CREATE\nTRIGGER [mytrigger]\nON [mytable]\nAFTER INSERT\nAS \n    PRINT 'changed';")]
-    [InlineData("DROP INDEX ix ON mytable", "DROP INDEX [ix] ON mytable;")]
+    [InlineData("DROP INDEX ix ON mytable", "DROP INDEX [ix] ON [mytable];")]
+    [InlineData("DROP INDEX ix ON app.mytable", "DROP INDEX [ix] ON [app].[mytable];")]
     [InlineData("RETURN", "RETURN;")]
     public void SqlServerSpecificClauses(string input, string expected)
     {

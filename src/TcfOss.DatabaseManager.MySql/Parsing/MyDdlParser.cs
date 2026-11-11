@@ -13,6 +13,7 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     protected override bool UseSqlRoutineTail(ParserState state) => false;
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
+    protected override bool SupportsDropRoutineSignatures => false;
 
     protected override ObjectName? ParseDropIndexOnObject(ParserState state)
     {
@@ -23,7 +24,13 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     protected override bool SupportsDropObjectType(DroppableObject objectType)
     {
         return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Sequence
-            && objectType != DroppableObject.Type && objectType != DroppableObject.Domain;
+            && objectType != DroppableObject.Type && objectType != DroppableObject.Domain
+            && objectType != DroppableObject.Routine;
+    }
+
+    protected override ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        return null;
     }
 
     protected override bool SupportsDropObjectList(DroppableObject objectType)

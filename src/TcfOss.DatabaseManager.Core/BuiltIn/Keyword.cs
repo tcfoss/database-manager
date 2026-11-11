@@ -698,6 +698,7 @@ public enum Keyword
     ROLLBACK,
     ROLLUP,
     ROOT,
+    ROUTINE,
     ROW,
     ROW_NUMBER,
     RULE,

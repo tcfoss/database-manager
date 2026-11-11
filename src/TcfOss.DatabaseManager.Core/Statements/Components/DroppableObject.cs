@@ -5,6 +5,7 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 [StringEnum("TABLE")]
 [StringEnum("PROCEDURE")]
 [StringEnum("FUNCTION")]
+[StringEnum("ROUTINE")]
 [StringEnum("TRIGGER")]
 [StringEnum("VIEW")]
 [StringEnum("MATERIALIZED VIEW")]

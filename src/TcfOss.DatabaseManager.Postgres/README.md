@@ -155,11 +155,42 @@ without implying PostgreSQL cascade semantics.
 
 SQL/JSON round trips, formatting, identifier sources, comments, statement/atomic
 boundaries, dependency filters/scopes, and provider distinctions are unit-tested.
-This is bounded parsing support: decorated type names, routine DROP signatures,
-trigger-specific DROP grammar, DROP INDEX CONCURRENTLY, dependency resolution,
+This is bounded parsing support: decorated DROP TYPE names,
+DROP INDEX CONCURRENTLY, dependency resolution,
 cascade effects, catalog updates, migration generation, and execution remain
 deferred. PostgreSQL definition construction explicitly rejects these DROP
 statements with sourced diagnostics.
+
+## Routine DROP Signatures And Trigger Targets
+
+`DROP FUNCTION`, `DROP PROCEDURE`, and `DROP ROUTINE` produce Core's `DropRoutine`
+with ordered `PgRoutineReference` targets, IF EXISTS, and optional
+CASCADE/RESTRICT. Each target has nullable parameters: null preserves an omitted
+signature, while an empty list preserves `()`. Arguments reuse
+`StatementRoutineParameter` and `DataTypeReference`, retaining optional names and
+IN/OUT/INOUT/VARIADIC modes, named and array types, and identifier sources.
+Defaults and SQL Server parameter options are not accepted. Existing type alias
+normalization applies. Core parses this syntax once; MySQL/MariaDB and SQL Server
+reject signatures and ROUTINE while retaining their native simple FUNCTION and
+PROCEDURE `DropObject` statements. `DdlParser.ParseDropObject` now returns
+`Statement` to accommodate both forms.
+
+`DROP TRIGGER [IF EXISTS] name ON table [CASCADE | RESTRICT]` reuses `DropObject`.
+PostgreSQL requires ON and an unqualified trigger name through existing
+trigger-name narrowing. MySQL/MariaDB and SQL Server do not acquire this
+PostgreSQL table-target grammar. ON targets use identifier-aware formatting.
+Dependency traversal reports unresolved routine targets and written named
+signature types, not argument names or built-in types. Trigger names remain
+unresolved separately from their table targets; filters and caller scopes are
+preserved even when enumeration stops early.
+
+SQL/JSON round trips, omission distinctions, formatting, comments, sources,
+statement/atomic boundaries, provider restrictions, and sourced unsupported
+definition construction are unit-tested. Signature parsing follows the existing
+shared parameter and identifier rules, without adding stricter reserved-word
+validation. Overload lookup, OUT/VARIADIC identity semantics, object existence,
+dependency/cascade effects, aggregate-specific DROP syntax, SQL Server DDL
+trigger targets, catalog loading, migrations, and execution remain deferred.
 
 ## Ordinary Views
 

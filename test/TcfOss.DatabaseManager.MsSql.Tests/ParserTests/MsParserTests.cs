@@ -613,6 +613,13 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("DROP TYPE dbo.label, dbo.other_label")]
     [InlineData("DROP TYPE dbo.label CASCADE")]
     [InlineData("DROP DOMAIN dbo.label")]
+    [InlineData("DROP ROUTINE app.run")]
+    [InlineData("DROP FUNCTION app.run()")]
+    [InlineData("DROP FUNCTION app.run(INT)")]
+    [InlineData("DROP PROCEDURE app.run(IN id INT)")]
+    [InlineData("DROP FUNCTION app.run CASCADE")]
+    [InlineData("DROP PROCEDURE app.run RESTRICT")]
+    [InlineData("DROP TRIGGER audit ON app.items")]
     [InlineData("DROP TABLE items CASCADE")]
     [InlineData("DROP VIEW visible RESTRICT")]
     [InlineData("DROP SCHEMA app, archive")]
@@ -624,6 +631,22 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     public void DropSharedTargets_RejectsNonSqlServerSyntax(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("DROP FUNCTION app.run")]
+    [InlineData("DROP FUNCTION IF EXISTS app.run")]
+    [InlineData("DROP PROCEDURE [App].[Run]")]
+    [InlineData("DROP PROCEDURE IF EXISTS app.run")]
+    [InlineData("DROP TRIGGER app.audit")]
+    public void DropRoutineAndTrigger_RetainNativeSqlServerSimpleTargets(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Single(statement.Names);
+        Assert.Null(statement.OnObject);
+        Assert.Null(statement.PgBehavior);
     }
 
     [Fact]

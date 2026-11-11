@@ -45,7 +45,8 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
         }
         if (OnObject != null)
         {
-            writer.Write($" ON {OnObject}");
+            writer.Write(" ON ");
+            OnObject.FormatSql(writer, manager);
         }
         if (PgBehavior != null)
         {
@@ -62,7 +63,9 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
                 ? ReferencedItemsContext.SequenceTarget
                 : ObjectType == DroppableObject.Type || ObjectType == DroppableObject.Domain
                     ? ReferencedItemsContext.DropTypeTarget
-                    : ReferencedItemsContext.DropObjectStatement))
+                    : ObjectType == DroppableObject.Trigger && OnObject != null
+                        ? ReferencedItemsContext.DropTriggerTarget
+                        : ReferencedItemsContext.DropObjectStatement))
         {
             foreach (ObjectName name in Names)
             {
@@ -74,6 +77,7 @@ public record DropObject(SqlValueList<ObjectName> Names, DroppableObject ObjectT
             }
             if (OnObject != null)
             {
+                using ReferencedItemsManager.ContextScope scope = context.Enter(ReferencedItemsContext.DropObjectStatement);
                 ItemRef? item = context.CreateObjectRef(OnObject);
                 if (item != null)
                 {

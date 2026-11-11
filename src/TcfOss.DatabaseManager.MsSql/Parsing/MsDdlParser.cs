@@ -16,6 +16,7 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
 
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
+    protected override bool SupportsDropRoutineSignatures => false;
 
     protected override ObjectName? ParseDropIndexOnObject(ParserState state)
     {
@@ -25,7 +26,13 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
 
     protected override bool SupportsDropObjectType(DroppableObject objectType)
     {
-        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Domain;
+        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Domain
+            && objectType != DroppableObject.Routine;
+    }
+
+    protected override ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        return null;
     }
 
     protected override bool SupportsDropObjectList(DroppableObject objectType)

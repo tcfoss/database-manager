@@ -2114,12 +2114,16 @@ public class DdlParser
 
     protected virtual bool SupportsDropObjectType(DroppableObject objectType) => true;
 
+    protected virtual bool SupportsDropRoutineSignatures => true;
+
     protected virtual bool SupportsDropObjectList(DroppableObject objectType)
     {
         return objectType == DroppableObject.Table || objectType == DroppableObject.View
             || objectType == DroppableObject.MaterializedView || objectType == DroppableObject.Sequence
             || objectType == DroppableObject.Type || objectType == DroppableObject.Domain
-            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema;
+            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema
+            || objectType == DroppableObject.Function || objectType == DroppableObject.Procedure
+            || objectType == DroppableObject.Routine;
     }
 
     protected virtual bool ParseOptionalDropTemporary(ParserState state)
@@ -2132,7 +2136,9 @@ public class DdlParser
         if (objectType == DroppableObject.Table || objectType == DroppableObject.View
             || objectType == DroppableObject.MaterializedView || objectType == DroppableObject.Sequence
             || objectType == DroppableObject.Type || objectType == DroppableObject.Domain
-            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema)
+            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema
+            || objectType == DroppableObject.Function || objectType == DroppableObject.Procedure
+            || objectType == DroppableObject.Routine || objectType == DroppableObject.Trigger)
         {
             return state.MaybeParseStringEnum<PgDropBehavior>();
         }
@@ -2144,20 +2150,26 @@ public class DdlParser
         return state.ParseKeyword(Keyword.ON) ? _parseObjectName(state) : null;
     }
 
-    public DropObject ParseDropObject(ParserState state)
+    protected virtual ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.ON) ? _parseObjectName(state) : null;
+    }
+
+    public Statement ParseDropObject(ParserState state)
     {
         state.ExpectKeyword(Keyword.DROP);
 
         bool temporary = ParseOptionalDropTemporary(state);
 
         Token typeToken = state.Peek();
-        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.MATERIALIZED, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX, Keyword.SEQUENCE, Keyword.TYPE, Keyword.DOMAIN);
+        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.ROUTINE, Keyword.TRIGGER, Keyword.VIEW, Keyword.MATERIALIZED, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX, Keyword.SEQUENCE, Keyword.TYPE, Keyword.DOMAIN);
 
         DroppableObject typeToDrop = typeToDropKw switch
         {
             Keyword.TABLE => DroppableObject.Table,
             Keyword.PROCEDURE => DroppableObject.Procedure,
             Keyword.FUNCTION => DroppableObject.Function,
+            Keyword.ROUTINE => DroppableObject.Routine,
             Keyword.TRIGGER => DroppableObject.Trigger,
             Keyword.VIEW => DroppableObject.View,
             Keyword.MATERIALIZED => DroppableObject.MaterializedView,
@@ -2176,7 +2188,9 @@ public class DdlParser
             throw ParserState.ExpectedCategoryException("DROP target", typeToken);
         }
         if (temporary && (typeToDrop == DroppableObject.MaterializedView || typeToDrop == DroppableObject.Sequence
-            || typeToDrop == DroppableObject.Type || typeToDrop == DroppableObject.Domain))
+            || typeToDrop == DroppableObject.Type || typeToDrop == DroppableObject.Domain
+            || typeToDrop == DroppableObject.Function || typeToDrop == DroppableObject.Procedure
+            || typeToDrop == DroppableObject.Routine))
         {
             throw ParserState.ExpectedCategoryException("non-temporary DROP target", typeToken);
         }
@@ -2187,14 +2201,33 @@ public class DdlParser
 
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
 
+        if (SupportsDropRoutineSignatures && (typeToDrop == DroppableObject.Function
+            || typeToDrop == DroppableObject.Procedure || typeToDrop == DroppableObject.Routine))
+        {
+            SqlValueList<PgRoutineReference> routines = SupportsDropObjectList(typeToDrop)
+                ? state.ParseCommaSeparated(ParseDropRoutineReference)
+                : [ParseDropRoutineReference(state)];
+
+            return new DropRoutine(routines, typeToDrop)
+            {
+                IfExists = ifExists,
+                PgBehavior = ParseOptionalDropBehavior(state, typeToDrop)
+            };
+        }
+
+        Func<ParserState, ObjectName> parseName = typeToDrop == DroppableObject.Trigger ? ParseTriggerName : _parseObjectName;
         SqlValueList<ObjectName> names = SupportsDropObjectList(typeToDrop)
-            ? state.ParseCommaSeparated(_parseObjectName)
-            : [_parseObjectName(state)];
+            ? state.ParseCommaSeparated(parseName)
+            : [parseName(state)];
 
         ObjectName? onObject = null;
         if (typeToDrop == DroppableObject.Index)
         {
             onObject = ParseDropIndexOnObject(state);
+        }
+        else if (typeToDrop == DroppableObject.Trigger)
+        {
+            onObject = ParseDropTriggerOnObject(state);
         }
 
         PgDropBehavior? pgBehavior = ParseOptionalDropBehavior(state, typeToDrop);
@@ -2206,6 +2239,23 @@ public class DdlParser
             OnObject = onObject,
             PgBehavior = pgBehavior
         };
+    }
+
+    private PgRoutineReference ParseDropRoutineReference(ParserState state)
+    {
+        ObjectName name = _parseObjectName(state);
+        SqlValueList<StatementRoutineParameter>? parameters = null;
+        if (state.PeekIs<ParenOpen>())
+        {
+            RoutineParamsSupportStyle style = RoutineParamsSupportStyle.PostgreSqlFunction with
+            {
+                DefaultSyntax = RoutineParameterDefaultSyntax.None,
+                DefaultKinds = RoutineParameterDefaultKind.None
+            };
+            parameters = state.ParseParenthesizedCommaSeparated(
+                parameterState => ParseRoutineParameter(parameterState, style), allowEmpty: true);
+        }
+        return new PgRoutineReference(name, parameters);
     }
 
     public Truncate ParseTruncateTable(ParserState state)

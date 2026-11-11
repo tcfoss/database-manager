@@ -28,6 +28,12 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
         return null;
     }
 
+    protected override ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ON, advance: false);
+        return base.ParseDropTriggerOnObject(state);
+    }
+
     protected override bool ParseOptionalDropTemporary(ParserState state)
     {
         return false;
