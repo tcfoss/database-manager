@@ -210,11 +210,43 @@ sources/comments, statement/atomic boundaries, malformed/standalone clauses,
 provider distinctions, and sourced unsupported construction are unit-tested.
 
 This does not complete the table-level ALTER roadmap item. Bulk tablespace moves,
-explicit descendant `*` spelling, row security, trigger/rule states, replica identity,
-and expanded constraint operations remain pending. Partition operations remain a
+explicit descendant `*` spelling, rule states, legacy SET WITHOUT OIDS, and
+expanded constraint operations remain pending. Partition operations remain a
 separate slice. Parent/type/role lookup, compatibility, privileges, physical
 rewrites, catalog updates, migration generation, and execution are deferred;
 PostgreSQL definition construction still explicitly rejects ALTER statements.
+
+## Table Security And Replication State
+
+ALTER TABLE supports ENABLE/DISABLE ROW LEVEL SECURITY and FORCE/NO FORCE ROW
+LEVEL SECURITY, trigger ENABLE/DISABLE for named triggers or ALL/USER selectors,
+ENABLE ALWAYS/REPLICA for named triggers, and REPLICA IDENTITY
+DEFAULT/FULL/NOTHING/USING INDEX. All compose with existing combinable actions,
+including under IF EXISTS and ONLY; standalone rename/SET SCHEMA restrictions
+still apply.
+
+Core owns the parsing under `SupportsPostgresTableAlterSyntax`; MySQL/MariaDB and
+SQL Server retain their previous implemented syntax. Typed `AlterTableOperation`
+variants use `PgRowSecurityMode`, `PgTriggerStateMode`, `PgReplicaIdentityMode`,
+and `PgAlterTriggerTarget`. ALL/USER selectors remain distinct from quoted trigger
+names, including names with those spellings. ALWAYS/REPLICA reject the unquoted
+selectors. Named triggers and replica-identity indexes are single identifiers,
+preserving quoting and sources and using identifier-aware formatting.
+
+Reference traversal retains the existing target-table behavior; trigger names
+and table-local index labels do not invent independent object dependencies or
+inherit colliding pseudo-table/local-variable classifications. SQL/JSON round
+trips, formatting/idempotence, typed payloads, comments/source spans, following
+statements, SQL atomic bodies, mixed operations, filters/partial-enumeration
+scopes, malformed/deferred forms, provider distinctions, and sourced unsupported
+construction are unit-tested.
+
+This slice does not add policy declarations, resolve triggers/indexes, validate
+index suitability or privileges, apply table-state changes during definition
+construction, or implement replication behavior, catalog loading, migrations,
+or execution. Parsing a command inside an atomic body does not establish its
+executability. Rule controls and legacy administration remain deferred;
+constraints and partition operations remain separate slices.
 
 ## Shared DROP Options And Type/Domain Targets
 

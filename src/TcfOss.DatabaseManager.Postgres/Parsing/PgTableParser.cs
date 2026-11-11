@@ -13,7 +13,8 @@ public class PgTableParser(Parser parser) : TableParser(parser)
     {
         return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME
             or Keyword.SET or Keyword.RESET or Keyword.OWNER or Keyword.CLUSTER
-            or Keyword.INHERIT or Keyword.NO or Keyword.OF or Keyword.NOT;
+            or Keyword.INHERIT or Keyword.NO or Keyword.OF or Keyword.NOT
+            or Keyword.ENABLE or Keyword.DISABLE or Keyword.FORCE or Keyword.REPLICA;
     }
 
     protected override AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)

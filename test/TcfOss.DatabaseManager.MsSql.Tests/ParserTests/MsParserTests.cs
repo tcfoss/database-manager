@@ -708,6 +708,20 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("ALTER TABLE items NO INHERIT app.parent")]
     [InlineData("ALTER TABLE items OF app.row_type")]
     [InlineData("ALTER TABLE items NOT OF")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items DISABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items NO FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER ALL")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER USER")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER audit")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY DEFAULT")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY FULL")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY NOTHING")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX items_key")]
     public void AlterTableManagement_RejectsPostgresForms(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));

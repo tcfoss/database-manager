@@ -187,6 +187,52 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
+    public record PgRowSecurity(PgRowSecurityMode Mode) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"{Mode} ROW LEVEL SECURITY");
+        }
+    }
+
+    public record PgTriggerState(PgTriggerStateMode Mode, PgAlterTriggerTarget Target) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"{Mode} TRIGGER {Target}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.WriteSql($"{Mode} TRIGGER ");
+            Target.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgReplicaIdentity(PgReplicaIdentityMode Mode) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"REPLICA IDENTITY {Mode}");
+        }
+    }
+
+    public record PgReplicaIdentityUsingIndex(Identifier Index) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"REPLICA IDENTITY USING INDEX {Index}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("REPLICA IDENTITY USING INDEX ");
+            Index.FormatSql(writer, manager);
+        }
+    }
+
     public record PgPersistence(bool Logged) : AlterTableOperation
     {
         public override void ToSql(SqlTextWriter writer)

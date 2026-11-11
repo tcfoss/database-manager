@@ -1064,6 +1064,68 @@ public class TableParser
         }
         if (_p.SupportsPostgresTableAlterSyntax)
         {
+            if (nextKeyword is Keyword.ENABLE or Keyword.DISABLE)
+            {
+                state.Next();
+                bool enable = nextKeyword == Keyword.ENABLE;
+                if (state.ParseKeywordsAll(Keyword.ROW, Keyword.LEVEL, Keyword.SECURITY))
+                {
+                    return new AlterTableOperation.PgRowSecurity(enable ? PgRowSecurityMode.Enable : PgRowSecurityMode.Disable);
+                }
+                PgTriggerStateMode mode = enable ? PgTriggerStateMode.Enable : PgTriggerStateMode.Disable;
+                if (enable && state.ParseKeyword(Keyword.ALWAYS))
+                {
+                    mode = PgTriggerStateMode.Always;
+                }
+                else if (enable && state.ParseKeyword(Keyword.REPLICA))
+                {
+                    mode = PgTriggerStateMode.Replica;
+                }
+                state.ExpectKeyword(Keyword.TRIGGER);
+                PgAlterTriggerTarget target;
+                if (mode.Kind is PgTriggerStateMode.ValueKind.Enable or PgTriggerStateMode.ValueKind.Disable
+                    && state.ParseKeyword(Keyword.ALL))
+                {
+                    target = new PgAlterTriggerTarget.All();
+                }
+                else if (mode.Kind is PgTriggerStateMode.ValueKind.Enable or PgTriggerStateMode.ValueKind.Disable
+                    && state.ParseKeyword(Keyword.USER))
+                {
+                    target = new PgAlterTriggerTarget.User();
+                }
+                else
+                {
+                    if (state.Peek() is Word { Keyword: Keyword.ALL or Keyword.USER })
+                    {
+                        throw state.ExpectedException("trigger name");
+                    }
+                    target = new PgAlterTriggerTarget.Named(_ident(state));
+                }
+                return new AlterTableOperation.PgTriggerState(mode, target);
+            }
+            if (state.ParseKeyword(Keyword.FORCE))
+            {
+                state.ExpectKeyword(Keyword.ROW);
+                state.ExpectKeyword(Keyword.LEVEL);
+                state.ExpectKeyword(Keyword.SECURITY);
+                return new AlterTableOperation.PgRowSecurity(PgRowSecurityMode.Force);
+            }
+            if (state.ParseKeywordsAll(Keyword.NO, Keyword.FORCE))
+            {
+                state.ExpectKeyword(Keyword.ROW);
+                state.ExpectKeyword(Keyword.LEVEL);
+                state.ExpectKeyword(Keyword.SECURITY);
+                return new AlterTableOperation.PgRowSecurity(PgRowSecurityMode.NoForce);
+            }
+            if (state.ParseKeywordsAll(Keyword.REPLICA, Keyword.IDENTITY))
+            {
+                if (state.ParseKeyword(Keyword.USING))
+                {
+                    state.ExpectKeyword(Keyword.INDEX);
+                    return new AlterTableOperation.PgReplicaIdentityUsingIndex(_ident(state));
+                }
+                return new AlterTableOperation.PgReplicaIdentity(state.ParseStringEnum<PgReplicaIdentityMode>());
+            }
             if (state.ParseKeywordsAll(Keyword.SET, Keyword.LOGGED))
             {
                 return new AlterTableOperation.PgPersistence(true);

@@ -590,6 +590,9 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData("ALTER TABLE items OWNER TO CURRENT_ROLE, SET LOGGED, INHERIT app.parent, OF app.row_type")]
     [InlineData("ALTER TABLE items SET TABLESPACE fast, SET ACCESS METHOD DEFAULT, SET (fillfactor = 70), RESET (fillfactor)")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER ALL, DISABLE TRIGGER USER, ENABLE ALWAYS TRIGGER audit, ENABLE REPLICA TRIGGER audit, REPLICA IDENTITY USING INDEX items_key")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY DEFAULT, REPLICA IDENTITY FULL, REPLICA IDENTITY NOTHING")]
     public void AlterTableManagement_CoreGrammarRoundTrips(string sql)
     {
         var statement = Assert.IsType<AlterTable>(ParseStatement(sql));

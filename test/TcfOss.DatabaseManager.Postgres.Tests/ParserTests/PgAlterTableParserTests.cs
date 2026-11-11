@@ -79,6 +79,29 @@ public class PgAlterTableParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER TABLE items OF app.item_type")]
     [InlineData("ALTER TABLE items NOT OF")]
     [InlineData("ALTER TABLE items OWNER TO CURRENT_USER, SET TABLESPACE fast, SET LOGGED, ALTER label SET STATISTICS 100")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items DISABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items NO FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER ALL")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER ALL")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER USER")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER USER")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER \"all\"")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER \"user\"")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER \"ALL\"")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER \"USER\"")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER \"Audit; DROP TABLE items\"")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY DEFAULT")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY FULL")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY NOTHING")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX \"ItemsKey\"")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX \"Key; DROP TABLE items\"")]
+    [InlineData("ALTER TABLE IF EXISTS ONLY app.items ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY, ENABLE ALWAYS TRIGGER audit, REPLICA IDENTITY FULL, ALTER label SET NOT NULL")]
     public void AlterTableColumns_RoundTripSqlJsonAndFormatting(string sql, string? expectedSql = null)
     {
         var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
@@ -275,10 +298,11 @@ public class PgAlterTableParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Same(tables, context.PseudoTables);
     }
 
-    [Fact]
-    public void AlterTableManagement_RoundTripsAtomicBody()
+    [Theory]
+    [InlineData("CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC ALTER TABLE items OWNER TO CURRENT_ROLE, SET LOGGED, SET (fillfactor = 70), INHERIT app.parent; ALTER TABLE items SET SCHEMA archive; END")]
+    [InlineData("CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC ALTER TABLE IF EXISTS ONLY app.items ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY, ENABLE ALWAYS TRIGGER audit, REPLICA IDENTITY USING INDEX items_key; ALTER TABLE app.items DISABLE TRIGGER ALL, NO FORCE ROW LEVEL SECURITY, REPLICA IDENTITY DEFAULT; END")]
+    public void AlterTableManagement_RoundTripsAtomicBody(string sql)
     {
-        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC ALTER TABLE items OWNER TO CURRENT_ROLE, SET LOGGED, SET (fillfactor = 70), INHERIT app.parent; ALTER TABLE items SET SCHEMA archive; END";
         var statement = Assert.IsType<CreateProcedure>(ParseStatement(sql));
 
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
@@ -288,6 +312,120 @@ public class PgAlterTableParserTests : ParserTestsBase<PgLexer, PgParser>
         string formatted = formatter.GetFormatted(sql);
         Assert.IsType<CreateProcedure>(ParseStatement(formatted));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void AlterTableState_PreservesTypedTargetsSourcesCommentsAndBoundaries()
+    {
+        const string sql = "/* lead */ ALTER TABLE IF EXISTS ONLY \"App\".\"Items\" ENABLE TRIGGER ALL, DISABLE TRIGGER USER, ENABLE ALWAYS TRIGGER \"all\", ENABLE REPLICA TRIGGER \"Audit\", REPLICA IDENTITY USING INDEX \"ItemsKey\", NO FORCE ROW LEVEL SECURITY /* tail */; ALTER TABLE items REPLICA IDENTITY NOTHING; SELECT 1";
+        var statements = ParseStatements(sql, sourceId: 183);
+        var statement = Assert.IsType<AlterTable>(statements[0]);
+        var all = Assert.IsType<AlterTableOperation.PgTriggerState>(statement.Operations[0]);
+        var user = Assert.IsType<AlterTableOperation.PgTriggerState>(statement.Operations[1]);
+        var namedAll = Assert.IsType<AlterTableOperation.PgTriggerState>(statement.Operations[2]);
+        var audit = Assert.IsType<AlterTableOperation.PgTriggerState>(statement.Operations[3]);
+        var index = Assert.IsType<AlterTableOperation.PgReplicaIdentityUsingIndex>(statement.Operations[4]);
+
+        Assert.Equal(3, statements.Count);
+        Assert.True(statement.IfExists);
+        Assert.True(statement.Only);
+        Assert.Equal(PgTriggerStateMode.Enable, all.Mode);
+        Assert.IsType<PgAlterTriggerTarget.All>(all.Target);
+        Assert.Equal(PgTriggerStateMode.Disable, user.Mode);
+        Assert.IsType<PgAlterTriggerTarget.User>(user.Target);
+        Assert.Equal(PgTriggerStateMode.Always, namedAll.Mode);
+        Identifier name = Assert.IsType<PgAlterTriggerTarget.Named>(namedAll.Target).Name;
+        Assert.Equal("all", name.Name);
+        Assert.Equal(QuoteStyle.Ansi, name.QuoteStyle);
+        Assert.Equal(183, name.Source!.Value.SourceId);
+        Assert.Equal(PgTriggerStateMode.Replica, audit.Mode);
+        Assert.Equal(183, Assert.IsType<PgAlterTriggerTarget.Named>(audit.Target).Name.Source!.Value.SourceId);
+        Assert.Equal("ItemsKey", index.Index.Name);
+        Assert.Equal(183, index.Index.Source!.Value.SourceId);
+        Assert.Equal(PgRowSecurityMode.NoForce, Assert.IsType<AlterTableOperation.PgRowSecurity>(statement.Operations[5]).Mode);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.All(statement.Table.Values, identifier => Assert.Equal(183, identifier.Source!.Value.SourceId));
+        Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is NonSql.BlockComment { Body: " tail " });
+        Assert.Equal(PgReplicaIdentityMode.Nothing, Assert.IsType<AlterTableOperation.PgReplicaIdentity>(
+            Assert.Single(Assert.IsType<AlterTable>(statements[1]).Operations)).Mode);
+        Assert.IsType<Select>(statements[2]);
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void AlterTableState_ReportsOnlyTargetAndRestoresCallerScopes()
+    {
+        const string sql = "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY, ENABLE ALWAYS TRIGGER audit, REPLICA IDENTITY USING INDEX items_key";
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+        var schema = new SchemaIdentifier("app", new CatalogIdentifier("def"));
+        var tables = new PseudoTableSet(schema,
+        [
+            new PseudoTable("items", new ObjectIdentifier("items", schema), [], PseudoTableType.Table),
+            new PseudoTable("audit", new ObjectIdentifier("audit", schema), [], PseudoTableType.Table),
+            new PseudoTable("items_key", new ObjectIdentifier("items_key", schema), [], PseudoTableType.Table)
+        ]);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All, PseudoTables = tables };
+        context.AddLocalVariable(new Identifier("audit"));
+        context.AddLocalVariable(new Identifier("items_key"));
+        using var scope = context.Enter(ReferencedItemsContext.WhereClause);
+
+        var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(statement.GetReferencedItems(context)));
+
+        Assert.Equal("app.items", reference.Name.ToSql());
+        Assert.Equal(ItemType.Table, reference.Type);
+        Assert.Equal(ItemType.Unknown, Assert.Single(statement.GetReferencedItems(
+            new ReferencedItemsManager { Filters = ObjectNameFilters.All })).Type);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Table, PseudoTables = tables }));
+        _ = statement.GetReferencedItems(context).Take(1).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+        Assert.Same(tables, context.PseudoTables);
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items ENABLE")]
+    [InlineData("ALTER TABLE items DISABLE")]
+    [InlineData("ALTER TABLE items ENABLE ROW SECURITY")]
+    [InlineData("ALTER TABLE items DISABLE ROW LEVEL")]
+    [InlineData("ALTER TABLE items FORCE ROW SECURITY")]
+    [InlineData("ALTER TABLE items NO FORCE ROW LEVEL")]
+    [InlineData("ALTER TABLE items NO ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items DISABLE FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER ALL")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER USER")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER ALL")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER USER")]
+    [InlineData("ALTER TABLE items DISABLE ALWAYS TRIGGER audit")]
+    [InlineData("ALTER TABLE items DISABLE REPLICA TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER app.audit")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER 'audit'")]
+    [InlineData("ALTER TABLE items ENABLE RULE rewrite_rule")]
+    [InlineData("ALTER TABLE items DISABLE RULE rewrite_rule")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA RULE rewrite_rule")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS RULE rewrite_rule")]
+    [InlineData("ALTER TABLE items REPLICA")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY INVALID")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY \"FULL\"")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING items_key")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX app.items_key")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX 'items_key'")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY FULL NOTHING")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY REPLICA IDENTITY FULL")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER ALL,")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY, SET SCHEMA archive")]
+    [InlineData("ALTER TABLE items SET SCHEMA archive, REPLICA IDENTITY FULL")]
+    public void AlterTableState_RejectsMalformedAndDeferredForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]
