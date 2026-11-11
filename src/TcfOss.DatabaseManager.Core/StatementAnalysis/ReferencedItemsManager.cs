@@ -75,6 +75,7 @@ public class ReferencedItemsManager
             || ctx == ReferencedItemsContext.TruncateTarget
             || ctx == ReferencedItemsContext.CreateTriggerTable
             || ctx == ReferencedItemsContext.CreateTablePartitionParent
+            || ctx == ReferencedItemsContext.CreateIndexTable
             || ctx == ReferencedItemsContext.SequenceOwnedBy;
     }
 

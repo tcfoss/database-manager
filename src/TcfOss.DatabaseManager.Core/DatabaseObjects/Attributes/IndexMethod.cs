@@ -9,4 +9,4 @@ namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 [StringEnum("GIN")]
 [StringEnum("BRIN")]
 [StringEnum("RTREE")]
-public sealed partial class IndexMethod;
+public sealed partial class BuiltInIndexMethod;

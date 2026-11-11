@@ -94,6 +94,22 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON items USING BTREE (id)")]
+    [InlineData("CREATE INDEX items_idx USING BTREE ON items (id) INCLUDE (payload) WHERE id > 0")]
+    [InlineData("CREATE INDEX items_idx ON items USING BTREE (id) INCLUDE (payload) WHERE id > 0")]
+    [InlineData("CREATE INDEX ON ONLY items (id NULLS FIRST)")]
+    [InlineData("CREATE INDEX items_idx ON items USING bloom (id app.int_ops (bits = 4) DESC NULLS LAST)")]
+    [InlineData("CREATE INDEX items_idx ON items (label COLLATE app.casefold app.text_ops ASC NULLS FIRST) WITH (custom_parameter = 4) TABLESPACE fast WHERE id > 0")]
+    [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) NULLS NOT DISTINCT WITH (FILLFACTOR = 80) TABLESPACE fast WHERE id > 0")]
+    public void ExpandedIndexes_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
     [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
     [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2", "ALTER TABLE items ALTER COLUMN total SET DEFAULT (1 + 2)")]

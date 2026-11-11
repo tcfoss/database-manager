@@ -182,7 +182,7 @@ public static partial class Serialization
             .WithTypeConverter(new YamlStringEnumConverter<SqlDataRelation>())
             .WithTypeConverter(new YamlStringEnumConverter<RoutineParameterDirection>())
             .WithTypeConverter(new YamlStringEnumConverter<EventEnabledStatus>())
-            .WithTypeConverter(new YamlStringEnumConverter<IndexMethod>())
+            .WithTypeConverter(new YamlStringEnumConverter<BuiltInIndexMethod>())
             .WithTypeConverter(new YamlStringEnumConverter<MySqlNumericAttribute>())
             .WithTypeConverter(new YamlCatalogIdentifierConverter())
             .WithTypeConverter(new YamlSchemaIdentifierConverter())

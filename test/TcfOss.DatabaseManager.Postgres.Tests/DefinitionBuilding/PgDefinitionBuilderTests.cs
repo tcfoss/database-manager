@@ -113,6 +113,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("DROP ROUTINE app.run")]
     [InlineData("DROP TRIGGER IF EXISTS audit ON app.items CASCADE")]
     [InlineData("ALTER TABLE items ALTER id ADD GENERATED ALWAYS AS IDENTITY")]
+    [InlineData("CREATE INDEX CONCURRENTLY ON ONLY items (id)")]
+    [InlineData("CREATE INDEX ON items (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id NULLS LAST)")]
+    [InlineData("CREATE INDEX items_idx ON items USING bloom (id app.int_ops (bits = 4) DESC NULLS FIRST)")]
+    [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) INCLUDE (label) NULLS NOT DISTINCT WITH (fillfactor = 80) TABLESPACE fast WHERE id > 0")]
     [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
     [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1)")]
     [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (2)")]
@@ -1370,7 +1375,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgDefinition definition = builder.ToDefinition();
 
         PgTable table = Assert.Single(definition.Tables).Value;
-        Assert.Equal(IndexMethod.Hash, Assert.Single(table.Indexes.Values).Method);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Hash, Assert.Single(table.Indexes.Values).Method);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
@@ -1543,7 +1548,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var primaryKey = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints));
         StatementTableConstraint.PrimaryKey invalid = feature switch
         {
-            "method" => primaryKey with { IndexMethod = IndexMethod.Hash },
+            "method" => primaryKey with { IndexMethod = BuiltInIndexMethod.Hash },
             "organization" => primaryKey with { IndexOrganization = IndexOrganization.Clustered },
             "options" => primaryKey with { Options = [new StatementIndexOption.PadIndex(true)] },
             "storage" => primaryKey with { StorageLocation = new IndexStorageLocation.Filegroup(new Identifier("filegroup")) },
@@ -1574,9 +1579,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (FILLFACTOR = 70))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (FILLFACTOR = 70))")]
-    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH (FILLFACTOR = 70)")]
-    [InlineData("CREATE TABLE items (id INT); CREATE UNIQUE INDEX ix ON items (id) WITH (FILLFACTOR = 70)")]
-    public void IndexOptions_ClassifyFillFactorAsNotImplemented(string sql)
+    public void ConstraintIndexOptions_ClassifyFillFactorAsNotImplemented(string sql)
     {
         var builder = CreateBuilder();
 
@@ -1596,16 +1599,16 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALLOW_ROW_LOCKS")]
     [InlineData("ALLOW_PAGE_LOCKS")]
     [InlineData("OPTIMIZE_FOR_SEQUENTIAL_KEY")]
-    public void IndexOptions_RejectForeignOptionsWithDialectSyntaxError(string option)
+    [InlineData("FILLFACTOR")]
+    public void IndexOptions_RejectUnrepresentedStorageParametersWithSourcedError(string option)
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH ({option} = ON)"), GetSchema(), 7);
+        var statements = ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH ({option} = ON)");
 
-        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
-        Assert.Equal("PostgreSQL", exception.Dialect);
-        Assert.Equal($"{option} = ON", exception.Clause);
-        Assert.NotNull(exception.ObjectSourceRef);
-        Assert.Contains("does not support the clause", exception.Message);
+        var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 7));
+
+        Assert.Contains("PostgreSQL index options", exception.Message);
+        Assert.Equal(new SourceRef(7, statements[1].Meta.Start!.Value, statements[1].Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Theory]

@@ -8,7 +8,7 @@ namespace TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
 public record MyPrimaryKey(SqlValueList<KeyPart> Columns)
 {
-    public IndexMethod? IndexMethod { get; init; }
+    public BuiltInIndexMethod? IndexMethod { get; init; }
     public Comment? Comment { get; init; }
 
     public StatementTableConstraint.PrimaryKey ToStatementConstraint(DifferFormatManager manager)

@@ -59,7 +59,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
 
     public record PrimaryKey(SqlValueList<KeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
     {
-        public IndexMethod? IndexMethod { get; init; }
+        public BuiltInIndexMethod? IndexMethod { get; init; }
         public IndexOrganization? IndexOrganization { get; init; }
         public SqlValueList<StatementIndexOption>? Options { get; init; }
         public IndexStorageLocation? StorageLocation { get; init; }
@@ -420,7 +420,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
 
     public record Spatial(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
-        public IndexMethod? IndexMethod { get; init; }
+        public BuiltInIndexMethod? IndexMethod { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {

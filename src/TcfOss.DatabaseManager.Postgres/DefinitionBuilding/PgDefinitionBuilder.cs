@@ -85,6 +85,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
                     break;
                 case CreateIndex index:
+                    if (index.PgOptions != null || index.Name == null || index.Columns.Any(key => key.PgOptions != null))
+                    {
+                        throw new DefinitionException($"{index.GetType().Name} PostgreSQL index options", sourceRef);
+                    }
                     _pendingIndexes.Add((index, activeSchemaId, sourceRef));
                     break;
                 case CreateTrigger trigger:

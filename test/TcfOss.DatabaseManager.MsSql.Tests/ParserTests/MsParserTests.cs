@@ -826,4 +826,28 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("CREATE INDEX CONCURRENTLY items_idx ON items (id)")]
+    [InlineData("CREATE INDEX ON items (id)")]
+    [InlineData("CREATE INDEX items_idx ON ONLY items (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id app.int_ops (bits = 4))")]
+    [InlineData("CREATE INDEX items_idx ON items (id NULLS FIRST)")]
+    [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) NULLS NOT DISTINCT")]
+    [InlineData("CREATE INDEX items_idx ON items USING bloom (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id) WITH (custom_parameter = 1)")]
+    [InlineData("CREATE INDEX items_idx ON items (id) TABLESPACE fast")]
+    public void ExpandedIndexes_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX items_idx USING ON items (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id) USING")]
+    [InlineData("CREATE INDEX items_idx USING bloom ON items (id)")]
+    public void IndexMethods_RejectsMissingAndUnsupportedMethods(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

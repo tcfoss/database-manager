@@ -11,6 +11,7 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 public class MsDdlParser(MsParser parser) : DdlParser(parser)
 {
     protected override bool SupportsIndexMethodAfterTableName => false;
+    protected override bool SupportsPostgresIndexSyntax => false;
 
     protected override bool UseSqlRoutineTail(ParserState state) => false;
 

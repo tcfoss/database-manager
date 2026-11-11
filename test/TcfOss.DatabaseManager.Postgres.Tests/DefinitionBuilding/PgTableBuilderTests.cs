@@ -616,7 +616,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var index = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items USING HASH ({columns})")) with { Options = [] };
         builder.AddIndex(index, null);
 
-        Assert.Equal(IndexMethod.Hash, Assert.Single(builder.ToTable(CreateManager()).Indexes.Values).Method);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Hash, Assert.Single(builder.ToTable(CreateManager()).Indexes.Values).Method);
     }
 
     [Fact]

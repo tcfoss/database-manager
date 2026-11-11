@@ -445,7 +445,7 @@ public class TableParser
         state.ExpectKeywordsAll(Keyword.PRIMARY, Keyword.KEY);
 
         IndexOrganization? indexOrganization = ParseOptionalIndexOrganization(state);
-        IndexMethod? method = null;
+        BuiltInIndexMethod? method = null;
         if (state.Peek() is Word { Keyword: Keyword.USING })
         {
             state.Next();
@@ -501,7 +501,7 @@ public class TableParser
         }
 
         Identifier? indexName = null;
-        IndexMethod? method = null;
+        BuiltInIndexMethod? method = null;
         Comment? comment = null;
         SqlValueList<KeyPart>? columns = null;
         while (true)
@@ -557,7 +557,7 @@ public class TableParser
 
         return new StatementTableConstraint.UniqueConstraint(columns, constraintName)
         {
-            IndexMethod = method,
+            IndexMethod = method != null ? new IndexMethod.BuiltIn(method) : null,
             IndexOrganization = indexOrganization,
             Comment = comment,
             IndexName = indexName,
@@ -667,7 +667,7 @@ public class TableParser
         state.Next();  // Consume the keyword word (KEY or INDEX)
 
         Identifier? name = null;
-        IndexMethod? method = null;
+        BuiltInIndexMethod? method = null;
         IndexOrganization? indexOrganization = null;
         bool unique = false;
 
@@ -749,7 +749,7 @@ public class TableParser
         {
             return new StatementTableConstraint.UniqueIndex(cols, name)
             {
-                IndexMethod = method,
+                IndexMethod = method != null ? new IndexMethod.BuiltIn(method) : null,
                 Comment = comment,
                 KeyLabel = label,
                 IndexOrganization = indexOrganization,
@@ -761,7 +761,7 @@ public class TableParser
         }
         return new StatementTableConstraint.Standard(cols, name)
         {
-            IndexMethod = method,
+            IndexMethod = method != null ? new IndexMethod.BuiltIn(method) : null,
             Comment = comment,
             KeyLabel = label,
             IndexOrganization = indexOrganization,
@@ -772,19 +772,19 @@ public class TableParser
         };
     }
 
-    public virtual IndexMethod ParseIndexMethod(ParserState state)
+    public virtual BuiltInIndexMethod ParseIndexMethod(ParserState state)
     {
         Token token = state.Next();
         return token switch
         {
-            Word { Keyword: Keyword.BTREE } => IndexMethod.Btree,
-            Word { Keyword: Keyword.HASH } => IndexMethod.Hash,
-            Word { Keyword: Keyword.GIST } => IndexMethod.Gist,
-            Word { Keyword: Keyword.SPGIST } => IndexMethod.SpGist,
-            Word { Keyword: Keyword.GIN } => IndexMethod.Gin,
-            Word { Keyword: Keyword.BRIN } => IndexMethod.Brin,
-            Word { Keyword: Keyword.RTREE } => IndexMethod.Rtree,
-            _ => throw state.ExpectedException<IndexMethod>(token)
+            Word { Keyword: Keyword.BTREE } => BuiltInIndexMethod.Btree,
+            Word { Keyword: Keyword.HASH } => BuiltInIndexMethod.Hash,
+            Word { Keyword: Keyword.GIST } => BuiltInIndexMethod.Gist,
+            Word { Keyword: Keyword.SPGIST } => BuiltInIndexMethod.SpGist,
+            Word { Keyword: Keyword.GIN } => BuiltInIndexMethod.Gin,
+            Word { Keyword: Keyword.BRIN } => BuiltInIndexMethod.Brin,
+            Word { Keyword: Keyword.RTREE } => BuiltInIndexMethod.Rtree,
+            _ => throw state.ExpectedException<BuiltInIndexMethod>(token)
         };
     }
 
@@ -803,7 +803,7 @@ public class TableParser
 
         SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
 
-        IndexMethod? method = null;
+        BuiltInIndexMethod? method = null;
         Comment? comment = null;
         while (true)
         {

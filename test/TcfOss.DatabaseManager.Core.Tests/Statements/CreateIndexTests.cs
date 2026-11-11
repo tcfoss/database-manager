@@ -124,7 +124,7 @@ public class CreateIndexTests
     {
         return new CreateIndex.Unique(s_columns, s_name, s_table)
         {
-            IndexMethod = options ? IndexMethod.Btree : null,
+            IndexMethod = options ? BuiltInIndexMethod.Btree : null,
             IndexOrganization = options ? IndexOrganization.Nonclustered : null,
             IncludedColumns = options ? new IncludedColumns([new Identifier("col2")]) : null,
             Options = options ? [new StatementIndexOption.FillFactor(80)] : null,

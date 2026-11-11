@@ -5,7 +5,7 @@ using Xunit.Sdk;
 
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<Direction>), typeof(Direction))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<EventEnabledStatus>), typeof(EventEnabledStatus))]
-[assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<IndexMethod>), typeof(IndexMethod))]
+[assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<BuiltInIndexMethod>), typeof(BuiltInIndexMethod))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<ReferentialAction>), typeof(ReferentialAction))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<RoutineParameterDirection>), typeof(RoutineParameterDirection))]
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.StringEnumTestHelpers.StringEnumSerializer<SecurityContext>), typeof(SecurityContext))]
@@ -49,17 +49,17 @@ public class BasicAttributeTests
     }
 
     [Theory]
-    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<IndexMethod>))]
-    public void Test_Index_Method_From_Text(string text, IndexMethod expected)
+    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<BuiltInIndexMethod>))]
+    public void Test_Index_Method_From_Text(string text, BuiltInIndexMethod expected)
     {
-        var result = IndexMethod.Parse(text);
+        var result = BuiltInIndexMethod.Parse(text);
         Assert.Equal(expected.ToSql(), result.ToSql());
     }
 
     [Fact]
     public void Test_Unknown_Index_Method_Throws()
     {
-        Assert.Throws<ArgumentException>(() => IndexMethod.Parse("UNKNOWN"));
+        Assert.Throws<ArgumentException>(() => BuiltInIndexMethod.Parse("UNKNOWN"));
     }
 
     [Theory]

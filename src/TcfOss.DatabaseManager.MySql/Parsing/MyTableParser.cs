@@ -87,15 +87,15 @@ public class MyTableParser(MyParser parser) : TableParser(parser)
         }
     }
 
-    public override IndexMethod ParseIndexMethod(ParserState state)
+    public override BuiltInIndexMethod ParseIndexMethod(ParserState state)
     {
         Token token = state.Next();
         return token switch
         {
-            Word { Keyword: Keyword.BTREE } => IndexMethod.Btree,
-            Word { Keyword: Keyword.HASH } => IndexMethod.Hash,
-            Word { Keyword: Keyword.RTREE } => IndexMethod.Rtree,
-            _ => throw state.ExpectedException<IndexMethod>(token)
+            Word { Keyword: Keyword.BTREE } => BuiltInIndexMethod.Btree,
+            Word { Keyword: Keyword.HASH } => BuiltInIndexMethod.Hash,
+            Word { Keyword: Keyword.RTREE } => BuiltInIndexMethod.Rtree,
+            _ => throw state.ExpectedException<BuiltInIndexMethod>(token)
         };
     }
 }

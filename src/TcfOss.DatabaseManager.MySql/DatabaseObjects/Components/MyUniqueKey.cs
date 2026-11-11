@@ -11,14 +11,14 @@ namespace TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 public record MyUniqueKey(SqlValueList<KeyPart> Columns, Identifier? ConstraintName)
     : IHaveOptionalIdentifierName
 {
-    public IndexMethod? IndexMethod { get; init; }
+    public BuiltInIndexMethod? IndexMethod { get; init; }
     public Comment? Comment { get; init; }
 
     public Identifier? Name => ConstraintName;
 
     public StatementTableConstraint.UniqueConstraint ToStatementConstraint(DifferFormatManager manager)
     {
-        IndexMethod? indexMethod = IndexMethod;
+        BuiltInIndexMethod? indexMethod = IndexMethod;
         if (manager.Formatting.OmitModifiersIfDefault && indexMethod == manager.AttributeDefaults.IndexMethod)
         {
             indexMethod = null;

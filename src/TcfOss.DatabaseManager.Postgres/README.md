@@ -172,6 +172,49 @@ loading, definition mutation, migration generation, and execution remain
 separate. PostgreSQL definition construction still explicitly rejects these
 ALTER statements with sourced errors.
 
+## Expanded Index Declarations
+
+`CREATE [UNIQUE] INDEX [CONCURRENTLY] [[IF NOT EXISTS] name] ON [ONLY] table`
+reuses `CreateIndex.Standard` and `CreateIndex.Unique`. Omitted index names remain
+null; IF NOT EXISTS still requires a name. `IndexMethod.BuiltIn` wraps existing
+`BuiltInIndexMethod` values, while `IndexMethod.Custom` retains quoted/custom
+access-method identifiers. Nullable `PgCreateIndexOptions` retains other written
+prefix/trailing options. PostgreSQL permits USING only after the target name.
+MySQL resolved objects retain `BuiltInIndexMethod`; their builders explicitly
+reject custom methods with a sourced dialect exception.
+
+Key parts retain columns or existing expression ASTs, with COLLATE expressions,
+qualified operator classes, ordered scalar operator-class parameters, explicit
+ASC/DESC, and optional NULLS FIRST/LAST. Nullable `PgIndexKeyOptions` retains the
+new decorations without synthesizing omitted defaults. Bare function calls and
+parenthesized expressions are accepted; unparenthesized arithmetic/casts and
+window-function syntax are rejected. Numeric-argument function calls are not
+misclassified as MySQL column-prefix lengths.
+
+Trailing clauses follow PostgreSQL order: INCLUDE, NULLS [NOT] DISTINCT, WITH
+storage parameters, TABLESPACE, then WHERE. Storage and operator-class parameters
+reuse `PgStorageParameter` and scalar-value parsing; bare word values normalize
+to quoted strings. Written NULLS DISTINCT remains distinct from omission.
+Core owns the shared grammar and retains legacy index-option support;
+MySQL/MariaDB and SQL Server reject the new PostgreSQL forms.
+
+SQL/JSON round trips, recursive identifier formatting/idempotence, typed options,
+quoted names, source/comment/statement boundaries, atomic SQL bodies, malformed
+and foreign-dialect forms, and provider restrictions are unit-tested. References
+include the indexed table or view and expression/predicate object dependencies.
+Isolated contexts avoid capturing caller variables/columns and preserve filters
+and partial-enumeration scopes. Access methods, collations, operator classes,
+parameter labels, and tablespaces do not become independent object dependencies.
+
+Method/operator-class/collation lookup, option eligibility, expression typing and
+immutability, index suitability, partition behavior, privileges, CONCURRENTLY
+transaction restrictions, locking, catalog loading, migrations, and execution
+remain separate. Atomic-body acceptance establishes syntax, not executability.
+Existing supported named indexes still construct; unnamed indexes and the new
+PostgreSQL index/key components raise a sourced `DefinitionException` rather
+than silently dropping their meaning. Constraint declaration/lifecycle and
+ALTER/DROP INDEX extensions are separate work.
+
 ## Sequences And Identity Alterations
 
 `CREATE [TEMP | TEMPORARY | UNLOGGED] SEQUENCE [IF NOT EXISTS] name ...`
@@ -598,8 +641,8 @@ Basic standard/unique index declarations reuse `CreateIndex` with the
 materialized-view target name, including supported INCLUDE/filter syntax.
 PostgreSQL `DROP INDEX [IF EXISTS] name` does not accept ON; MySQL/MariaDB and
 SQL Server still require their ON target. The declaration/index/refresh/drop-index
-workflow is unit-tested. Broader PostgreSQL index grammar, including CONCURRENTLY
-and additional index/drop options, remains separate index work; TABLE query
+workflow is unit-tested. Expanded CREATE INDEX grammar, including CONCURRENTLY,
+is described above. ALTER/DROP INDEX extensions remain separate work; TABLE query
 shorthand and expanded storage-argument forms remain explicit shared follow-ups.
 
 The bounded materialized-view lifecycle parsing milestone is complete. Target,
@@ -1000,11 +1043,14 @@ advanced index decorations and column prefix lengths are rejected explicitly.
 Foreign-dialect clauses such as inline COMMENT, CLUSTERED/NONCLUSTERED,
 SQL Server index options, and ON filegroup/partition-scheme placement raise
 the resource-backed `SqlSyntaxException.UnsupportedDialectClause`, carrying
-the dialect, offending clause, and statement source. Constraint and standalone
-index validation share these checks. PostgreSQL FILLFACTOR is valid syntax but
-its construction support is deferred, so it raises `NotImplementedException`
-rather than a dialect syntax error. Options validation remains separate so
-individual supported PostgreSQL options can be implemented later.
+the dialect, offending clause, and statement source. Legacy constraint/index
+statement-option components retain these checks. PostgreSQL FILLFACTOR on
+constraints is valid syntax but its construction support remains deferred,
+raising `NotImplementedException` rather than a dialect syntax error.
+Standalone CREATE INDEX now uses generic PostgreSQL storage parameters rather
+than SQL Server option variants. Unrepresented parameters, including FILLFACTOR
+or names also used by SQL Server, raise a sourced `DefinitionException` during
+statement processing. Option eligibility and construction support remain separate.
 
 Foreign keys resolve referenced tables after all declarations have been collected,
 including forward references. Final validation checks referenced tables/columns,

@@ -268,7 +268,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         }
         else
         {
-            IndexMethod indexMethod = IndexMethod.Parse(first.IndexType);
+            BuiltInIndexMethod indexMethod = BuiltInIndexMethod.Parse(first.IndexType);
             key = new MyKey.Standard(keyParts, id)
             {
                 IndexMethod = indexMethod,

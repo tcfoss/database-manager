@@ -203,7 +203,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(pkStatement.Name, "PRIMARY KEY", "table", Name, "MySQL", sourceRef);
         }
 
-        IndexMethod indexMethod = pkStatement.IndexMethod ?? _attributeDefaults.IndexMethod;
+        BuiltInIndexMethod indexMethod = pkStatement.IndexMethod ?? _attributeDefaults.IndexMethod;
         var primaryKey = new MyPrimaryKey(NormalizeKeyParts(pkStatement.Columns, _quoteStyle, indexMethod.ToString(), "PRIMARY"))
         {
             IndexMethod = indexMethod,
@@ -227,13 +227,23 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
 
         Identifier name = (ukStatement.Name ?? ukStatement.IndexName!).ToSimpleIdentifier(_quoteStyle);
 
-        IndexMethod indexMethod = ukStatement.IndexMethod ?? _attributeDefaults.IndexMethod;
+        BuiltInIndexMethod indexMethod = GetBuiltInIndexMethod(ukStatement.IndexMethod, sourceRef);
         var uniqueKey = new MyUniqueKey(NormalizeKeyParts(ukStatement.Columns, _quoteStyle, indexMethod.ToString(), name.Name), name)
         {
             IndexMethod = indexMethod,
             Comment = ukStatement.Comment
         };
         _uniqueKeys[Handle.Create(name, NameHandling)] = uniqueKey;
+    }
+
+    private BuiltInIndexMethod GetBuiltInIndexMethod(IndexMethod? method, SourceRef? sourceRef)
+    {
+        return method switch
+        {
+            null => _attributeDefaults.IndexMethod,
+            IndexMethod.BuiltIn builtIn => builtIn.Method,
+            _ => throw new SqlSyntaxException.UnsupportedDialectClause("MySQL", "custom index method", sourceRef ?? SourceRef)
+        };
     }
 
     private void AddForeignKey(StatementTableConstraint.ForeignKey fkStatement, SourceRef? sourceRef = null)
@@ -290,7 +300,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         switch (keyStatement)
         {
             case StatementTableConstraint.Standard k:
-                IndexMethod indexMethod = k.IndexMethod ?? _attributeDefaults.IndexMethod;
+                BuiltInIndexMethod indexMethod = GetBuiltInIndexMethod(k.IndexMethod, sourceRef);
                 SqlValueList<KeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.IndexName?.Name);
                 key = new MyKey.Standard(columns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { IndexMethod = indexMethod, Comment = k.Comment };
                 break;
