@@ -636,7 +636,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(expected, statement.IfExists);
         Assert.Equal("app.summary", statement.Name.ToSql());
-        Assert.Equal("summary_next", Assert.IsType<PgAlterMaterializedViewOperation.RenameTo>(Assert.Single(statement.Operations)).Name.Name);
+        Assert.Equal("summary_next", Assert.IsType<PgAlterRelationOperation.RenameTo>(Assert.Single(statement.Operations)).Name.Name);
     }
 
     [Theory]
@@ -645,7 +645,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     public void AlterMaterializedViews_PreserveColumnRenameFields(string prefix, bool expected)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary RENAME {prefix}id TO item_id"));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.RenameColumn>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.RenameColumn>(Assert.Single(statement.Operations));
 
         Assert.Equal("id", operation.OldName.Name);
         Assert.Equal("item_id", operation.NewName.Name);
@@ -658,8 +658,8 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         var schema = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary SET SCHEMA archive"));
         var tablespace = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast"));
 
-        Assert.Equal("archive", Assert.IsType<PgAlterMaterializedViewOperation.SetSchema>(Assert.Single(schema.Operations)).Name.Name);
-        Assert.Equal("fast", Assert.IsType<PgAlterMaterializedViewOperation.SetTablespace>(Assert.Single(tablespace.Operations)).Name.Name);
+        Assert.Equal("archive", Assert.IsType<PgAlterRelationOperation.SetSchema>(Assert.Single(schema.Operations)).Name.Name);
+        Assert.Equal("fast", Assert.IsType<PgAlterRelationOperation.SetTablespace>(Assert.Single(tablespace.Operations)).Name.Name);
     }
 
     [Theory]
@@ -707,7 +707,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         const string sql = "/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary RENAME COLUMN id TO item_id /* tail */; SELECT 2;";
         var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.RenameColumn>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.RenameColumn>(Assert.Single(statement.Operations));
 
         Assert.Equal(2, statements.Count);
         Assert.Equal(0, statement.Meta.Start);
@@ -720,13 +720,13 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("SET SCHEMA archive", typeof(PgAlterMaterializedViewOperation.SetSchema))]
-    [InlineData("OWNER TO owner_name", typeof(PgAlterMaterializedViewOperation.OwnerTo))]
-    [InlineData("OWNER TO CURRENT_USER", typeof(PgAlterMaterializedViewOperation.OwnerTo))]
-    [InlineData("SET ACCESS METHOD heap", typeof(PgAlterMaterializedViewOperation.SetAccessMethod))]
-    [InlineData("SET ACCESS METHOD DEFAULT", typeof(PgAlterMaterializedViewOperation.SetDefaultAccessMethod))]
-    [InlineData("CLUSTER ON summary_idx", typeof(PgAlterMaterializedViewOperation.ClusterOn))]
-    [InlineData("SET WITHOUT CLUSTER", typeof(PgAlterMaterializedViewOperation.SetWithoutCluster))]
+    [InlineData("SET SCHEMA archive", typeof(PgAlterRelationOperation.SetSchema))]
+    [InlineData("OWNER TO owner_name", typeof(PgAlterRelationOperation.OwnerTo))]
+    [InlineData("OWNER TO CURRENT_USER", typeof(PgAlterRelationOperation.OwnerTo))]
+    [InlineData("SET ACCESS METHOD heap", typeof(PgAlterRelationOperation.SetAccessMethod))]
+    [InlineData("SET ACCESS METHOD DEFAULT", typeof(PgAlterRelationOperation.SetDefaultAccessMethod))]
+    [InlineData("CLUSTER ON summary_idx", typeof(PgAlterRelationOperation.ClusterOn))]
+    [InlineData("SET WITHOUT CLUSTER", typeof(PgAlterRelationOperation.SetWithoutCluster))]
     public void AlterMaterializedViews_PreserveAtomicBodyBoundariesAndDependencies(string clause, Type operationType)
     {
         string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC ALTER MATERIALIZED VIEW app.summary {clause}; SELECT 2; END";
@@ -774,7 +774,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         const string sql = "ALTER MATERIALIZED VIEW IF EXISTS app.summary SET (fillfactor = 70, autovacuum_enabled, toast.autovacuum_enabled = FALSE)";
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.SetStorageParameters>(Assert.Single(statement.Operations));
 
         Assert.True(statement.IfExists);
         Assert.Equal(new[] { "fillfactor", "autovacuum_enabled", "toast.autovacuum_enabled" }, operation.Parameters.Select(parameter => parameter.Name.ToSql()));
@@ -792,7 +792,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         const string sql = "ALTER MATERIALIZED VIEW summary RESET (fillfactor, toast.autovacuum_enabled, \"MixedCase\")";
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.ResetStorageParameters>(Assert.Single(statement.Operations));
 
         Assert.Equal(new[] { "fillfactor", "toast.autovacuum_enabled", "\"MixedCase\"" }, operation.Parameters.Select(name => name.ToSql()));
         Assert.Equal(sql, statement.ToSql());
@@ -812,7 +812,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     public void MaterializedViewStorage_PreserveScalarValues(string input, string expected)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary SET (setting = {input})"));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.SetStorageParameters>(Assert.Single(statement.Operations));
 
         Assert.Equal(expected, Assert.Single(operation.Parameters).Value!.ToSql());
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
@@ -829,8 +829,8 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
         ObjectName[] parameterNames = isSet
-            ? [.. Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statement.Operations)).Parameters.Select(parameter => parameter.Name)]
-            : [.. Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(Assert.Single(statement.Operations)).Parameters];
+            ? [.. Assert.IsType<PgAlterRelationOperation.SetStorageParameters>(Assert.Single(statement.Operations)).Parameters.Select(parameter => parameter.Name)]
+            : [.. Assert.IsType<PgAlterRelationOperation.ResetStorageParameters>(Assert.Single(statement.Operations)).Parameters];
 
         Assert.Equal(2, statements.Count);
         Assert.Equal(0, statement.Meta.Start);
@@ -851,8 +851,8 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         AlterMaterializedView[] statements = [.. body.Statements.OfType<AlterMaterializedView>()];
 
         Assert.Equal(2, statements.Length);
-        Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(Assert.Single(statements[0].Operations));
-        Assert.IsType<PgAlterMaterializedViewOperation.ResetStorageParameters>(Assert.Single(statements[1].Operations));
+        Assert.IsType<PgAlterRelationOperation.SetStorageParameters>(Assert.Single(statements[0].Operations));
+        Assert.IsType<PgAlterRelationOperation.ResetStorageParameters>(Assert.Single(statements[1].Operations));
         Assert.All(statements, statement =>
         {
             Assert.Equal(';', sql[statement.Meta.EndPlusTerminatorLength!.Value - 1]);
@@ -895,7 +895,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary OWNER TO {role} /* tail */; SELECT 2;";
         var statements = ParseStatements(sql, sourceId: 137);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.OwnerTo>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.OwnerTo>(Assert.Single(statement.Operations));
         var owner = Assert.IsType<Account.Identity>(operation.Owner);
 
         Assert.True(statement.IfExists);
@@ -920,7 +920,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     public void MaterializedViewOwnership_PreserveSpecialRoleVariants(string role, Type roleType, string expectedSql)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary OWNER TO {role}"));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.OwnerTo>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.OwnerTo>(Assert.Single(statement.Operations));
 
         Assert.False(statement.IfExists);
         Assert.IsType(roleType, operation.Owner);
@@ -955,9 +955,9 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary {clause} /* tail */; SELECT 2;";
         var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
-        Identifier name = Assert.Single(statement.Operations) is PgAlterMaterializedViewOperation.SetAccessMethod accessMethod
+        Identifier name = Assert.Single(statement.Operations) is PgAlterRelationOperation.SetAccessMethod accessMethod
             ? accessMethod.Name
-            : Assert.IsType<PgAlterMaterializedViewOperation.ClusterOn>(Assert.Single(statement.Operations)).Name;
+            : Assert.IsType<PgAlterRelationOperation.ClusterOn>(Assert.Single(statement.Operations)).Name;
 
         Assert.True(statement.IfExists);
         Assert.Equal(expectedName, name.Name);
@@ -979,8 +979,8 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         var namedMethod = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"default\""));
 
         Assert.True(defaultMethod.IfExists);
-        Assert.IsType<PgAlterMaterializedViewOperation.SetDefaultAccessMethod>(Assert.Single(defaultMethod.Operations));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.SetAccessMethod>(Assert.Single(namedMethod.Operations));
+        Assert.IsType<PgAlterRelationOperation.SetDefaultAccessMethod>(Assert.Single(defaultMethod.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.SetAccessMethod>(Assert.Single(namedMethod.Operations));
         Assert.Equal("default", operation.Name.Name);
         Assert.Equal(QuoteStyle.Ansi, operation.Name.QuoteStyle);
         Assert.NotEqual(defaultMethod.Operations, namedMethod.Operations);
@@ -1044,7 +1044,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary {clause} /* tail */; SELECT 2;";
         var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
         var statement = Assert.IsType<AlterMaterializedView>(statements[0]);
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.AlterColumn>(Assert.Single(statement.Operations));
 
         Assert.True(statement.IfExists);
         Assert.Equal("id", operation.Name.Name);
@@ -1069,13 +1069,13 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement("ALTER MATERIALIZED VIEW summary ALTER COLUMN id SET STATISTICS 100, ALTER body SET STORAGE EXTENDED, SET (fillfactor = 70)"));
 
         Assert.Equal(3, statement.Operations.Count);
-        var statistics = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(statement.Operations[0]);
+        var statistics = Assert.IsType<PgAlterRelationOperation.AlterColumn>(statement.Operations[0]);
         Assert.Equal(100, Assert.IsType<PgColumnConfigurationOperation.SetStatistics>(statistics.Operation).Target);
         Assert.Equal("id", statistics.Name.Name);
-        var storage = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(statement.Operations[1]);
+        var storage = Assert.IsType<PgAlterRelationOperation.AlterColumn>(statement.Operations[1]);
         Assert.Equal(PgColumnStorageMode.Extended, Assert.IsType<PgColumnConfigurationOperation.SetStorage>(storage.Operation).Mode);
         Assert.Equal("body", storage.Name.Name);
-        Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statement.Operations[2]);
+        Assert.IsType<PgAlterRelationOperation.SetStorageParameters>(statement.Operations[2]);
         var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));
         Assert.Equal("summary", reference.Name.ToSql());
         Assert.Equal(ItemType.Unknown, reference.Type);
@@ -1087,7 +1087,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     public void MaterializedViewLifecycle_PreserveExtensionDependencyFields(string prefix, bool expectedNo)
     {
         var statement = Assert.IsType<AlterMaterializedView>(ParseStatement($"ALTER MATERIALIZED VIEW summary {prefix}DEPENDS ON EXTENSION \"MyExtension\""));
-        var operation = Assert.IsType<PgAlterMaterializedViewOperation.DependsOnExtension>(Assert.Single(statement.Operations));
+        var operation = Assert.IsType<PgAlterRelationOperation.DependsOnExtension>(Assert.Single(statement.Operations));
 
         Assert.Equal(expectedNo, operation.No);
         Assert.Equal("MyExtension", operation.Name.Name);

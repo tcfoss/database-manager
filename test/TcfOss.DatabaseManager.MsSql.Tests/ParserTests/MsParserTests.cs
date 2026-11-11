@@ -694,6 +694,25 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Theory]
+    [InlineData("ALTER TABLE items OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER TABLE items SET SCHEMA archive")]
+    [InlineData("ALTER TABLE items SET TABLESPACE fast")]
+    [InlineData("ALTER TABLE items SET ACCESS METHOD heap")]
+    [InlineData("ALTER TABLE items CLUSTER ON items_idx")]
+    [InlineData("ALTER TABLE items SET WITHOUT CLUSTER")]
+    [InlineData("ALTER TABLE items SET (fillfactor = 70)")]
+    [InlineData("ALTER TABLE items RESET (fillfactor)")]
+    [InlineData("ALTER TABLE items SET LOGGED")]
+    [InlineData("ALTER TABLE items INHERIT app.parent")]
+    [InlineData("ALTER TABLE items NO INHERIT app.parent")]
+    [InlineData("ALTER TABLE items OF app.row_type")]
+    [InlineData("ALTER TABLE items NOT OF")]
+    public void AlterTableManagement_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Fact]
     public void AlterDispatch_AcceptsTable()
     {

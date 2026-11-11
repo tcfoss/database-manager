@@ -4,6 +4,7 @@ public enum ReferencedItemsContext
 {
     SelectValueList,
     AlterTableTarget,
+    AlterTableType,
     DropObjectStatement,
     SelectItem,
     UpdateClause,

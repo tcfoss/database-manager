@@ -1018,6 +1018,10 @@ public class TableParser
         while (true)
         {
             AlterTableOperation operation = ParseNextAlterOperation(state);
+            if (only && !SupportsOnlyAlterOperation(operation))
+            {
+                throw state.ExpectedException("ALTER TABLE operation without ONLY");
+            }
             operations.Add(operation);
             if (IsStandaloneAlterOperation(operation))
             {
@@ -1046,16 +1050,51 @@ public class TableParser
         return false;
     }
 
+    protected virtual bool SupportsOnlyAlterOperation(AlterTableOperation operation) => true;
+
     protected virtual bool SupportsAlterOperation(Keyword keyword) => true;
 
     private AlterTableOperation ParseNextAlterOperation(ParserState state)
     {
-        Word next = state.Next() as Word ?? throw ParserState.ExpectedCategoryException("alter_table_operation", state.PeekNth(-1));
+        Word next = state.Peek() as Word ?? throw ParserState.ExpectedCategoryException("alter_table_operation", state.Peek());
         Keyword nextKeyword = next.Keyword;
         if (!SupportsAlterOperation(nextKeyword))
         {
             throw ParserState.ExpectedCategoryException("alter_table_operation", next);
         }
+        if (_p.SupportsPostgresTableAlterSyntax)
+        {
+            if (state.ParseKeywordsAll(Keyword.SET, Keyword.LOGGED))
+            {
+                return new AlterTableOperation.PgPersistence(true);
+            }
+            if (state.ParseKeywordsAll(Keyword.SET, Keyword.UNLOGGED))
+            {
+                return new AlterTableOperation.PgPersistence(false);
+            }
+            if (state.ParseKeywordsAll(Keyword.NO, Keyword.INHERIT))
+            {
+                return new AlterTableOperation.PgInherit(_objname(state)) { No = true };
+            }
+            if (state.ParseKeyword(Keyword.INHERIT))
+            {
+                return new AlterTableOperation.PgInherit(_objname(state));
+            }
+            if (state.ParseKeywordsAll(Keyword.NOT, Keyword.OF))
+            {
+                return new AlterTableOperation.PgNotOf();
+            }
+            if (state.ParseKeyword(Keyword.OF))
+            {
+                return new AlterTableOperation.PgOf(_objname(state));
+            }
+            PgAlterRelationOperation? relation = _p.DdlParser.ParseOptionalAlterRelationOperation(state);
+            if (relation != null)
+            {
+                return new AlterTableOperation.PgRelation(relation);
+            }
+        }
+        state.Next();
 
         if (nextKeyword == Keyword.AUTO_INCREMENT)
         {

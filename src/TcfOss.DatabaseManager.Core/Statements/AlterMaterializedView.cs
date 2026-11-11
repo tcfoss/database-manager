@@ -6,7 +6,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record AlterMaterializedView(ObjectName Name, SqlValueList<PgAlterMaterializedViewOperation> Operations) : Statement
+public record AlterMaterializedView(ObjectName Name, SqlValueList<PgAlterRelationOperation> Operations) : Statement
 {
     public bool IfExists { get; init; }
 

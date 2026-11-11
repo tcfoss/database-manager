@@ -173,6 +173,69 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
+    public record PgRelation(PgAlterRelationOperation Operation) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Operation.ToSql(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            Operation.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgPersistence(bool Logged) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(Logged ? "SET LOGGED" : "SET UNLOGGED");
+        }
+    }
+
+    public record PgInherit(ObjectName Parent) : AlterTableOperation
+    {
+        public bool No { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(No ? "NO INHERIT " : "INHERIT ");
+            Parent.ToSql(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(No ? "NO INHERIT " : "INHERIT ");
+            Parent.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgOf(ObjectName Type) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"OF {Type}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("OF ");
+            Type.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgNotOf : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("NOT OF");
+        }
+    }
+
     public record PgIdentity(Identifier Column, SqlValueList<PgAlterIdentityOperation> Operations) : AlterTableOperation
     {
         public bool UseColumnKeyword { get; init; }

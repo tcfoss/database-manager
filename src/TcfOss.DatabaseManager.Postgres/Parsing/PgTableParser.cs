@@ -11,7 +11,9 @@ public class PgTableParser(Parser parser) : TableParser(parser)
 {
     protected override bool SupportsAlterOperation(Keyword keyword)
     {
-        return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME;
+        return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME
+            or Keyword.SET or Keyword.RESET or Keyword.OWNER or Keyword.CLUSTER
+            or Keyword.INHERIT or Keyword.NO or Keyword.OF or Keyword.NOT;
     }
 
     protected override AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)
@@ -21,9 +23,16 @@ public class PgTableParser(Parser parser) : TableParser(parser)
 
     protected override bool RequiresAlterTableRenameTo => true;
 
+    protected override bool SupportsOnlyAlterOperation(AlterTableOperation operation)
+    {
+        return operation is not (AlterTableOperation.Rename
+            or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema });
+    }
+
     protected override bool IsStandaloneAlterOperation(AlterTableOperation operation)
     {
-        return operation is AlterTableOperation.RenameColumn or AlterTableOperation.Rename;
+        return operation is AlterTableOperation.RenameColumn or AlterTableOperation.Rename
+            or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema };
     }
 
     protected override StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)

@@ -56,6 +56,24 @@ public record AlterTable(ObjectName Table, SqlValueList<AlterTableOperation> Ope
         }
         foreach (AlterTableOperation operation in Operations)
         {
+            ObjectName? dependency = operation switch
+            {
+                AlterTableOperation.PgInherit inherit => inherit.Parent,
+                AlterTableOperation.PgOf of => of.Type,
+                _ => null
+            };
+            using (context.Enter(operation is AlterTableOperation.PgOf
+                ? ReferencedItemsContext.AlterTableType : ReferencedItemsContext.AlterTableTarget))
+            {
+                if (dependency != null)
+                {
+                    ItemRef? item = context.CreateObjectRef(dependency);
+                    if (item != null)
+                    {
+                        yield return item;
+                    }
+                }
+            }
             DataTypeReference? dataType = operation switch
             {
                 AlterTableOperation.AddColumn { Column: StatementColumn.Typed column } => column.DataType,

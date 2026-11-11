@@ -588,6 +588,17 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("ALTER TABLE items OWNER TO CURRENT_ROLE, SET LOGGED, INHERIT app.parent, OF app.row_type")]
+    [InlineData("ALTER TABLE items SET TABLESPACE fast, SET ACCESS METHOD DEFAULT, SET (fillfactor = 70), RESET (fillfactor)")]
+    public void AlterTableManagement_CoreGrammarRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("ALTER TABLE mytable DOUNKNOWNTHING blah")]
     public static void AlterTable_UnknownOperation_Throws(string sql)
     {

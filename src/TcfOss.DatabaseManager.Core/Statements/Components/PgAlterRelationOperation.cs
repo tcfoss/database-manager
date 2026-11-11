@@ -4,12 +4,12 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public abstract record PgAlterMaterializedViewOperation : IWriteSql
+public abstract record PgAlterRelationOperation : IWriteSql
 {
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
 
-    public record RenameTo(Identifier Name) : PgAlterMaterializedViewOperation
+    public record RenameTo(Identifier Name) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -23,7 +23,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record RenameColumn(Identifier OldName, Identifier NewName) : PgAlterMaterializedViewOperation
+    public record RenameColumn(Identifier OldName, Identifier NewName) : PgAlterRelationOperation
     {
         public bool UseColumnKeyword { get; init; }
 
@@ -42,7 +42,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record SetSchema(Identifier Name) : PgAlterMaterializedViewOperation
+    public record SetSchema(Identifier Name) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -56,7 +56,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record SetTablespace(Identifier Name) : PgAlterMaterializedViewOperation
+    public record SetTablespace(Identifier Name) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -70,7 +70,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record SetStorageParameters(SqlValueList<PgStorageParameter> Parameters) : PgAlterMaterializedViewOperation
+    public record SetStorageParameters(SqlValueList<PgStorageParameter> Parameters) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -85,7 +85,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record ResetStorageParameters(SqlValueList<ObjectName> Parameters) : PgAlterMaterializedViewOperation
+    public record ResetStorageParameters(SqlValueList<ObjectName> Parameters) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -100,7 +100,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record OwnerTo(Account Owner) : PgAlterMaterializedViewOperation
+    public record OwnerTo(Account Owner) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -114,7 +114,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record SetAccessMethod(Identifier Name) : PgAlterMaterializedViewOperation
+    public record SetAccessMethod(Identifier Name) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -128,7 +128,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record SetDefaultAccessMethod : PgAlterMaterializedViewOperation
+    public record SetDefaultAccessMethod : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -141,7 +141,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record ClusterOn(Identifier Name) : PgAlterMaterializedViewOperation
+    public record ClusterOn(Identifier Name) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -155,7 +155,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record SetWithoutCluster : PgAlterMaterializedViewOperation
+    public record SetWithoutCluster : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -168,7 +168,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record DependsOnExtension(Identifier Name) : PgAlterMaterializedViewOperation
+    public record DependsOnExtension(Identifier Name) : PgAlterRelationOperation
     {
         public bool No { get; init; }
 
@@ -185,7 +185,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record AlterColumn(Identifier Name, PgColumnConfigurationOperation Operation) : PgAlterMaterializedViewOperation
+    public record AlterColumn(Identifier Name, PgColumnConfigurationOperation Operation) : PgAlterRelationOperation
     {
         public bool UseColumnKeyword { get; init; }
 

@@ -181,6 +181,41 @@ remain deferred. PostgreSQL definition construction explicitly rejects these
 ALTER statements. Table-level/dependency-sensitive ALTER and broader routine
 ALTER forms are separate follow-up work.
 
+## Table Management And Dependency Links
+
+The first bounded table-level ALTER slice supports OWNER TO, SET SCHEMA,
+SET TABLESPACE, SET ACCESS METHOD name/DEFAULT, CLUSTER ON, SET WITHOUT CLUSTER,
+storage-parameter SET/RESET, SET LOGGED/UNLOGGED, INHERIT/NO INHERIT, and OF/NOT OF.
+Owner specifications retain named roles and CURRENT_ROLE/CURRENT_USER/SESSION_USER;
+quoted access-method names remain distinct from DEFAULT. Storage parameters reuse
+the existing scalar-value grammar, including optional values and toast-qualified
+names. SET SCHEMA is standalone and rejects ONLY; the other new actions compose
+with column alterations. Table rename also rejects ONLY.
+
+Core owns the grammar. `PgAlterRelationOperation` generalizes the former
+materialized-view operation component, and `DdlParser.ParseOptionalAlterRelationOperation`
+shares ownership, placement, access-method, storage, and clustering parsing.
+Table-specific persistence, inheritance, and composite-type links remain distinct
+`AlterTableOperation` variants. `SupportsPostgresTableAlterSyntax` narrows these
+forms out of the MySQL/MariaDB and SQL Server parsers without changing their
+existing ALTER syntax or statement spelling preservation. Materialized views do
+not acquire table-specific persistence or inheritance syntax.
+
+Dependency traversal reports written INHERIT/NO INHERIT parents as table references
+and OF types as unresolved references, preserving filters and caller scopes even
+when enumeration stops early. Owner roles, destination schemas/tablespaces,
+storage labels, access methods, and table-local clustering index names are not
+reported as independent database objects. SQL/JSON round trips, formatting,
+sources/comments, statement/atomic boundaries, malformed/standalone clauses,
+provider distinctions, and sourced unsupported construction are unit-tested.
+
+This does not complete the table-level ALTER roadmap item. Bulk tablespace moves,
+explicit descendant `*` spelling, row security, trigger/rule states, replica identity,
+and expanded constraint operations remain pending. Partition operations remain a
+separate slice. Parent/type/role lookup, compatibility, privileges, physical
+rewrites, catalog updates, migration generation, and execution are deferred;
+PostgreSQL definition construction still explicitly rejects ALTER statements.
+
 ## Shared DROP Options And Type/Domain Targets
 
 Core's `DropObject` supports TYPE and DOMAIN targets with optional IF EXISTS,

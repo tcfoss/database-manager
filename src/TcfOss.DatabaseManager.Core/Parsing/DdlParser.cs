@@ -1550,13 +1550,13 @@ public class DdlParser
 
         ObjectName name = _parseObjectName(state);
 
-        PgAlterMaterializedViewOperation first = ParseAlterMaterializedViewOperation(state, ifExists);
-        SqlValueList<PgAlterMaterializedViewOperation> operations = [first];
+        PgAlterRelationOperation first = ParseAlterMaterializedViewOperation(state, ifExists);
+        SqlValueList<PgAlterRelationOperation> operations = [first];
         if (IsCombinableMaterializedViewOperation(first))
         {
             while (state.ConsumeTokenIs<Comma>())
             {
-                PgAlterMaterializedViewOperation next = ParseAlterMaterializedViewOperation(state, ifExists);
+                PgAlterRelationOperation next = ParseAlterMaterializedViewOperation(state, ifExists);
                 if (!IsCombinableMaterializedViewOperation(next))
                 {
                     throw state.ExpectedCategoryException("combinable materialized-view action");
@@ -1567,90 +1567,50 @@ public class DdlParser
         return new AlterMaterializedView(name, operations) { IfExists = ifExists };
     }
 
-    private static bool IsCombinableMaterializedViewOperation(PgAlterMaterializedViewOperation operation)
+    private static bool IsCombinableMaterializedViewOperation(PgAlterRelationOperation operation)
     {
-        return operation is not (PgAlterMaterializedViewOperation.RenameTo
-            or PgAlterMaterializedViewOperation.RenameColumn
-            or PgAlterMaterializedViewOperation.SetSchema
-            or PgAlterMaterializedViewOperation.DependsOnExtension);
+        return operation is not (PgAlterRelationOperation.RenameTo
+            or PgAlterRelationOperation.RenameColumn
+            or PgAlterRelationOperation.SetSchema
+            or PgAlterRelationOperation.DependsOnExtension);
     }
 
-    private PgAlterMaterializedViewOperation ParseAlterMaterializedViewOperation(ParserState state, bool ifExists)
+    private PgAlterRelationOperation ParseAlterMaterializedViewOperation(ParserState state, bool ifExists)
     {
-        PgAlterMaterializedViewOperation operation;
+        PgAlterRelationOperation? shared = ParseOptionalAlterRelationOperation(state);
+        if (shared != null)
+        {
+            return shared;
+        }
+        PgAlterRelationOperation operation;
         if (state.Peek() is Word { Keyword: Keyword.NO or Keyword.DEPENDS } && !ifExists)
         {
             bool no = state.ParseKeyword(Keyword.NO);
             state.ExpectKeywordsAll(Keyword.DEPENDS, Keyword.ON, Keyword.EXTENSION);
-            operation = new PgAlterMaterializedViewOperation.DependsOnExtension(_parseIdentifier(state)) { No = no };
+            operation = new PgAlterRelationOperation.DependsOnExtension(_parseIdentifier(state)) { No = no };
         }
         else if (state.ParseKeyword(Keyword.RENAME))
         {
             if (state.ParseKeyword(Keyword.TO))
             {
-                operation = new PgAlterMaterializedViewOperation.RenameTo(_parseIdentifier(state));
+                operation = new PgAlterRelationOperation.RenameTo(_parseIdentifier(state));
             }
             else
             {
                 bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
                 Identifier oldName = _parseIdentifier(state);
                 state.ExpectKeyword(Keyword.TO);
-                operation = new PgAlterMaterializedViewOperation.RenameColumn(oldName, _parseIdentifier(state))
+                operation = new PgAlterRelationOperation.RenameColumn(oldName, _parseIdentifier(state))
                 {
                     UseColumnKeyword = useColumnKeyword
                 };
             }
         }
-        else if (state.ParseKeyword(Keyword.SET))
-        {
-            if (state.PeekIs<ParenOpen>())
-            {
-                operation = new PgAlterMaterializedViewOperation.SetStorageParameters(
-                    state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false));
-            }
-            else if (state.ParseKeyword(Keyword.ACCESS))
-            {
-                state.ExpectKeyword(Keyword.METHOD);
-                operation = state.ParseKeyword(Keyword.DEFAULT)
-                    ? new PgAlterMaterializedViewOperation.SetDefaultAccessMethod()
-                    : new PgAlterMaterializedViewOperation.SetAccessMethod(_parseIdentifier(state));
-            }
-            else if (state.ParseKeyword(Keyword.WITHOUT))
-            {
-                state.ExpectKeyword(Keyword.CLUSTER);
-                operation = new PgAlterMaterializedViewOperation.SetWithoutCluster();
-            }
-            else
-            {
-                Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
-                operation = target switch
-                {
-                    Keyword.SCHEMA => new PgAlterMaterializedViewOperation.SetSchema(_parseIdentifier(state)),
-                    Keyword.TABLESPACE => new PgAlterMaterializedViewOperation.SetTablespace(_parseIdentifier(state)),
-                    _ => throw state.ExpectedException("SCHEMA", "TABLESPACE", "ACCESS", "WITHOUT", "(")
-                };
-            }
-        }
-        else if (state.ParseKeyword(Keyword.RESET))
-        {
-            operation = new PgAlterMaterializedViewOperation.ResetStorageParameters(
-                state.ParseParenthesizedCommaSeparated(ParseStorageParameterName, false));
-        }
-        else if (state.ParseKeyword(Keyword.OWNER))
-        {
-            state.ExpectKeyword(Keyword.TO);
-            operation = new PgAlterMaterializedViewOperation.OwnerTo(ParsePostgresOwner(state));
-        }
-        else if (state.ParseKeyword(Keyword.CLUSTER))
-        {
-            state.ExpectKeyword(Keyword.ON);
-            operation = new PgAlterMaterializedViewOperation.ClusterOn(_parseIdentifier(state));
-        }
         else if (state.ParseKeyword(Keyword.ALTER))
         {
             bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
             Identifier column = _parseIdentifier(state);
-            operation = new PgAlterMaterializedViewOperation.AlterColumn(column, ParseColumnConfigurationOperation(state))
+            operation = new PgAlterRelationOperation.AlterColumn(column, ParseColumnConfigurationOperation(state))
             {
                 UseColumnKeyword = useColumnKeyword
             };
@@ -1658,6 +1618,61 @@ public class DdlParser
         else
         {
             throw state.ExpectedException("RENAME", "SET", "RESET", "OWNER", "CLUSTER", "ALTER", "DEPENDS", "NO");
+        }
+        return operation;
+    }
+
+    public PgAlterRelationOperation? ParseOptionalAlterRelationOperation(ParserState state)
+    {
+        PgAlterRelationOperation operation;
+        if (state.ParseKeyword(Keyword.SET))
+        {
+            if (state.PeekIs<ParenOpen>())
+            {
+                operation = new PgAlterRelationOperation.SetStorageParameters(
+                    state.ParseParenthesizedCommaSeparated(ParseStorageParameter, false));
+            }
+            else if (state.ParseKeyword(Keyword.ACCESS))
+            {
+                state.ExpectKeyword(Keyword.METHOD);
+                operation = state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgAlterRelationOperation.SetDefaultAccessMethod()
+                    : new PgAlterRelationOperation.SetAccessMethod(_parseIdentifier(state));
+            }
+            else if (state.ParseKeyword(Keyword.WITHOUT))
+            {
+                state.ExpectKeyword(Keyword.CLUSTER);
+                operation = new PgAlterRelationOperation.SetWithoutCluster();
+            }
+            else
+            {
+                Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
+                operation = target switch
+                {
+                    Keyword.SCHEMA => new PgAlterRelationOperation.SetSchema(_parseIdentifier(state)),
+                    Keyword.TABLESPACE => new PgAlterRelationOperation.SetTablespace(_parseIdentifier(state)),
+                    _ => throw state.ExpectedException("SCHEMA", "TABLESPACE", "ACCESS", "WITHOUT", "(")
+                };
+            }
+        }
+        else if (state.ParseKeyword(Keyword.RESET))
+        {
+            operation = new PgAlterRelationOperation.ResetStorageParameters(
+                state.ParseParenthesizedCommaSeparated(ParseStorageParameterName, false));
+        }
+        else if (state.ParseKeyword(Keyword.OWNER))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            operation = new PgAlterRelationOperation.OwnerTo(ParsePostgresOwner(state));
+        }
+        else if (state.ParseKeyword(Keyword.CLUSTER))
+        {
+            state.ExpectKeyword(Keyword.ON);
+            operation = new PgAlterRelationOperation.ClusterOn(_parseIdentifier(state));
+        }
+        else
+        {
+            return null;
         }
         return operation;
     }
