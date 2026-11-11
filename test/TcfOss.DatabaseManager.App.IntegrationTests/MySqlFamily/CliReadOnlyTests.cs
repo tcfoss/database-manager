@@ -9,6 +9,7 @@ using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IntegrationTests;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Resources;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests;
 using TcfOss.DatabaseManager.Core.Tests.Resources;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
@@ -755,8 +756,9 @@ public abstract class CliReadOnlyTests<TFixture> : IClassFixture<TFixture>
         Assert.NotEqual(0, parseResult);
 
         var filePath = Path.Combine(fileFixture.RootDirectory.FullName, "parse_error_not_droppable.sql");
+        var options = string.Join(" | ", DroppableObject.AllowedValues);
         var expected = $$"""
-            Parse Error: Expected one of { TABLE | PROCEDURE | FUNCTION | TRIGGER | VIEW | MATERIALIZED VIEW | EVENT | SCHEMA | DATABASE | INDEX }. Found CARROT. (In file '{{filePath}}' at line 1, column 6)
+            Parse Error: Expected one of { {{options}} }. Found CARROT. (In file '{{filePath}}' at line 1, column 6)
             DROP CARROT cant_drop;
                  ^
             """;

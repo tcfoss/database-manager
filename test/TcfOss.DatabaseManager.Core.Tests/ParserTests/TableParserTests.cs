@@ -47,6 +47,19 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
+    [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2", "ALTER TABLE items ALTER COLUMN total SET DEFAULT (1 + 2)")]
+    public void DefaultExpressionsWithoutParentheses_RoundTrip(string sql, string expectedSql)
+    {
+        Assert.True(new Parser().SupportsDefaultExpressionsWithoutParentheses);
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
     /* Spatial and Fulltext */
     [Theory]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), SPATIAL (my_val))", Label = "spatial index")]
@@ -405,91 +418,75 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
     /* Change/Modify Columns */
     [Theory]
-    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val VARCHAR(50) NOT NULL", null, Label = "modify column")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val VARCHAR(100) NULL", null, Label = "change column")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_val VARCHAR(100) NULL", null, Label = "change column same name")]
-    [InlineData("ALTER TABLE mytable MODIFY my_val VARCHAR(50) NOT NULL", "ALTER TABLE mytable MODIFY COLUMN my_val VARCHAR(50) NOT NULL", Label = "modify shorthand")]
-    [InlineData("ALTER TABLE mytable CHANGE my_val my_new_val VARCHAR(100) NULL", "ALTER TABLE mytable CHANGE COLUMN my_val my_new_val VARCHAR(100) NULL", Label = "change shorthand")]
-    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL AFTER other_col", null, Label = "modify column after")]
-    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL FIRST", null, Label = "modify column first")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL AFTER other_col", null, Label = "change column after")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL FIRST", null, Label = "change column first")]
-    public static void AlterTable_ChangeModifyColumns_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val VARCHAR(50) NOT NULL", Label = "modify column")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val VARCHAR(100) NULL", Label = "change column")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_val VARCHAR(100) NULL", Label = "change column same name")]
+    [InlineData("ALTER TABLE mytable MODIFY my_val VARCHAR(50) NOT NULL", Label = "modify shorthand")]
+    [InlineData("ALTER TABLE mytable CHANGE my_val my_new_val VARCHAR(100) NULL", Label = "change shorthand")]
+    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL AFTER other_col", Label = "modify column after")]
+    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL FIRST", Label = "modify column first")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL AFTER other_col", Label = "change column after")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL FIRST", Label = "change column first")]
+    public static void AlterTable_ChangeModifyColumns_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Add Keys */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD PRIMARY KEY (my_id)", null, Label = "add primary key")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE (my_val)", null, Label = "add named unique")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE KEY (my_val)", null, Label = "add named unique key")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE INDEX (my_val)", null, Label = "add named unique index")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE (my_val)", null, Label = "add unnamed unique")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val)", null, Label = "add unnamed unique key")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE INDEX (my_val)", null, Label = "add unnamed unique index")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val1, my_val2)", null, Label = "add multi-column unique key")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY uidx_mytable_my_val (my_val)", null, Label = "add named unique key index")]
-    [InlineData("ALTER TABLE mytable ADD KEY idx_mytable_myval (my_val)", null, Label = "add key")]
-    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval (my_val)", null, Label = "add index")]
-    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval USING BTREE (my_val)", null, Label = "add btree index")]
-    [InlineData("ALTER TABLE mytable ADD FULLTEXT INDEX idx_mytable_myval (my_val)", null, Label = "add fulltext index")]
-    [InlineData("ALTER TABLE mytable ADD SPATIAL INDEX idx_mytable_myval (my_val)", null, Label = "add spatial index")]
-    public static void AlterTable_AddKeys_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD PRIMARY KEY (my_id)", Label = "add primary key")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE (my_val)", Label = "add named unique")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE KEY (my_val)", Label = "add named unique key")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE INDEX (my_val)", Label = "add named unique index")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE (my_val)", Label = "add unnamed unique")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val)", Label = "add unnamed unique key")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE INDEX (my_val)", Label = "add unnamed unique index")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val1, my_val2)", Label = "add multi-column unique key")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY uidx_mytable_my_val (my_val)", Label = "add named unique key index")]
+    [InlineData("ALTER TABLE mytable ADD KEY idx_mytable_myval (my_val)", Label = "add key")]
+    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval (my_val)", Label = "add index")]
+    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval USING BTREE (my_val)", Label = "add btree index")]
+    [InlineData("ALTER TABLE mytable ADD FULLTEXT INDEX idx_mytable_myval (my_val)", Label = "add fulltext index")]
+    [InlineData("ALTER TABLE mytable ADD SPATIAL INDEX idx_mytable_myval (my_val)", Label = "add spatial index")]
+    public static void AlterTable_AddKeys_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Add Foreign Key */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD FOREIGN KEY (other_id) REFERENCES othertable (other_id)", null, Label = "add unnamed foreign key")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT fk_mytable_othertable FOREIGN KEY (other_id) REFERENCES othertable (other_id)", null, Label = "add named foreign key")]
-    public static void AlterTable_AddForeignKey_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD FOREIGN KEY (other_id) REFERENCES othertable (other_id)", Label = "add unnamed foreign key")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT fk_mytable_othertable FOREIGN KEY (other_id) REFERENCES othertable (other_id)", Label = "add named foreign key")]
+    public static void AlterTable_AddForeignKey_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Add Check */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD CHECK (my_val > 0)", null, Label = "add unnamed check")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT ck_mytable_nonneg CHECK (my_val > 0)", null, Label = "add named check")]
-    public static void AlterTable_AddCheck_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD CHECK (my_val > 0)", Label = "add unnamed check")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT ck_mytable_nonneg CHECK (my_val > 0)", Label = "add named check")]
+    public static void AlterTable_AddCheck_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Drops */
     [Theory]
     [InlineData("ALTER TABLE mytable DROP COLUMN old_col", null, Label = "drop column")]
-    [InlineData("ALTER TABLE mytable DROP old_col", "ALTER TABLE mytable DROP COLUMN old_col", Label = "drop shorthand column")]
+    [InlineData("ALTER TABLE mytable DROP old_col", null, Label = "drop shorthand column")]
     [InlineData("ALTER TABLE mytable DROP PRIMARY KEY pk_name", null, Label = "drop named primary key")]
     [InlineData("ALTER TABLE mytable DROP FOREIGN KEY fk_mytable_othertable", null, Label = "drop foreign key")]
     [InlineData("ALTER TABLE mytable DROP INDEX my_index", "ALTER TABLE mytable DROP KEY my_index", Label = "drop index")]
@@ -578,17 +575,15 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
     /* Multiple Operations */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id)", null, Label = "multiple operations add")]
-    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id), DROP CONSTRAINT ck_mytable_nonneg", null, Label = "multiple operations add and drop")]
-    public static void AlterTable_MultipleOperations_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id)", Label = "multiple operations add")]
+    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id), DROP CONSTRAINT ck_mytable_nonneg", Label = "multiple operations add and drop")]
+    [InlineData("ALTER TABLE mytable ALTER COLUMN label TYPE TEXT, ALTER label SET STATISTICS DEFAULT", Label = "column type and configuration")]
+    [InlineData("ALTER TABLE mytable ADD COLUMN IF NOT EXISTS label TEXT, DROP IF EXISTS old_label CASCADE", Label = "column existence flags")]
+    public static void AlterTable_MultipleOperations_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 

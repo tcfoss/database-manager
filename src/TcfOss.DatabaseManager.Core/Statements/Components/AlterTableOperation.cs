@@ -18,6 +18,7 @@ public abstract record AlterTableOperation() : IWriteSql
     public record AddColumn(StatementColumn Column, bool PrintColumn) : AlterTableOperation
     {
         public AlterTableColumnPosition? Position { get; init; }
+        public bool IfNotExists { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -25,6 +26,10 @@ public abstract record AlterTableOperation() : IWriteSql
             if (PrintColumn)
             {
                 writer.WriteSql($" COLUMN");
+            }
+            if (IfNotExists)
+            {
+                writer.Write(" IF NOT EXISTS");
             }
             writer.WriteSql($" {Column}");
             if (Position != null)
@@ -41,6 +46,10 @@ public abstract record AlterTableOperation() : IWriteSql
             {
                 writer.Write("COLUMN ");
             }
+            if (IfNotExists)
+            {
+                writer.Write("IF NOT EXISTS ");
+            }
             Column.FormatSqlBody(writer, manager);
             if (Position != null)
             {
@@ -52,30 +61,54 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record DropColumn(Identifier Column) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
+        public bool IfExists { get; init; }
+        public PgDropBehavior? PgBehavior { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"DROP COLUMN {Column}");
+            writer.Write(PrintColumn ? "DROP COLUMN " : "DROP ");
+            if (IfExists)
+            {
+                writer.Write("IF EXISTS ");
+            }
+            Column.ToSql(writer);
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("DROP COLUMN ");
+            writer.Write(PrintColumn ? "DROP COLUMN " : "DROP ");
+            if (IfExists)
+            {
+                writer.Write("IF EXISTS ");
+            }
             Column.FormatSql(writer, manager);
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
         }
     }
 
     public record RenameColumn(Identifier OldName, Identifier NewName) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"RENAME COLUMN {OldName} TO {NewName}");
+            writer.Write(PrintColumn ? "RENAME COLUMN " : "RENAME ");
+            writer.WriteSql($"{OldName} TO {NewName}");
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("RENAME COLUMN ");
+            writer.Write(PrintColumn ? "RENAME COLUMN " : "RENAME ");
             OldName.FormatSql(writer, manager);
             writer.Write(" TO ");
             NewName.FormatSql(writer, manager);
@@ -84,11 +117,13 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record ChangeColumn(Identifier OldName, StatementColumn NewDefinition) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
         public AlterTableColumnPosition? Position { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"CHANGE COLUMN {OldName} {NewDefinition}");
+            writer.Write(PrintColumn ? "CHANGE COLUMN " : "CHANGE ");
+            writer.WriteSql($"{OldName} {NewDefinition}");
             if (Position != null)
             {
                 writer.WriteSql($" {Position}");
@@ -98,7 +133,7 @@ public abstract record AlterTableOperation() : IWriteSql
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("CHANGE COLUMN ");
+            writer.Write(PrintColumn ? "CHANGE COLUMN " : "CHANGE ");
             OldName.FormatSql(writer, manager);
             writer.Write(" ");
             NewDefinition.FormatSqlBody(writer, manager);
@@ -112,11 +147,13 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record ModifyColumn(StatementColumn NewDefinition) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
         public AlterTableColumnPosition? Position { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"MODIFY COLUMN {NewDefinition}");
+            writer.Write(PrintColumn ? "MODIFY COLUMN " : "MODIFY ");
+            writer.WriteSql($"{NewDefinition}");
             if (Position != null)
             {
                 writer.WriteSql($" {Position}");
@@ -126,7 +163,7 @@ public abstract record AlterTableOperation() : IWriteSql
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("MODIFY COLUMN ");
+            writer.Write(PrintColumn ? "MODIFY COLUMN " : "MODIFY ");
             NewDefinition.FormatSqlBody(writer, manager);
             if (Position != null)
             {
@@ -160,34 +197,69 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
-    public record SetDefault(Identifier Column, StatementColumnOption.Default NewDefault) : AlterTableOperation
+    public record PgColumn(Identifier Column, PgAlterColumnOperation Operation) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"ALTER COLUMN {Column} SET {NewDefault}");
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} {Operation}");
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("ALTER COLUMN ");
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            Column.FormatSql(writer, manager);
+            writer.Write(" ");
+            Operation.FormatSql(writer, manager);
+        }
+    }
+
+    public record SetDefault(Identifier Column, StatementColumnOption.Default NewDefault) : AlterTableOperation
+    {
+        public bool PrintColumn { get; init; } = true;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} SET {NewDefault}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
             Column.FormatSql(writer, manager);
             writer.Write(" SET ");
-            NewDefault.ToSql(writer);
+            if (NewDefault is StatementColumnOption.Default.DefaultExpression expression)
+            {
+                writer.Write("DEFAULT (");
+                expression.Expression.FormatSql(writer, manager);
+                writer.Write(")");
+            }
+            else
+            {
+                NewDefault.FormatSql(writer, manager);
+            }
         }
     }
 
     public record DropDefault(Identifier Column) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"ALTER COLUMN {Column} DROP DEFAULT");
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} DROP DEFAULT");
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("ALTER COLUMN ");
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
             Column.FormatSql(writer, manager);
             writer.Write(" DROP DEFAULT");
         }

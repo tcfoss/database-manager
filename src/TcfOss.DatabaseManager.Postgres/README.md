@@ -136,6 +136,51 @@ lifecycle and identity ALTER statements with sourced diagnostics. Resolved
 sequences, implicit serial/identity sequence construction, catalog loading,
 migrations, and execution remain deferred.
 
+## Column Structural And Configuration Alterations
+
+`ALTER TABLE [IF EXISTS] [ONLY] name ...` supports ADD [COLUMN] [IF NOT EXISTS],
+DROP [COLUMN] [IF EXISTS] with optional CASCADE/RESTRICT, and standalone
+RENAME [COLUMN] old TO new. Optional COLUMN spelling, existence flags, and
+omitted versus explicit drop behavior survive SQL/JSON round trips.
+
+`ALTER [COLUMN] name ...` supports TYPE and SET DATA TYPE with optional COLLATE
+and USING expressions, SET/DROP DEFAULT, SET/DROP NOT NULL, SET EXPRESSION AS
+(expression), and DROP EXPRESSION [IF EXISTS]. Defaults and USING/generated
+expressions reuse the existing expression grammar. Ordered comma-separated
+actions compose with the existing identity alterations.
+
+`Parser.SupportsDefaultExpressionsWithoutParentheses` controls full expression
+defaults in both column declarations and ALTER operations. It is enabled in Core,
+PostgreSQL, and SQL Server; the shared MySQL/MariaDB parser retains its existing
+default parsing. Literal defaults keep their literal AST variant. Declaration
+defaults stop before a trailing column COLLATE clause, while ALTER defaults can
+include expression COLLATE directly.
+
+Column configuration covers SET STATISTICS integer/DEFAULT, SET/RESET option
+lists, SET STORAGE PLAIN/EXTERNAL/EXTENDED/MAIN, and SET COMPRESSION name/DEFAULT.
+Core's shared `PgColumnConfigurationOperation` replaces the materialized-view-only
+component and is reused by both table and materialized-view column alterations.
+Option assignments require scalar values; quoted compression names remain
+distinct from DEFAULT. Core owns the grammar; MySQL/MariaDB and SQL Server retain
+their existing implemented ALTER forms without inheriting these PostgreSQL
+extensions. PostgreSQL rejects MySQL MODIFY/CHANGE, FIRST/AFTER positions,
+AUTO_INCREMENT, and character-set alterations.
+
+SQL/JSON round trips, typed payloads, formatting/idempotence, sources/comments,
+statement/atomic boundaries, malformed clauses, provider distinctions, and sourced
+unsupported construction are unit-tested. Dependency traversal reports the
+existing table, written named/array element types and collations, and references
+within defaults/generated/USING expressions. Types and collations remain
+unresolved; configuration names and rename destinations are not dependencies.
+Filters and caller scopes are preserved, including partial enumeration.
+
+This completes the bounded structural/configuration column parsing slice.
+Type conversion, column eligibility, option names/values and statistics limits,
+dependency/cascade effects, catalog updates, migration generation, and execution
+remain deferred. PostgreSQL definition construction explicitly rejects these
+ALTER statements. Table-level/dependency-sensitive ALTER and broader routine
+ALTER forms are separate follow-up work.
+
 ## Shared DROP Options And Type/Domain Targets
 
 Core's `DropObject` supports TYPE and DOMAIN targets with optional IF EXISTS,

@@ -28,5 +28,7 @@ public enum ReferencedItemsContext
     SequenceOwnedBy,
     DropTypeTarget,
     DropRoutineTarget,
-    DropTriggerTarget
+    DropTriggerTarget,
+    AlterColumnType,
+    AlterColumnExpression
 }

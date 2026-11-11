@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public abstract record PgMaterializedViewColumnOperation : IWriteSql
+public abstract record PgColumnConfigurationOperation : IWriteSql
 {
     public abstract void ToSql(SqlTextWriter writer);
     public virtual void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -12,7 +12,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         ToSql(writer);
     }
 
-    public record SetStatistics(int Target) : PgMaterializedViewColumnOperation
+    public record SetStatistics(int Target) : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -20,7 +20,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         }
     }
 
-    public record SetDefaultStatistics : PgMaterializedViewColumnOperation
+    public record SetDefaultStatistics : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -28,7 +28,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         }
     }
 
-    public record SetOptions(SqlValueList<PgStorageParameter> Parameters) : PgMaterializedViewColumnOperation
+    public record SetOptions(SqlValueList<PgStorageParameter> Parameters) : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -43,7 +43,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         }
     }
 
-    public record ResetOptions(SqlValueList<Identifier> Parameters) : PgMaterializedViewColumnOperation
+    public record ResetOptions(SqlValueList<Identifier> Parameters) : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -58,7 +58,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         }
     }
 
-    public record SetStorage(PgColumnStorageMode Mode) : PgMaterializedViewColumnOperation
+    public record SetStorage(PgColumnStorageMode Mode) : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -66,7 +66,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         }
     }
 
-    public record SetCompression(Identifier Method) : PgMaterializedViewColumnOperation
+    public record SetCompression(Identifier Method) : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -80,7 +80,7 @@ public abstract record PgMaterializedViewColumnOperation : IWriteSql
         }
     }
 
-    public record SetDefaultCompression : PgMaterializedViewColumnOperation
+    public record SetDefaultCompression : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {

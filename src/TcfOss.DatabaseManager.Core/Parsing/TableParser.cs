@@ -175,6 +175,7 @@ public class TableParser
         }
         if (state.ParseKeyword(Keyword.DEFAULT))
         {
+            using ParserState.Scope scope = state.EnterContext(ParseContext.DefaultExpression);
             return ParseDefault(state, constraintName);
         }
         if (state.ParseKeyword(Keyword.CHECK))
@@ -287,6 +288,15 @@ public class TableParser
 
     private StatementColumnOption.Default ParseDefault(ParserState state, Identifier? constraintName)
     {
+        if (_p.SupportsDefaultExpressionsWithoutParentheses)
+        {
+            Expression expression = state.Context.HasFlag(ParseContext.DefaultExpression)
+                ? _p.ExpressionParser.ParseDefaultExpr(state)
+                : _p.ExpressionParser.ParseExpr(state);
+            return expression is LiteralValue literal
+                ? new StatementColumnOption.Default.DefaultValue(literal.Value, constraintName)
+                : new StatementColumnOption.Default.DefaultExpression(expression is Nested nested ? nested.Expression : expression, constraintName);
+        }
         if (state.Peek() is NumericLiteral or StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or BitStringLiteral or DollarQuotedStringLiteral or NationalStringLiteral or HexStringLiteral
                 or Word { Keyword: Keyword.TRUE or Keyword.FALSE or Keyword.NULL }
             && state.TryParse(ValueParser.ParseValue, out Value? val))
@@ -999,15 +1009,23 @@ public class TableParser
     {
         state.ExpectKeyword(Keyword.TABLE);
 
-        bool ifExists = _p.SupportsPostgresIdentitySyntax && state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
-        bool only = _p.SupportsPostgresIdentitySyntax && state.ParseKeyword(Keyword.ONLY);
+        bool ifExists = _p.SupportsPostgresColumnAlterSyntax && state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
+        bool only = _p.SupportsPostgresColumnAlterSyntax && state.ParseKeyword(Keyword.ONLY);
         ObjectName tableName = _objname(state);
 
         var operations = new SqlValueList<AlterTableOperation>();
 
         while (true)
         {
-            operations.Add(ParseNextAlterOperation(state));
+            AlterTableOperation operation = ParseNextAlterOperation(state);
+            operations.Add(operation);
+            if (IsStandaloneAlterOperation(operation))
+            {
+                if (operations.Count != 1 || state.PeekIs<Comma>())
+                {
+                    throw state.ExpectedException("standalone ALTER TABLE operation");
+                }
+            }
 
             if (state.PeekIs<Semicolon>() || state.PeekIs<Eof>())
             {
@@ -1023,10 +1041,21 @@ public class TableParser
         return new AlterTable(tableName, operations) { IfExists = ifExists, Only = only };
     }
 
+    protected virtual bool IsStandaloneAlterOperation(AlterTableOperation operation)
+    {
+        return false;
+    }
+
+    protected virtual bool SupportsAlterOperation(Keyword keyword) => true;
+
     private AlterTableOperation ParseNextAlterOperation(ParserState state)
     {
         Word next = state.Next() as Word ?? throw ParserState.ExpectedCategoryException("alter_table_operation", state.PeekNth(-1));
         Keyword nextKeyword = next.Keyword;
+        if (!SupportsAlterOperation(nextKeyword))
+        {
+            throw ParserState.ExpectedCategoryException("alter_table_operation", next);
+        }
 
         if (nextKeyword == Keyword.AUTO_INCREMENT)
         {
@@ -1047,23 +1076,25 @@ public class TableParser
         }
         if (nextKeyword == Keyword.MODIFY)
         {
-            _ = state.ParseKeyword(Keyword.COLUMN);
+            bool printColumn = state.ParseKeyword(Keyword.COLUMN);
 
             StatementColumn column = ParseColumn(state);
             return new AlterTableOperation.ModifyColumn(column)
             {
+                PrintColumn = printColumn,
                 Position = ParseAlterTableColumnPosition(state)
             };
         }
         if (nextKeyword == Keyword.CHANGE)
         {
-            _ = state.ParseKeyword(Keyword.COLUMN);
+            bool printColumn = state.ParseKeyword(Keyword.COLUMN);
 
             Identifier oldName = _ident(state);
             StatementColumn newColumn = ParseColumn(state);
 
             return new AlterTableOperation.ChangeColumn(oldName, newColumn)
             {
+                PrintColumn = printColumn,
                 Position = ParseAlterTableColumnPosition(state)
             };
         }
@@ -1077,11 +1108,25 @@ public class TableParser
             if (state.ParseKeywordsAll(Keyword.SET, Keyword.DEFAULT))
             {
                 StatementColumnOption.Default newDefault = ParseDefault(state, null);
-                return new AlterTableOperation.SetDefault(columnName, newDefault);
+                return new AlterTableOperation.SetDefault(columnName, newDefault)
+                {
+                    PrintColumn = useColumnKeyword
+                };
             }
             if (state.ParseKeywordsAll(Keyword.DROP, Keyword.DEFAULT))
             {
-                return new AlterTableOperation.DropDefault(columnName);
+                return new AlterTableOperation.DropDefault(columnName)
+                {
+                    PrintColumn = useColumnKeyword
+                };
+            }
+            if (_p.SupportsPostgresColumnAlterSyntax)
+            {
+                PgAlterColumnOperation? operation = ParseOptionalPostgresColumnAlterOperation(state);
+                if (operation != null)
+                {
+                    return new AlterTableOperation.PgColumn(columnName, operation) { PrintColumn = useColumnKeyword };
+                }
             }
             AlterTableOperation.PgIdentity? identity = ParseOptionalAlterIdentity(state, columnName, useColumnKeyword);
             if (identity != null)
@@ -1096,16 +1141,7 @@ public class TableParser
         }
         if (nextKeyword == Keyword.RENAME)
         {
-            if (state.ParseKeyword(Keyword.COLUMN))
-            {
-                Identifier oldColumnName = _ident(state);
-                state.ExpectKeyword(Keyword.TO);
-                Identifier newColumnName = _ident(state);
-                return new AlterTableOperation.RenameColumn(oldColumnName, newColumnName);
-            }
-            _ = state.ParseKeywordsAny(Keyword.TO, Keyword.AS);
-            ObjectName newName = _objname(state);
-            return new AlterTableOperation.Rename(newName);
+            return ParseAlterRename(state);
         }
 
         bool includeDefault = nextKeyword == Keyword.DEFAULT;
@@ -1123,6 +1159,71 @@ public class TableParser
         }
 
         throw ParserState.ExpectedCategoryException("alter_table_operation", next);
+    }
+
+    protected virtual bool RequiresAlterTableRenameTo => false;
+
+    protected virtual AlterTableOperation ParseAlterRename(ParserState state)
+    {
+        bool printColumn = state.ParseKeyword(Keyword.COLUMN);
+        if (printColumn || (_p.SupportsPostgresColumnAlterSyntax && state.PeekNth(1) is Word { Keyword: Keyword.TO }))
+        {
+            Identifier oldColumnName = _ident(state);
+            state.ExpectKeyword(Keyword.TO);
+            Identifier newColumnName = _ident(state);
+            return new AlterTableOperation.RenameColumn(oldColumnName, newColumnName) { PrintColumn = printColumn };
+        }
+        if (RequiresAlterTableRenameTo)
+        {
+            state.ExpectKeyword(Keyword.TO);
+            return new AlterTableOperation.Rename(new ObjectName(_ident(state)));
+        }
+        _ = state.ParseKeywordsAny(Keyword.TO, Keyword.AS);
+        return new AlterTableOperation.Rename(_objname(state));
+    }
+
+    private PgAlterColumnOperation? ParseOptionalPostgresColumnAlterOperation(ParserState state)
+    {
+        bool useSetData = state.ParseKeywordsAll(Keyword.SET, Keyword.DATA);
+        if (useSetData || state.ParseKeyword(Keyword.TYPE))
+        {
+            if (useSetData)
+            {
+                state.ExpectKeyword(Keyword.TYPE);
+            }
+            DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+            ObjectName? collation = state.ParseKeyword(Keyword.COLLATE) ? _objname(state) : null;
+            Expression? usingExpression = state.ParseKeyword(Keyword.USING) ? _p.ExpressionParser.ParseExpr(state) : null;
+            return new PgAlterColumnOperation.ChangeType(dataType)
+            {
+                UseSetData = useSetData,
+                Collation = collation,
+                Using = usingExpression
+            };
+        }
+        if (state.ParseKeywordsAll(Keyword.SET, Keyword.NOT, Keyword.NULL))
+        {
+            return new PgAlterColumnOperation.Nullability(true);
+        }
+        if (state.ParseKeywordsAll(Keyword.DROP, Keyword.NOT, Keyword.NULL))
+        {
+            return new PgAlterColumnOperation.Nullability(false);
+        }
+        if (state.ParseKeywordsAll(Keyword.SET, Keyword.EXPRESSION))
+        {
+            state.ExpectKeyword(Keyword.AS);
+            return new PgAlterColumnOperation.SetExpression(state.ParseParenthesized(_p.ExpressionParser.ParseExpr));
+        }
+        if (state.ParseKeywordsAll(Keyword.DROP, Keyword.EXPRESSION))
+        {
+            return new PgAlterColumnOperation.DropExpression(state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS));
+        }
+        if (state.PeekKeyword(Keyword.RESET)
+            || (state.PeekKeyword(Keyword.SET) && state.PeekNth(1) is ParenOpen or Word { Keyword: Keyword.STATISTICS or Keyword.STORAGE or Keyword.COMPRESSION }))
+        {
+            return new PgAlterColumnOperation.Configuration(_p.DdlParser.ParseColumnConfigurationOperation(state));
+        }
+        return null;
     }
 
     private AlterTableOperation.PgIdentity? ParseOptionalAlterIdentity(ParserState state, Identifier column, bool useColumnKeyword)
@@ -1233,11 +1334,13 @@ public class TableParser
     private AlterTableOperation.AddColumn SubParseAlterAddColumn(ParserState state)
     {
         bool printKeyword = state.ParseKeyword(Keyword.COLUMN);
+        bool ifNotExists = _p.SupportsPostgresColumnAlterSyntax && state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         StatementColumn column = ParseColumn(state);
         return new AlterTableOperation.AddColumn(column, printKeyword)
         {
-            Position = ParseAlterTableColumnPosition(state)
+            Position = ParseAlterTableColumnPosition(state),
+            IfNotExists = ifNotExists
         };
     }
 
@@ -1275,13 +1378,19 @@ public class TableParser
             return new AlterTableOperation.DropConstraint(constraintName);
         }
 
-        state.ParseKeyword(Keyword.COLUMN);
+        bool printColumn = state.ParseKeyword(Keyword.COLUMN);
+        bool ifExists = _p.SupportsPostgresColumnAlterSyntax && state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
         Identifier columnName = _ident(state);
-        return new AlterTableOperation.DropColumn(columnName);
+        return new AlterTableOperation.DropColumn(columnName)
+        {
+            PrintColumn = printColumn,
+            IfExists = ifExists,
+            PgBehavior = _p.SupportsPostgresColumnAlterSyntax ? state.MaybeParseStringEnum<PgDropBehavior>() : null
+        };
     }
 
 
-    private AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)
+    protected virtual AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)
     {
         if (state.ParseKeyword(Keyword.FIRST))
         {

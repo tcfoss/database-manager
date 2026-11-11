@@ -34,6 +34,59 @@ public class PgCreateDispatchTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT (1 + 2))", "CREATE TABLE items (total INT DEFAULT (1 + 2))")]
+    [InlineData("CREATE TABLE items (total INT CONSTRAINT initial_total DEFAULT 1 + 2 CHECK (total > 0))", "CREATE TABLE items (total INT CONSTRAINT initial_total DEFAULT (1 + 2) CHECK (total > 0))")]
+    [InlineData("CREATE TABLE items (label TEXT DEFAULT 'a' || 'b' COLLATE \"C\")", "CREATE TABLE items (label TEXT DEFAULT ('a' || 'b') COLLATE \"C\")")]
+    public void ColumnDefaultExpressionsWithoutParentheses_RoundTrip(string sql, string expectedSql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+        StatementColumn column = statement.Columns[0];
+        var defaultOption = Assert.Single(column.Options.OfType<StatementColumnOption.Default.DefaultExpression>());
+
+        Assert.True(new PgParser().SupportsDefaultExpressionsWithoutParentheses);
+        Assert.IsType<Core.Expressions.BinaryOperator>(defaultOption.Expression);
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        using var formatter = IO.Formatting.Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.IsType<CreateTable>(ParseStatement(formatted));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("5", true)]
+    [InlineData("NULL", true)]
+    [InlineData("'a'", true)]
+    [InlineData("(5)", false)]
+    public void ColumnDefaults_RetainLiteralAndExpressionVariants(string value, bool literal)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (label TEXT DEFAULT {value})"));
+        StatementColumnOption option = Assert.Single(Assert.Single(statement.Columns).Options);
+
+        if (literal)
+        {
+            Assert.IsType<StatementColumnOption.Default.DefaultValue>(option);
+        }
+        else
+        {
+            Assert.IsType<StatementColumnOption.Default.DefaultExpression>(option);
+        }
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 +)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 +, other INT)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT)")]
+    public void IncompleteColumnDefaultExpressions_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("CREATE")]
     [InlineData("CREATE *")]
     [InlineData("CREATE unsupported_object")]

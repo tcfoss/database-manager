@@ -25,6 +25,8 @@ public class MyParser : Parser
     public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
+    public override bool SupportsPostgresColumnAlterSyntax => false;
+    public override bool SupportsDefaultExpressionsWithoutParentheses => false;
     public override bool SupportsPostgresExpressionCollationSyntax => false;
     public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
     public override bool SupportsPostgresOperatorSyntax => false;

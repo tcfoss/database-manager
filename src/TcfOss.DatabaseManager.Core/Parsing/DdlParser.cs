@@ -1650,7 +1650,7 @@ public class DdlParser
         {
             bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
             Identifier column = _parseIdentifier(state);
-            operation = new PgAlterMaterializedViewOperation.AlterColumn(column, ParseMaterializedViewColumnOperation(state))
+            operation = new PgAlterMaterializedViewOperation.AlterColumn(column, ParseColumnConfigurationOperation(state))
             {
                 UseColumnKeyword = useColumnKeyword
             };
@@ -1674,28 +1674,28 @@ public class DdlParser
         };
     }
 
-    private PgMaterializedViewColumnOperation ParseMaterializedViewColumnOperation(ParserState state)
+    public PgColumnConfigurationOperation ParseColumnConfigurationOperation(ParserState state)
     {
         if (state.ParseKeyword(Keyword.RESET))
         {
-            return new PgMaterializedViewColumnOperation.ResetOptions(state.ParseParenthesizedCommaSeparated(_parseIdentifier, false));
+            return new PgColumnConfigurationOperation.ResetOptions(state.ParseParenthesizedCommaSeparated(_parseIdentifier, false));
         }
         state.ExpectKeyword(Keyword.SET);
         if (state.PeekIs<ParenOpen>())
         {
-            return new PgMaterializedViewColumnOperation.SetOptions(state.ParseParenthesizedCommaSeparated(ParseMaterializedViewColumnOption, false));
+            return new PgColumnConfigurationOperation.SetOptions(state.ParseParenthesizedCommaSeparated(ParseMaterializedViewColumnOption, false));
         }
         Keyword kind = state.ParseKeywordsAny(Keyword.STATISTICS, Keyword.STORAGE, Keyword.COMPRESSION);
         switch (kind)
         {
             case Keyword.STATISTICS:
                 return state.ParseKeyword(Keyword.DEFAULT)
-                    ? new PgMaterializedViewColumnOperation.SetDefaultStatistics()
-                    : new PgMaterializedViewColumnOperation.SetStatistics(ValueParser.ParseLiteralInt(state));
+                    ? new PgColumnConfigurationOperation.SetDefaultStatistics()
+                    : new PgColumnConfigurationOperation.SetStatistics(ValueParser.ParseLiteralInt(state));
             case Keyword.COMPRESSION:
                 return state.ParseKeyword(Keyword.DEFAULT)
-                    ? new PgMaterializedViewColumnOperation.SetDefaultCompression()
-                    : new PgMaterializedViewColumnOperation.SetCompression(_parseIdentifier(state));
+                    ? new PgColumnConfigurationOperation.SetDefaultCompression()
+                    : new PgColumnConfigurationOperation.SetCompression(_parseIdentifier(state));
             case Keyword.STORAGE:
                 Token start = state.Peek();
                 Identifier mode = _parseIdentifier(state);
@@ -1703,7 +1703,7 @@ public class DdlParser
                 {
                     throw ParserState.ExpectedCategoryException("column storage mode", start);
                 }
-                return new PgMaterializedViewColumnOperation.SetStorage(storageMode);
+                return new PgColumnConfigurationOperation.SetStorage(storageMode);
             default:
                 throw state.ExpectedException("STATISTICS", "STORAGE", "COMPRESSION", "(");
         }

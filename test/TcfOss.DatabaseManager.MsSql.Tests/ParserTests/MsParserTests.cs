@@ -38,6 +38,32 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
 
 
     [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL)")]
+    [InlineData("CREATE TABLE items (total INT CONSTRAINT initial_total DEFAULT 1 + 2)", "CREATE TABLE items (total INT CONSTRAINT initial_total DEFAULT (1 + 2))")]
+    [InlineData("ALTER TABLE items ADD total INT DEFAULT 1 + 2", "ALTER TABLE items ADD total INT DEFAULT (1 + 2)")]
+    public void DefaultExpressionsWithoutParentheses_RoundTrip(string sql, string expectedSql)
+    {
+        Assert.True(new MsParser().SupportsDefaultExpressionsWithoutParentheses);
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items DROP label", false)]
+    [InlineData("ALTER TABLE items DROP COLUMN label", true)]
+    public void AlterTable_DropPreservesOptionalColumnKeyword(string sql, bool printColumn)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+        var operation = Assert.IsType<AlterTableOperation.DropColumn>(Assert.Single(statement.Operations));
+
+        Assert.Equal(printColumn, operation.PrintColumn);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("NCHAR")]
     [InlineData("BINARY")]
     [InlineData("VARBINARY")]
@@ -647,6 +673,25 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Single(statement.Names);
         Assert.Null(statement.OnObject);
         Assert.Null(statement.PgBehavior);
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items ADD COLUMN IF NOT EXISTS label TEXT")]
+    [InlineData("ALTER TABLE items DROP COLUMN IF EXISTS label CASCADE")]
+    [InlineData("ALTER TABLE items ALTER label TYPE TEXT")]
+    [InlineData("ALTER TABLE items ALTER label SET DATA TYPE TEXT USING label")]
+    [InlineData("ALTER TABLE items ALTER label SET NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label DROP NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label SET EXPRESSION AS (label)")]
+    [InlineData("ALTER TABLE items ALTER label DROP EXPRESSION IF EXISTS")]
+    [InlineData("ALTER TABLE items ALTER label SET STATISTICS 100")]
+    [InlineData("ALTER TABLE items ALTER label SET (n_distinct = 5)")]
+    [InlineData("ALTER TABLE items ALTER label RESET (n_distinct)")]
+    [InlineData("ALTER TABLE items ALTER label SET STORAGE EXTENDED")]
+    [InlineData("ALTER TABLE items ALTER label SET COMPRESSION lz4")]
+    public void AlterTableColumnOperations_RejectPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Fact]

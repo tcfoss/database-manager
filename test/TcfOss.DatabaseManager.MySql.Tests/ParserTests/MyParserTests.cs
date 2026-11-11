@@ -967,6 +967,25 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Theory]
+    [InlineData("ALTER TABLE items ADD COLUMN IF NOT EXISTS label TEXT")]
+    [InlineData("ALTER TABLE items DROP COLUMN IF EXISTS label CASCADE")]
+    [InlineData("ALTER TABLE items ALTER label TYPE TEXT")]
+    [InlineData("ALTER TABLE items ALTER label SET DATA TYPE TEXT USING label")]
+    [InlineData("ALTER TABLE items ALTER label SET NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label DROP NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label SET EXPRESSION AS (label)")]
+    [InlineData("ALTER TABLE items ALTER label DROP EXPRESSION IF EXISTS")]
+    [InlineData("ALTER TABLE items ALTER label SET STATISTICS 100")]
+    [InlineData("ALTER TABLE items ALTER label SET (n_distinct = 5)")]
+    [InlineData("ALTER TABLE items ALTER label RESET (n_distinct)")]
+    [InlineData("ALTER TABLE items ALTER label SET STORAGE EXTENDED")]
+    [InlineData("ALTER TABLE items ALTER label SET COMPRESSION lz4")]
+    public void AlterTableColumnOperations_RejectPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
     [Fact]
     public void AlterDispatch_AcceptsTable()
     {

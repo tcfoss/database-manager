@@ -185,7 +185,7 @@ public abstract record PgAlterMaterializedViewOperation : IWriteSql
         }
     }
 
-    public record AlterColumn(Identifier Name, PgMaterializedViewColumnOperation Operation) : PgAlterMaterializedViewOperation
+    public record AlterColumn(Identifier Name, PgColumnConfigurationOperation Operation) : PgAlterMaterializedViewOperation
     {
         public bool UseColumnKeyword { get; init; }
 

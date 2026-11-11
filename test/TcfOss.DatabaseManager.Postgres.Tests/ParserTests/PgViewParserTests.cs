@@ -1027,18 +1027,18 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("ALTER COLUMN id SET STATISTICS -1", typeof(PgMaterializedViewColumnOperation.SetStatistics), true)]
-    [InlineData("ALTER id SET STATISTICS DEFAULT", typeof(PgMaterializedViewColumnOperation.SetDefaultStatistics), false)]
-    [InlineData("ALTER COLUMN id SET (n_distinct = -0.5, n_distinct_inherited = 100)", typeof(PgMaterializedViewColumnOperation.SetOptions), true)]
-    [InlineData("ALTER id RESET (n_distinct, n_distinct_inherited)", typeof(PgMaterializedViewColumnOperation.ResetOptions), false)]
-    [InlineData("ALTER id SET STORAGE PLAIN", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
-    [InlineData("ALTER id SET STORAGE EXTERNAL", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
-    [InlineData("ALTER id SET STORAGE EXTENDED", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
-    [InlineData("ALTER id SET STORAGE MAIN", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
-    [InlineData("ALTER id SET STORAGE DEFAULT", typeof(PgMaterializedViewColumnOperation.SetStorage), false)]
-    [InlineData("ALTER id SET COMPRESSION lz4", typeof(PgMaterializedViewColumnOperation.SetCompression), false)]
-    [InlineData("ALTER id SET COMPRESSION \"default\"", typeof(PgMaterializedViewColumnOperation.SetCompression), false)]
-    [InlineData("ALTER id SET COMPRESSION DEFAULT", typeof(PgMaterializedViewColumnOperation.SetDefaultCompression), false)]
+    [InlineData("ALTER COLUMN id SET STATISTICS -1", typeof(PgColumnConfigurationOperation.SetStatistics), true)]
+    [InlineData("ALTER id SET STATISTICS DEFAULT", typeof(PgColumnConfigurationOperation.SetDefaultStatistics), false)]
+    [InlineData("ALTER COLUMN id SET (n_distinct = -0.5, n_distinct_inherited = 100)", typeof(PgColumnConfigurationOperation.SetOptions), true)]
+    [InlineData("ALTER id RESET (n_distinct, n_distinct_inherited)", typeof(PgColumnConfigurationOperation.ResetOptions), false)]
+    [InlineData("ALTER id SET STORAGE PLAIN", typeof(PgColumnConfigurationOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE EXTERNAL", typeof(PgColumnConfigurationOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE EXTENDED", typeof(PgColumnConfigurationOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE MAIN", typeof(PgColumnConfigurationOperation.SetStorage), false)]
+    [InlineData("ALTER id SET STORAGE DEFAULT", typeof(PgColumnConfigurationOperation.SetStorage), false)]
+    [InlineData("ALTER id SET COMPRESSION lz4", typeof(PgColumnConfigurationOperation.SetCompression), false)]
+    [InlineData("ALTER id SET COMPRESSION \"default\"", typeof(PgColumnConfigurationOperation.SetCompression), false)]
+    [InlineData("ALTER id SET COMPRESSION DEFAULT", typeof(PgColumnConfigurationOperation.SetDefaultCompression), false)]
     public void MaterializedViewLifecycle_ColumnVariantsPreserveSourcesAndBoundaries(string clause, Type operationType, bool useColumnKeyword)
     {
         string sql = $"/* lead */ ALTER MATERIALIZED VIEW IF EXISTS app.summary {clause} /* tail */; SELECT 2;";
@@ -1070,10 +1070,10 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(3, statement.Operations.Count);
         var statistics = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(statement.Operations[0]);
-        Assert.Equal(100, Assert.IsType<PgMaterializedViewColumnOperation.SetStatistics>(statistics.Operation).Target);
+        Assert.Equal(100, Assert.IsType<PgColumnConfigurationOperation.SetStatistics>(statistics.Operation).Target);
         Assert.Equal("id", statistics.Name.Name);
         var storage = Assert.IsType<PgAlterMaterializedViewOperation.AlterColumn>(statement.Operations[1]);
-        Assert.Equal(PgColumnStorageMode.Extended, Assert.IsType<PgMaterializedViewColumnOperation.SetStorage>(storage.Operation).Mode);
+        Assert.Equal(PgColumnStorageMode.Extended, Assert.IsType<PgColumnConfigurationOperation.SetStorage>(storage.Operation).Mode);
         Assert.Equal("body", storage.Name.Name);
         Assert.IsType<PgAlterMaterializedViewOperation.SetStorageParameters>(statement.Operations[2]);
         var reference = Assert.IsType<ItemRef.ObjectNameRef>(Assert.Single(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })));

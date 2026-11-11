@@ -2,12 +2,30 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Postgres.Parsing;
 
 public class PgTableParser(Parser parser) : TableParser(parser)
 {
+    protected override bool SupportsAlterOperation(Keyword keyword)
+    {
+        return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME;
+    }
+
+    protected override AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)
+    {
+        return null;
+    }
+
+    protected override bool RequiresAlterTableRenameTo => true;
+
+    protected override bool IsStandaloneAlterOperation(AlterTableOperation operation)
+    {
+        return operation is AlterTableOperation.RenameColumn or AlterTableOperation.Rename;
+    }
+
     protected override StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)
     {
         return null;

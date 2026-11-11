@@ -279,6 +279,7 @@ public enum Keyword
     EXPLAIN,
     EXPLICIT,
     EXPORT,
+    EXPRESSION,
     EXTENDED,
     EXTENSION,
     EXTERNAL,

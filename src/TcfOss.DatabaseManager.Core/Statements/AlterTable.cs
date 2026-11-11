@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -51,6 +52,68 @@ public record AlterTable(ObjectName Table, SqlValueList<AlterTableOperation> Ope
             if (item != null)
             {
                 yield return item;
+            }
+        }
+        foreach (AlterTableOperation operation in Operations)
+        {
+            DataTypeReference? dataType = operation switch
+            {
+                AlterTableOperation.AddColumn { Column: StatementColumn.Typed column } => column.DataType,
+                AlterTableOperation.PgColumn { Operation: PgAlterColumnOperation.ChangeType change } => change.DataType,
+                _ => null
+            };
+            while (dataType is DataTypeReference.Array array)
+            {
+                dataType = array.ElementType;
+            }
+            IEnumerable<ObjectName> collations = operation switch
+            {
+                AlterTableOperation.PgColumn { Operation: PgAlterColumnOperation.ChangeType { Collation: { } collation } } => [collation],
+                AlterTableOperation.AddColumn add => add.Column.Options.OfType<StatementColumnOption.PgCollation>().Select(option => option.Name),
+                _ => []
+            };
+            using (context.Enter(ReferencedItemsContext.AlterColumnType))
+            {
+                if (dataType is DataTypeReference.Named named)
+                {
+                    ItemRef? item = context.CreateObjectRef(named.Name);
+                    if (item != null)
+                    {
+                        yield return item;
+                    }
+                }
+                foreach (ObjectName collation in collations)
+                {
+                    ItemRef? item = context.CreateObjectRef(collation);
+                    if (item != null)
+                    {
+                        yield return item;
+                    }
+                }
+            }
+            IEnumerable<Expression> expressions = operation switch
+            {
+                AlterTableOperation.PgColumn { Operation: PgAlterColumnOperation.ChangeType { Using: { } expression } } => [expression],
+                AlterTableOperation.PgColumn { Operation: PgAlterColumnOperation.SetExpression expression } => [expression.Expression],
+                AlterTableOperation.SetDefault { NewDefault: StatementColumnOption.Default.DefaultExpression expression } => [expression.Expression],
+                AlterTableOperation.AddColumn add => add.Column.Options.Select(option => option switch
+                {
+                    StatementColumnOption.Default.DefaultExpression expression => expression.Expression,
+                    StatementColumnOption.Generated.AsExpression generated => generated.Expression,
+                    StatementColumnOption.CheckConstraint check => check.Expression,
+                    _ => null
+                }).OfType<Expression>(),
+                _ => []
+            };
+            using (context.Enter(ReferencedItemsContext.AlterColumnExpression))
+            {
+                foreach (Expression expression in expressions)
+                {
+                    foreach (ItemRef item in expression.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
             }
         }
     }
