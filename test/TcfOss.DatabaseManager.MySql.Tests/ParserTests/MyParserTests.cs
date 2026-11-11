@@ -1108,4 +1108,30 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         Assert.Equal(sql, statement.ToSql());
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE UNLOGGED TABLE items AS SELECT 1")]
+    [InlineData("CREATE TEMP TABLE items (id INT)")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT PRESERVE ROWS")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DELETE ROWS")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE TEMPORARY TABLE items ON COMMIT DROP AS SELECT 1")]
+    public void TablePersistence_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (10)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id app.int_ops)")]
+    [InlineData("CREATE TABLE items (label TEXT) PARTITION BY LIST (label COLLATE app.casefold)")]
+    public void TablePartitions_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

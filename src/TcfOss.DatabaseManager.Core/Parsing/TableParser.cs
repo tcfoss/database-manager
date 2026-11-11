@@ -17,6 +17,8 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class TableParser
 {
+    protected virtual bool SupportsPartitionAsSelect => true;
+
     private readonly Parser _p;
     private readonly Func<ParserState, Identifier> _ident;
     private readonly Func<ParserState, ObjectName> _objname;
@@ -30,7 +32,7 @@ public class TableParser
     }
 
 
-    public CreateTable ParseCreate(ParserState state, bool orReplace, TemporaryLabel? temporary)
+    public CreateTable ParseCreate(ParserState state, bool orReplace, TemporaryLabel? temporary, bool unlogged = false)
     {
         state.ExpectKeyword(Keyword.TABLE);
 
@@ -38,9 +40,26 @@ public class TableParser
 
         ObjectName name = _objname(state);
 
-        (SqlValueList<StatementColumn> columns, SqlValueList<StatementTableConstraint> constraints) = ParseColumns(state);
+        ObjectName? parent = _p.SupportsPostgresTableCreateSyntax && state.ParseKeywordsAll(Keyword.PARTITION, Keyword.OF)
+            ? _objname(state)
+            : null;
+
+        bool printEmptyBody = state.PeekIs<ParenOpen>() && state.PeekNthIs<ParenClose>(1);
+
+        (SqlValueList<StatementColumn> columns, SqlValueList<StatementTableConstraint> constraints) = ParseColumns(state, parent != null);
+
+        PgPartitionOf? partitionOf = parent == null ? null : new PgPartitionOf(parent, ParsePartitionBound(state));
+        PgPartitionBy? partitionBy = ParsePartitionBy(state);
 
         SqlValueList<StatementTableOption> options = ParseTableOptions(state);
+        PgOnCommit? onCommit = ParseOnCommit(state);
+
+        if (!SupportsPartitionAsSelect && (partitionOf != null || partitionBy != null)
+            && state.Peek() is Word { Keyword: Keyword.AS or Keyword.SELECT })
+        {
+            throw state.ExpectedException("partition declaration without AS SELECT");
+        }
+
         (bool printAs, Select? selectStatement) = ParseAsSelect(state);
 
         return new CreateTable(name, columns, constraints)
@@ -48,13 +67,17 @@ public class TableParser
             OrReplace = orReplace,
             Temporary = temporary,
             IfNotExists = ifNotExists,
+            PgOptions = unlogged || onCommit != null || partitionOf != null || partitionBy != null
+                ? new PgCreateTableOptions(unlogged, onCommit) { PartitionOf = partitionOf, PartitionBy = partitionBy }
+                : null,
+            PrintEmptyBody = printEmptyBody,
             TableOptions = options,
             PrintAs = printAs,
             AsSelect = selectStatement
         };
     }
 
-    private (SqlValueList<StatementColumn>, SqlValueList<StatementTableConstraint>) ParseColumns(ParserState state)
+    private (SqlValueList<StatementColumn>, SqlValueList<StatementTableConstraint>) ParseColumns(ParserState state, bool partition = false)
     {
         var columns = new SqlValueList<StatementColumn>();
         var constraints = new SqlValueList<StatementTableConstraint>();
@@ -71,10 +94,17 @@ public class TableParser
             {
                 constraints.Add(currentConstraint);
             }
+            else if (partition)
+            {
+                Identifier name = _ident(state);
+                bool withOptions = state.ParseKeywordsAll(Keyword.WITH, Keyword.OPTIONS);
+                columns.Add(new StatementColumn.PgPartitionOverride(name, ParseColumnOptions(state)) { WithOptions = withOptions });
+            }
             else
             {
                 columns.Add(ParseColumn(state));
             }
+
 
             if (state.ConsumeTokenIs<ParenClose>())
             {
@@ -963,6 +993,26 @@ public class TableParser
         return null;
     }
 
+    private PgOnCommit? ParseOnCommit(ParserState state)
+    {
+        if (!_p.SupportsPostgresTableCreateSyntax || !state.ParseKeywordsAll(Keyword.ON, Keyword.COMMIT))
+        {
+            return null;
+        }
+        if (state.ParseKeyword(Keyword.PRESERVE))
+        {
+            state.ExpectKeyword(Keyword.ROWS);
+            return PgOnCommit.PreserveRows;
+        }
+        if (state.ParseKeyword(Keyword.DELETE))
+        {
+            state.ExpectKeyword(Keyword.ROWS);
+            return PgOnCommit.DeleteRows;
+        }
+        state.ExpectKeyword(Keyword.DROP);
+        return PgOnCommit.Drop;
+    }
+
     private SqlValueList<StatementTableOption> ParseTableOptions(ParserState state)
     {
         var options = new SqlValueList<StatementTableOption>();
@@ -1003,6 +1053,91 @@ public class TableParser
         }
 
         return (false, null);
+    }
+
+    private PgPartitionBy? ParsePartitionBy(ParserState state)
+    {
+        if (!_p.SupportsPostgresTableCreateSyntax || !state.ParseKeywordsAll(Keyword.PARTITION, Keyword.BY))
+        {
+            return null;
+        }
+        PgPartitionStrategy strategy = state.ParseStringEnum<PgPartitionStrategy>();
+        SqlValueList<PgPartitionKey> keys = state.ParseParenthesizedCommaSeparated(ParsePartitionKey, false);
+        return new PgPartitionBy(strategy, keys);
+    }
+
+    private PgPartitionKey ParsePartitionKey(ParserState state)
+    {
+        Expression expression = _p.ExpressionParser.ParseExpr(state);
+        Expression key = expression is Collate collate ? collate.Expression : expression;
+        if (key is not (SingleIdentifier or Nested or FunctionCall or Cast or Position))
+        {
+            throw state.ExpectedException("partition column or parenthesized expression");
+        }
+        if (key is FunctionCall { Over: not null } or FunctionCall { Filter: not null }
+            or FunctionCall { WithinGroup: not null } or Cast { UsePostgresCastSyntax: true })
+        {
+            throw state.ExpectedException("partition column or parenthesized expression");
+        }
+        if (state.Peek() is Word { Keyword: Keyword.ASC or Keyword.DESC or Keyword.NULLS })
+        {
+            throw state.ExpectedException("partition key without ordering");
+        }
+        ObjectName? operatorClass = state.PeekIs<Word>() ? _objname(state) : null;
+        return new PgPartitionKey(expression, operatorClass);
+    }
+
+    private PgPartitionBound ParsePartitionBound(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.DEFAULT))
+        {
+            return new PgPartitionBound.DefaultPartition();
+        }
+
+        state.ExpectKeywordsAll(Keyword.FOR, Keyword.VALUES);
+        if (state.ParseKeyword(Keyword.IN))
+        {
+            return new PgPartitionBound.ListValues(state.ParseParenthesizedCommaSeparated(_p.ExpressionParser.ParseExpr, false));
+        }
+        if (state.ParseKeyword(Keyword.FROM))
+        {
+            SqlValueList<PgPartitionBound.RangeValue> from = state.ParseParenthesizedCommaSeparated(ParsePartitionRangeValue, false);
+            state.ExpectKeyword(Keyword.TO);
+            SqlValueList<PgPartitionBound.RangeValue> to = state.ParseParenthesizedCommaSeparated(ParsePartitionRangeValue, false);
+            return new PgPartitionBound.RangeValues(from, to);
+        }
+
+        state.ExpectKeyword(Keyword.WITH);
+        state.ExpectToken<ParenOpen>();
+
+        bool remainderFirst = state.PeekKeyword(Keyword.REMAINDER);
+        state.ExpectKeyword(remainderFirst ? Keyword.REMAINDER : Keyword.MODULUS);
+        int first = ValueParser.ParseLiteralInt(state);
+
+        state.ExpectToken<Comma>();
+
+        state.ExpectKeyword(remainderFirst ? Keyword.MODULUS : Keyword.REMAINDER);
+        int second = ValueParser.ParseLiteralInt(state);
+
+        state.ExpectToken<ParenClose>();
+
+        return new PgPartitionBound.HashValues(remainderFirst ? second : first, remainderFirst ? first : second)
+        {
+            RemainderFirst = remainderFirst
+        };
+    }
+
+    private PgPartitionBound.RangeValue ParsePartitionRangeValue(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.MINVALUE))
+        {
+            return new PgPartitionBound.RangeValue.MinValue();
+        }
+        if (state.ParseKeyword(Keyword.MAXVALUE))
+        {
+            return new PgPartitionBound.RangeValue.MaxValue();
+        }
+        return new PgPartitionBound.RangeValue.ExpressionValue(_p.ExpressionParser.ParseExpr(state));
     }
 
     public AlterTable ParseAlter(ParserState state)

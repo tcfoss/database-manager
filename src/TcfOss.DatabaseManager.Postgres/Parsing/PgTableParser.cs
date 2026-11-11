@@ -9,6 +9,8 @@ namespace TcfOss.DatabaseManager.Postgres.Parsing;
 
 public class PgTableParser(Parser parser) : TableParser(parser)
 {
+    protected override bool SupportsPartitionAsSelect => false;
+
     protected override bool SupportsAlterOperation(Keyword keyword)
     {
         return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME

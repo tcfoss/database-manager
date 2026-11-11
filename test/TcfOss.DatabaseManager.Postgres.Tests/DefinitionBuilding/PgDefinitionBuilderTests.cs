@@ -79,6 +79,17 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("SELECT 1")]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (2)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent (id DEFAULT 1) DEFAULT PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT) ON COMMIT DELETE ROWS")]
     [InlineData("CREATE VIEW visible AS SELECT 1 WITH CHECK OPTION")]
     [InlineData("CREATE TEMP VIEW visible AS SELECT 1")]
     [InlineData("CREATE TEMPORARY VIEW visible AS SELECT 1")]
@@ -180,6 +191,25 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Contains(statements[0].GetType().Name, exception.Message);
         Assert.Equal(new SourceRef(17, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), exception.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("CREATE TEMP TABLE items (id INT)", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT PRESERVE ROWS", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT DELETE ROWS", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT DROP", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMP TABLE items ON COMMIT DROP AS SELECT 1", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TABLE items AS SELECT 1", typeof(DefinitionException.CreateTableAsSelect))]
+    [InlineData("CREATE UNLOGGED TABLE items AS SELECT 1", typeof(DefinitionException.CreateTableAsSelect))]
+    public void ProcessStatements_RejectsTemporaryTablesAndCtasWithSources(string sql, Type expectedType)
+    {
+        var builder = CreateBuilder();
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        var exception = Assert.ThrowsAny<DefinitionException>(() => builder.ProcessStatements([statement], GetSchema(), 23));
+
+        Assert.IsType(expectedType, exception);
+        Assert.Equal(new SourceRef(23, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Fact]

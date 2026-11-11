@@ -30,7 +30,7 @@ internal static class CreateTableFormatter
         manager.IncreaseIndent();
 
         writer.FormatDelimitedLines(columns, manager, delimiter: ",");
-        if (constraints.Any())
+        if (columns.Any() && constraints.Any())
         {
             writer.WriteLine(",");
         }

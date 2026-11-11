@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -12,6 +13,8 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
     public bool OrReplace { get; init; }
     public TemporaryLabel? Temporary { get; init; }
     public bool IfNotExists { get; init; }
+    public PgCreateTableOptions? PgOptions { get; init; }
+    public bool PrintEmptyBody { get; init; }
 
     public bool PrintAs { get; init; }
     public Select? AsSelect { get; init; }
@@ -22,12 +25,18 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
     {
         string? orReplace = OrReplace ? "OR REPLACE " : null;
         string? temporary = Temporary != null ? $"{Temporary} " : null;
+        string? unlogged = PgOptions is { Unlogged: true } ? "UNLOGGED " : null;
         string? ifNotExists = IfNotExists ? "IF NOT EXISTS " : null;
 
-        writer.WriteSql($"CREATE {orReplace}{temporary}TABLE {ifNotExists}{Name}");
+        writer.WriteSql($"CREATE {orReplace}{temporary}{unlogged}TABLE {ifNotExists}{Name}");
+
+        if (PgOptions?.PartitionOf != null)
+        {
+            writer.WriteSql($" PARTITION OF {PgOptions.PartitionOf.Parent}");
+        }
 
         bool anyColumns = Columns.Any();
-        bool anyBody = anyColumns || Constraints.Any();
+        bool anyBody = anyColumns || Constraints.Any() || PrintEmptyBody;
         if (anyBody)
         {
             writer.Write(" (");
@@ -49,10 +58,24 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
             writer.Write(")");
         }
 
+        if (PgOptions?.PartitionOf != null)
+        {
+            writer.WriteSql($" {PgOptions.PartitionOf.Bound}");
+        }
+        if (PgOptions?.PartitionBy != null)
+        {
+            writer.WriteSql($" {PgOptions.PartitionBy}");
+        }
+
         if (TableOptions.Any())
         {
             writer.Write(" ");
             writer.WriteDelimited(TableOptions, " ");
+        }
+
+        if (PgOptions?.OnCommit != null)
+        {
+            writer.WriteSql($" ON COMMIT {PgOptions.OnCommit}");
         }
 
         if (AsSelect != null)
@@ -70,19 +93,46 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
         Meta.FormatPreNonSql(writer, manager);
         string? orReplace = OrReplace ? "OR REPLACE " : null;
         string? temporary = Temporary != null ? $"{Temporary} " : null;
+        string? unlogged = PgOptions is { Unlogged: true } ? "UNLOGGED " : null;
         string? ifNotExists = IfNotExists ? "IF NOT EXISTS " : null;
 
-        writer.WriteSql($"{manager.Indent}CREATE {orReplace}{temporary}TABLE {ifNotExists}");
+        writer.WriteSql($"{manager.Indent}CREATE {orReplace}{temporary}{unlogged}TABLE {ifNotExists}");
         Name.FormatSql(writer, manager);
+
+        if (PgOptions?.PartitionOf != null)
+        {
+            writer.Write(" PARTITION OF ");
+            PgOptions.PartitionOf.Parent.FormatSql(writer, manager);
+        }
 
         if (Columns.Any() || Constraints.Any())
         {
             CreateTableFormatter.FormatBody(writer, manager, Columns, Constraints);
         }
+        else if (PrintEmptyBody)
+        {
+            writer.Write(" ()");
+        }
+
+        if (PgOptions?.PartitionOf != null)
+        {
+            writer.Write(" ");
+            PgOptions.PartitionOf.Bound.FormatSql(writer, manager);
+        }
+        if (PgOptions?.PartitionBy != null)
+        {
+            writer.Write(" ");
+            PgOptions.PartitionBy.FormatSql(writer, manager);
+        }
 
         if (TableOptions.Any())
         {
             CreateTableFormatter.FormatTableOptions(writer, manager, TableOptions);
+        }
+
+        if (PgOptions?.OnCommit != null)
+        {
+            writer.WriteSql($" ON COMMIT {PgOptions.OnCommit}");
         }
 
         if (AsSelect != null)
@@ -94,6 +144,60 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
+        if (PgOptions?.PartitionOf != null)
+        {
+            using (context.Enter(ReferencedItemsContext.CreateTablePartitionParent))
+            {
+                ItemRef? parent = context.CreateObjectRef(PgOptions.PartitionOf.Parent);
+                if (parent != null)
+                {
+                    yield return parent;
+                }
+            }
+        }
+        using (context.Enter(ReferencedItemsContext.CreateTablePartitionExpression))
+        {
+            foreach (PgPartitionKey key in PgOptions?.PartitionBy?.Keys ?? [])
+            {
+                foreach (ItemRef item in key.Expression.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>())
+                {
+                    yield return item;
+                }
+            }
+            if (PgOptions?.PartitionOf != null)
+            {
+                foreach (ItemRef item in PgOptions.PartitionOf.Bound.GetReferencedItems(context))
+                {
+                    yield return item;
+                }
+            }
+            foreach (StatementColumn.PgPartitionOverride column in Columns.OfType<StatementColumn.PgPartitionOverride>())
+            {
+                foreach (Expression expression in column.Options.Select(option => option switch
+                {
+                    StatementColumnOption.Default.DefaultExpression value => value.Expression,
+                    StatementColumnOption.Generated.AsExpression generated => generated.Expression,
+                    StatementColumnOption.CheckConstraint check => check.Expression,
+                    _ => null
+                }).OfType<Expression>())
+                {
+                    foreach (ItemRef item in expression.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+            if (PgOptions?.PartitionOf != null)
+            {
+                foreach (StatementTableConstraint.Check check in Constraints.OfType<StatementTableConstraint.Check>())
+                {
+                    foreach (ItemRef item in check.Expression.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
         if (AsSelect != null)
         {
             foreach (ItemRef item in AsSelect.GetReferencedItems(context))

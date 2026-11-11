@@ -787,4 +787,30 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.IsType<DropObject>(ParseStatement("DROP INDEX summary_idx ON summary"));
         Assert.ThrowsAny<ParseException>(() => ParseStatement("DROP INDEX summary_idx"));
     }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE UNLOGGED TABLE items AS SELECT 1")]
+    [InlineData("CREATE TEMP TABLE items (id INT)")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT)")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT PRESERVE ROWS")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT DELETE ROWS")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE TABLE items ON COMMIT DROP AS SELECT 1")]
+    public void TablePersistence_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (10)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    public void TablePartitions_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

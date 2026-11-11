@@ -32,5 +32,7 @@ public enum ReferencedItemsContext
     AlterRoutineTarget,
     DropTriggerTarget,
     AlterColumnType,
-    AlterColumnExpression
+    AlterColumnExpression,
+    CreateTablePartitionParent,
+    CreateTablePartitionExpression
 }

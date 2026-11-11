@@ -32,6 +32,7 @@ public class Parser : IParser
     public virtual bool SupportsPostgresIdentitySyntax => true;
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
     public virtual bool SupportsPostgresColumnAlterSyntax => true;
+    public virtual bool SupportsPostgresTableCreateSyntax => true;
     public virtual bool SupportsPostgresTableAlterSyntax => true;
     public virtual bool SupportsDefaultExpressionsWithoutParentheses => true;
     public virtual bool SupportsPostgresExpressionCollationSyntax => true;
@@ -318,9 +319,9 @@ public class Parser : IParser
         {
             throw state.ExpectedException("FUNCTION");
         }
-        if (options.Unlogged && kw != Keyword.SEQUENCE)
+        if (options.Unlogged && kw is not (Keyword.TABLE or Keyword.SEQUENCE))
         {
-            throw state.ExpectedException("SEQUENCE");
+            throw state.ExpectedException("TABLE", "SEQUENCE");
         }
         if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.SEQUENCE))
         {
@@ -349,7 +350,7 @@ public class Parser : IParser
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
             Keyword.SEQUENCE => DdlParser.ParseCreateSequence(state, options.TemporaryLabel, options.Unlogged),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
-            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel),
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel, options.Unlogged),
             Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),

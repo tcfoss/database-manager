@@ -59,6 +59,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     {
                         throw new DefinitionException.CreateTableAsSelect(table.Name.ToString(), sourceRef);
                     }
+                    if (table.PgOptions != null)
+                    {
+                        throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL options", sourceRef);
+                    }
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
                     var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, sourceRef);
                     tableBuilder.ApplyCreateTable(table);

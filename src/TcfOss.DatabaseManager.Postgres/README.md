@@ -92,6 +92,54 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Table Persistence And Temporary Lifecycle
+
+`CREATE [TEMP | TEMPORARY | UNLOGGED] TABLE [IF NOT EXISTS] ...` preserves
+temporary spelling in `CreateTable.Temporary` and PostgreSQL-specific options
+in nullable `PgCreateTableOptions`. Its required UNLOGGED flag is independent
+of optional `PgOnCommit`, which retains PRESERVE ROWS, DELETE ROWS, or DROP.
+Omitting ON COMMIT remains distinct from writing PostgreSQL's PRESERVE ROWS
+default. Existing CTAS parsing composes with ON COMMIT before AS SELECT.
+
+Core owns the grammar. MySQL/MariaDB retain TEMPORARY TABLE but reject the new
+PostgreSQL forms; SQL Server also rejects them. SQL/JSON round trips, identifier
+formatting/idempotence, source/comment/statement boundaries, atomic SQL bodies,
+CTAS query references and caller scopes, and malformed/deferred forms are tested.
+Traditional INHERITS, LIKE/copy options, deprecated GLOBAL/LOCAL qualifiers, and
+expanded CTAS variants remain deferred. Partition declarations are described
+below; partition attachment/detachment remains a separate parsing slice.
+
+Parsing does not validate temporary-only ON COMMIT eligibility, schema/lifetime
+rules, crash recovery, replication, or execution. Temporary tables and CTAS keep
+their existing sourced construction errors. PostgreSQL creation options on
+persistent tables are explicitly rejected until the resolved model retains them.
+
+## Partition Declarations
+
+`CREATE TABLE ... PARTITION BY RANGE/LIST/HASH (...)` retains a typed
+`PgPartitionBy` in `PgCreateTableOptions`, with ordered column/function/
+parenthesized-expression keys, optional COLLATE, and named operator classes.
+`CREATE TABLE ... PARTITION OF parent ...` retains `PgPartitionOf`, including
+list IN bounds, range FROM/TO bounds, hash MODULUS/REMAINDER bounds, or DEFAULT.
+Range MINVALUE/MAXVALUE sentinels are distinct from expressions and quoted
+strings. Hash field order is preserved.
+
+Child declarations support inherited column overrides, optional WITH OPTIONS,
+existing column options/table constraints, and a following PARTITION BY for
+subpartitioning. Explicit empty body parentheses are retained. SQL/JSON round
+trips, identifier formatting/idempotence, source/comment/statement boundaries,
+atomic SQL bodies, typed payloads, malformed forms, and provider restrictions
+are tested. PostgreSQL rejects partition declarations combined with CTAS;
+existing shared CTAS behavior remains available in Core.
+
+Dependencies include the parent table and expression references under isolated
+contexts, preserving caller filters and scopes during partial enumeration.
+Collation/operator-class labels are not treated as independently resolved
+objects. Definition construction remains explicitly rejected with a sourced
+error. Parent lookup, inherited definitions, bound arity/overlap, key/bound
+eligibility, expression typing/immutability, catalog loading, migrations, and
+execution remain separate. ATTACH/DETACH parsing is not included in this slice.
+
 ## Sequences And Identity Alterations
 
 `CREATE [TEMP | TEMPORARY | UNLOGGED] SEQUENCE [IF NOT EXISTS] name ...`
@@ -901,7 +949,9 @@ lookup, broader PostgreSQL routine syntax, and migration comparison remain defer
 Table options and unsupported column options explicitly
 throw `NotImplementedException`; `CREATE TABLE AS SELECT` is rejected rather
 than silently dropping the query. Temporary-table construction is rejected with
-`NotSupportedException` until temporary-schema semantics can be represented.
+a sourced `DefinitionException.TempTable` until temporary-schema semantics can
+be represented. Persistent PostgreSQL table creation options likewise raise a
+sourced `DefinitionException` rather than silently losing their meaning.
 
 ## Table Constraints And Indexes
 

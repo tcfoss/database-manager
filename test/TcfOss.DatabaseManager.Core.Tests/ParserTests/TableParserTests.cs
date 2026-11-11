@@ -48,6 +48,36 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT PRESERVE ROWS")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DELETE ROWS")]
+    [InlineData("CREATE TEMP TABLE items ON COMMIT DROP AS SELECT 1")]
+    public void TablePersistence_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1, 2)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (MINVALUE) TO (MAXVALUE)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id) AS SELECT 1")]
+    public void TablePartitions_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
     [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
     [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2", "ALTER TABLE items ALTER COLUMN total SET DEFAULT (1 + 2)")]
