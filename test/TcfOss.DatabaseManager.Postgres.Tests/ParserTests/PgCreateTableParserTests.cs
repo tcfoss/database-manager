@@ -394,8 +394,6 @@ public class PgCreateTableParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT SELECT 1")]
     [InlineData("CREATE TABLE child PARTITION OF 'parent' DEFAULT")]
     [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id) INHERITS (parent)")]
-    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
-    [InlineData("ALTER TABLE parent DETACH PARTITION child")]
     public void TablePartitions_RejectsMalformedAndOutOfSliceForms(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));

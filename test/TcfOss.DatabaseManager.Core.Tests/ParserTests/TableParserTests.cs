@@ -78,6 +78,22 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1, 2)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (MINVALUE) TO (MAXVALUE)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE")]
+    public void PartitionLifecycle_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
     [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
     [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2", "ALTER TABLE items ALTER COLUMN total SET DEFAULT (1 + 2)")]

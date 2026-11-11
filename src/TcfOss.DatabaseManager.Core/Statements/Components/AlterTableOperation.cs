@@ -173,6 +173,44 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
+    public record PgAttachPartition(ObjectName Partition, PgPartitionBound Bound) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"ATTACH PARTITION {Partition} {Bound}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.WriteSqlI("ATTACH PARTITION ");
+            Partition.FormatSql(writer, manager);
+            writer.Write(" ");
+            Bound.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgDetachPartition(ObjectName Partition, PgDetachPartitionMode? Mode = null) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"DETACH PARTITION {Partition}");
+            if (Mode != null)
+            {
+                writer.WriteSql($" {Mode}");
+            }
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.WriteSqlI("DETACH PARTITION ");
+            Partition.FormatSql(writer, manager);
+            if (Mode != null)
+            {
+                writer.WriteSql($" {Mode}");
+            }
+        }
+    }
+
     public record PgRelation(PgAlterRelationOperation Operation) : AlterTableOperation
     {
         public override void ToSql(SqlTextWriter writer)

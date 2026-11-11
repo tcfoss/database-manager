@@ -502,4 +502,222 @@ public class PgAlterTableParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE IF EXISTS app.parent ATTACH PARTITION app.child FOR VALUES IN (1, 2, NULL)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN ('MINVALUE', 'MAXVALUE')")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (app.make_bound())")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (MINVALUE) TO (MAXVALUE)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1, MINVALUE) TO (5, MAXVALUE)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (REMAINDER 1, MODULUS 4)")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child")]
+    [InlineData("ALTER TABLE IF EXISTS app.parent DETACH PARTITION app.child CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION \"CONCURRENTLY\"")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION \"FINALIZE\" CONCURRENTLY")]
+    [InlineData("ALTER TABLE \"Parent; SELECT 1\" ATTACH PARTITION \"Child; DROP TABLE items\" DEFAULT")]
+    public void PartitionLifecycle_RoundTripsSqlJsonAndFormatting(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.IsType<AlterTable>(ParseStatement(formatted));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(" CONCURRENTLY", "CONCURRENTLY")]
+    [InlineData(" FINALIZE", "FINALIZE")]
+    public void PartitionLifecycle_PreservesTypedDetachMode(string suffix, string? mode)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement($"ALTER TABLE parent DETACH PARTITION app.child{suffix}"));
+        var operation = Assert.IsType<AlterTableOperation.PgDetachPartition>(Assert.Single(statement.Operations));
+
+        Assert.Equal("app.child", operation.Partition.ToSql());
+        Assert.Equal(mode == null ? null : PgDetachPartitionMode.Parse(mode), operation.Mode);
+    }
+
+    [Fact]
+    public void PartitionLifecycle_ReusesTypedBoundsFromDeclarations()
+    {
+        const string boundSql = "FOR VALUES FROM (MINVALUE, 1) TO (MAXVALUE, 9)";
+        var alter = Assert.IsType<AlterTable>(ParseStatement($"ALTER TABLE parent ATTACH PARTITION child {boundSql}"));
+        var create = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE child PARTITION OF parent {boundSql}"));
+        var operation = Assert.IsType<AlterTableOperation.PgAttachPartition>(Assert.Single(alter.Operations));
+        var bound = Assert.IsType<PgPartitionBound.RangeValues>(operation.Bound);
+
+        Assert.Equal(create.PgOptions!.PartitionOf!.Bound, operation.Bound);
+        Assert.IsType<PgPartitionBound.RangeValue.MinValue>(bound.From[0]);
+        Assert.IsType<PgPartitionBound.RangeValue.MaxValue>(bound.To[0]);
+    }
+
+    [Fact]
+    public void PartitionLifecycle_PreservesSourcesCommentsAndStatementBoundaries()
+    {
+        const string sql = "/* lead */ ALTER TABLE IF EXISTS \"App\".\"Parent\" ATTACH PARTITION \"App\".\"Child\" FOR VALUES IN (1) /* tail */; ALTER TABLE parent DETACH PARTITION child FINALIZE; SELECT 1";
+        var statements = ParseStatements(sql, sourceId: 199);
+        var attach = Assert.IsType<AlterTable>(statements[0]);
+        var operation = Assert.IsType<AlterTableOperation.PgAttachPartition>(Assert.Single(attach.Operations));
+        var detach = Assert.IsType<AlterTable>(statements[1]);
+
+        Assert.Equal(3, statements.Count);
+        Assert.True(attach.IfExists);
+        Assert.False(attach.Only);
+        Assert.Equal(0, attach.Meta.Start);
+        Assert.Equal(sql.IndexOf(';') + 1, attach.Meta.EndPlusTerminatorLength);
+        Assert.All(attach.Table.Values, identifier => Assert.Equal(199, identifier.Source!.Value.SourceId));
+        Assert.All(operation.Partition.Values, identifier => Assert.Equal(199, identifier.Source!.Value.SourceId));
+        Assert.Contains(attach.Meta.PreNonSql!, trivia => trivia is NonSql.BlockComment { Body: " lead " });
+        Assert.Contains(attach.Meta.PostNonSql!, trivia => trivia is NonSql.BlockComment { Body: " tail " });
+        Assert.Equal(PgDetachPartitionMode.Finalize, Assert.IsType<AlterTableOperation.PgDetachPartition>(Assert.Single(detach.Operations)).Mode);
+        Assert.IsType<Select>(statements[2]);
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE app.parent ATTACH PARTITION app.child FOR VALUES IN (app.make_bound())", true)]
+    [InlineData("ALTER TABLE app.parent ATTACH PARTITION app.child FOR VALUES FROM (app.make_bound()) TO (MAXVALUE)", true)]
+    [InlineData("ALTER TABLE app.parent ATTACH PARTITION app.child DEFAULT", false)]
+    [InlineData("ALTER TABLE app.parent DETACH PARTITION app.child CONCURRENTLY", false)]
+    public void PartitionLifecycle_ReportsBothTablesAndBoundReferencesWithoutCapturingCallerScope(string sql, bool hasBoundFunction)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+        var schema = new SchemaIdentifier("app", new CatalogIdentifier("def"));
+        var tables = new PseudoTableSet(schema,
+        [
+            new PseudoTable("parent", new ObjectIdentifier("parent", schema), [], PseudoTableType.Table),
+            new PseudoTable("child", new ObjectIdentifier("child", schema), [], PseudoTableType.Table)
+        ]);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All, PseudoTables = tables };
+        context.AddLocalVariable(new Identifier("parent"));
+        context.AddLocalVariable(new Identifier("child"));
+        using var scope = context.Enter(ReferencedItemsContext.WhereClause);
+
+        ItemRef[] references = [.. statement.GetReferencedItems(context)];
+
+        Assert.Equal(hasBoundFunction ? ["app.parent", "app.child", "app.make_bound"] : ["app.parent", "app.child"],
+            references.OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql()));
+        Assert.All(references.Take(2), reference => Assert.Equal(ItemType.Table, reference.Type));
+        Assert.DoesNotContain(references, reference => reference.Type == ItemType.Variable);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        Assert.Equal(2, statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Table, PseudoTables = tables }).Count());
+        _ = statement.GetReferencedItems(context).Take(1).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+        _ = statement.GetReferencedItems(context).Take(2).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+        _ = statement.GetReferencedItems(context).Take(3).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+        Assert.Same(tables, context.PseudoTables);
+    }
+
+    [Fact]
+    public void PartitionLifecycle_IsolatesUnqualifiedReferencesAndLeavesUnresolvedNamesUnknown()
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (bound_key, parent, child, app.make_bound())"));
+        var schema = new SchemaIdentifier("app", new CatalogIdentifier("def"));
+        var tables = new PseudoTableSet(schema,
+        [
+            new PseudoTable("parent", new ObjectIdentifier("parent", schema), ["bound_key"], PseudoTableType.Table),
+            new PseudoTable("child", new ObjectIdentifier("child", schema), [], PseudoTableType.Table)
+        ]);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All, PseudoTables = tables };
+        context.AddLocalVariable(new Identifier("parent"));
+        context.AddLocalVariable(new Identifier("child"));
+        context.AddLocalVariable(new Identifier("bound_key"));
+        using var scope = context.Enter(ReferencedItemsContext.WhereClause);
+
+        ItemRef[] references = [.. statement.GetReferencedItems(context)];
+
+        Assert.Equal(["parent", "child", "app.make_bound"],
+            references.OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql()));
+        Assert.All(references.Take(2), reference => Assert.Equal(ItemType.Table, reference.Type));
+        Assert.All(references.Skip(2), reference => Assert.Equal(ItemType.Unknown, reference.Type));
+        Assert.All(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }),
+            reference => Assert.Equal(ItemType.Unknown, reference.Type));
+        _ = statement.GetReferencedItems(context).Take(3).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+        Assert.Same(tables, context.PseudoTables);
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE")]
+    public void PartitionLifecycle_RoundTripsAtomicBodyWithoutValidatingExecutability(string action)
+    {
+        string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC {action}; SELECT 1; END; SELECT 2";
+        var statements = ParseStatements(sql);
+        var procedure = Assert.IsType<CreateProcedure>(statements[0]);
+
+        Assert.Equal(2, statements.Count);
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.Equal(2, ParseStatements(formatted).Count);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1, MINVALUE) TO (2)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 0, REMAINDER -1)")]
+    public void PartitionLifecycle_LeavesBoundEligibilityToSemanticValidation(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.IsType<AlterTableOperation.PgAttachPartition>(Assert.Single(statement.Operations));
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE parent ATTACH")]
+    [InlineData("ALTER TABLE parent ATTACH child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN ()")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1,)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, MODULUS 1)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4.5, REMAINDER 1)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT FINALIZE")]
+    [InlineData("ALTER TABLE ONLY parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT, SET LOGGED")]
+    [InlineData("ALTER TABLE parent SET LOGGED, ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT, ATTACH PARTITION other_child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION 'child' DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION IF NOT EXISTS child DEFAULT")]
+    [InlineData("ALTER TABLE parent DETACH")]
+    [InlineData("ALTER TABLE parent DETACH child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY FINALIZE")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child \"CONCURRENTLY\"")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child 'FINALIZE'")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FOR VALUES IN (1)")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CASCADE")]
+    [InlineData("ALTER TABLE ONLY parent DETACH PARTITION child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child, SET LOGGED")]
+    [InlineData("ALTER TABLE parent SET LOGGED, DETACH PARTITION child FINALIZE")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child, DETACH PARTITION other_child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child,")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION IF EXISTS child")]
+    public void PartitionLifecycle_RejectsMalformedAndStandaloneCombinations(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

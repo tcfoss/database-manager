@@ -60,6 +60,8 @@ public record AlterTable(ObjectName Table, SqlValueList<AlterTableOperation> Ope
             {
                 AlterTableOperation.PgInherit inherit => inherit.Parent,
                 AlterTableOperation.PgOf of => of.Type,
+                AlterTableOperation.PgAttachPartition attach => attach.Partition,
+                AlterTableOperation.PgDetachPartition detach => detach.Partition,
                 _ => null
             };
             using (context.Enter(operation is AlterTableOperation.PgOf
@@ -69,6 +71,16 @@ public record AlterTable(ObjectName Table, SqlValueList<AlterTableOperation> Ope
                 {
                     ItemRef? item = context.CreateObjectRef(dependency);
                     if (item != null)
+                    {
+                        yield return item;
+                    }
+                }
+            }
+            if (operation is AlterTableOperation.PgAttachPartition attachment)
+            {
+                using (context.Enter(ReferencedItemsContext.AlterPartitionBound))
+                {
+                    foreach (ItemRef item in attachment.Bound.GetReferencedItems(context))
                     {
                         yield return item;
                     }

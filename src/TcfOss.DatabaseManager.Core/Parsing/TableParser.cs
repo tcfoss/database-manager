@@ -1199,6 +1199,19 @@ public class TableParser
         }
         if (_p.SupportsPostgresTableAlterSyntax)
         {
+            if (state.ParseKeyword(Keyword.ATTACH))
+            {
+                state.ExpectKeyword(Keyword.PARTITION);
+                ObjectName partition = _objname(state);
+                return new AlterTableOperation.PgAttachPartition(partition, ParsePartitionBound(state));
+            }
+            if (state.ParseKeyword(Keyword.DETACH))
+            {
+                state.ExpectKeyword(Keyword.PARTITION);
+                ObjectName partition = _objname(state);
+                PgDetachPartitionMode? mode = state.MaybeParseStringEnum<PgDetachPartitionMode>();
+                return new AlterTableOperation.PgDetachPartition(partition, mode);
+            }
             if (nextKeyword is Keyword.ENABLE or Keyword.DISABLE)
             {
                 state.Next();

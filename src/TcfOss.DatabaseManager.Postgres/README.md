@@ -107,7 +107,7 @@ formatting/idempotence, source/comment/statement boundaries, atomic SQL bodies,
 CTAS query references and caller scopes, and malformed/deferred forms are tested.
 Traditional INHERITS, LIKE/copy options, deprecated GLOBAL/LOCAL qualifiers, and
 expanded CTAS variants remain deferred. Partition declarations are described
-below; partition attachment/detachment remains a separate parsing slice.
+below, followed by partition attachment/detachment.
 
 Parsing does not validate temporary-only ON COMMIT eligibility, schema/lifetime
 rules, crash recovery, replication, or execution. Temporary tables and CTAS keep
@@ -138,7 +138,39 @@ Collation/operator-class labels are not treated as independently resolved
 objects. Definition construction remains explicitly rejected with a sourced
 error. Parent lookup, inherited definitions, bound arity/overlap, key/bound
 eligibility, expression typing/immutability, catalog loading, migrations, and
-execution remain separate. ATTACH/DETACH parsing is not included in this slice.
+execution remain separate. Partition lifecycle parsing is described below.
+
+## Partition Lifecycle
+
+`ALTER TABLE [IF EXISTS] parent ATTACH PARTITION child ...` retains a typed
+`AlterTableOperation.PgAttachPartition`, reusing the declaration parser and
+`PgPartitionBound` for list, range, hash, and DEFAULT bounds. Range sentinels
+and hash field order keep their declaration behavior. Both table names retain
+qualification, quoting, and sources, with identifier-aware formatting.
+
+`ALTER TABLE [IF EXISTS] parent DETACH PARTITION child [CONCURRENTLY | FINALIZE]`
+retains `AlterTableOperation.PgDetachPartition` with nullable
+`PgDetachPartitionMode`. Omission remains distinct from either written mode.
+PostgreSQL rejects ONLY and comma-combined actions for both lifecycle forms.
+Core owns the grammar under the existing table-alter capability; MySQL/MariaDB
+and SQL Server reject these PostgreSQL forms.
+
+Dependencies include the target and attached/detached existing table, plus
+ATTACH bound expression references under an isolated context. Caller filters
+and scopes survive full and partial enumeration without capturing caller
+columns or local variables. Unresolved references remain unknown. SQL/JSON
+round trips, formatting/idempotence, typed payloads, comments/source spans,
+statement/atomic boundaries, malformed/standalone combinations, provider
+distinctions, and sourced unsupported construction are unit-tested.
+
+Parsing does not resolve tables, partition membership, strategy/key compatibility,
+bound arity/overlap, column/constraint compatibility, or existing data. It does
+not enforce CONCURRENTLY's transaction/default-partition restrictions or
+FINALIZE's pending-detach prerequisite; acceptance in an atomic body establishes
+syntax, not executability. Index/trigger effects, privileges, locking, catalog
+loading, definition mutation, migration generation, and execution remain
+separate. PostgreSQL definition construction still explicitly rejects these
+ALTER statements with sourced errors.
 
 ## Sequences And Identity Alterations
 
@@ -259,9 +291,9 @@ provider distinctions, and sourced unsupported construction are unit-tested.
 
 This does not complete the table-level ALTER roadmap item. Bulk tablespace moves,
 explicit descendant `*` spelling, rule states, legacy SET WITHOUT OIDS, and
-expanded constraint operations remain pending. Partition operations remain a
-separate slice. Parent/type/role lookup, compatibility, privileges, physical
-rewrites, catalog updates, migration generation, and execution are deferred;
+expanded constraint operations remain pending. Partition lifecycle parsing is
+implemented in its own slice above. Parent/type/role lookup, compatibility,
+privileges, physical rewrites, catalog updates, migration generation, and execution are deferred;
 PostgreSQL definition construction still explicitly rejects ALTER statements.
 
 ## Table Security And Replication State
@@ -294,7 +326,8 @@ index suitability or privileges, apply table-state changes during definition
 construction, or implement replication behavior, catalog loading, migrations,
 or execution. Parsing a command inside an atomic body does not establish its
 executability. Rule controls and legacy administration remain deferred;
-constraints and partition operations remain separate slices.
+constraints remain a separate slice, and partition lifecycle parsing is
+described above.
 
 ## Shared DROP Options And Type/Domain Targets
 

@@ -16,7 +16,8 @@ public class PgTableParser(Parser parser) : TableParser(parser)
         return keyword is Keyword.ADD or Keyword.ALTER or Keyword.DROP or Keyword.RENAME
             or Keyword.SET or Keyword.RESET or Keyword.OWNER or Keyword.CLUSTER
             or Keyword.INHERIT or Keyword.NO or Keyword.OF or Keyword.NOT
-            or Keyword.ENABLE or Keyword.DISABLE or Keyword.FORCE or Keyword.REPLICA;
+            or Keyword.ENABLE or Keyword.DISABLE or Keyword.FORCE or Keyword.REPLICA
+            or Keyword.ATTACH or Keyword.DETACH;
     }
 
     protected override AlterTableColumnPosition? ParseAlterTableColumnPosition(ParserState state)
@@ -29,13 +30,15 @@ public class PgTableParser(Parser parser) : TableParser(parser)
     protected override bool SupportsOnlyAlterOperation(AlterTableOperation operation)
     {
         return operation is not (AlterTableOperation.Rename
-            or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema });
+            or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema }
+            or AlterTableOperation.PgAttachPartition or AlterTableOperation.PgDetachPartition);
     }
 
     protected override bool IsStandaloneAlterOperation(AlterTableOperation operation)
     {
         return operation is AlterTableOperation.RenameColumn or AlterTableOperation.Rename
-            or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema };
+            or AlterTableOperation.PgRelation { Operation: PgAlterRelationOperation.SetSchema }
+            or AlterTableOperation.PgAttachPartition or AlterTableOperation.PgDetachPartition;
     }
 
     protected override StatementColumn.MsComputed? ParseOptionalComputedColumn(ParserState state, Identifier name)

@@ -295,6 +295,7 @@ public enum Keyword
     FILLFACTOR,
     FILTER,
     FINAL,
+    FINALIZE,
     FIRST,
     FIRST_VALUE,
     FIXEDSTRING,
