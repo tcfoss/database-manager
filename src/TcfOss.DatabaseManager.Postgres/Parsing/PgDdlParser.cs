@@ -28,6 +28,11 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
         return null;
     }
 
+    protected override bool ParseOptionalDropTemporary(ParserState state)
+    {
+        return false;
+    }
+
     public override TriggerTime ParseTriggerTime(ParserState state)
     {
         if (state.PeekKeyword(Keyword.FOR))

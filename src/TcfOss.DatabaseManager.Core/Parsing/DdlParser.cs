@@ -2114,6 +2114,31 @@ public class DdlParser
 
     protected virtual bool SupportsDropObjectType(DroppableObject objectType) => true;
 
+    protected virtual bool SupportsDropObjectList(DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View
+            || objectType == DroppableObject.MaterializedView || objectType == DroppableObject.Sequence
+            || objectType == DroppableObject.Type || objectType == DroppableObject.Domain
+            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema;
+    }
+
+    protected virtual bool ParseOptionalDropTemporary(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.TEMPORARY);
+    }
+
+    protected virtual PgDropBehavior? ParseOptionalDropBehavior(ParserState state, DroppableObject objectType)
+    {
+        if (objectType == DroppableObject.Table || objectType == DroppableObject.View
+            || objectType == DroppableObject.MaterializedView || objectType == DroppableObject.Sequence
+            || objectType == DroppableObject.Type || objectType == DroppableObject.Domain
+            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema)
+        {
+            return state.MaybeParseStringEnum<PgDropBehavior>();
+        }
+        return null;
+    }
+
     protected virtual ObjectName? ParseDropIndexOnObject(ParserState state)
     {
         return state.ParseKeyword(Keyword.ON) ? _parseObjectName(state) : null;
@@ -2123,10 +2148,10 @@ public class DdlParser
     {
         state.ExpectKeyword(Keyword.DROP);
 
-        bool temporary = state.ParseKeyword(Keyword.TEMPORARY);
+        bool temporary = ParseOptionalDropTemporary(state);
 
         Token typeToken = state.Peek();
-        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.MATERIALIZED, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX, Keyword.SEQUENCE);
+        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.MATERIALIZED, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX, Keyword.SEQUENCE, Keyword.TYPE, Keyword.DOMAIN);
 
         DroppableObject typeToDrop = typeToDropKw switch
         {
@@ -2137,6 +2162,8 @@ public class DdlParser
             Keyword.VIEW => DroppableObject.View,
             Keyword.MATERIALIZED => DroppableObject.MaterializedView,
             Keyword.SEQUENCE => DroppableObject.Sequence,
+            Keyword.TYPE => DroppableObject.Type,
+            Keyword.DOMAIN => DroppableObject.Domain,
             Keyword.EVENT => DroppableObject.Event,
             Keyword.SCHEMA => DroppableObject.Schema,
             Keyword.DATABASE => DroppableObject.Database,
@@ -2148,7 +2175,8 @@ public class DdlParser
         {
             throw ParserState.ExpectedCategoryException("DROP target", typeToken);
         }
-        if (temporary && (typeToDrop == DroppableObject.MaterializedView || typeToDrop == DroppableObject.Sequence))
+        if (temporary && (typeToDrop == DroppableObject.MaterializedView || typeToDrop == DroppableObject.Sequence
+            || typeToDrop == DroppableObject.Type || typeToDrop == DroppableObject.Domain))
         {
             throw ParserState.ExpectedCategoryException("non-temporary DROP target", typeToken);
         }
@@ -2159,7 +2187,7 @@ public class DdlParser
 
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
 
-        SqlValueList<ObjectName> names = typeToDropKw is Keyword.TABLE or Keyword.VIEW or Keyword.MATERIALIZED or Keyword.SEQUENCE
+        SqlValueList<ObjectName> names = SupportsDropObjectList(typeToDrop)
             ? state.ParseCommaSeparated(_parseObjectName)
             : [_parseObjectName(state)];
 
@@ -2169,11 +2197,7 @@ public class DdlParser
             onObject = ParseDropIndexOnObject(state);
         }
 
-        PgDropBehavior? pgBehavior = null;
-        if (typeToDrop == DroppableObject.MaterializedView || typeToDrop == DroppableObject.Sequence)
-        {
-            pgBehavior = state.MaybeParseStringEnum<PgDropBehavior>();
-        }
+        PgDropBehavior? pgBehavior = ParseOptionalDropBehavior(state, typeToDrop);
 
         return new DropObject(names, typeToDrop)
         {

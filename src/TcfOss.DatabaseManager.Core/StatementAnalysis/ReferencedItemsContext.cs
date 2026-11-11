@@ -25,5 +25,6 @@ public enum ReferencedItemsContext
     DropMaterializedViewTarget,
     AlterMaterializedViewTarget,
     SequenceTarget,
-    SequenceOwnedBy
+    SequenceOwnedBy,
+    DropTypeTarget
 }

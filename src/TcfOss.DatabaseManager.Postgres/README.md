@@ -114,8 +114,10 @@ GENERATED ALWAYS/BY DEFAULT AS IDENTITY with optional sequence options, SET
 GENERATED, RESTART, SET numeric/bounds/cache/cycle options, and DROP IDENTITY
 [IF EXISTS]. Ordered grouped SET/RESTART changes and comma-separated column
 alterations retain their structure. Core owns the grammar; the MySQL/MariaDB
-and SQL Server parsers retain their previous rejection of these sequence and
-PostgreSQL identity forms rather than acquiring them through shared dispatch.
+and SQL Server parsers retain their previous rejection of sequence CREATE/ALTER
+and PostgreSQL identity forms rather than acquiring them through shared dispatch.
+SQL Server accepts its native DROP SEQUENCE syntax, including IF EXISTS and
+multiple names, but not CASCADE/RESTRICT.
 
 SQL/JSON round trips, formatting, identifier sources, comments and statement
 boundaries, SQL atomic bodies, signed 64-bit bounds, and provider distinctions
@@ -133,6 +135,31 @@ grammar extensions. Definition construction explicitly rejects sequence
 lifecycle and identity ALTER statements with sourced diagnostics. Resolved
 sequences, implicit serial/identity sequence construction, catalog loading,
 migrations, and execution remain deferred.
+
+## Shared DROP Options And Type/Domain Targets
+
+Core's `DropObject` supports TYPE and DOMAIN targets with optional IF EXISTS,
+multiple undecorated names, and CASCADE/RESTRICT. Omitted behavior remains null
+rather than becoming an explicit RESTRICT. Names preserve quoting and sources;
+TYPE/DOMAIN dependencies remain unresolved object references, not table/view,
+column, or local-variable references.
+
+PostgreSQL also accepts target lists and behavior suffixes for TABLE, VIEW,
+MATERIALIZED VIEW, SEQUENCE, INDEX, and SCHEMA. Provider hooks narrow target
+support, list cardinality, TEMPORARY, and optional behavior. PostgreSQL rejects
+DROP TEMPORARY and MySQL/SQL Server's DROP INDEX ... ON syntax. SQL Server accepts
+single-target DROP TYPE and multi-target DROP SEQUENCE without behavior suffixes.
+MySQL/MariaDB reject TYPE/DOMAIN and retain their required INDEX ... ON form;
+TABLE/VIEW compatibility CASCADE/RESTRICT suffixes are accepted and preserved,
+without implying PostgreSQL cascade semantics.
+
+SQL/JSON round trips, formatting, identifier sources, comments, statement/atomic
+boundaries, dependency filters/scopes, and provider distinctions are unit-tested.
+This is bounded parsing support: decorated type names, routine DROP signatures,
+trigger-specific DROP grammar, DROP INDEX CONCURRENTLY, dependency resolution,
+cascade effects, catalog updates, migration generation, and execution remain
+deferred. PostgreSQL definition construction explicitly rejects these DROP
+statements with sourced diagnostics.
 
 ## Ordinary Views
 

@@ -25,7 +25,22 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
 
     protected override bool SupportsDropObjectType(DroppableObject objectType)
     {
-        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Sequence;
+        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Domain;
+    }
+
+    protected override bool SupportsDropObjectList(DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View || objectType == DroppableObject.Sequence;
+    }
+
+    protected override bool ParseOptionalDropTemporary(ParserState state)
+    {
+        return false;
+    }
+
+    protected override PgDropBehavior? ParseOptionalDropBehavior(ParserState state, DroppableObject objectType)
+    {
+        return null;
     }
 
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)

@@ -237,6 +237,12 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DROP PROCEDURE IF EXISTS myproc")]
     [InlineData("DROP EVENT myevent")]
     [InlineData("DROP EVENT IF EXISTS myevent")]
+    [InlineData("DROP TYPE IF EXISTS app.mood, app.address CASCADE")]
+    [InlineData("DROP DOMAIN app.label RESTRICT")]
+    [InlineData("DROP TABLE app.items CASCADE")]
+    [InlineData("DROP VIEW visible RESTRICT")]
+    [InlineData("DROP INDEX items_idx, other_idx CASCADE")]
+    [InlineData("DROP SCHEMA app, archive RESTRICT")]
     public static void DropObject_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -349,6 +355,10 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DROP TABLE IF EXISTS mytable1, mytable2", "TABLE", 2)]
     [InlineData("DROP VIEW myview1, myview2", "VIEW", 2)]
     [InlineData("DROP VIEW IF EXISTS myview1, myview2, myview3", "VIEW", 3)]
+    [InlineData("DROP TYPE app.mood, app.address CASCADE", "TYPE", 2)]
+    [InlineData("DROP DOMAIN IF EXISTS app.label, other_label RESTRICT", "DOMAIN", 2)]
+    [InlineData("DROP INDEX items_idx, other_idx", "INDEX", 2)]
+    [InlineData("DROP SCHEMA app, archive", "SCHEMA", 2)]
     public static void DropObject_MultipleNames_AreParsed(string sql, string expectedTypeName, int expectedCount)
     {
         var stmt = Assert.IsType<DropObject>(ParseStatement(sql));

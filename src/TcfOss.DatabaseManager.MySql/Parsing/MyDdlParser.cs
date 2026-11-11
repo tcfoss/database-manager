@@ -22,7 +22,19 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
 
     protected override bool SupportsDropObjectType(DroppableObject objectType)
     {
-        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Sequence;
+        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Sequence
+            && objectType != DroppableObject.Type && objectType != DroppableObject.Domain;
+    }
+
+    protected override bool SupportsDropObjectList(DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View;
+    }
+
+    protected override PgDropBehavior? ParseOptionalDropBehavior(ParserState state, DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View
+            ? base.ParseOptionalDropBehavior(state, objectType) : null;
     }
 
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)

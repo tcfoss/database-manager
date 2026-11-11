@@ -583,13 +583,45 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("CREATE TEMPORARY SEQUENCE ids")]
     [InlineData("CREATE UNLOGGED SEQUENCE ids")]
     [InlineData("ALTER SEQUENCE ids RESTART WITH 10")]
-    [InlineData("DROP SEQUENCE ids")]
     [InlineData("ALTER TABLE items ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY")]
     [InlineData("ALTER TABLE items ALTER id SET GENERATED ALWAYS")]
     [InlineData("ALTER TABLE items ALTER id RESTART WITH 10")]
     [InlineData("ALTER TABLE items ALTER id SET INCREMENT BY 2")]
     [InlineData("ALTER TABLE items ALTER id DROP IDENTITY IF EXISTS")]
     public void SequenceSyntax_RemainsUnsupportedBySqlServerParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("DROP SEQUENCE ids")]
+    [InlineData("DROP SEQUENCE IF EXISTS dbo.ids, [Other Schema].[Other Ids]")]
+    [InlineData("DROP TYPE dbo.label")]
+    [InlineData("DROP TYPE IF EXISTS [App].[Label]")]
+    public void DropSharedTargets_AcceptsSqlServerSyntax(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Null(statement.PgBehavior);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("DROP SEQUENCE ids CASCADE")]
+    [InlineData("DROP SEQUENCE ids RESTRICT")]
+    [InlineData("DROP TYPE dbo.label, dbo.other_label")]
+    [InlineData("DROP TYPE dbo.label CASCADE")]
+    [InlineData("DROP DOMAIN dbo.label")]
+    [InlineData("DROP TABLE items CASCADE")]
+    [InlineData("DROP VIEW visible RESTRICT")]
+    [InlineData("DROP SCHEMA app, archive")]
+    [InlineData("DROP SCHEMA app CASCADE")]
+    [InlineData("DROP INDEX items_idx, other_idx ON items")]
+    [InlineData("DROP INDEX items_idx ON items CASCADE")]
+    [InlineData("DROP TEMPORARY TABLE items")]
+    [InlineData("DROP TEMPORARY SEQUENCE ids")]
+    public void DropSharedTargets_RejectsNonSqlServerSyntax(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

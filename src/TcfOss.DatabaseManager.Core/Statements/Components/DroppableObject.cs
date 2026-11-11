@@ -9,6 +9,8 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 [StringEnum("VIEW")]
 [StringEnum("MATERIALIZED VIEW")]
 [StringEnum("SEQUENCE")]
+[StringEnum("TYPE")]
+[StringEnum("DOMAIN")]
 [StringEnum("EVENT")]
 [StringEnum("SCHEMA")]
 [StringEnum("DATABASE")]

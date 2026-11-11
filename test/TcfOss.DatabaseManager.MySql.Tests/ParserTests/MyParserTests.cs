@@ -900,6 +900,35 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("DROP TABLE IF EXISTS app.items, other_items CASCADE")]
+    [InlineData("DROP TEMPORARY TABLE items RESTRICT")]
+    [InlineData("DROP VIEW IF EXISTS visible, other_visible RESTRICT")]
+    [InlineData("DROP VIEW visible CASCADE")]
+    public void DropSharedTargets_AcceptsMySqlCompatibilitySuffixes(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.NotNull(statement.PgBehavior);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("DROP TYPE app.mood")]
+    [InlineData("DROP DOMAIN app.label")]
+    [InlineData("DROP SCHEMA app, archive")]
+    [InlineData("DROP SCHEMA app CASCADE")]
+    [InlineData("DROP DATABASE app RESTRICT")]
+    [InlineData("DROP INDEX items_idx, other_idx ON items")]
+    [InlineData("DROP INDEX items_idx ON items CASCADE")]
+    [InlineData("DROP TABLE items CASCADE RESTRICT")]
+    [InlineData("DROP VIEW visible RESTRICT CASCADE")]
+    public void DropSharedTargets_RejectsUnsupportedMySqlForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("CREATE SEQUENCE ids")]
     [InlineData("CREATE TEMPORARY SEQUENCE ids")]
     [InlineData("CREATE UNLOGGED SEQUENCE ids")]
