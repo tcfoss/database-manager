@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -240,5 +241,16 @@ public class PgCreateTypeParserTests : ParserTestsBase<PgLexer, PgParser>
     public void BaseTypes_RejectDuplicateOptions(string options)
     {
         Assert.Throws<ParseException.Duplicate>(() => ParseStatements($"CREATE TYPE t ({options})"));
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE app.widget")]
+    [InlineData("CREATE TYPE app.widget (INPUT = app.widget_in, OUTPUT = app.widget_out, LIKE = app.other)")]
+    [InlineData("CREATE TYPE app.r AS RANGE (SUBTYPE = app.element, CANONICAL = app.canonical, SUBTYPE_DIFF = app.diff)")]
+    public void TypeDeclarations_DoNotInventResolvedObjectDependencies(string sql)
+    {
+        var statement = Assert.IsType<CreateType>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager()));
     }
 }

@@ -441,6 +441,8 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH +")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH UNKNOWN SELECT 1")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable EXECUTE")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable EXECUTE unknown()")]
     [InlineData("CREATE PROCEDURE myproc () WITH UNKNOWN SELECT 1")]
     [InlineData("CREATE PROCEDURE myproc () WITH ENCRYPTION, UNKNOWN SELECT 1")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE EVERY 1 UNKNOWN DO SELECT 1")]
@@ -497,6 +499,17 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     public void CreateType_CoreParserRoundTrips(string sql)
     {
         Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE widget")]
+    [InlineData("CREATE TYPE widget (INPUT = widget_in, OUTPUT = widget_out)")]
+    [InlineData("CREATE TYPE widget AS RANGE (SUBTYPE = INT)")]
+    public void CreateType_NonPostgresGrammarRejectsSpecializedDeclarations(string sql)
+    {
+        var parser = new MsGrammarParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.Parse([.. new GenericLexer().Tokenize(sql)]));
     }
 
     [Fact]

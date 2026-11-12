@@ -275,6 +275,19 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("1")]
+    [InlineData("'app.users.id'")]
+    [InlineData("'app.users.id'%TYPE")]
+    [InlineData("app.users.%TYPE")]
+    [InlineData("app.users.id%")]
+    [InlineData("app.users.id%ROWTYPE")]
+    public void RoutineReturnTypes_RejectMalformedAnchoredReferences(string returnType)
+    {
+        Assert.ThrowsAny<ParseException>(() =>
+            ParseStatements($"CREATE FUNCTION f() RETURNS {returnType} LANGUAGE plpgsql AS 'opaque'"));
+    }
+
+    [Theory]
     [InlineData("INT TEXT", "INT", null)]
     [InlineData("DOUBLE INT", "DOUBLE", null)]
     [InlineData("result OUT INT", "result", "OUT")]

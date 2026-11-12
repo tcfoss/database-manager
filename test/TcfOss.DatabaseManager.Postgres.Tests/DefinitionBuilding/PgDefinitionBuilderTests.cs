@@ -376,10 +376,12 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(Assert.IsType<RoutineParameter.Postgres>(multiple.Parameters[0]).DefaultExpression);
     }
 
-    [Fact]
-    public void ToDefinition_PreservesPseudoTypesInFunctionParametersAndReturns()
+    [Theory]
+    [InlineData("value anyelement", "value")]
+    [InlineData("anyelement", null)]
+    public void ToDefinition_PreservesPseudoTypesInFunctionParametersAndReturns(string declaration, string? name)
     {
-        const string sql = "CREATE FUNCTION polymorphic(value anyelement) RETURNS anyelement LANGUAGE plpgsql AS 'opaque'";
+        string sql = $"CREATE FUNCTION polymorphic({declaration}) RETURNS anyelement LANGUAGE plpgsql AS 'opaque'";
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
         PgStoredFunction function = Assert.Single(builder.ToDefinition().Functions).Value;
@@ -387,6 +389,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(PgPseudoType.AnyElement, Assert.IsType<PgDataType.PseudoType>(parameter.DataType).Type);
         Assert.Equal(PgPseudoType.AnyElement, Assert.IsType<FunctionReturn.PseudoType>(function.ReturnType).Type);
+        Assert.Equal(DataTypeClass.System, parameter.DataType.Class);
+        Assert.Equal(name, parameter.Name?.Name);
     }
 
     [Theory]
@@ -424,6 +428,16 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("app.users.id", Assert.IsType<PgDataType.PgTypeOf>(parameter.DataType).Name.ToSql());
         Assert.Equal("app.users.id",
             Assert.IsType<PgDataType.PgTypeOf>(Assert.IsType<FunctionReturn.DataTypeReturn>(function.ReturnType).DataType).Name.ToSql());
+        Assert.Equal(DataTypeClass.System, parameter.DataType.Class);
+        string generatedSql = function.ToCreateStatement(true).ToSql();
+        Assert.Contains("\"value\" app.users.id%TYPE", generatedSql);
+        Assert.Contains("RETURNS app.users.id%TYPE", generatedSql);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(generatedSql), GetSchema(), 1);
+        PgStoredFunction rebuiltFunction = Assert.Single(rebuilt.ToDefinition().Functions).Value;
+
+        Assert.Equal(function.Parameters, rebuiltFunction.Parameters);
+        Assert.Equal(function.ReturnType, rebuiltFunction.ReturnType);
     }
 
     [Theory]
@@ -774,7 +788,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var statement = parsed with
         {
             Body = Assert.IsType<Statement>(ParseStatement("SELECT 1"), exactMatch: false),
-            RoutineTailMeta = new MetaData()
+            RoutineTailMeta = new MetaData(),
+            PgOptionsBeforeBody = null,
+            PgOptionsAfterBody = null
         };
         var builder = CreateBuilder();
         builder.ProcessStatements([statement], GetSchema(), 0);
@@ -790,7 +806,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var function = Assert.IsType<CreateFunction>(ParseStatement("CREATE FUNCTION f() RETURNS INT RETURN 1")) with
         {
             Body = statement.Body,
-            RoutineTailMeta = new MetaData()
+            RoutineTailMeta = new MetaData(),
+            PgOptionsBeforeBody = null,
+            PgOptionsAfterBody = null
         };
         var functionBuilder = CreateBuilder();
         functionBuilder.ProcessStatements([function], GetSchema(), 0);
@@ -1386,6 +1404,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE TABLE parent (id INT); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))")]
     [InlineData("CREATE TABLE parent (id INT); CREATE UNIQUE INDEX uq ON parent (id) WHERE id > 0; CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))")]
+    [InlineData("CREATE TABLE parent (id INT, other INT, CONSTRAINT uq UNIQUE (id, other)); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))")]
+    [InlineData("CREATE TABLE parent (id INT, other INT, CONSTRAINT uq UNIQUE (other)); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))")]
     public void ForeignKeys_RejectMissingOrPartialBackingKeys(string sql)
     {
         var builder = CreateBuilder();
@@ -1414,6 +1434,52 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements("CREATE TABLE child (id INT, CONSTRAINT fk_missing FOREIGN KEY (id) REFERENCES missing(id))"), GetSchema(), 0);
 
         Assert.Throws<SqlSyntaxException.ForeignKeyReferencedTableNotFound>(builder.ToDefinition);
+    }
+
+    [Fact]
+    public void ForeignKeys_RejectReferencesToNonTableTypesWithSources()
+    {
+        var sourceManager = new SourceManager();
+        var builder = CreateBuilder(sourceManager);
+        var statements = ParseStatements(
+            "CREATE DOMAIN parent AS INT; CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id))");
+        builder.ProcessStatements(statements, GetSchema(), 7);
+
+        var errors = Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
+        var error = Assert.IsType<SqlSyntaxException.ForeignKeyReferencedTableNotFound>(Assert.Single(errors.Exceptions));
+
+        Assert.Equal(sourceManager.GetSourceRef(new ObjectHandle("catalog", "public", "child")), error.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void ForeignKeys_AcceptUniqueTargetsDifferentFromPrimaryKeyColumns()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            "CREATE TABLE parent (id INT PRIMARY KEY, label TEXT, CONSTRAINT uq_label UNIQUE (label)); "
+            + "CREATE TABLE child (label TEXT, CONSTRAINT fk_parent FOREIGN KEY (label) REFERENCES parent(label))"), GetSchema(), 0);
+
+        PgDefinition definition = builder.ToDefinition();
+        PgTableConstraint.ForeignKey foreignKey =
+            Assert.Single(definition.Tables[new ObjectHandle("catalog", "public", "child")].ForeignKeys).Value;
+
+        Assert.Equal("label", Assert.Single(foreignKey.ReferencedColumns).Name);
+    }
+
+    [Fact]
+    public void PrimaryKeys_RegisterNamedBackingRelationsInTheTableSchema()
+    {
+        var sourceManager = new SourceManager();
+        var builder = CreateBuilder(sourceManager);
+        builder.ProcessStatements(ParseStatements(
+            "CREATE TABLE app.items (id INT, CONSTRAINT items_pk PRIMARY KEY (id))"), GetSchema(), 7);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
+
+        Assert.Equal("items_pk", table.PrimaryKey?.Name?.Name);
+        Assert.Equal(sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items")),
+            sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items_pk")));
+        Assert.NotNull(sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items_pk")));
     }
 
     [Fact]

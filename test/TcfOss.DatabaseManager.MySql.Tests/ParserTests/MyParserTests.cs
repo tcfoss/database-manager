@@ -554,6 +554,14 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("CREATE TRIGGER t AFTER")]
+    [InlineData("CREATE TRIGGER t AFTER + ON items FOR EACH ROW SELECT 1")]
+    public void Triggers_RejectMissingOrNonWordEvents(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("COMMENT ON TABLE items IS 'table'")]
     [InlineData("COMMENT ON COLUMN items.id IS NULL")]
     [InlineData("COMMENT ON FUNCTION f(INT) IS 'function'")]
