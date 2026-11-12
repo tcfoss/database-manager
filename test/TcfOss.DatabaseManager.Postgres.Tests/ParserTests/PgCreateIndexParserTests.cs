@@ -385,7 +385,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE UNIQUE INDEX ix ON items (id) TABLESPACE fast WHERE id > 0")]
     public void Indexes_PgOptionsKeepFiltersAfterOptionsWithoutPositionFlag(string sql)
     {
-        var statement = Assert.IsAssignableFrom<CreateIndex>(ParseStatement(sql)) with { FilterAfterOptions = false };
+        var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false) with { FilterAfterOptions = false };
 
         Assert.Equal(sql, statement.ToSql());
     }
