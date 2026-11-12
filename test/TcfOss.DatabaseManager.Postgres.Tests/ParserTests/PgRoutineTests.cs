@@ -1,4 +1,5 @@
 using System.Text;
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
@@ -26,12 +27,34 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("INT", typeof(StatementFunctionReturn.DataTypeReturn))]
     [InlineData("app.result[]", typeof(StatementFunctionReturn.DataTypeReturn))]
-    [InlineData("trigger", typeof(StatementFunctionReturn.PseudoType))]
-    [InlineData("void", typeof(StatementFunctionReturn.PseudoType))]
-    [InlineData("record", typeof(StatementFunctionReturn.PseudoType))]
+    [InlineData("trigger", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("void", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("record", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("any", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anyelement", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anyarray", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anynonarray", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anyenum", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anyrange", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anymultirange", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anycompatible", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anycompatiblearray", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anycompatiblenonarray", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anycompatiblerange", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("anycompatiblemultirange", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("cstring", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("internal", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("language_handler", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("fdw_handler", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("table_am_handler", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("index_am_handler", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("tsm_handler", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("event_trigger", typeof(StatementFunctionReturn.DataTypeReturn))]
+    [InlineData("pg_ddl_command", typeof(StatementFunctionReturn.DataTypeReturn))]
     [InlineData("SETOF INT", typeof(StatementFunctionReturn.SetOf))]
     [InlineData("SETOF app.result[]", typeof(StatementFunctionReturn.SetOf))]
     [InlineData("SETOF record", typeof(StatementFunctionReturn.SetOf))]
+    [InlineData("SETOF anyelement", typeof(StatementFunctionReturn.SetOf))]
     [InlineData("SETOF void", typeof(StatementFunctionReturn.SetOf))]
     [InlineData("SETOF \"record\"", typeof(StatementFunctionReturn.SetOf))]
     [InlineData("TABLE (id INT, \"Label\" app.label[])", typeof(StatementFunctionReturn.Table))]
@@ -87,6 +110,73 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("trigger")]
+    [InlineData("void")]
+    [InlineData("record")]
+    [InlineData("any")]
+    [InlineData("anyelement")]
+    [InlineData("anyarray")]
+    [InlineData("anynonarray")]
+    [InlineData("anyenum")]
+    [InlineData("anyrange")]
+    [InlineData("anymultirange")]
+    [InlineData("anycompatible")]
+    [InlineData("anycompatiblearray")]
+    [InlineData("anycompatiblenonarray")]
+    [InlineData("anycompatiblerange")]
+    [InlineData("anycompatiblemultirange")]
+    [InlineData("cstring")]
+    [InlineData("internal")]
+    [InlineData("language_handler")]
+    [InlineData("fdw_handler")]
+    [InlineData("table_am_handler")]
+    [InlineData("index_am_handler")]
+    [InlineData("tsm_handler")]
+    [InlineData("event_trigger")]
+    [InlineData("pg_ddl_command")]
+    public void RoutineParameters_PreservePostgresPseudoTypes(string pseudoTypeName)
+    {
+        var expectedType = PgPseudoType.Parse(pseudoTypeName);
+        var function = Assert.IsType<CreateFunction>(ParseStatement(
+            $"CREATE FUNCTION f({pseudoTypeName}, value {pseudoTypeName}) RETURNS {pseudoTypeName} LANGUAGE plpgsql AS 'opaque'"));
+
+        foreach (StatementRoutineParameter parameter in function.Parameters)
+        {
+            Assert.Equal(expectedType, Assert.IsType<DataTypeReference.PgPseudoType>(parameter.DataType).Type);
+        }
+
+        var returnType = Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+        Assert.Equal(expectedType, Assert.IsType<DataTypeReference.PgPseudoType>(returnType.DataType).Type);
+        Assert.Equal(function, ParseStatement(function.ToSql()));
+        Assert.Equal(function, ParseStatement(Format(function)));
+        Assert.Equal(function, Serialization.FromJson<CreateFunction>(Serialization.ToJson(function)));
+    }
+
+    [Theory]
+    [InlineData("COMMENT ON FUNCTION f(anyelement) IS 'routine'")]
+    [InlineData("COMMENT ON PROCEDURE p(value anyelement) IS 'routine'")]
+    [InlineData("ALTER FUNCTION f(anyelement) IMMUTABLE")]
+    [InlineData("DROP FUNCTION f(anyelement)")]
+    public void RoutineTargets_PreservePseudoTypes(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        SqlValueList<StatementRoutineParameter>? parameters = statement switch
+        {
+            CommentOn { Target: PgStatementCommentTarget.Routine routine } => routine.Parameters,
+            AlterRoutine alter => alter.Routine.Parameters,
+            DropRoutine drop => Assert.Single(drop.Routines).Parameters,
+            _ => throw new InvalidOperationException($"Unexpected routine target: {statement.GetType()}")
+        };
+        var parameter = Assert.Single(Assert.IsType<SqlValueList<StatementRoutineParameter>>(parameters));
+
+        Assert.Equal(PgPseudoType.AnyElement, Assert.IsType<DataTypeReference.PgPseudoType>(parameter.DataType).Type);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
     [InlineData("INT", false, typeof(DataTypeReference.BuiltIn))]
     [InlineData("INT DEFAULT 1", true, typeof(DataTypeReference.BuiltIn))]
     [InlineData("INT = 1", true, typeof(DataTypeReference.BuiltIn))]
@@ -111,6 +201,90 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.IsType(dataTypeType, parameter.DataType);
         Assert.Equal(function, ParseStatement(function.ToSql()));
         Assert.Equal(function, ParseStatement(Format(function)));
+    }
+
+    [Theory]
+    [InlineData("app.users.id%TYPE", "app.users.id%TYPE")]
+    [InlineData("anyelement%TYPE", "anyelement%TYPE")]
+    [InlineData("\"App\".\"Users\".\"Id\"%type", "\"App\".\"Users\".\"Id\"%TYPE")]
+    public void RoutineSignatures_PreservePgTypeOfReferences(string typeReference, string expectedReference)
+    {
+        string[] returnClauses =
+        [
+            typeReference,
+            $"SETOF {typeReference}",
+            $"TABLE (result {typeReference})"
+        ];
+
+        foreach (string returnClause in returnClauses)
+        {
+            string sql = $"CREATE FUNCTION f(value {typeReference}) RETURNS {returnClause} LANGUAGE plpgsql AS 'opaque'";
+            var function = Assert.IsType<CreateFunction>(ParseStatement(sql));
+            DataTypeReference.PgTypeOf parameterType =
+                Assert.IsType<DataTypeReference.PgTypeOf>(Assert.Single(function.Parameters).DataType);
+
+            Assert.Equal(expectedReference, parameterType.ToSql());
+            switch (function.ReturnType)
+            {
+                case StatementFunctionReturn.DataTypeReturn dataTypeReturn:
+                    Assert.Equal(expectedReference,
+                        Assert.IsType<DataTypeReference.PgTypeOf>(dataTypeReturn.DataType).ToSql());
+                    break;
+                case StatementFunctionReturn.SetOf { ReturnType: StatementFunctionReturn.DataTypeReturn dataTypeReturn }:
+                    Assert.Equal(expectedReference,
+                        Assert.IsType<DataTypeReference.PgTypeOf>(dataTypeReturn.DataType).ToSql());
+                    break;
+                case StatementFunctionReturn.Table table:
+                    Assert.Equal(expectedReference,
+                        Assert.IsType<DataTypeReference.PgTypeOf>(Assert.Single(table.Columns).DataType).ToSql());
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unexpected function return type: {function.ReturnType?.GetType()}");
+            }
+
+            Assert.Equal(function, ParseStatement(function.ToSql()));
+            Assert.Equal(function, ParseStatement(Format(function)));
+            Assert.Equal(function, Serialization.FromJson<CreateFunction>(Serialization.ToJson(function)));
+        }
+
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement(
+            $"CREATE PROCEDURE p(value {typeReference}) LANGUAGE SQL BEGIN ATOMIC END"));
+        DataTypeReference.PgTypeOf procedureParameter =
+            Assert.IsType<DataTypeReference.PgTypeOf>(Assert.Single(procedure.Parameters).DataType);
+
+        Assert.Equal(expectedReference, procedureParameter.ToSql());
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+        Assert.Equal(procedure, Serialization.FromJson<CreateProcedure>(Serialization.ToJson(procedure)));
+
+        var unnamed = Assert.IsType<CreateFunction>(ParseStatement(
+            $"CREATE FUNCTION f({typeReference}) RETURNS INT LANGUAGE plpgsql AS 'opaque'"));
+        StatementRoutineParameter unnamedParameter = Assert.Single(unnamed.Parameters);
+        Assert.Null(unnamedParameter.Name);
+        Assert.Equal(expectedReference, Assert.IsType<DataTypeReference.PgTypeOf>(unnamedParameter.DataType).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE sample (value app.users.id%TYPE)")]
+    [InlineData("COMMENT ON FUNCTION f(app.users.id%TYPE) IS 'function'")]
+    [InlineData("ALTER FUNCTION f(app.users.id%TYPE) IMMUTABLE")]
+    [InlineData("DROP FUNCTION f(app.users.id%TYPE)")]
+    public void PgTypeOfReferences_AreRestrictedToRoutineDefinitions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("'app.users.id'")]
+    [InlineData("'app.users.id'%TYPE")]
+    [InlineData("app.users.%TYPE")]
+    [InlineData("app.users.id%")]
+    [InlineData("app.users.id%ROWTYPE")]
+    public void RoutineReturnTypes_RejectMalformedAnchoredReferences(string returnType)
+    {
+        Assert.ThrowsAny<ParseException>(() =>
+            ParseStatements($"CREATE FUNCTION f() RETURNS {returnType} LANGUAGE plpgsql AS 'opaque'"));
     }
 
     [Theory]

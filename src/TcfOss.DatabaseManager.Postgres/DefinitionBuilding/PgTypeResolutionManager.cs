@@ -36,6 +36,14 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
         {
             return builtIn.DataType;
         }
+        if (reference is DataTypeReference.PgPseudoType pseudoType)
+        {
+            return new PgDataType.PseudoType(pseudoType.Type);
+        }
+        if (reference is DataTypeReference.PgTypeOf typeOf)
+        {
+            return new PgDataType.PgTypeOf(typeOf.Name);
+        }
 
         var named = (DataTypeReference.Named)reference;
         foreach (ObjectHandle handle in _config.GetCandidateHandles(named.Name, activeSchema))

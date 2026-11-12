@@ -24,11 +24,30 @@ distinct from integers; their implied sequences are not constructed yet.
 
 `CREATE TYPE ... AS ENUM (...)` and `CREATE TYPE ... AS (...)` are parsed by
 Core's `DdlParser`, producing `CreateType.Enumerated` and `CreateType.Composite`
-statements. Plain Core `Parser`/`GenericLexer` callers can obtain these ASTs
-without the PostgreSQL provider. Composite fields retain parsed type references
-and optional collations; enum labels retain their order. Empty definitions are
-supported. Parsing does not check type existence; definition construction resolves
-the references after all declarations have been collected.
+statements. PostgreSQL `CREATE TYPE ... AS RANGE (...)` declarations retain the
+subtype and optional operator class, collation, canonical function, subtype
+difference function, and multirange type name in `CreateType.PgRange`. Range
+syntax is gated by the PostgreSQL grammar. Plain Core `Parser`/`GenericLexer`
+callers can obtain the shared enum/composite ASTs without the PostgreSQL
+provider. Composite fields retain parsed type references and optional
+collations; enum labels retain their order. Empty enum/composite definitions
+are supported. Parsing does not check type existence; definition construction
+resolves supported enum/composite references after all declarations have been
+collected. Range type definition construction remains unsupported.
+
+PostgreSQL shell declarations (`CREATE TYPE name`) and base declarations
+(`CREATE TYPE name (...)`) produce `CreateType.PgShell` and `CreateType.PgBase`.
+Base declarations require INPUT and OUTPUT and retain ordered options for
+RECEIVE, SEND, TYPMOD_IN/OUT, ANALYZE (including ANALYSE), SUBSCRIPT,
+INTERNALLENGTH, PASSEDBYVALUE, ALIGNMENT, STORAGE, LIKE, CATEGORY, PREFERRED,
+DEFAULT, ELEMENT, DELIMITER, and COLLATABLE. Function names, type references,
+literal values, and boolean flag forms remain distinct in the AST. Option names
+follow PostgreSQL identifier case rules; unknown and duplicate options are
+rejected. These declarations support SQL/JSON round trips and formatting without
+looking up their references. Base/shell definition construction, shell replacement,
+support-function validation, and representation/eligibility checks remain
+unsupported.
+
 Enum labels and decoded composite attribute names are checked for ordinal,
 case-sensitive uniqueness during parsing. Definition construction retains these
 guards for manually assembled statements and applies configured name handling
@@ -55,11 +74,20 @@ Builder validation remains in place for manually constructed statements.
 
 Parsed columns, casts, routine parameters, and function return declarations use
 Core's `DataTypeReference`: `BuiltIn` wraps a concrete `DataType`, `Named`
-retains an unresolved `ObjectName`, and `Array` wraps an element reference with
-declared dimensions. `ParseDataTypeReference` accepts unqualified,
-qualified, and double-quoted names, preserving spelling, quoting, and source
-locations. `ParseDataType` remains the built-in-only entry point. Invalid
-built-in syntax is not retried as a named reference.
+retains an unresolved `ObjectName`, `PgPseudoType` retains PostgreSQL pseudo-type
+names, `PgTypeOf` retains a PostgreSQL `%TYPE` reference, and `Array` wraps an
+element reference with declared dimensions.
+`ParseDataTypeReference` accepts unqualified, qualified, and double-quoted
+names, preserving spelling, quoting, and source locations. `%TYPE` is accepted
+only in PostgreSQL routine definitions and remains unresolved. `ParseDataType`
+remains the built-in-only entry point. Invalid built-in syntax is not retried as
+a named reference.
+
+Routine signatures recognize pseudo-types in definitions and in COMMENT, ALTER,
+and DROP targets. Definition construction preserves matching polymorphic output
+returns and accepts polymorphic variadic types (`ANY`, `ANYARRAY`, and
+`ANYCOMPATIBLEARRAY`); language eligibility and polymorphic relationships remain
+deferred.
 
 Each `DataTypeParser` receives its owning `Parser` and uses that parser's
 `ComponentParser` for named references. Core provides this permissive reference
@@ -84,9 +112,8 @@ values produce sourced `ParseException.ValueOutOfRange` diagnostics rather than
 syntax expectation errors. Zero-length strings remain supported by Core and the
 MySQL/MariaDB parser, but are rejected by PostgreSQL and SQL Server.
 
-This is not yet a complete PostgreSQL grammar. Custom type modifiers,
-range/base/shell type declarations, catalog/internal and routine
-pseudo-types and PostgreSQL-specific casts (`::`) are not implemented.
+This is not yet a complete PostgreSQL grammar. Custom type modifiers
+and some catalog/internal types are not implemented.
 Routine support is limited to the body forms described below. Existing Core statement parsing is reused without
 claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration

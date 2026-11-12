@@ -1,6 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 
@@ -33,19 +32,6 @@ public abstract record StatementFunctionReturn : IWriteSql
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             DataType.FormatSql(writer, manager);
-        }
-    }
-
-    public record PseudoType(PgPseudoType Type) : Element
-    {
-        public override void ToSql(SqlTextWriter writer)
-        {
-            writer.WriteSql($"{Type}");
-        }
-
-        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
-        {
-            ToSql(writer);
         }
     }
 

@@ -652,6 +652,7 @@ public class DdlParser
     protected virtual StatementRoutineParameter ParseRoutineParameter(ParserState state, RoutineParamsSupportStyle style)
     {
         RoutineParameterDirection? direction = ParseRoutineParameterDirection(state, style.Modes);
+
         if (style.NameMode == RoutineParameterNameMode.RequiredVariable)
         {
             Identifier variableName = _parseIdentifier(state);
@@ -659,7 +660,7 @@ public class DdlParser
             {
                 throw state.ExpectedException("parameter name (@name)");
             }
-            DataTypeReference variableType = _p.DataTypeParser.ParseDataTypeReference(state);
+            DataTypeReference variableType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
             (ParameterDefault? variableDefault, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
             var defaultValue = (ParameterDefault.ValueDefault?)variableDefault;
             return new StatementRoutineParameter.Undirected(variableName, variableType, defaultValue)
@@ -671,29 +672,43 @@ public class DdlParser
         if (style.NameMode == RoutineParameterNameMode.RequiredIdentifier)
         {
             Identifier requiredName = _parseIdentifier(state);
-            DataTypeReference requiredType = _p.DataTypeParser.ParseDataTypeReference(state);
+            DataTypeReference requiredType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
             return new StatementRoutineParameter.Directed(requiredName, requiredType, direction,
                 ParseRoutineParameterDefault(state, style));
         }
 
         if (CanStartUnnamedRoutineParameter(state)
-            && state.TryParse(innerState => ParseUnnamedRoutineParameter(innerState, direction, style), out StatementRoutineParameter.General? unnamed))
+            && state.TryParse(innerState => ParseUnnamedRoutineParameter(innerState, direction, style),
+                out StatementRoutineParameter.General? unnamed))
         {
             return unnamed;
         }
 
         Identifier name = _parseIdentifier(state);
         RoutineParameterDirection? namedDirection = direction ?? ParseRoutineParameterDirection(state, style.Modes);
-        DataTypeReference namedType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference namedType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
         (ParameterDefault? namedDefault, MsRoutineParameterOptions? namedOptions) = ParseRoutineParameterSuffix(state, style);
         return new StatementRoutineParameter.General(name, namedType, namedDirection, namedDefault, namedOptions);
+    }
+
+    private SqlValueList<StatementRoutineParameter> ParseRoutineDefinitionParameterList(ParserState state, bool isFunction)
+    {
+        if (!_p.Grammar.HasFlag(Grammar.Pg))
+        {
+            return ParseRoutineParameterList(state, isFunction);
+        }
+
+        RoutineParamsSupportStyle style = GetRoutineParamsSupportStyle(isFunction) with { AllowPgTypeOf = true };
+        return state.ParseParenthesizedCommaSeparated(
+            innerState => ParseRoutineParameter(innerState, style),
+            allowEmpty: true);
     }
 
     private bool CanStartUnnamedRoutineParameter(ParserState state)
     {
         return _p.DataTypeParser.IsDataTypeStart(state.Peek()) || state.PeekNth(1) switch
         {
-            Comma or ParenClose or Dot or BracketOpen or Equal => true,
+            Comma or ParenClose or Dot or BracketOpen or Equal or Modulo => true,
             Word { Keyword: Keyword.DEFAULT or Keyword.ARRAY } => true,
             _ => false
         };
@@ -702,7 +717,7 @@ public class DdlParser
     private StatementRoutineParameter.General ParseUnnamedRoutineParameter(ParserState state, RoutineParameterDirection? direction,
         RoutineParamsSupportStyle style)
     {
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
         (ParameterDefault? defaultValue, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
         if (!state.PeekIs<Comma>() && !state.PeekIs<ParenClose>())
         {
@@ -931,7 +946,7 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: true);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineDefinitionParameterList(state, isFunction: true);
 
         StatementFunctionReturn? returnType = null;
         if (!state.PeekKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
@@ -982,26 +997,18 @@ public class DdlParser
 
     protected StatementFunctionReturn.DataTypeReturn ParseScalarFunctionReturn(ParserState state)
     {
-        return new StatementFunctionReturn.DataTypeReturn(_p.DataTypeParser.ParseDataTypeReference(state));
+        return new StatementFunctionReturn.DataTypeReturn(_p.DataTypeParser.ParseRoutineDataTypeReference(state));
     }
 
-    private StatementFunctionReturn.Element ParseFunctionReturnElement(ParserState state)
+    private StatementFunctionReturn.DataTypeReturn ParseFunctionReturnElement(ParserState state)
     {
-        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word && !state.PeekNthIs<Dot>(1))
-        {
-            if (PgPseudoType.TryParse(word.Value, out PgPseudoType? pseudoType))
-            {
-                state.Next();
-                return new StatementFunctionReturn.PseudoType(pseudoType);
-            }
-        }
         return ParseScalarFunctionReturn(state);
     }
 
     private StatementFunctionReturn.TableColumn ParseFunctionReturnColumn(ParserState state)
     {
         Identifier name = _parseIdentifier(state);
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseRoutineDataTypeReference(state);
         return new StatementFunctionReturn.TableColumn(name, dataType);
     }
 
@@ -1015,7 +1022,7 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: false);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineDefinitionParameterList(state, isFunction: false);
 
         ParsedRoutineTail tail = ParseRoutineTail(state, isFunction: false);
 
@@ -2079,7 +2086,15 @@ public class DdlParser
     {
         state.ExpectKeyword(Keyword.TYPE);
         ObjectName name = _p.ComponentParser.ParseObjectName(state, "type_name");
+        if (_p.Grammar.HasFlag(Grammar.Pg) && !state.PeekKeyword(Keyword.AS))
+        {
+            return state.PeekIs<ParenOpen>() ? ParseCreateTypePgBase(state, name) : new CreateType.PgShell(name);
+        }
         state.ExpectKeyword(Keyword.AS);
+        if (_p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.RANGE))
+        {
+            return ParseCreateTypePgRange(state, name);
+        }
         if (state.ParseKeyword(Keyword.ENUM))
         {
             return ParseCreateTypeEnumeratedSub(state, name);
@@ -2087,6 +2102,133 @@ public class DdlParser
         var uniqueNames = new HashSet<string>(StringComparer.Ordinal);
         return new CreateType.Composite(name, state.ParseParenthesizedCommaSeparated(
             innerState => ParseCompositeTypeField(innerState, uniqueNames), allowEmpty: true));
+    }
+
+    private CreateType.PgBase ParseCreateTypePgBase(ParserState state, ObjectName name)
+    {
+        var seenOptions = new HashSet<PgBaseTypeOptionName>();
+        SqlValueList<PgStatementBaseTypeOption> options = state.ParseParenthesizedCommaSeparated(
+            innerState => ParsePgBaseTypeOption(innerState, seenOptions), allowEmpty: false);
+        if (!seenOptions.Contains(PgBaseTypeOptionName.Input) || !seenOptions.Contains(PgBaseTypeOptionName.Output))
+        {
+            throw state.ExpectedCategoryException("INPUT and OUTPUT options");
+        }
+        return new CreateType.PgBase(name, options);
+    }
+
+    private PgStatementBaseTypeOption ParsePgBaseTypeOption(ParserState state, HashSet<PgBaseTypeOptionName> seenOptions)
+    {
+        Token optionToken = state.Peek();
+        Identifier identifier = _p.ComponentParser.ParseIdentifier(state, "base_type_option");
+        if ((identifier.QuoteStyle != QuoteStyle.None && identifier.Name.Any(char.IsUpper))
+            || !PgBaseTypeOptionName.TryParse(identifier.Name, out PgBaseTypeOptionName? name))
+        {
+            throw ParserState.ExpectedCategoryException("base type option", optionToken);
+        }
+        if (!seenOptions.Add(name))
+        {
+            throw new ParseException.Duplicate("base type option", optionToken.Location);
+        }
+
+        if (!state.ConsumeTokenIs<Equal>())
+        {
+            if (name.Kind is PgBaseTypeOptionName.ValueKind.PassedByValue or PgBaseTypeOptionName.ValueKind.Preferred
+                or PgBaseTypeOptionName.ValueKind.Collatable)
+            {
+                return new PgStatementBaseTypeOption.Flag(name);
+            }
+            throw state.ExpectedException("=");
+        }
+
+        if (state.Peek() is StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral)
+        {
+            return new PgStatementBaseTypeOption.Literal(name, ValueParser.ParseValue(state));
+        }
+        if (name == PgBaseTypeOptionName.Like || name == PgBaseTypeOptionName.Element)
+        {
+            return new PgStatementBaseTypeOption.TypeReference(name, _p.DataTypeParser.ParseDataTypeReference(state));
+        }
+        if (name == PgBaseTypeOptionName.Input || name == PgBaseTypeOptionName.Output
+            || name == PgBaseTypeOptionName.Receive || name == PgBaseTypeOptionName.Send
+            || name == PgBaseTypeOptionName.TypmodIn || name == PgBaseTypeOptionName.TypmodOut
+            || name == PgBaseTypeOptionName.Analyze || name == PgBaseTypeOptionName.Subscript)
+        {
+            return new PgStatementBaseTypeOption.Named(name, _p.ComponentParser.ParseObjectName(state, "function_name"));
+        }
+        if (state.Peek() is Plus or Minus or NumericLiteral
+            || state.PeekKeyword(Keyword.TRUE)
+            || state.PeekKeyword(Keyword.FALSE))
+        {
+            return new PgStatementBaseTypeOption.Literal(name, ComponentParser.ParseSimpleValue(state));
+        }
+        return new PgStatementBaseTypeOption.Named(name, _p.ComponentParser.ParseObjectName(state, "base_type_option_value"));
+    }
+
+    private CreateType.PgRange ParseCreateTypePgRange(ParserState state, ObjectName name)
+    {
+        state.ExpectLeftParen();
+        DataTypeReference? subtype = null;
+        ObjectName? subtypeOpClass = null;
+        ObjectName? collation = null;
+        ObjectName? canonical = null;
+        ObjectName? subtypeDiff = null;
+        ObjectName? multirangeTypeName = null;
+        HashSet<string> seenOptions = new(StringComparer.Ordinal);
+
+        if (state.PeekIs<ParenClose>())
+        {
+            throw state.ExpectedCategoryException("range type option");
+        }
+
+        while (true)
+        {
+            Token optionToken = state.Peek();
+            Identifier option = _p.ComponentParser.ParseIdentifier(state, "range_type_option");
+            string optionName = option.QuoteStyle == QuoteStyle.None ? option.Name.ToLowerInvariant() : option.Name;
+            if (optionName is not ("subtype" or "subtype_opclass" or "collation" or "canonical" or "subtype_diff" or "multirange_type_name"))
+            {
+                throw ParserState.ExpectedCategoryException("range type option", optionToken);
+            }
+            if (!seenOptions.Add(optionName))
+            {
+                throw new ParseException.Duplicate("range type option", optionToken.Location);
+            }
+            state.ExpectToken<Equal>();
+
+            switch (optionName)
+            {
+                case "subtype":
+                    subtype = _p.DataTypeParser.ParseDataTypeReference(state);
+                    break;
+                case "subtype_opclass":
+                    subtypeOpClass = _p.ComponentParser.ParseObjectName(state, "operator_class");
+                    break;
+                case "collation":
+                    collation = _p.ComponentParser.ParseObjectName(state, "collation_name");
+                    break;
+                case "canonical":
+                    canonical = _p.ComponentParser.ParseObjectName(state, "canonical_function");
+                    break;
+                case "subtype_diff":
+                    subtypeDiff = _p.ComponentParser.ParseObjectName(state, "subtype_diff_function");
+                    break;
+                case "multirange_type_name":
+                    multirangeTypeName = _p.ComponentParser.ParseObjectName(state, "multirange_type_name");
+                    break;
+            }
+
+            if (!state.ConsumeTokenIs<Comma>())
+            {
+                break;
+            }
+        }
+
+        if (subtype is null)
+        {
+            throw state.ExpectedCategoryException("SUBTYPE option");
+        }
+        state.ExpectRightParen();
+        return new CreateType.PgRange(name, subtype, subtypeOpClass, collation, canonical, subtypeDiff, multirangeTypeName);
     }
 
     private static CreateType.Enumerated ParseCreateTypeEnumeratedSub(ParserState state, ObjectName name)

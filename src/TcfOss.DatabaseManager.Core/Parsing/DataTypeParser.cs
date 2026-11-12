@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
@@ -251,8 +252,7 @@ public class DataTypeParser(Parser parser)
     public virtual DataTypeReference ParseDataTypeReference(ParserState state)
     {
         DataTypeReference reference;
-        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None } word
-            && !state.PeekNthIs<Dot>(1) && IsDataTypeKeyword(word.Keyword))
+        if (state.TryGetPseudoKeyword(out string _, out Keyword keyword) && IsDataTypeKeyword(keyword))
         {
             reference = new DataTypeReference.BuiltIn(ParseDataType(state));
         }
@@ -261,6 +261,51 @@ public class DataTypeParser(Parser parser)
             reference = new DataTypeReference.Named(parser.ComponentParser.ParseObjectName(state, "data_type"));
         }
         return ParseArraySuffix(state, reference);
+    }
+
+    public virtual DataTypeReference ParseRoutineDataTypeReference(ParserState state, bool allowPgTypeOf = true)
+    {
+        if (parser.Grammar.HasFlag(Grammar.Pg))
+        {
+            if (allowPgTypeOf && IsPgTypeOfReferenceAhead(state))
+            {
+                return ParseArraySuffix(state, ParsePgTypeOfReference(state));
+            }
+            if (state.TryGetPseudoKeyword(out string text, out Keyword _, false)
+                && PgPseudoType.TryParse(text, out PgPseudoType? pseudoType))
+            {
+                state.Next();
+                return ParseArraySuffix(state, new DataTypeReference.PgPseudoType(pseudoType));
+            }
+        }
+        return ParseDataTypeReference(state);
+    }
+
+    private static bool IsPgTypeOfReferenceAhead(ParserState state)
+    {
+        if (state.Peek() is not (Word or StringLiteral))
+        {
+            return false;
+        }
+
+        int tokenIndex = 1;
+        while (state.PeekNth(tokenIndex) is Dot)
+        {
+            if (state.PeekNth(tokenIndex + 1) is not (Word or StringLiteral))
+            {
+                return false;
+            }
+            tokenIndex += 2;
+        }
+        return state.PeekNth(tokenIndex) is Modulo;
+    }
+
+    private DataTypeReference.PgTypeOf ParsePgTypeOfReference(ParserState state)
+    {
+        ObjectName name = parser.ComponentParser.ParseObjectName(state, "data_type");
+        state.ExpectToken<Modulo>();
+        state.ExpectKeyword(Keyword.TYPE);
+        return new DataTypeReference.PgTypeOf(name);
     }
 
     private static DataTypeReference ParseArraySuffix(ParserState state, DataTypeReference elementType)

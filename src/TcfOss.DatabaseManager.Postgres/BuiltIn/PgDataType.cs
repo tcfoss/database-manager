@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.Postgres.BuiltIn;
@@ -153,6 +154,27 @@ public abstract record PgDataType : DataType
         {
             ElementType.ToSql(writer);
             writer.Write("[]");
+        }
+    }
+
+    public record PseudoType(PgPseudoType Type) : DataType
+    {
+        public override DataTypeClass Class => DataTypeClass.System;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"{Type}");
+        }
+    }
+
+    public record PgTypeOf(ObjectName Name) : DataType
+    {
+        public override DataTypeClass Class => DataTypeClass.System;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Name.ToSql(writer);
+            writer.Write("%TYPE");
         }
     }
 }

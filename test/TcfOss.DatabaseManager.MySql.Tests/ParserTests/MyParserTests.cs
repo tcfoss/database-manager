@@ -420,6 +420,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [Theory]
     [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TYPE address AS (street TEXT)")]
+    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
+    [InlineData("CREATE TYPE widget")]
+    [InlineData("CREATE TYPE widget (INPUT = widget_in, OUTPUT = widget_out)")]
     [InlineData("CREATE DOMAIN postcode AS TEXT")]
     [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]
     [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary AS SELECT 1 WITH NO DATA")]
@@ -546,6 +549,14 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW WHEN (NEW.id > 0) SELECT 1")]
     [InlineData("CREATE TRIGGER audit AFTER INSERT ON items FOR EACH ROW EXECUTE FUNCTION audit()")]
     public void PostgresTriggerSyntax_IsRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TRIGGER t AFTER")]
+    [InlineData("CREATE TRIGGER t AFTER + ON items FOR EACH ROW SELECT 1")]
+    public void Triggers_RejectMissingOrNonWordEvents(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

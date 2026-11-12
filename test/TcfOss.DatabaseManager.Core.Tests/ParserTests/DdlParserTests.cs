@@ -140,6 +140,26 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(function, ParseStatement(function.ToSql()));
     }
 
+    [Fact]
+    public void FunctionReturn_NonPostgresGrammarTreatsPseudoTypeNamesAsNamedTypes()
+    {
+        const string sql = "CREATE FUNCTION f() RETURNS record RETURN 1";
+        var parser = new MsGrammarParser();
+        var function = Assert.IsType<CreateFunction>(Assert.Single(parser.Parse([.. new GenericLexer().Tokenize(sql)])));
+
+        var returnType = Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+        Assert.Equal("record", Assert.IsType<DataTypeReference.Named>(returnType.DataType).Name.ToSql());
+    }
+
+    [Fact]
+    public void FunctionParameter_NonPostgresGrammarRejectsPgTypeOf()
+    {
+        const string sql = "CREATE FUNCTION f(value app.users.id%TYPE) RETURNS INT RETURN 1";
+        var parser = new MsGrammarParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.Parse([.. new GenericLexer().Tokenize(sql)]));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(" VARYING")]
@@ -421,6 +441,8 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH +")]
     [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable FOR EACH UNKNOWN SELECT 1")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable EXECUTE")]
+    [InlineData("CREATE TRIGGER mytrigger AFTER INSERT ON mytable EXECUTE unknown()")]
     [InlineData("CREATE PROCEDURE myproc () WITH UNKNOWN SELECT 1")]
     [InlineData("CREATE PROCEDURE myproc () WITH ENCRYPTION, UNKNOWN SELECT 1")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE EVERY 1 UNKNOWN DO SELECT 1")]
@@ -471,9 +493,23 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TYPE address AS (street TEXT COLLATE app.collation)")]
     [InlineData("CREATE TYPE address AS (Street TEXT, street TEXT)")]
     [InlineData("CREATE TYPE address AS (\"MyAttribute\" TEXT, myattribute TEXT)")]
+    [InlineData("CREATE TYPE app.currency_range AS RANGE (SUBTYPE = app.currency)")]
+    [InlineData("CREATE TYPE app.widget")]
+    [InlineData("CREATE TYPE app.widget (INPUT = app.widget_in, OUTPUT = app.widget_out)")]
     public void CreateType_CoreParserRoundTrips(string sql)
     {
         Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CREATE TYPE widget")]
+    [InlineData("CREATE TYPE widget (INPUT = widget_in, OUTPUT = widget_out)")]
+    [InlineData("CREATE TYPE widget AS RANGE (SUBTYPE = INT)")]
+    public void CreateType_NonPostgresGrammarRejectsSpecializedDeclarations(string sql)
+    {
+        var parser = new MsGrammarParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.Parse([.. new GenericLexer().Tokenize(sql)]));
     }
 
     [Fact]
@@ -547,7 +583,6 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE TYPE")]
-    [InlineData("CREATE TYPE mood")]
     [InlineData("CREATE TYPE mood ENUM ('happy')")]
     [InlineData("CREATE TYPE mood AS ENUM (happy)")]
     [InlineData("CREATE TYPE mood AS ENUM (1)")]
@@ -557,7 +592,6 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TYPE address AS (street TEXT,)")]
     [InlineData("CREATE TYPE address AS (street TEXT COLLATE)")]
     [InlineData("CREATE TYPE address AS (postcode app.)")]
-    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
     [InlineData("CREATE OR REPLACE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE OR ALTER TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TEMPORARY TYPE mood AS ENUM ('happy')")]
@@ -831,5 +865,10 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
             }
             return base.ParseNextSequenceOption(state, alter);
         }
+    }
+
+    private sealed class MsGrammarParser : Parser
+    {
+        public override Grammar Grammar => Grammar.Ms;
     }
 }

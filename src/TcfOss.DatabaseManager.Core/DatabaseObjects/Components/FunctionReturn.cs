@@ -41,9 +41,9 @@ public abstract record FunctionReturn : IWriteSql
 
     public record PseudoType(PgPseudoType Type) : Element
     {
-        public override StatementFunctionReturn.PseudoType ToStatementReturn()
+        public override StatementFunctionReturn.DataTypeReturn ToStatementReturn()
         {
-            return new StatementFunctionReturn.PseudoType(Type);
+            return new StatementFunctionReturn.DataTypeReturn(new DataTypeReference.PgPseudoType(Type));
         }
     }
 

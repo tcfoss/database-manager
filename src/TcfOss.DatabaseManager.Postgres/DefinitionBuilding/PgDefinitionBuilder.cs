@@ -284,7 +284,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             return outputParameters.Length switch
             {
-                1 => new FunctionReturn.DataTypeReturn(outputParameters[0].DataType),
+                1 => ToFunctionReturnElement(outputParameters[0].DataType),
                 > 1 => new FunctionReturn.PseudoType(PgPseudoType.Record),
                 _ => throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "a function without RETURNS or output parameters", sourceRef)
             };
@@ -299,9 +299,10 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "RETURNS TABLE with OUT or INOUT parameters", sourceRef);
         }
+
         FunctionReturn outputType = resolved is FunctionReturn.SetOf set ? set.ReturnType : resolved;
         bool matchesOutput = outputParameters.Length == 1
-            ? outputType is FunctionReturn.DataTypeReturn scalar && scalar.DataType == outputParameters[0].DataType
+            ? outputType == ToFunctionReturnElement(outputParameters[0].DataType)
             : outputType is FunctionReturn.PseudoType { Type: var type } && type == PgPseudoType.Record;
         if (!matchesOutput)
         {
@@ -310,15 +311,20 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         return resolved;
     }
 
+    private static FunctionReturn.Element ToFunctionReturnElement(DataType dataType)
+    {
+        return dataType is PgDataType.PseudoType pseudoType
+            ? new FunctionReturn.PseudoType(pseudoType.Type)
+            : new FunctionReturn.DataTypeReturn(dataType);
+    }
+
     private FunctionReturn ResolveFunctionReturnShape(StatementFunctionReturn returnType, ObjectIdentifier routine,
         SourceRef sourceRef, PgTypeResolutionManager manager)
     {
         switch (returnType)
         {
             case StatementFunctionReturn.DataTypeReturn scalar:
-                return new FunctionReturn.DataTypeReturn(manager.Resolve(scalar.DataType, routine.Schema, sourceRef));
-            case StatementFunctionReturn.PseudoType pseudo:
-                return new FunctionReturn.PseudoType(pseudo.Type);
+                return ToFunctionReturnElement(manager.Resolve(scalar.DataType, routine.Schema, sourceRef));
             case StatementFunctionReturn.SetOf set:
                 return new FunctionReturn.SetOf((FunctionReturn.Element)ResolveFunctionReturnShape(set.ReturnType, routine, sourceRef, manager));
             case StatementFunctionReturn.Table table:
@@ -535,7 +541,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 {
                     throw new SqlSyntaxException.SpecifiedMoreThanOnce("VARIADIC", "routine", routine, sourceRef);
                 }
-                if (dataType is not PgDataType.Array)
+                bool supportsVariadic = dataType is PgDataType.Array
+                    || (dataType is PgDataType.PseudoType pseudoType
+                        && (pseudoType.Type.Kind is PgPseudoType.ValueKind.Any or PgPseudoType.ValueKind.AnyArray
+                            or PgPseudoType.ValueKind.AnyCompatibleArray));
+                if (!supportsVariadic)
                 {
                     throw new SqlSyntaxException.UnsupportedDialect("PostgreSQL", "a non-array VARIADIC parameter", sourceRef);
                 }

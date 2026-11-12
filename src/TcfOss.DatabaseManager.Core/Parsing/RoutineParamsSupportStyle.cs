@@ -44,6 +44,8 @@ public sealed record RoutineParamsSupportStyle(
     RoutineParameterDefaultKind DefaultKinds,
     bool AllowSqlServerOptions)
 {
+    public bool AllowPgTypeOf { get; init; }
+
     public static RoutineParamsSupportStyle KitchenSink { get; } = new(
         RoutineParameterNameMode.OptionalIdentifier,
         RoutineParameterModeSupport.All,

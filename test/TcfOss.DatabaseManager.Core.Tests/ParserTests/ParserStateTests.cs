@@ -126,6 +126,22 @@ public static class ParserStateTests
         Assert.False(s.PeekKeyword(Keyword.CREATE));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void PseudoKeyword_ConsumptionIsOptional(bool consume)
+    {
+        var state = new ParserState(TokenSet1);
+        Token first = state.Peek();
+
+        Assert.True(state.TryGetPseudoKeyword(out string text, out Keyword keyword, consume));
+
+        Assert.Equal("SELECT", text);
+        Assert.Equal(Keyword.SELECT, keyword);
+        Assert.Same(first, consume ? state.PeekNth(-1) : state.Peek());
+        Assert.Equal(consume ? "a" : "SELECT", Assert.IsType<Word>(state.Peek()).Value);
+    }
+
     [Fact]
     public static void PeekN_Match()
     {

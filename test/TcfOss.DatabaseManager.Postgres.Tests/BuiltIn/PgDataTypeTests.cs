@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
@@ -447,6 +448,9 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TYPE app.mood AS ENUM ()")]
     [InlineData("CREATE TYPE address AS (street TEXT, postcode app.postal_code)")]
     [InlineData("CREATE TYPE \"Address\" AS (\"Street\" TEXT COLLATE \"C\")")]
+    [InlineData("CREATE TYPE mood")]
+    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
+    [InlineData("CREATE TYPE mood (INPUT = input_function, OUTPUT = output_function)")]
     public void CreateType_UsesCoreGrammar(string sql)
     {
         Assert.Equal(sql, ParseStatement(sql).ToSql());
@@ -467,9 +471,6 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE DEFINER = 'user'@'host' EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
     [InlineData("CREATE OR REPLACE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TEMPORARY TYPE mood AS ENUM ('happy')")]
-    [InlineData("CREATE TYPE mood")]
-    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
-    [InlineData("CREATE TYPE mood (INPUT = input_function, OUTPUT = output_function)")]
     public void UnsupportedCreateForms_AreRejected(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
@@ -592,6 +593,13 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [MemberData(nameof(StringEnumTestHelpers.StringEnumTypes), typeof(PgIntervalField), MemberType = typeof(StringEnumTestHelpers))]
     public void Serialization_AllPostgresStringEnumValues_RoundTrip(Type enumType)
+    {
+        StringEnumTestHelpers.AssertStringEnumRoundTrips(enumType);
+    }
+
+    [Theory]
+    [MemberData(nameof(StringEnumTestHelpers.StringEnumTypes), typeof(PgPseudoType), MemberType = typeof(StringEnumTestHelpers))]
+    public void Serialization_AllPostgresPseudoTypeValues_RoundTrip(Type enumType)
     {
         StringEnumTestHelpers.AssertStringEnumRoundTrips(enumType);
     }
