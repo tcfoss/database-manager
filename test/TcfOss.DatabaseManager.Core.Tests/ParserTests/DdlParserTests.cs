@@ -801,7 +801,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(2, options.Count);
         Assert.False(Assert.IsType<PgStatementSequenceOption.Cycle>(options[0]).Enabled);
         Assert.Equal(2, Assert.IsType<PgStatementSequenceOption.Cache>(options[1]).Value);
-        Assert.True(state.PeekIs<Core.Lexing.Tokens.Eof>());
+        Assert.True(state.PeekIs<Lexing.Tokens.Eof>());
     }
 
     [Theory]
@@ -846,8 +846,8 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         PgRoutineReference routine = Assert.Single(statement.Routines);
         Assert.Equal("app.run", routine.Name.ToSql());
         Assert.Single(routine.Parameters!);
-        Assert.Equal(additionalTarget, state.PeekIs<Core.Lexing.Tokens.Comma>());
-        Assert.Equal(!additionalTarget, state.PeekIs<Core.Lexing.Tokens.Eof>());
+        Assert.Equal(additionalTarget, state.PeekIs<Lexing.Tokens.Comma>());
+        Assert.Equal(!additionalTarget, state.PeekIs<Lexing.Tokens.Eof>());
     }
 
     private sealed class SingleTargetDdlParser(Parser parser) : DdlParser(parser)

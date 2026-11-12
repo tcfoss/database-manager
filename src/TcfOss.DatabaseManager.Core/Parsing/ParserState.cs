@@ -405,7 +405,7 @@ public class ParserState
 
     public T ParseStringEnum<T>() where T : class, IStringEnum<T>
     {
-        T? result = MaybeParseStringEnum<T>() ?? throw ExpectedException<T>();
+        T result = MaybeParseStringEnum<T>() ?? throw ExpectedException<T>();
         return result;
     }
 
