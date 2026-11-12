@@ -305,6 +305,12 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("GIST", "pages_per_range = 128")]
     [InlineData("BTREE", "PAD_INDEX = ON")]
     [InlineData("BTREE", "\"PAD_INDEX\" = ON")]
+    [InlineData("BTREE", "IGNORE_DUP_KEY = ON")]
+    [InlineData("BTREE", "STATISTICS_NORECOMPUTE = ON")]
+    [InlineData("BTREE", "STATISTICS_INCREMENTAL = ON")]
+    [InlineData("BTREE", "ALLOW_ROW_LOCKS = ON")]
+    [InlineData("BTREE", "ALLOW_PAGE_LOCKS = ON")]
+    [InlineData("BTREE", "OPTIMIZE_FOR_SEQUENTIAL_KEY = ON")]
     public void IndexStorageOptions_RejectIneligibleOptionsAtTheirName(string method, string option)
     {
         string sql = $"CREATE INDEX ix ON items USING {method} (id) WITH ({option})";
@@ -325,6 +331,25 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     public void IndexStorageOptions_RejectInvalidValuesAndDuplicates(string method, string options)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE INDEX ix ON items USING {method} (id) WITH ({options})"));
+    }
+
+    [Theory]
+    [InlineData("on", true)]
+    [InlineData("true", true)]
+    [InlineData("yes", true)]
+    [InlineData("'1'", true)]
+    [InlineData("off", false)]
+    [InlineData("false", false)]
+    [InlineData("no", false)]
+    [InlineData("'0'", false)]
+    public void IndexStorageOptions_NormalizeBooleanAliases(string value, bool expected)
+    {
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement(
+            $"CREATE INDEX ix ON items (id) WITH (deduplicate_items = {value})"));
+
+        Assert.Equal(expected, Assert.IsType<StatementIndexOption.PgDeduplicateItems>(Assert.Single(statement.Options!)).IsOn);
+        Assert.Equal($"CREATE INDEX ix ON items (id) WITH (DEDUPLICATE_ITEMS = {(expected ? "ON" : "OFF")})", statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 
     [Theory]

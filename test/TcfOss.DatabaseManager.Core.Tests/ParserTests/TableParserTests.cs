@@ -44,6 +44,8 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val1 VARCHAR(5), my_val2 VARCHAR(5), INDEX my_index (my_val1) INCLUDE (my_val2, my_id))", Label = "index include multiple")]
     [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (unknown_option = 70))", Label = "generic index parameter")]
     [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index USING GIST (my_id) WITH (BUFFERING = AUTO))", Label = "method-specific index parameter")]
+    [InlineData("CREATE TABLE mytable (my_id INT, PRIMARY KEY (my_id) USING INDEX TABLESPACE fast)", Label = "primary key tablespace disambiguation")]
+    [InlineData("CREATE TABLE mytable (my_id INT, UNIQUE (my_id) USING INDEX TABLESPACE fast)", Label = "unique tablespace disambiguation")]
     public static void CreateTable_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -803,6 +805,15 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
             Assert.Equal(expectedType, option!.GetType().Name);
             Assert.IsType<Eof>(state.Peek());
         }
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY")]
+    [InlineData("UNIQUE")]
+    public void ConstraintIndexMethods_RejectNonWordMethods(string constraint)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(
+            $"CREATE TABLE items (id INT, {constraint} (id) USING 123)"));
     }
 
     private sealed class GrammarParser(Grammar grammar) : Parser
