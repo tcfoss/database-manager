@@ -448,6 +448,9 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TYPE app.mood AS ENUM ()")]
     [InlineData("CREATE TYPE address AS (street TEXT, postcode app.postal_code)")]
     [InlineData("CREATE TYPE \"Address\" AS (\"Street\" TEXT COLLATE \"C\")")]
+    [InlineData("CREATE TYPE mood")]
+    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
+    [InlineData("CREATE TYPE mood (INPUT = input_function, OUTPUT = output_function)")]
     public void CreateType_UsesCoreGrammar(string sql)
     {
         Assert.Equal(sql, ParseStatement(sql).ToSql());
@@ -468,9 +471,6 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE DEFINER = 'user'@'host' EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
     [InlineData("CREATE OR REPLACE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TEMPORARY TYPE mood AS ENUM ('happy')")]
-    [InlineData("CREATE TYPE mood")]
-    [InlineData("CREATE TYPE mood AS RANGE (SUBTYPE = INT)")]
-    [InlineData("CREATE TYPE mood (INPUT = input_function, OUTPUT = output_function)")]
     public void UnsupportedCreateForms_AreRejected(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));

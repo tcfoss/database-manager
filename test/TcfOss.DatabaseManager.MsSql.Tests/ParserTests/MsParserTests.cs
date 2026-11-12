@@ -218,6 +218,8 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [Theory]
     [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TYPE address AS (street TEXT)")]
+    [InlineData("CREATE TYPE widget")]
+    [InlineData("CREATE TYPE widget (INPUT = widget_in, OUTPUT = widget_out)")]
     [InlineData("CREATE DOMAIN postcode AS TEXT")]
     [InlineData("CREATE EVENT reminder ON SCHEDULE EVERY 1 DAY DO SELECT 1")]
     [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]

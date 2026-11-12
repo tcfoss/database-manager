@@ -211,6 +211,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET COMPRESSION lz4")]
     [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
     [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY CURRENT_USER SET TABLESPACE slow NOWAIT")]
+    [InlineData("CREATE TYPE int4range AS RANGE (SUBTYPE = INT)")]
+    [InlineData("CREATE TYPE widget")]
+    [InlineData("CREATE TYPE widget (INPUT = widget_in, OUTPUT = widget_out)")]
     public void ProcessStatements_RejectsUnsupportedStatements(string sql)
     {
         var builder = CreateBuilder();
