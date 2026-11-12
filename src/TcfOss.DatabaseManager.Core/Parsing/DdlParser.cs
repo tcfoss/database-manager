@@ -652,6 +652,7 @@ public class DdlParser
     protected virtual StatementRoutineParameter ParseRoutineParameter(ParserState state, RoutineParamsSupportStyle style)
     {
         RoutineParameterDirection? direction = ParseRoutineParameterDirection(state, style.Modes);
+
         if (style.NameMode == RoutineParameterNameMode.RequiredVariable)
         {
             Identifier variableName = _parseIdentifier(state);
@@ -659,7 +660,7 @@ public class DdlParser
             {
                 throw state.ExpectedException("parameter name (@name)");
             }
-            DataTypeReference variableType = _p.DataTypeParser.ParseDataTypeReference(state);
+            DataTypeReference variableType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
             (ParameterDefault? variableDefault, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
             var defaultValue = (ParameterDefault.ValueDefault?)variableDefault;
             return new StatementRoutineParameter.Undirected(variableName, variableType, defaultValue)
@@ -671,29 +672,43 @@ public class DdlParser
         if (style.NameMode == RoutineParameterNameMode.RequiredIdentifier)
         {
             Identifier requiredName = _parseIdentifier(state);
-            DataTypeReference requiredType = _p.DataTypeParser.ParseDataTypeReference(state);
+            DataTypeReference requiredType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
             return new StatementRoutineParameter.Directed(requiredName, requiredType, direction,
                 ParseRoutineParameterDefault(state, style));
         }
 
         if (CanStartUnnamedRoutineParameter(state)
-            && state.TryParse(innerState => ParseUnnamedRoutineParameter(innerState, direction, style), out StatementRoutineParameter.General? unnamed))
+            && state.TryParse(innerState => ParseUnnamedRoutineParameter(innerState, direction, style),
+                out StatementRoutineParameter.General? unnamed))
         {
             return unnamed;
         }
 
         Identifier name = _parseIdentifier(state);
         RoutineParameterDirection? namedDirection = direction ?? ParseRoutineParameterDirection(state, style.Modes);
-        DataTypeReference namedType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference namedType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
         (ParameterDefault? namedDefault, MsRoutineParameterOptions? namedOptions) = ParseRoutineParameterSuffix(state, style);
         return new StatementRoutineParameter.General(name, namedType, namedDirection, namedDefault, namedOptions);
+    }
+
+    private SqlValueList<StatementRoutineParameter> ParseRoutineDefinitionParameterList(ParserState state, bool isFunction)
+    {
+        if (!_p.Grammar.HasFlag(Grammar.Pg))
+        {
+            return ParseRoutineParameterList(state, isFunction);
+        }
+
+        RoutineParamsSupportStyle style = GetRoutineParamsSupportStyle(isFunction) with { AllowPgTypeOf = true };
+        return state.ParseParenthesizedCommaSeparated(
+            innerState => ParseRoutineParameter(innerState, style),
+            allowEmpty: true);
     }
 
     private bool CanStartUnnamedRoutineParameter(ParserState state)
     {
         return _p.DataTypeParser.IsDataTypeStart(state.Peek()) || state.PeekNth(1) switch
         {
-            Comma or ParenClose or Dot or BracketOpen or Equal => true,
+            Comma or ParenClose or Dot or BracketOpen or Equal or Modulo => true,
             Word { Keyword: Keyword.DEFAULT or Keyword.ARRAY } => true,
             _ => false
         };
@@ -702,7 +717,7 @@ public class DdlParser
     private StatementRoutineParameter.General ParseUnnamedRoutineParameter(ParserState state, RoutineParameterDirection? direction,
         RoutineParamsSupportStyle style)
     {
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseRoutineDataTypeReference(state, style.AllowPgTypeOf);
         (ParameterDefault? defaultValue, MsRoutineParameterOptions? options) = ParseRoutineParameterSuffix(state, style);
         if (!state.PeekIs<Comma>() && !state.PeekIs<ParenClose>())
         {
@@ -931,7 +946,7 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: true);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineDefinitionParameterList(state, isFunction: true);
 
         StatementFunctionReturn? returnType = null;
         if (!state.PeekKeywordsAll(Keyword.RETURNS, Keyword.NULL, Keyword.ON, Keyword.NULL, Keyword.INPUT)
@@ -982,25 +997,18 @@ public class DdlParser
 
     protected StatementFunctionReturn.DataTypeReturn ParseScalarFunctionReturn(ParserState state)
     {
-        return new StatementFunctionReturn.DataTypeReturn(_p.DataTypeParser.ParseDataTypeReference(state));
+        return new StatementFunctionReturn.DataTypeReturn(_p.DataTypeParser.ParseRoutineDataTypeReference(state));
     }
 
-    private StatementFunctionReturn.Element ParseFunctionReturnElement(ParserState state)
+    private StatementFunctionReturn.DataTypeReturn ParseFunctionReturnElement(ParserState state)
     {
-        if (_p.Grammar.HasFlag(Grammar.Pg)
-            && state.TryGetPseudoKeyword(out string text, out Keyword _, false)
-            && PgPseudoType.TryParse(text, out PgPseudoType? pseudoType))
-        {
-            state.Next();
-            return new StatementFunctionReturn.PseudoType(pseudoType);
-        }
         return ParseScalarFunctionReturn(state);
     }
 
     private StatementFunctionReturn.TableColumn ParseFunctionReturnColumn(ParserState state)
     {
         Identifier name = _parseIdentifier(state);
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseRoutineDataTypeReference(state);
         return new StatementFunctionReturn.TableColumn(name, dataType);
     }
 
@@ -1014,7 +1022,7 @@ public class DdlParser
         bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
         ObjectName name = _parseObjectName(state);
-        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineParameterList(state, isFunction: false);
+        SqlValueList<StatementRoutineParameter> parameters = ParseRoutineDefinitionParameterList(state, isFunction: false);
 
         ParsedRoutineTail tail = ParseRoutineTail(state, isFunction: false);
 

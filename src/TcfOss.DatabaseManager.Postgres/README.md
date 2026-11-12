@@ -55,11 +55,20 @@ Builder validation remains in place for manually constructed statements.
 
 Parsed columns, casts, routine parameters, and function return declarations use
 Core's `DataTypeReference`: `BuiltIn` wraps a concrete `DataType`, `Named`
-retains an unresolved `ObjectName`, and `Array` wraps an element reference with
-declared dimensions. `ParseDataTypeReference` accepts unqualified,
-qualified, and double-quoted names, preserving spelling, quoting, and source
-locations. `ParseDataType` remains the built-in-only entry point. Invalid
-built-in syntax is not retried as a named reference.
+retains an unresolved `ObjectName`, `PgPseudoType` retains PostgreSQL pseudo-type
+names, `PgTypeOf` retains a PostgreSQL `%TYPE` reference, and `Array` wraps an
+element reference with declared dimensions.
+`ParseDataTypeReference` accepts unqualified, qualified, and double-quoted
+names, preserving spelling, quoting, and source locations. `%TYPE` is accepted
+only in PostgreSQL routine definitions and remains unresolved. `ParseDataType`
+remains the built-in-only entry point. Invalid built-in syntax is not retried as
+a named reference.
+
+Routine signatures recognize pseudo-types in definitions and in COMMENT, ALTER,
+and DROP targets. Definition construction preserves matching polymorphic output
+returns and accepts polymorphic variadic types (`ANY`, `ANYARRAY`, and
+`ANYCOMPATIBLEARRAY`); language eligibility and polymorphic relationships remain
+deferred.
 
 Each `DataTypeParser` receives its owning `Parser` and uses that parser's
 `ComponentParser` for named references. Core provides this permissive reference
@@ -85,8 +94,7 @@ syntax expectation errors. Zero-length strings remain supported by Core and the
 MySQL/MariaDB parser, but are rejected by PostgreSQL and SQL Server.
 
 This is not yet a complete PostgreSQL grammar. Custom type modifiers,
-range/base/shell type declarations, catalog/internal and routine
-pseudo-types and PostgreSQL-specific casts (`::`) are not implemented.
+range/base/shell type declarations, and some catalog/internal types are not implemented.
 Routine support is limited to the body forms described below. Existing Core statement parsing is reused without
 claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration

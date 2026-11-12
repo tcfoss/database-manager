@@ -141,13 +141,23 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Fact]
-    public void FunctionReturn_PseudoTypesRequirePostgresGrammar()
+    public void FunctionReturn_NonPostgresGrammarTreatsPseudoTypeNamesAsNamedTypes()
     {
         const string sql = "CREATE FUNCTION f() RETURNS record RETURN 1";
         var parser = new MsGrammarParser();
         var function = Assert.IsType<CreateFunction>(Assert.Single(parser.Parse([.. new GenericLexer().Tokenize(sql)])));
 
-        Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+        var returnType = Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+        Assert.Equal("record", Assert.IsType<DataTypeReference.Named>(returnType.DataType).Name.ToSql());
+    }
+
+    [Fact]
+    public void FunctionParameter_NonPostgresGrammarRejectsPgTypeOf()
+    {
+        const string sql = "CREATE FUNCTION f(value app.users.id%TYPE) RETURNS INT RETURN 1";
+        var parser = new MsGrammarParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.Parse([.. new GenericLexer().Tokenize(sql)]));
     }
 
     [Theory]
