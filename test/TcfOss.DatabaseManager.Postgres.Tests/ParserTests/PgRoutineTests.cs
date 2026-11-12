@@ -1,15 +1,11 @@
-using System.Text;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Configuration;
-using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
-using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -762,7 +758,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("BEGIN SELECT 1; END", Label = "Plain block")]
-    [InlineData("label: SELECT 1", Label = "Statement label")]
+    [InlineData("<<label>> BEGIN NULL; END label", Label = "Statement label")]
     [InlineData("DECLARE failed CONDITION FOR SQLSTATE '45000'", Label = "Condition declaration")]
     [InlineData("DECLARE CONTINUE HANDLER FOR SQLSTATE '45000' SELECT 1", Label = "Handler declaration")]
     [InlineData("OPEN cursor_name", Label = "Cursor open")]
@@ -790,14 +786,14 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("AS $$BEGIN SELECT 1; END$$", Label = "Opaque body")]
     public void SqlOnlyContext_RoutineScopeRestoresPreviousFlags(string body)
     {
-        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL {body}; BEGIN SELECT 2; END; label: SELECT 3");
+        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL {body}; BEGIN SELECT 2; END; <<label>> BEGIN NULL; END label");
         using (state.EnterContext(ParseContext.DomainCheck))
         {
             var statements = new PgParser().Parse(state, null);
             Assert.Equal(3, statements.Count);
             Assert.IsType<CreateFunction>(statements[0]);
             Assert.IsType<BeginEnd>(statements[1]);
-            Assert.IsType<LabeledStatement>(statements[2]);
+            Assert.IsType<LabeledStatement.Pg>(statements[2]);
             Assert.Equal(ParseContext.DomainCheck, state.Context);
             Assert.Null(state.StatementLabel);
             Assert.IsType<Eof>(state.Peek());
@@ -808,6 +804,9 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("BEGIN ATOMIC BEGIN SELECT 1; END; END", Label = "Rejected procedural block")]
     [InlineData("BEGIN ATOMIC label: SELECT 1; END", Label = "Rejected label")]
+    [InlineData("BEGIN ATOMIC <<label>> BEGIN NULL; END label; END", Label = "Rejected PostgreSQL label")]
+    [InlineData("BEGIN ATOMIC DECLARE value INT; BEGIN NULL; END; END", Label = "Rejected PostgreSQL declarations")]
+    [InlineData("BEGIN ATOMIC NULL; END", Label = "Rejected procedural NULL")]
     [InlineData("BEGIN ATOMIC SELECT 1 END", Label = "Missing terminator")]
     [InlineData("RETURN", Label = "Missing return expression")]
     public void SqlOnlyContext_RoutineScopeRestoresPreviousFlagsAfterFailure(string body)
@@ -923,20 +922,5 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         Assert.IsType<DeclareCursor>(body.Statements[0]);
         Assert.IsType<Close>(body.Statements[1]);
         Assert.Equal(procedure.ToSql(), ParseStatement(procedure.ToSql()).ToSql());
-    }
-
-    private static string Format(IWriteSql statement)
-    {
-        var names = new FunctionNameProvider();
-        var manager = new FormatManager
-        {
-            Formatting = new FormattingSettings { Quoting = IdentifierQuotationHandling.LeaveOriginal },
-            FunctionNameProvider = names,
-            ComponentNormalizer = new ComponentNormalizer(QuoteStyle.Ansi, names),
-            Indenter = new Indenter()
-        };
-        using var writer = new SqlTextWriter(new StringBuilder());
-        statement.FormatSql(writer, manager);
-        return writer.ToString();
     }
 }

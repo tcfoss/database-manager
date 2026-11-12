@@ -1,8 +1,15 @@
-﻿using TcfOss.DatabaseManager.Core.Expressions;
+﻿using System.Text;
+using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
+using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -147,5 +154,20 @@ public class ParserTestsBase<TLexer, TParser>
         }
 
         return (expected, actual);
+    }
+
+    protected static string Format(IWriteSql statement, ComponentNormalizer? componentNormalizer = null)
+    {
+        var names = new FunctionNameProvider();
+        var manager = new FormatManager
+        {
+            Formatting = new FormattingSettings { Quoting = IdentifierQuotationHandling.LeaveOriginal },
+            FunctionNameProvider = names,
+            ComponentNormalizer = componentNormalizer ?? new ComponentNormalizer(QuoteStyle.Ansi, names),
+            Indenter = new Indenter()
+        };
+        using var writer = new SqlTextWriter(new StringBuilder());
+        statement.FormatSql(writer, manager);
+        return writer.ToString();
     }
 }

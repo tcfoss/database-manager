@@ -288,7 +288,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     public void StatementLabels_PreserveNamesAndSource(string labelSql)
     {
         string sql = labelSql + " /* gap */ : SELECT 1";
-        var statement = Assert.IsType<LabeledStatement>(Assert.Single(new Parser().Parse(GetTokens(sql), sourceId: 7)));
+        var statement = Assert.IsType<LabeledStatement.My>(Assert.Single(new Parser().Parse(GetTokens(sql), sourceId: 7)));
 
         Assert.IsType<Select>(statement.SubStatement);
         Assert.Equal(labelSql, statement.Label.ToSql());
@@ -303,7 +303,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [Fact]
     public void StatementLabels_PreserveLeadingTrivia()
     {
-        var statement = Assert.IsType<LabeledStatement>(ParseStatement("/* leading */ label: SELECT 1"));
+        var statement = Assert.IsType<LabeledStatement.My>(ParseStatement("/* leading */ label: SELECT 1"));
 
         Assert.Equal(0, statement.Meta.Start);
         Assert.NotEmpty(statement.Meta.PreNonSql!);
@@ -315,7 +315,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("/* leading */ label: SELECT 1 /* trailing */;", "/* leading */ label: SELECT 1 /* trailing */", true)]
     public void StatementLabels_PreserveCompleteSourceSpans(string sql, string expectedSource, bool hasTerminator)
     {
-        var statement = Assert.IsType<LabeledStatement>(new Parser().Parse(GetTokens(sql))[0]);
+        var statement = Assert.IsType<LabeledStatement.My>(new Parser().Parse(GetTokens(sql))[0]);
 
         Assert.Equal(0, statement.Meta.Start);
         Assert.Equal(expectedSource.Length, statement.Meta.End);

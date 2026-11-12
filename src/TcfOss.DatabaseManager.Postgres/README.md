@@ -750,9 +750,7 @@ while this flag is set. Core retains its broader grammar. The existing
 `NarrowSqlOnly` remains active until body parsing finishes. Both flags restore
 their previous values when the scope exits, including after parse errors.
 
-Quoted routine bodies remain opaque. A future entry point for parsing extracted
-body text must select SQL-only narrowing or procedural grammar explicitly;
-leaving the flag unset does not implement the deferred PL/pgSQL grammar.
+Quoted routine bodies remain opaque; they are not automatically reparsed.
 
 Mixed CTE/query, INSERT, UPDATE, DELETE, CALL, and RETURN bodies are unit-tested
 for statement spans, terminators, identifier sources, dependencies, comments,
@@ -762,6 +760,23 @@ comments, and following top-level statements. Missing statement terminators/END
 and nested atomic bodies are rejected. SQL cursor declarations remain accepted;
 statement eligibility and language-specific execution/transaction semantics
 are deferred.
+
+## Structural PL/pgSQL Blocks
+
+Standalone PostgreSQL parsing supports nested `[DECLARE ...] BEGIN ...
+[EXCEPTION ...] END` blocks, optional `<<label>>` and matching closing labels,
+ordinary typed variable declarations with `CONSTANT`, `COLLATE`, `NOT NULL`,
+and `DEFAULT`, `=`, or `:=` initializers, and `NULL` statements. Exception
+handlers retain their order, named conditions, `SQLSTATE` literals, and `OR`
+alternatives. These constructs are excluded from SQL-only routine bodies.
+Formatting preserves comments within PostgreSQL label delimiters.
+In Core's mixed grammar, a complete ambiguous `DECLARE` block takes priority
+over a dialect-specific standalone variable declaration; cursor, condition, and
+handler declarations retain their existing dispatch.
+
+Variable scoping and binding are not implemented; dependency analysis of
+variable references is therefore not yet reliable. Other PL/pgSQL statements
+and declaration forms remain separate work. Quoted body parsing is not enabled.
 
 ## Procedure Invocation
 

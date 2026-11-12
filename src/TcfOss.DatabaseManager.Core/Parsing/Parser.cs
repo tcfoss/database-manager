@@ -120,22 +120,79 @@ public class Parser : IParser
 
     public virtual Statement ParseStatement(ParserState state)
     {
+        StatementLabel? label = MaybeParseStatementLabel(state);
+        using ParserState.StatementScope scope = state.EnterStatementScope(label);
+
         Token token = state.Peek();
 
-        Word? labelToken = null;
-        if (token is Word { Sigil: SigilKind.None } word && state.PeekNthIs<Colon>(1))
-        {
-            labelToken = word;
-            state.Next();
-            state.Next();
-            token = state.Peek();
-        }
-
-        using ParserState.StatementScope scope = state.EnterStatementScope(labelToken);
-
         Statement statement = ParseNormalStatement(state, token);
+
         AttachStatementMetadata(statement, token, state);
         return AttachLabelToStatement(statement, state);
+
+    }
+
+    protected virtual StatementLabel? MaybeParseStatementLabel(ParserState state)
+    {
+        if (Grammar.HasFlag(Grammar.Pg))
+        {
+            StatementLabel? label = MaybeParsePgStatementLabel(state);
+            if (label != null)
+            {
+                return label;
+            }
+        }
+        return Grammar.HasFlag(Grammar.My) ? MaybeParseMyStatementLabel(state) : null;
+    }
+
+    protected static StatementLabel? MaybeParseMyStatementLabel(ParserState state)
+    {
+        if (state.Peek() is Word { Sigil: SigilKind.None } word && state.PeekNthIs<Colon>(1))
+        {
+            state.Next();
+            state.Next();
+            return new StatementLabel(
+                word.ToIdentifier(state.SourceId),
+                word.Location.Position,
+                StatementLabelDialect.My,
+                word.PreNonSql,
+                null,
+                null
+            );
+        }
+        return null;
+    }
+
+    protected StatementLabel? MaybeParsePgStatementLabel(ParserState state)
+    {
+        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) || state.Peek() is not OperatorToken { Value: "<<" })
+        {
+            return null;
+        }
+        Token first = state.Next();
+        if (state.Peek() is not Word token)
+        {
+            throw state.ExpectedException("block_label");
+        }
+        Identifier label = ComponentParser.ParseIdentifier(state, "block_label");
+        if (state.Peek() is not OperatorToken { Value: ">>" } closing)
+        {
+            throw state.ExpectedException(">>");
+        }
+        state.Next(); // Consume the closing ">>" operator token
+        if (state.Peek() is not Word { Keyword: Keyword.BEGIN or Keyword.DECLARE})
+        {
+            throw state.ExpectedException("BEGIN or DECLARE");
+        }
+
+        return new StatementLabel(
+            label,
+            first.Location.Position,
+            StatementLabelDialect.Pg,
+            first.PreNonSql,
+            token.PreNonSql,
+            closing.PreNonSql
+        );
     }
 
     protected virtual Statement ParseNormalStatement(ParserState state, Token token)
@@ -177,6 +234,7 @@ public class Parser : IParser
             Keyword.DROP => DdlParser.ParseDropObject(state),
             Keyword.IF => ControlFlowParser.ParseIf(state),
             Keyword.DECLARE => ParseDeclare(state),
+            Keyword.NULL when Grammar.AllowsPgProcedural(state) && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
             Keyword.SET => ParseSet(state),
             Keyword.BEGIN => ParseBegin(state),
             Keyword.RETURN => ParseReturn(state),
@@ -192,6 +250,12 @@ public class Parser : IParser
             _ => throw ParserState.ExpectedException("SQL statement".Italic(), first)
         };
 #pragma warning restore IDE0072 // Add missing cases
+    }
+
+    private static PgNull ParsePgNull(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.NULL);
+        return new PgNull();
     }
 
     private Use ParseUse(ParserState state)
@@ -392,11 +456,15 @@ public class Parser : IParser
                 return ControlFlowParser.ParseBeginAtomic(state);
             }
         }
+        if (Grammar.AllowsPgProcedural(state))
+        {
+            return ControlFlowParser.ParsePgBeginEnd(state);
+        }
         return ControlFlowParser.ParseBeginEnd(state);
     }
 
 
-    private Statement ParseDeclare(ParserState state)
+    protected virtual Statement ParseDeclare(ParserState state)
     {
         state.ExpectKeyword(Keyword.DECLARE, false);
         Token upcoming1 = state.PeekNth(1);
@@ -414,7 +482,36 @@ public class Parser : IParser
         {
             return ControlFlowParser.ParseDeclareCursor(state);
         }
+        if (Grammar.AllowsPgProcedural(state))
+        {
+            if (!Grammar.Any(Grammar.My | Grammar.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
+            {
+                return ControlFlowParser.ParsePgBeginEnd(state);
+            }
+            if (HasPgDeclareBlockOpener(state) && state.TryParse(ControlFlowParser.ParsePgBeginEnd, out BeginEnd? block))
+            {
+                return block;
+            }
+        }
         return ControlFlowParser.ParseDeclareLocalVariable(state);
+    }
+
+    private static bool HasPgDeclareBlockOpener(ParserState state)
+    {
+        bool afterTerminator = true;
+        for (int i = 1; ; i++)
+        {
+            Token token = state.PeekNth(i);
+            if (token is Eof)
+            {
+                return false;
+            }
+            if (afterTerminator && token is Word { Keyword: Keyword.BEGIN })
+            {
+                return true;
+            }
+            afterTerminator = token is Semicolon;
+        }
     }
 
     protected virtual Fetch ParseFetch(ParserState state)
@@ -498,13 +595,23 @@ public class Parser : IParser
             return statement;
         }
         StatementLabel statementLabel = state.StatementLabel.Value;
-        statement = new LabeledStatement(statement, statementLabel.Label)
+        MetaData subStatementMeta = statement.Meta;
+        statement = statementLabel.Dialect switch
         {
-            Meta = new()
+            StatementLabelDialect.My => new LabeledStatement.My(statement, statementLabel.Label),
+            StatementLabelDialect.Pg => new LabeledStatement.Pg(statement, statementLabel.Label)
             {
-                End = statement.Meta.End,
-                EndPlusTerminatorLength = statement.Meta.EndPlusTerminatorLength
-            }
+                LabelMeta = new MetaData
+                {
+                    PreNonSql = statementLabel.PgMiddleNonSql?.Items,
+                    PostNonSql = statementLabel.PgClosingNonSql?.Items
+                }
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(state))
+        };
+        statement = statement with
+        {
+            Meta = new() { End = subStatementMeta.End, EndPlusTerminatorLength = subStatementMeta.EndPlusTerminatorLength }
         };
         if (statementLabel.PreNonSql.SafeAny())
         {

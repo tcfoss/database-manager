@@ -12,6 +12,14 @@ namespace TcfOss.DatabaseManager.MySql.Tests.ParserTests;
 public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 {
     [Theory]
+    [InlineData("<<label>> BEGIN SELECT 1; END label")]
+    [InlineData("BEGIN SELECT 1; EXCEPTION WHEN OTHERS THEN SELECT 2; END")]
+    public void PostgresBlocks_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("IF a > b THEN SELECT 1; END IF")]
     [InlineData("IF a > b THEN SELECT 1; SELECT 2; END IF")]
     [InlineData("IF a > b THEN SELECT 1; ELSE SELECT 2; END IF")]
@@ -619,9 +627,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         string sql = loopSql + "; SELECT 4";
         var state = GetState(sql);
         var statements = new MyParser().Parse(state, null);
-        var outer = Assert.IsType<LabeledStatement>(statements[0]);
+        var outer = Assert.IsType<LabeledStatement.My>(statements[0]);
         var outerLoop = Assert.IsType<Loop>(outer.SubStatement);
-        var inner = Assert.IsType<LabeledStatement>(outerLoop.Statements[0]);
+        var inner = Assert.IsType<LabeledStatement.My>(outerLoop.Statements[0]);
         var innerLoop = Assert.IsType<Loop>(inner.SubStatement);
         var unlabeledLoop = Assert.IsType<Loop>(outerLoop.Statements[1]);
 
@@ -647,7 +655,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         const string loopSql = "looplabel: LOOP SELECT 1; END LOOP looplabel";
         string prefix = "DELIMITER " + delimiter + "\n";
         string sql = prefix + loopSql + delimiter;
-        var statement = Assert.IsType<LabeledStatement>(ParseStatement(sql));
+        var statement = Assert.IsType<LabeledStatement.My>(ParseStatement(sql));
 
         Assert.Equal(prefix.Length - 1, statement.Meta.Start);
         Assert.Equal(prefix.Length + loopSql.Length, statement.Meta.End);

@@ -537,10 +537,9 @@ public class ParserState
         }
     }
 
-    public StatementScope EnterStatementScope(Word? labelToken)
+    public StatementScope EnterStatementScope(StatementLabel? label)
     {
-        StatementLabel? statementLabel = labelToken is not null ? new StatementLabel(labelToken, SourceId) : null;
-        return new StatementScope(this, statementLabel);
+        return new StatementScope(this, label);
     }
 
     public readonly struct StatementScope : IDisposable

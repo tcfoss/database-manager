@@ -1,4 +1,5 @@
 ﻿using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
@@ -1006,23 +1007,23 @@ public static class ParserStateTests
     public static void EnterStatementScope_RestoresNestedLabelsAndClearsUnlabeledChildren()
     {
         var state = new ParserState([], sourceId: 17);
-        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
-        var innerToken = new Word("inner_label") { Location = new Lexing.Location() };
+        var outerLabel = new StatementLabel(new Identifier("outer_label"), 0, StatementLabelDialect.My, null, null, null);
+        var innerLabel = new StatementLabel(new Identifier("inner_label"), 0, StatementLabelDialect.My, null, null, null);
 
         Assert.Null(state.StatementLabel);
-        using (state.EnterStatementScope(outerToken))
+        using (state.EnterStatementScope(outerLabel))
         {
-            Assert.Equal(outerToken.ToIdentifier(17), state.StatementLabel?.Label);
-            using (state.EnterStatementScope(innerToken))
+            Assert.Equal(outerLabel, state.StatementLabel);
+            using (state.EnterStatementScope(innerLabel))
             {
-                Assert.Equal(innerToken.ToIdentifier(17), state.StatementLabel?.Label);
+                Assert.Equal(innerLabel, state.StatementLabel);
                 using (state.EnterStatementScope(null))
                 {
                     Assert.Null(state.StatementLabel);
                 }
-                Assert.Equal(innerToken.ToIdentifier(17), state.StatementLabel?.Label);
+                Assert.Equal(innerLabel, state.StatementLabel);
             }
-            Assert.Equal(outerToken.ToIdentifier(17), state.StatementLabel?.Label);
+            Assert.Equal(outerLabel, state.StatementLabel);
         }
         Assert.Null(state.StatementLabel);
     }
@@ -1036,12 +1037,21 @@ public static class ParserStateTests
             ? [new Word("inner_label") { Location = new Lexing.Location() }, new Colon { Location = new Lexing.Location() }, new Word("SELECT") { Location = new Lexing.Location() }]
             : [new Word("SELECT") { Location = new Lexing.Location() }];
         var state = new ParserState(tokens);
-        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
 
-        using (state.EnterStatementScope(outerToken))
+        var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
+        var outerLabel = new StatementLabel(
+            outerToken.ToIdentifier(state.SourceId),
+            outerToken.Location.Position,
+            StatementLabelDialect.My,
+            outerToken.PreNonSql,
+            null,
+            null
+        );
+
+        using (state.EnterStatementScope(outerLabel))
         {
             Assert.ThrowsAny<ParseException>(() => new Parser().ParseStatement(state));
-            Assert.Equal(outerToken.ToIdentifier(state.SourceId), state.StatementLabel?.Label);
+            Assert.Equal(outerLabel, state.StatementLabel);
         }
         Assert.Null(state.StatementLabel);
     }

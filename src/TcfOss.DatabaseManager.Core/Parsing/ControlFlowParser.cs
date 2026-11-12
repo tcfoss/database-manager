@@ -36,6 +36,158 @@ public class ControlFlowParser
         return new BeginEnd(statements);
     }
 
+    public BeginEnd ParsePgBeginEnd(ParserState state)
+    {
+        using ParserState.Scope scope = state.EnterContext(ParseContext.PgProceduralBlock);
+        SqlValueList<Statement>? declarations = null;
+        bool hasDeclare = state.ParseKeyword(Keyword.DECLARE);
+        if (hasDeclare)
+        {
+            declarations = [];
+            while (!state.PeekKeyword(Keyword.BEGIN))
+            {
+                Token start = state.Peek();
+                if (start is Eof)
+                {
+                    throw state.ExpectedException("BEGIN");
+                }
+                PgBlockVariable declaration = ParsePgBlockVariable(state);
+                Parser.AttachStatementMetadata(declaration, start, state);
+                declarations.Add(declaration);
+                state.ExpectToken<Semicolon>();
+            }
+            if (state.Peek().PreNonSql is { } beginTrivia && beginTrivia.SafeAny())
+            {
+                declarations.Add(beginTrivia.ToInertOnly());
+            }
+        }
+
+        state.ExpectKeyword(Keyword.BEGIN);
+        bool strictTerminator = hasDeclare || !_p.Grammar.Any(Grammar.My | Grammar.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg;
+        var blockEnd = new EndSubstatements
+        {
+            RequireTerminatorBeforeEnd = strictTerminator,
+            GetFinished = s => s.PeekKeyword(Keyword.EXCEPTION) || s.PeekKeyword(Keyword.END),
+            GetEofException = s => s.ExpectedException("EXCEPTION", "END")
+        };
+
+        SqlValueList<Statement> statements = _p.Parse(state, blockEnd);
+        if (state.Peek().PreNonSql is { } blockEndTrivia && blockEndTrivia.SafeAny())
+        {
+            statements.Add(blockEndTrivia.ToInertOnly());
+        }
+
+        SqlValueList<PgExceptionHandler>? handlers = null;
+        if (state.ParseKeyword(Keyword.EXCEPTION))
+        {
+            handlers = [];
+            do
+            {
+                Token when = state.Peek();
+                state.ExpectKeyword(Keyword.WHEN);
+                SqlValueList<PgExceptionCondition> conditions = [ParsePgExceptionCondition(state)];
+                while (state.ParseKeyword(Keyword.OR))
+                {
+                    conditions.Add(ParsePgExceptionCondition(state));
+                }
+                state.ExpectKeyword(Keyword.THEN);
+
+                var handlerEnd = new EndSubstatements
+                {
+                    RequireTerminatorBeforeEnd = true,
+                    GetFinished = s => s.PeekKeyword(Keyword.WHEN) || s.PeekKeyword(Keyword.END),
+                    GetEofException = s => s.ExpectedException("WHEN", "END")
+                };
+                SqlValueList<Statement> handlerStatements = _p.Parse(state, handlerEnd);
+
+                // Consider pulling this logic into the core Parser or into a helper function
+                if (state.PeekKeyword(Keyword.END) && state.Peek().PreNonSql is { } handlerEndTrivia && handlerEndTrivia.SafeAny())
+                {
+                    handlerStatements.Add(handlerEndTrivia.ToInertOnly());
+                }
+
+                var handler = new PgExceptionHandler(conditions, handlerStatements);
+                if (when.PreNonSql is { } whenTrivia && whenTrivia.SafeAny())
+                {
+                    handler.Meta.PreNonSql = whenTrivia.Items;
+                }
+
+                handlers.Add(handler);
+            } while (state.PeekKeyword(Keyword.WHEN));
+        }
+
+        state.ExpectKeyword(Keyword.END);
+        Identifier? endLabel = null;
+
+        if (state.Peek() is Word && state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
+        {
+            Token token = state.Peek();
+            endLabel = _parseIdentifier(state);
+            Identifier startLabel = state.StatementLabel.Value.Label;
+            string startName = startLabel.QuoteStyle == QuoteStyle.None ? startLabel.Name.ToLowerInvariant() : startLabel.Name;
+            string endName = endLabel.QuoteStyle == QuoteStyle.None ? endLabel.Name.ToLowerInvariant() : endLabel.Name;
+            if (!string.Equals(startName, endName, StringComparison.Ordinal))
+            {
+                throw ParserState.ExpectedException("matching block label", token);
+            }
+        }
+
+        PgBlockOptions? options = declarations != null || handlers != null || endLabel != null
+            ? new PgBlockOptions(declarations, handlers, endLabel)
+            : null;
+
+        return new BeginEnd(statements) { PgOptions = options };
+    }
+
+    private PgBlockVariable ParsePgBlockVariable(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        bool constant = state.TryGetPseudoKeyword(out string text, out _, false)
+            && string.Equals(text, "CONSTANT", StringComparison.OrdinalIgnoreCase);
+        if (constant)
+        {
+            state.Next();
+        }
+        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+
+        ObjectName? collation = state.ParseKeyword(Keyword.COLLATE) ? _p.ComponentParser.ParseObjectName(state, "collation_name") : null;
+
+        bool notNull = state.ParseKeywordsAll(Keyword.NOT, Keyword.NULL);
+
+        PgBlockVariableDefault? def = null;
+
+        PgInitializerOperator? marker = state.ParseKeyword(Keyword.DEFAULT)
+            ? PgInitializerOperator.Default
+            : state.ConsumeTokenIs<Walrus>() ? PgInitializerOperator.Assignment
+            : state.ConsumeTokenIs<Equal>() ? PgInitializerOperator.Equal
+            : null;
+
+        if (marker != null)
+        {
+            def = new PgBlockVariableDefault(marker, _p.ExpressionParser.ParseExpr(state));
+        }
+        return new PgBlockVariable(name, dataType)
+        {
+            Constant = constant,
+            Collation = collation,
+            NotNull = notNull,
+            Default = def
+        };
+    }
+
+    private PgExceptionCondition ParsePgExceptionCondition(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.SQLSTATE))
+        {
+            return new PgExceptionCondition.SqlState(ValueParser.ParseLiteralString(state));
+        }
+        if (state.ParseKeyword(Keyword.OTHERS))
+        {
+            return new PgExceptionCondition.Others();
+        }
+        return new PgExceptionCondition.Named(_parseIdentifier(state));
+    }
+
     public virtual Statement ParseIf(ParserState state)
     {
         throw new ParseException.DialectRequired("IF syntax", state.Peek().Location);

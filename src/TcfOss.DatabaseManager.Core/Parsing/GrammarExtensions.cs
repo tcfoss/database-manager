@@ -6,4 +6,9 @@ public static class GrammarExtensions
     {
         return (grammar & flags) != 0;
     }
+
+    public static bool AllowsPgProcedural(this Grammar grammar, ParserState state)
+    {
+        return grammar.HasFlag(Grammar.Pg) && !state.Context.HasFlag(ParseContext.NarrowSqlOnly);
+    }
 }

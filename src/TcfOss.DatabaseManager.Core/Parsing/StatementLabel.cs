@@ -3,9 +3,16 @@ using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
-public readonly struct StatementLabel(Word word, int sourceId)
+public readonly record struct StatementLabel(
+    Identifier Label,
+    int StartPosition,
+    StatementLabelDialect Dialect,
+    NonSqlList? PreNonSql,
+    NonSqlList? PgMiddleNonSql,
+    NonSqlList? PgClosingNonSql);
+
+public enum StatementLabelDialect
 {
-    public Identifier Label { get; } = word.ToIdentifier(sourceId);
-    public NonSqlList? PreNonSql { get; } = word.PreNonSql;
-    public int StartPosition { get; } = word.Location.Position;
+    My,
+    Pg,
 }

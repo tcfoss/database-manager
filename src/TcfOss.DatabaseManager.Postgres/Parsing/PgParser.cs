@@ -13,6 +13,11 @@ public class PgParser : Parser
 {
     public override Grammar Grammar => Grammar.Pg;
 
+    protected override StatementLabel? MaybeParseStatementLabel(ParserState state)
+    {
+        return MaybeParsePgStatementLabel(state);
+    }
+
     public override bool SupportsMySqlIntervalExpressionSyntax => false;
 
     public PgParser()
