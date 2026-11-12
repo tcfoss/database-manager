@@ -218,6 +218,24 @@ public class ParserState
         return Keyword.undefined;
     }
 
+    public bool TryGetPseudoKeyword(out string text, out Keyword keyword, bool consume = false)
+    {
+        if (Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } token && PeekNth(1) is not Dot)
+        {
+            text = token.Value;
+            keyword = token.Keyword;
+            if (consume)
+            {
+                Next();
+            }
+            return true;
+        }
+
+        text = string.Empty;
+        keyword = Keyword.undefined;
+        return false;
+    }
+
     /// <summary>
     /// Advance through upcoming tokens and check whether they match the
     /// requested keyword criteria. If they do, return the detected keywords.

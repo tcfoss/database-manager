@@ -251,8 +251,7 @@ public class DataTypeParser(Parser parser)
     public virtual DataTypeReference ParseDataTypeReference(ParserState state)
     {
         DataTypeReference reference;
-        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None } word
-            && !state.PeekNthIs<Dot>(1) && IsDataTypeKeyword(word.Keyword))
+        if (state.TryGetPseudoKeyword(out string _, out Keyword keyword) && IsDataTypeKeyword(keyword))
         {
             reference = new DataTypeReference.BuiltIn(ParseDataType(state));
         }

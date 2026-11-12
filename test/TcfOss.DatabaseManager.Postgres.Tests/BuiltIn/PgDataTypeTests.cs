@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
@@ -592,6 +593,13 @@ public class PgDataTypeTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [MemberData(nameof(StringEnumTestHelpers.StringEnumTypes), typeof(PgIntervalField), MemberType = typeof(StringEnumTestHelpers))]
     public void Serialization_AllPostgresStringEnumValues_RoundTrip(Type enumType)
+    {
+        StringEnumTestHelpers.AssertStringEnumRoundTrips(enumType);
+    }
+
+    [Theory]
+    [MemberData(nameof(StringEnumTestHelpers.StringEnumTypes), typeof(PgPseudoType), MemberType = typeof(StringEnumTestHelpers))]
+    public void Serialization_AllPostgresPseudoTypeValues_RoundTrip(Type enumType)
     {
         StringEnumTestHelpers.AssertStringEnumRoundTrips(enumType);
     }

@@ -140,6 +140,16 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(function, ParseStatement(function.ToSql()));
     }
 
+    [Fact]
+    public void FunctionReturn_PseudoTypesRequirePostgresGrammar()
+    {
+        const string sql = "CREATE FUNCTION f() RETURNS record RETURN 1";
+        var parser = new MsGrammarParser();
+        var function = Assert.IsType<CreateFunction>(Assert.Single(parser.Parse([.. new GenericLexer().Tokenize(sql)])));
+
+        Assert.IsType<StatementFunctionReturn.DataTypeReturn>(function.ReturnType);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(" VARYING")]
@@ -831,5 +841,10 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
             }
             return base.ParseNextSequenceOption(state, alter);
         }
+    }
+
+    private sealed class MsGrammarParser : Parser
+    {
+        public override Grammar Grammar => Grammar.Ms;
     }
 }

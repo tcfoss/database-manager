@@ -987,13 +987,12 @@ public class DdlParser
 
     private StatementFunctionReturn.Element ParseFunctionReturnElement(ParserState state)
     {
-        if (state.Peek() is Word { QuoteStyle: QuoteStyle.None, Sigil: SigilKind.None } word && !state.PeekNthIs<Dot>(1))
+        if (_p.Grammar.HasFlag(Grammar.Pg)
+            && state.TryGetPseudoKeyword(out string text, out Keyword _, false)
+            && PgPseudoType.TryParse(text, out PgPseudoType? pseudoType))
         {
-            if (PgPseudoType.TryParse(word.Value, out PgPseudoType? pseudoType))
-            {
-                state.Next();
-                return new StatementFunctionReturn.PseudoType(pseudoType);
-            }
+            state.Next();
+            return new StatementFunctionReturn.PseudoType(pseudoType);
         }
         return ParseScalarFunctionReturn(state);
     }
