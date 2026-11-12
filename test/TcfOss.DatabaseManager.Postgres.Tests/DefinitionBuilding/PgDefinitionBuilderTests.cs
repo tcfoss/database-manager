@@ -1596,31 +1596,28 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (FILLFACTOR = 70))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (FILLFACTOR = 70))")]
-    public void ConstraintIndexOptions_ClassifyFillFactorAsNotImplemented(string sql)
+    public void ConstraintIndexOptions_RejectUnrepresentedParametersWithSourcedError(string sql)
     {
         var builder = CreateBuilder();
+        var statements = ParseStatements(sql);
 
-        var exception = Assert.Throws<NotImplementedException>(() =>
-        {
-            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
-            builder.ToDefinition();
-        });
-        Assert.Contains("FILLFACTOR", exception.Message);
+        var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 7));
+        Assert.Equal(new SourceRef(7, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Theory]
-    [InlineData("PAD_INDEX")]
-    [InlineData("IGNORE_DUP_KEY")]
-    [InlineData("STATISTICS_NORECOMPUTE")]
-    [InlineData("STATISTICS_INCREMENTAL")]
-    [InlineData("ALLOW_ROW_LOCKS")]
-    [InlineData("ALLOW_PAGE_LOCKS")]
-    [InlineData("OPTIMIZE_FOR_SEQUENTIAL_KEY")]
-    [InlineData("FILLFACTOR")]
-    public void IndexOptions_RejectUnrepresentedStorageParametersWithSourcedError(string option)
+    [InlineData("", "FILLFACTOR = 70")]
+    [InlineData("", "deduplicate_items = ON")]
+    [InlineData(" USING GIST", "buffering = AUTO")]
+    [InlineData(" USING GIN", "fastupdate = OFF")]
+    [InlineData(" USING GIN", "gin_pending_list_limit = 4096")]
+    [InlineData(" USING BRIN", "autosummarize = ON")]
+    [InlineData(" USING BRIN", "pages_per_range = 128")]
+    [InlineData(" USING bloom", "custom_parameter = 70")]
+    public void IndexOptions_RejectUnrepresentedStorageParametersWithSourcedError(string method, string option)
     {
         var builder = CreateBuilder();
-        var statements = ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH ({option} = ON)");
+        var statements = ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items{method} (id) WITH ({option})");
 
         var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 7));
 
@@ -1636,9 +1633,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void TableConstraints_RejectInlineCommentsWithDialectSyntaxError(string constraint)
     {
         var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE items (id INT, {constraint})")));
+        var invalid = Assert.Single(table.Constraints) with { Comment = new Comment("description") };
 
         var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ProcessStatements(
-            ParseStatements($"CREATE TABLE items (id INT, {constraint} COMMENT 'description')"), GetSchema(), 0));
+            [table with { Constraints = [invalid] }], GetSchema(), 0));
         Assert.Equal("inline COMMENT", exception.Clause);
         Assert.NotNull(exception.ObjectSourceRef);
     }

@@ -18,9 +18,6 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class DdlParser
 {
-    protected virtual bool SupportsIndexMethodAfterTableName => true;
-    protected virtual bool SupportsPostgresIndexSyntax => true;
-    protected virtual bool SupportsIndexOptionsAfterFilter => true;
     protected virtual RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction) => RoutineParamsSupportStyle.KitchenSink;
     protected virtual bool SupportsOmittedFunctionReturn => true;
     protected virtual bool SupportsPostgresTriggerSyntax => true;
@@ -1897,36 +1894,44 @@ public class DdlParser
 
     public CreateIndex ParseCreateIndex(ParserState state, CreateOrLabel? createOrLabel = null)
     {
-        Keyword kindKw = state.ParseKeywordsAny(Keyword.UNIQUE, Keyword.FULLTEXT, Keyword.SPATIAL);
+        if (createOrLabel != null && !_p.Grammar.HasFlag(Grammar.My))
+        {
+            throw state.ExpectedException("CREATE [UNIQUE] INDEX");
+        }
+        Keyword kindKw = state.ParseKeyword(Keyword.UNIQUE)
+            ? Keyword.UNIQUE
+            : _p.Grammar.Any(Grammar.My | Grammar.Ms)
+                ? state.ParseKeywordsAny(Keyword.FULLTEXT, Keyword.SPATIAL)
+                : Keyword.undefined;
         bool supportsIndexOptions = kindKw is Keyword.undefined or Keyword.UNIQUE;
 
-        IndexOrganization? indexOrganization = _p.TableParser.ParseOptionalIndexOrganization(state);
+        IndexOrganization? indexOrganization = _p.Grammar.HasFlag(Grammar.Ms) ? _p.TableParser.ParseOptionalIndexOrganization(state) : null;
 
         state.ExpectKeyword(Keyword.INDEX);
 
-        bool concurrently = supportsIndexOptions && SupportsPostgresIndexSyntax && state.ParseKeyword(Keyword.CONCURRENTLY);
-        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+        bool concurrently = supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.CONCURRENTLY);
+        bool ifNotExists = _p.Grammar.Any(Grammar.My | Grammar.Pg) && state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
-        Identifier? indexName = SupportsPostgresIndexSyntax && !ifNotExists && state.PeekKeyword(Keyword.ON)
-            ? null : _parseIdentifier(state);
+        Identifier? indexName = _p.Grammar.HasFlag(Grammar.Pg) && !ifNotExists && state.PeekKeyword(Keyword.ON)
+            ? null
+            : _parseIdentifier(state);
 
         IndexMethod? method = null;
 
-        if (supportsIndexOptions && state.ParseKeyword(Keyword.USING))
+        if (supportsIndexOptions && _p.Grammar.HasFlag(Grammar.My) && state.ParseKeyword(Keyword.USING))
         {
             method = ParseCreateIndexMethod(state);
         }
 
         state.ExpectKeyword(Keyword.ON);
-        bool only = supportsIndexOptions && SupportsPostgresIndexSyntax && state.ParseKeyword(Keyword.ONLY);
+        bool only = supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.ONLY);
+
         ObjectName tableName = _parseObjectName(state);
+
         bool? indexMethodAfterTableName = null;
-        if (supportsIndexOptions && state.PeekKeyword(Keyword.USING))
+
+        if (supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg) && state.PeekKeyword(Keyword.USING))
         {
-            if (!SupportsIndexMethodAfterTableName)
-            {
-                throw state.ExpectedException("(");
-            }
             if (method != null)
             {
                 throw new ParseException.Duplicate("index_method".Italic(), state.Peek().Location);
@@ -1936,7 +1941,8 @@ public class DdlParser
             indexMethodAfterTableName = true;
         }
 
-        bool allowPgOptions = supportsIndexOptions && SupportsPostgresIndexSyntax;
+        bool allowPgOptions = supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg);
+
         SqlValueList<KeyPart> columns = _p.ComponentParser.ParseParenthesizedKeyPartList(
             state, allowEmpty: false, allowLength: !allowPgOptions, allowPgOptions: allowPgOptions);
 
@@ -1945,42 +1951,48 @@ public class DdlParser
         SqlValueList<StatementIndexOption>? options = null;
         IndexStorageLocation? storageLocation = null;
         bool? nullsDistinct = null;
-        SqlValueList<PgStorageParameter>? storageParameters = null;
+        bool filterAfterOptions = false;
         Identifier? tablespace = null;
 
         if (supportsIndexOptions)
         {
-            includedColumns = _p.TableParser.ParseOptionalIncludedColumns(state);
-            if (SupportsPostgresIndexSyntax && state.ParseKeyword(Keyword.NULLS))
+            includedColumns = _p.Grammar.Any(Grammar.Ms | Grammar.Pg)
+                ? _p.TableParser.ParseOptionalIncludedColumns(state)
+                : null;
+
+            if (_p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.NULLS))
             {
                 nullsDistinct = !state.ParseKeyword(Keyword.NOT);
                 state.ExpectKeyword(Keyword.DISTINCT);
             }
-            if (state.ParseKeyword(Keyword.WHERE))
+
+            if (_p.Grammar.HasFlag(Grammar.Ms) && state.ParseKeyword(Keyword.WHERE))
             {
                 filter = _p.ExpressionParser.ParseExpr(state);
             }
 
-            if (filter == null || SupportsIndexOptionsAfterFilter)
+            if (state.PeekKeyword(Keyword.WITH))
             {
-                options = ParseOptionalLegacyIndexOptions(state);
-                if (SupportsPostgresIndexSyntax && options == null && state.ParseKeyword(Keyword.WITH))
-                {
-                    storageParameters = state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false);
-                }
-                if (SupportsPostgresIndexSyntax && state.ParseKeyword(Keyword.TABLESPACE))
-                {
-                    tablespace = _parseIdentifier(state);
-                }
-                storageLocation = _p.TableParser.ParseOptionalIndexStorageLocation(state);
+                options = _p.TableParser.ParseIndexOptions(state, method);
             }
-            if (SupportsPostgresIndexSyntax && filter == null && state.ParseKeyword(Keyword.WHERE))
+
+            if (_p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.TABLESPACE))
             {
+                tablespace = _parseIdentifier(state);
+            }
+
+            storageLocation = _p.Grammar.HasFlag(Grammar.Ms)
+                ? _p.TableParser.ParseOptionalIndexStorageLocation(state)
+                : null;
+
+            if (_p.Grammar.HasFlag(Grammar.Pg) && filter == null && state.ParseKeyword(Keyword.WHERE))
+            {
+                filterAfterOptions = true;
                 filter = _p.ExpressionParser.ParseExpr(state);
             }
         }
 
-        if (supportsIndexOptions && state.PeekKeyword(Keyword.USING))
+        if (supportsIndexOptions && _p.Grammar.HasFlag(Grammar.My) && state.PeekKeyword(Keyword.USING))
         {
             if (method != null)
             {
@@ -1991,13 +2003,14 @@ public class DdlParser
             indexMethodAfterTableName = null;
         }
 
-        Comment? comment = ComponentParser.ParseComment(state);
+        Comment? comment = _p.Grammar.HasFlag(Grammar.My)
+            ? ComponentParser.ParseComment(state)
+            : null;
 
-        PgCreateIndexOptions? pgOptions = concurrently || only || nullsDistinct != null || storageParameters != null || tablespace != null
+        PgCreateIndexOptions? pgOptions = concurrently || only || nullsDistinct != null || tablespace != null
             ? new PgCreateIndexOptions(concurrently, only)
             {
                 NullsDistinct = nullsDistinct,
-                StorageParameters = storageParameters,
                 Tablespace = tablespace
             } : null;
 
@@ -2044,13 +2057,13 @@ public class DdlParser
                 CreateOrLabel = createOrLabel,
             },
         };
-        ValidateCreateIndex(state, statement);
-        return statement;
+
+        return statement with { FilterAfterOptions = filterAfterOptions };
     }
 
     private IndexMethod ParseCreateIndexMethod(ParserState state)
     {
-        if (!SupportsPostgresIndexSyntax)
+        if (!_p.Grammar.HasFlag(Grammar.Pg))
         {
             return new IndexMethod.BuiltIn(_p.TableParser.ParseIndexMethod(state));
         }
@@ -2060,23 +2073,6 @@ public class DdlParser
             return new IndexMethod.BuiltIn(builtIn);
         }
         return new IndexMethod.Custom(_parseIdentifier(state));
-    }
-
-    protected virtual SqlValueList<StatementIndexOption>? ParseOptionalLegacyIndexOptions(ParserState state)
-    {
-        if (!state.PeekKeyword(Keyword.WITH))
-        {
-            return null;
-        }
-        if (!SupportsPostgresIndexSyntax)
-        {
-            return _p.TableParser.ParseIndexOptions(state);
-        }
-        return state.TryParse(_p.TableParser.ParseIndexOptions, out SqlValueList<StatementIndexOption>? options) ? options : null;
-    }
-
-    protected virtual void ValidateCreateIndex(ParserState state, CreateIndex statement)
-    {
     }
 
     public CreateType ParseCreateType(ParserState state)

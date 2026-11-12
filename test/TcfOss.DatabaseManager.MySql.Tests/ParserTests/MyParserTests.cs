@@ -448,10 +448,11 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [Theory]
     [InlineData("CREATE CLUSTERED INDEX ix ON items (id)")]
     [InlineData("CREATE NONCLUSTERED INDEX ix ON items (id)")]
-    public void CreateIndex_OrganizationKeywords_TextMatch(string sql)
+    [InlineData("CREATE TABLE items (id INT, KEY ix CLUSTERED (id))")]
+    [InlineData("CREATE TABLE items (id INT, KEY ix NONCLUSTERED (id))")]
+    public void IndexOrganizationKeywords_AreRejected(string sql)
     {
-        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
-        Assert.Equal(expected, actual);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]

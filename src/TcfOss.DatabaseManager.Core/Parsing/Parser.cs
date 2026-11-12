@@ -14,6 +14,8 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class Parser : IParser
 {
+    public virtual Grammar Grammar => Grammar.My | Grammar.Ms | Grammar.Pg;
+
     public virtual QuoteStyle DefaultQuoteStyle => QuoteStyle.Ansi;
 
     public ComponentParser ComponentParser { get; protected init; }

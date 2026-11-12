@@ -17,7 +17,10 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
     public bool IfNotExists { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool? IndexMethodAfterTableName { get; init; }
+    public bool FilterAfterOptions { get; init; }
     public PgCreateIndexOptions? PgOptions { get; init; }
+
+    private bool HasTrailingFilter => FilterAfterOptions || PgOptions != null;
 
     private void WritePrefix(SqlTextWriter writer, string? kindKeyword, IndexOrganization? indexOrganization)
     {
@@ -119,31 +122,27 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
             included.FormatSql(writer, manager);
         }
         WriteNullsDistinct(writer);
-        if (filter != null && PgOptions == null)
+        if (filter != null && !HasTrailingFilter)
         {
             writer.Write(" WHERE ");
             filter.FormatSql(writer, manager);
         }
         if (options.SafeAny())
         {
-            writer.WriteSql($" WITH ({options})");
+            writer.Write(" WITH (");
+            writer.FormatDelimited(options, manager);
+            writer.Write(")");
         }
         if (storage != null)
         {
             writer.WriteSql($" {storage}");
-        }
-        if (PgOptions?.StorageParameters != null)
-        {
-            writer.Write(" WITH (");
-            writer.FormatDelimited(PgOptions.StorageParameters, manager);
-            writer.Write(")");
         }
         if (PgOptions?.Tablespace != null)
         {
             writer.Write(" TABLESPACE ");
             PgOptions.Tablespace.FormatSql(writer, manager);
         }
-        if (filter != null && PgOptions != null)
+        if (filter != null && HasTrailingFilter)
         {
             writer.Write(" WHERE ");
             filter.FormatSql(writer, manager);
@@ -192,7 +191,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
                 writer.WriteSql($" {IncludedColumns}");
             }
             WriteNullsDistinct(writer);
-            if (Filter != null && PgOptions == null)
+            if (Filter != null && !HasTrailingFilter)
             {
                 writer.WriteSql($" WHERE {Filter}");
             }
@@ -206,7 +205,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
                 writer.WriteSql($" {StorageLocation}");
             }
             WritePgTail(writer);
-            if (Filter != null && PgOptions != null)
+            if (Filter != null && HasTrailingFilter)
             {
                 writer.WriteSql($" WHERE {Filter}");
             }
@@ -269,7 +268,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
                 writer.WriteSql($" {IncludedColumns}");
             }
             WriteNullsDistinct(writer);
-            if (Filter != null && PgOptions == null)
+            if (Filter != null && !HasTrailingFilter)
             {
                 writer.WriteSql($" WHERE {Filter}");
             }
@@ -282,7 +281,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
                 writer.WriteSql($" {StorageLocation}");
             }
             WritePgTail(writer);
-            if (Filter != null && PgOptions != null)
+            if (Filter != null && HasTrailingFilter)
             {
                 writer.WriteSql($" WHERE {Filter}");
             }
@@ -336,10 +335,6 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
 
     private void WritePgTail(SqlTextWriter writer)
     {
-        if (PgOptions?.StorageParameters != null)
-        {
-            writer.WriteSql($" WITH ({PgOptions.StorageParameters})");
-        }
         if (PgOptions?.Tablespace != null)
         {
             writer.WriteSql($" TABLESPACE {PgOptions.Tablespace}");

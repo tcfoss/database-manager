@@ -104,9 +104,9 @@ public class PgConstraintParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("WITH (fillfactor = 70)")]
+    [InlineData("WITH (FILLFACTOR = 70)")]
     [InlineData("USING INDEX TABLESPACE fast")]
-    [InlineData("WITH (fillfactor = 70) USING INDEX TABLESPACE fast")]
+    [InlineData("WITH (FILLFACTOR = 70) USING INDEX TABLESPACE fast")]
     public void Constraints_IndexParametersPrintAsACompleteComponent(string parameters)
     {
         string sql = $"CREATE TABLE items (id INT, EXCLUDE (id WITH =) {parameters})";

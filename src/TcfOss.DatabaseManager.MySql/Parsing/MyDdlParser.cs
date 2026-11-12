@@ -9,8 +9,6 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyDdlParser(MyParser parser) : DdlParser(parser)
 {
-    protected override bool SupportsIndexMethodAfterTableName => false;
-    protected override bool SupportsPostgresIndexSyntax => false;
     protected override bool UseSqlRoutineTail(ParserState state) => false;
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;

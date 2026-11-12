@@ -16,17 +16,6 @@ public class PgTableParser(Parser parser) : TableParser(parser)
     public override StatementTableConstraint? ParseOptionalTableConstraint(ParserState state, bool alterTable = false)
     {
         StatementTableConstraint? constraint = base.ParseOptionalTableConstraint(state, alterTable);
-        if (constraint is StatementTableConstraint.PrimaryKey { IndexMethod: not null }
-            or StatementTableConstraint.PrimaryKey { IndexOrganization: not null }
-            or StatementTableConstraint.PrimaryKey { StorageLocation: not null }
-            or StatementTableConstraint.UniqueConstraint { IndexMethod: not null }
-            or StatementTableConstraint.UniqueConstraint { IndexOrganization: not null }
-            or StatementTableConstraint.UniqueConstraint { IndexName: not null }
-            or StatementTableConstraint.UniqueConstraint { KeyLabel: not null }
-            or StatementTableConstraint.UniqueConstraint { StorageLocation: not null })
-        {
-            throw state.ExpectedException("PostgreSQL table constraint");
-        }
         IEnumerable<KeyPart> columns = constraint switch
         {
             StatementTableConstraint.PrimaryKey primaryKey => primaryKey.Columns,

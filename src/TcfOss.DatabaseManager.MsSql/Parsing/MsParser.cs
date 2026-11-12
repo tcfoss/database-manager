@@ -20,6 +20,8 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsParser : Parser
 {
+    public override Grammar Grammar => Grammar.Ms;
+
     public override QuoteStyle DefaultQuoteStyle => QuoteStyle.Brackets;
     public override bool SupportsPostgresCastSyntax => false;
     public override bool SupportsPostgresRegexOperators => false;

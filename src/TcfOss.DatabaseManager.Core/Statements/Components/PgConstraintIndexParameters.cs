@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.IO;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public record PgConstraintIndexParameters(SqlValueList<PgStorageParameter>? StorageParameters, Identifier? Tablespace) : IWriteSql
+public record PgConstraintIndexParameters(SqlValueList<StatementIndexOption>? StorageParameters, Identifier? Tablespace) : IWriteSql
 {
     public void ToSql(SqlTextWriter writer)
     {

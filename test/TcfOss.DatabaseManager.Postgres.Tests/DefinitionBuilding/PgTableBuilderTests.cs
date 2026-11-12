@@ -67,7 +67,9 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void ApplyCreateTable_RejectsUnimplementedConstraints()
     {
-        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, KEY ix (id))"));
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, PRIMARY KEY (id))"));
+        var primaryKey = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(statement.Constraints));
+        statement = statement with { Constraints = [new StatementTableConstraint.Standard(primaryKey.Columns, new Identifier("ix"))] };
         var builder = CreateBuilder();
 
         Assert.Throws<NotImplementedException>(() => builder.ApplyCreateTable(statement));

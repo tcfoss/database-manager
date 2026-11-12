@@ -2,9 +2,11 @@
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
+using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
@@ -40,6 +42,8 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), INDEX my_index (SUBSTRING(my_val, 1, 3)))", Label = "computed index function")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), INDEX my_index (my_val) INCLUDE (my_id))", Label = "index include one")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val1 VARCHAR(5), my_val2 VARCHAR(5), INDEX my_index (my_val1) INCLUDE (my_val2, my_id))", Label = "index include multiple")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (unknown_option = 70))", Label = "generic index parameter")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index USING GIST (my_id) WITH (BUFFERING = AUTO))", Label = "method-specific index parameter")]
     public static void CreateTable_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -415,7 +419,7 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, INDEX my_index USING WHAT (my_id))")]
     /* Column or constraint expected */
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL +)")]
-    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (unknown_option = ON))")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (1 = ON))")]
     [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (PAD_INDEX = invalid_value))")]
     [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH ())")]
     public static void CreateTable_ValidationFailure_ExpectedOneOfButFound(string sql)
@@ -765,5 +769,44 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         string sql = $"CREATE TABLE items (label VARCHAR(20) COLLATE {collation} NOT NULL)";
 
         Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData(Grammar.Ms, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Pg, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Ms | Grammar.Pg, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Ms, "PAD_INDEX = ON", "PadIndex")]
+    [InlineData(Grammar.Ms, "IGNORE_DUP_KEY = OFF", "IgnoreDupKey")]
+    [InlineData(Grammar.Pg, "deduplicate_items = OFF", "PgDeduplicateItems")]
+    [InlineData(Grammar.Pg, "custom_parameter = 70", "StorageParameter")]
+    [InlineData(Grammar.My, "FILLFACTOR = 70", null)]
+    [InlineData(Grammar.Pg, "PAD_INDEX = ON", null)]
+    [InlineData(Grammar.Pg, "\"PAD_INDEX\" = ON", null)]
+    [InlineData(Grammar.Pg, "buffering = AUTO", null)]
+    [InlineData(Grammar.Ms, "custom_parameter = 70", null)]
+    [InlineData((Grammar)0, "FILLFACTOR = 70", null)]
+    public void IndexOptions_RespectGrammarWithoutConsumingUnsupportedOptions(Grammar grammar, string sql, string? expectedType)
+    {
+        var parser = new GrammarParser(grammar);
+        ParserState state = GetState(sql);
+        var start = state.Peek();
+
+        StatementIndexOption? option = parser.TableParser.ParseNextIndexOption(state);
+
+        if (expectedType == null)
+        {
+            Assert.Null(option);
+            Assert.Same(start, state.Peek());
+        }
+        else
+        {
+            Assert.Equal(expectedType, option!.GetType().Name);
+            Assert.IsType<Eof>(state.Peek());
+        }
+    }
+
+    private sealed class GrammarParser(Grammar grammar) : Parser
+    {
+        public override Grammar Grammar => grammar;
     }
 }

@@ -192,11 +192,21 @@ window-function syntax are rejected. Numeric-argument function calls are not
 misclassified as MySQL column-prefix lengths.
 
 Trailing clauses follow PostgreSQL order: INCLUDE, NULLS [NOT] DISTINCT, WITH
-storage parameters, TABLESPACE, then WHERE. Storage and operator-class parameters
-reuse `PgStorageParameter` and scalar-value parsing; bare word values normalize
-to quoted strings. Written NULLS DISTINCT remains distinct from omission.
-Core owns the shared grammar and retains legacy index-option support;
-MySQL/MariaDB and SQL Server reject the new PostgreSQL forms.
+storage parameters, TABLESPACE, then WHERE. Index storage parameters share the
+`StatementIndexOption` hierarchy with SQL Server options. `FillFactor` is shared;
+PostgreSQL variants retain buffering, deduplication, fast update, GIN pending-list
+limits, autosummarization, and pages per range. Known parameters are gated by
+their built-in access method, treating an omitted method as BTREE without
+synthesizing it in the AST. Known but ineligible parameters do not fall through
+to the generic `StorageParameter` variant. Generic and operator-class parameters
+reuse `PgStorageParameter`; bare word values normalize to quoted strings.
+Typed option names emit uppercase, and typed booleans emit ON/OFF. Written NULLS
+DISTINCT remains distinct from omission.
+
+Core owns the shared grammar. The owning parser's `Grammar` mask enables all
+dialects in Core; provider parsers select My, Ms, or Pg. Index clauses and options
+are gated before consuming their tokens, keeping unsupported fields absent and
+diagnostics at the offending clause rather than validating a completed index.
 
 SQL/JSON round trips, recursive identifier formatting/idempotence, typed options,
 quoted names, source/comment/statement boundaries, atomic SQL bodies, malformed
@@ -206,8 +216,8 @@ Isolated contexts avoid capturing caller variables/columns and preserve filters
 and partial-enumeration scopes. Access methods, collations, operator classes,
 parameter labels, and tablespaces do not become independent object dependencies.
 
-Method/operator-class/collation lookup, option eligibility, expression typing and
-immutability, index suitability, partition behavior, privileges, CONCURRENTLY
+Method/operator-class/collation lookup, catalog-dependent option eligibility,
+expression typing and immutability, index suitability, partition behavior, privileges, CONCURRENTLY
 transaction restrictions, locking, catalog loading, migrations, and execution
 remain separate. Atomic-body acceptance establishes syntax, not executability.
 Existing supported named indexes still construct; unnamed indexes and the new
@@ -231,6 +241,8 @@ scalar parameters, direction, and null ordering. INCLUDE, storage parameters,
 USING INDEX TABLESPACE, and a parenthesized WHERE predicate are retained.
 Storage parameters and the index tablespace have a separate
 `PgConstraintIndexParameters` component with complete SQL and formatting output.
+Its storage parameters use the same `StatementIndexOption` variants and parser
+as standalone CREATE INDEX, with the selected access method passed through.
 Methods remain nullable rather than defaulting to BTREE or GIST.
 
 ALTER TABLE reuses existing ADD operations, with NOT VALID accepted after a
@@ -1084,16 +1096,16 @@ canonically `NOT NULL`. Simple key constraints support plain column lists;
 advanced index decorations and column prefix lengths are rejected explicitly.
 
 Foreign-dialect clauses such as inline COMMENT, CLUSTERED/NONCLUSTERED,
-SQL Server index options, and ON filegroup/partition-scheme placement raise
-the resource-backed `SqlSyntaxException.UnsupportedDialectClause`, carrying
-the dialect, offending clause, and statement source. Legacy constraint/index
-statement-option components retain these checks. PostgreSQL FILLFACTOR on
-constraints is valid syntax but its construction support remains deferred,
-raising `NotImplementedException` rather than a dialect syntax error.
-Standalone CREATE INDEX now uses generic PostgreSQL storage parameters rather
-than SQL Server option variants. Unrepresented parameters, including FILLFACTOR
-or names also used by SQL Server, raise a sourced `DefinitionException` during
-statement processing. Option eligibility and construction support remain separate.
+SQL Server index options, and ON filegroup/partition-scheme placement are rejected
+while parsing. Manually supplied legacy constraint/index components retain
+resource-backed `SqlSyntaxException.UnsupportedDialectClause` checks, carrying
+the dialect, offending clause, and statement source. Legacy constraint
+`Options` containing FILLFACTOR still raise `NotImplementedException`.
+Parsed constraint and standalone index storage parameters share typed
+`StatementIndexOption` variants and a generic extension-parameter variant.
+Their construction support remains deferred: unrepresented parameters,
+including FILLFACTOR, raise a sourced `DefinitionException` rather than being
+silently dropped. Syntactic eligibility and construction support remain separate.
 
 Foreign keys resolve referenced tables after all declarations have been collected,
 including forward references. Final validation checks referenced tables/columns,

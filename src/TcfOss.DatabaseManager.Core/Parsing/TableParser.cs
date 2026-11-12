@@ -463,9 +463,9 @@ public class TableParser
             Word { Keyword: Keyword.FOREIGN } => ParseForeign(state, name),
             Word { Keyword: Keyword.CHECK } => ParseTableCheck(state, name),
             Word { Keyword: Keyword.EXCLUDE } when SupportsPostgresConstraintSyntax => ParseExclusion(state, name),
-            Word { Keyword: Keyword.INDEX or Keyword.KEY } kwWord when name == null => ParseIndex(state, kwWord),
-            Word { Keyword: Keyword.FULLTEXT } when name == null => ParseFullText(state),
-            Word { Keyword: Keyword.SPATIAL } when name == null => ParseSpatial(state),
+            Word { Keyword: Keyword.INDEX or Keyword.KEY } kwWord when name == null && _p.Grammar.Any(Grammar.My | Grammar.Ms) => ParseIndex(state, kwWord),
+            Word { Keyword: Keyword.FULLTEXT } when name == null && _p.Grammar.HasFlag(Grammar.My) => ParseFullText(state),
+            Word { Keyword: Keyword.SPATIAL } when name == null && _p.Grammar.HasFlag(Grammar.My) => ParseSpatial(state),
             _ when name != null => throw state.ExpectedCategoryException("table_constraint"),
             _ => null
         };
@@ -490,13 +490,13 @@ public class TableParser
 
         IndexOrganization? indexOrganization = ParseOptionalIndexOrganization(state);
         BuiltInIndexMethod? method = null;
-        if (state.Peek() is Word { Keyword: Keyword.USING })
+        if (_p.Grammar.HasFlag(Grammar.My) && state.Peek() is Word { Keyword: Keyword.USING })
         {
             state.Next();
             method = ParseIndexMethod(state);
         }
         SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
-        if (state.PeekKeyword(Keyword.USING)
+        if (_p.Grammar.HasFlag(Grammar.My) && state.PeekKeyword(Keyword.USING)
             && !(SupportsPostgresConstraintSyntax && state.PeekNth(1) is Word { Keyword: Keyword.INDEX }))
         {
             if (method != null)
@@ -508,11 +508,11 @@ public class TableParser
         }
 
         IncludedColumns? includedColumns = SupportsPostgresConstraintSyntax ? ParseOptionalIncludedColumns(state) : null;
-        (SqlValueList<StatementIndexOption>? indexOptions, PgConstraintIndexParameters? indexParameters) = ParseConstraintIndexOptions(state);
+        (SqlValueList<StatementIndexOption>? indexOptions, PgConstraintIndexParameters? indexParameters) = ParseConstraintIndexOptions(state, method);
 
         IndexStorageLocation? storageLocation = ParseOptionalIndexStorageLocation(state);
 
-        Comment? comment = ComponentParser.ParseComment(state);
+        Comment? comment = _p.Grammar.HasFlag(Grammar.My) ? ComponentParser.ParseComment(state) : null;
 
         return new StatementTableConstraint.PrimaryKey(cols, name)
         {
@@ -537,7 +537,7 @@ public class TableParser
 
         IndexOrganization? indexOrganization = ParseOptionalIndexOrganization(state);
 
-        KeyLabel? label = state.Peek() switch
+        KeyLabel? label = !_p.Grammar.HasFlag(Grammar.My) ? null : state.Peek() switch
         {
             Word { Keyword: Keyword.KEY } => KeyLabel.Key,
             Word { Keyword: Keyword.INDEX } => KeyLabel.Index,
@@ -553,10 +553,11 @@ public class TableParser
         BuiltInIndexMethod? method = null;
         Comment? comment = null;
         SqlValueList<KeyPart>? columns = null;
+
         while (true)
         {
             Location currentLocation = state.Peek().Location;
-            if (state.PeekKeyword(Keyword.USING)
+            if (_p.Grammar.HasFlag(Grammar.My) && state.PeekKeyword(Keyword.USING)
                 && !(columns != null && SupportsPostgresConstraintSyntax && state.PeekNth(1) is Word { Keyword: Keyword.INDEX }))
             {
                 if (method != null)
@@ -566,7 +567,7 @@ public class TableParser
                 state.Next();
                 method = ParseIndexMethod(state);
             }
-            else if (state.PeekKeyword(Keyword.COMMENT))
+            else if (_p.Grammar.HasFlag(Grammar.My) && state.PeekKeyword(Keyword.COMMENT))
             {
                 if (comment != null)
                 {
@@ -582,7 +583,7 @@ public class TableParser
                 }
                 columns = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
             }
-            else if (columns == null && state.Peek() is Word { Keyword: Keyword.undefined })
+            else if (_p.Grammar.HasFlag(Grammar.My) && columns == null && state.Peek() is Word { Keyword: Keyword.undefined })
             {
                 indexName = _p.ComponentParser.ParseIdentifier(state);
             }
@@ -598,7 +599,7 @@ public class TableParser
         }
 
         IncludedColumns? includedColumns = ParseOptionalIncludedColumns(state);
-        (SqlValueList<StatementIndexOption>? indexOptions, PgConstraintIndexParameters? indexParameters) = ParseConstraintIndexOptions(state);
+        (SqlValueList<StatementIndexOption>? indexOptions, PgConstraintIndexParameters? indexParameters) = ParseConstraintIndexOptions(state, method);
         IndexStorageLocation? storageLocation = ParseOptionalIndexStorageLocation(state);
 
         return new StatementTableConstraint.UniqueConstraint(columns, constraintName)
@@ -627,28 +628,23 @@ public class TableParser
         return !not;
     }
 
-    private (SqlValueList<StatementIndexOption>? Options, PgConstraintIndexParameters? Parameters) ParseConstraintIndexOptions(ParserState state)
+    private (SqlValueList<StatementIndexOption>? Options, PgConstraintIndexParameters? Parameters) ParseConstraintIndexOptions(ParserState state, IndexMethod? method)
     {
-        if (!SupportsPostgresConstraintSyntax)
+        if (!_p.Grammar.HasFlag(Grammar.Pg))
         {
-            return (state.PeekKeyword(Keyword.WITH) ? ParseIndexOptions(state) : null, null);
+            return (state.PeekKeyword(Keyword.WITH) ? ParseIndexOptions(state, method) : null, null);
         }
-        if (state.PeekKeyword(Keyword.WITH) && state.TryParse(ParseIndexOptions, out SqlValueList<StatementIndexOption>? options))
-        {
-            Identifier? tablespace = ParseConstraintIndexTablespace(state);
-            return (options, tablespace == null ? null : new PgConstraintIndexParameters(null, tablespace));
-        }
-        return (null, ParseConstraintIndexParameters(state));
+        return (null, ParseConstraintIndexParameters(state, method));
     }
 
-    private PgConstraintIndexParameters? ParseConstraintIndexParameters(ParserState state)
+    private PgConstraintIndexParameters? ParseConstraintIndexParameters(ParserState state, IndexMethod? method = null)
     {
-        if (!SupportsPostgresConstraintSyntax)
+        if (!_p.Grammar.HasFlag(Grammar.Pg))
         {
             return null;
         }
-        SqlValueList<PgStorageParameter>? storageParameters = state.ParseKeyword(Keyword.WITH)
-            ? state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false) : null;
+        SqlValueList<StatementIndexOption>? storageParameters = state.PeekKeyword(Keyword.WITH)
+            ? ParseIndexOptions(state, method) : null;
         Identifier? tablespace = ParseConstraintIndexTablespace(state);
         return storageParameters == null && tablespace == null
             ? null : new PgConstraintIndexParameters(storageParameters, tablespace);
@@ -730,7 +726,7 @@ public class TableParser
             return new PgExclusionElement(key, _p.ExpressionParser.ParsePostgresOperatorReference(parserState));
         }, false);
         IncludedColumns? includedColumns = ParseOptionalIncludedColumns(state);
-        PgConstraintIndexParameters? indexParameters = ParseConstraintIndexParameters(state);
+        PgConstraintIndexParameters? indexParameters = ParseConstraintIndexParameters(state, method);
         Expression? predicate = state.ParseKeyword(Keyword.WHERE)
             ? state.ParseParenthesized(_p.ExpressionParser.ParseExpr) : null;
         return new StatementTableConstraint.PgExclusion(elements, name)
@@ -756,7 +752,7 @@ public class TableParser
         (ReferentialAction? onDelete, ReferentialAction? onUpdate) = ParseReferenceActions(state);
 
         Comment? comment = null;
-        if (state.PeekKeyword(Keyword.COMMENT))
+        if (_p.Grammar.HasFlag(Grammar.My) && state.PeekKeyword(Keyword.COMMENT))
         {
             comment = ComponentParser.ParseComment(state);
         }
@@ -821,7 +817,7 @@ public class TableParser
     {
         state.ExpectKeyword(Keyword.CHECK);
         Expression expr = state.ParseParenthesized(_p.ExpressionParser.ParseExpr);
-        Comment? comment = ComponentParser.ParseComment(state);
+        Comment? comment = _p.Grammar.HasFlag(Grammar.My) ? ComponentParser.ParseComment(state) : null;
         return new StatementTableConstraint.Check(expr, name)
         {
             Comment = comment,
@@ -872,7 +868,7 @@ public class TableParser
                 }
                 unique = true;
             }
-            else if (next is Word { Keyword: Keyword.CLUSTERED or Keyword.NONCLUSTERED })
+            else if (_p.Grammar.HasFlag(Grammar.Ms) && next is Word { Keyword: Keyword.CLUSTERED or Keyword.NONCLUSTERED })
             {
                 state.Rewind();
                 indexOrganization = ParseOptionalIndexOrganization(state);
@@ -905,7 +901,7 @@ public class TableParser
         SqlValueList<StatementIndexOption>? indexOptions = null;
         if (state.PeekKeyword(Keyword.WITH))
         {
-            indexOptions = ParseIndexOptions(state);
+            indexOptions = ParseIndexOptions(state, method);
         }
 
         IndexStorageLocation? storageLocation = ParseOptionalIndexStorageLocation(state);
@@ -1040,6 +1036,10 @@ public class TableParser
 
     public virtual IndexOrganization? ParseOptionalIndexOrganization(ParserState state)
     {
+        if (!_p.Grammar.HasFlag(Grammar.Ms))
+        {
+            return null;
+        }
         if (state.ParseKeyword(Keyword.CLUSTERED))
         {
             return IndexOrganization.Clustered;
@@ -1053,6 +1053,10 @@ public class TableParser
 
     public virtual IncludedColumns? ParseOptionalIncludedColumns(ParserState state)
     {
+        if (!_p.Grammar.Any(Grammar.Ms | Grammar.Pg))
+        {
+            return null;
+        }
         if (state.ParseKeyword(Keyword.INCLUDE))
         {
             SqlValueList<Identifier> columns = _p.ComponentParser.ParseParenthisizedIdentifierList(state, false);
@@ -1061,18 +1065,19 @@ public class TableParser
         return null;
     }
 
-    public virtual SqlValueList<StatementIndexOption> ParseIndexOptions(ParserState state)
+    public virtual SqlValueList<StatementIndexOption> ParseIndexOptions(ParserState state, IndexMethod? method = null)
     {
         state.ExpectKeyword(Keyword.WITH);
         state.ExpectToken<ParenOpen>();
 
         var options = new SqlValueList<StatementIndexOption>();
-        var usedKeys = new HashSet<string>();
+        var usedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         while (true)
         {
             Location currentLocation = state.Peek().Location;
-            StatementIndexOption curr = ParseNextIndexOption(state) ?? throw state.ExpectedException("PAD_INDEX", "FILLFACTOR", "IGNORE_DUP_KEY", "STATISTICS_NORECOMPUTE", "STATISTICS_INCREMENTAL", "ALLOW_ROW_LOCKS", "ALLOW_PAGE_LOCKS", "OPTIMIZE_FOR_SEQUENTIAL_KEY");
+            StatementIndexOption curr = ParseNextIndexOption(state, method)
+                ?? throw state.ExpectedException("index option", "storage parameter");
             if (!usedKeys.Add(GetIndexOptionDuplicateKey(curr)))
             {
                 throw new ParseException.Duplicate("index_option".Italic(), currentLocation);
@@ -1093,55 +1098,130 @@ public class TableParser
 
     private static string GetIndexOptionDuplicateKey(StatementIndexOption option)
     {
+        if (option is StatementIndexOption.StorageParameter parameter)
+        {
+            return $"storage:{parameter.Parameter.Name.ToSql()}";
+        }
         return option.GetType().Name;
     }
 
-    public virtual StatementIndexOption? ParseNextIndexOption(ParserState state)
+    public virtual StatementIndexOption? ParseNextIndexOption(ParserState state, IndexMethod? method = null)
     {
-        if (state.ParseKeyword(Keyword.PAD_INDEX))
+        if (_p.Grammar.Any(Grammar.Ms | Grammar.Pg) && state.Peek() is Word fillFactorToken
+            && fillFactorToken.Value.Equals("fillfactor", StringComparison.OrdinalIgnoreCase) && !state.PeekNthIs<Dot>(1))
         {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.PadIndex(ParseIsOn(state));
-        }
-        if (state.ParseKeyword(Keyword.FILLFACTOR))
-        {
+            if (!_p.Grammar.HasFlag(Grammar.Ms)
+                && method is IndexMethod.BuiltIn builtIn
+                && builtIn.Method.Kind is not (
+                    BuiltInIndexMethod.ValueKind.Btree
+                    or BuiltInIndexMethod.ValueKind.Hash
+                    or BuiltInIndexMethod.ValueKind.Gist
+                    or BuiltInIndexMethod.ValueKind.SpGist))
+            {
+                return null;
+            }
+            state.Next();
             state.ExpectToken<Equal>();
             uint fillFactor = ValueParser.ParseLiteralUInt(state);
             return new StatementIndexOption.FillFactor(fillFactor);
         }
 
-        if (state.ParseKeyword(Keyword.IGNORE_DUP_KEY))
+        if (_p.Grammar.HasFlag(Grammar.Ms))
         {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.IgnoreDupKey(ParseIsOn(state));
+            if (state.ParseKeyword(Keyword.PAD_INDEX))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.PadIndex(ParseIsOn(state));
+            }
+            if (state.ParseKeyword(Keyword.IGNORE_DUP_KEY))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.IgnoreDupKey(ParseIsOn(state));
+            }
+            if (state.ParseKeyword(Keyword.STATISTICS_NORECOMPUTE))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.StatisticsNoRecompute(ParseIsOn(state));
+            }
+            if (state.ParseKeyword(Keyword.STATISTICS_INCREMENTAL))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.StatisticsIncremental(ParseIsOn(state));
+            }
+            if (state.ParseKeyword(Keyword.ALLOW_ROW_LOCKS))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.AllowRowLocks(ParseIsOn(state));
+            }
+            if (state.ParseKeyword(Keyword.ALLOW_PAGE_LOCKS))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.AllowPageLocks(ParseIsOn(state));
+            }
+            if (state.ParseKeyword(Keyword.OPTIMIZE_FOR_SEQUENTIAL_KEY))
+            {
+                state.ExpectToken<Equal>();
+                return new StatementIndexOption.OptimizeForSequentialKey(ParseIsOn(state));
+            }
         }
-        if (state.ParseKeyword(Keyword.STATISTICS_NORECOMPUTE))
+        if (_p.Grammar.HasFlag(Grammar.Pg) && state.Peek() is Word word)
         {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.StatisticsNoRecompute(ParseIsOn(state));
-        }
-        if (state.ParseKeyword(Keyword.STATISTICS_INCREMENTAL))
-        {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.StatisticsIncremental(ParseIsOn(state));
-        }
-        if (state.ParseKeyword(Keyword.ALLOW_ROW_LOCKS))
-        {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.AllowRowLocks(ParseIsOn(state));
-        }
-        if (state.ParseKeyword(Keyword.ALLOW_PAGE_LOCKS))
-        {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.AllowPageLocks(ParseIsOn(state));
-        }
-        if (state.ParseKeyword(Keyword.OPTIMIZE_FOR_SEQUENTIAL_KEY))
-        {
-            state.ExpectToken<Equal>();
-            return new StatementIndexOption.OptimizeForSequentialKey(ParseIsOn(state));
+            BuiltInIndexMethod? builtIn = method == null ? BuiltInIndexMethod.Btree : (method as IndexMethod.BuiltIn)?.Method;
+            string name = word.Value.ToLowerInvariant();
+            if (!state.PeekNthIs<Dot>(1))
+            {
+                switch (name)
+                {
+                    case "buffering" when builtIn == BuiltInIndexMethod.Gist:
+                        state.Next();
+                        state.ExpectToken<Equal>();
+                        return new StatementIndexOption.PgBuffering(state.ParseStringEnum<PgIndexBufferingMode>());
+                    case "deduplicate_items" when builtIn == BuiltInIndexMethod.Btree:
+                        state.Next();
+                        return new StatementIndexOption.PgDeduplicateItems(ParsePgIndexBoolean(state));
+                    case "fastupdate" when builtIn == BuiltInIndexMethod.Gin:
+                        state.Next();
+                        return new StatementIndexOption.PgFastUpdate(ParsePgIndexBoolean(state));
+                    case "autosummarize" when builtIn == BuiltInIndexMethod.Brin:
+                        state.Next();
+                        return new StatementIndexOption.PgAutosummarize(ParsePgIndexBoolean(state));
+                    case "gin_pending_list_limit" when builtIn == BuiltInIndexMethod.Gin:
+                        state.Next();
+                        state.ExpectToken<Equal>();
+                        return new StatementIndexOption.PgGinPendingListLimit(ValueParser.ParseLiteralUInt(state));
+                    case "pages_per_range" when builtIn == BuiltInIndexMethod.Brin:
+                        state.Next();
+                        state.ExpectToken<Equal>();
+                        return new StatementIndexOption.PgPagesPerRange(ValueParser.ParseLiteralUInt(state));
+                    case "buffering" or "deduplicate_items" or "fastupdate" or "autosummarize" or "gin_pending_list_limit" or "pages_per_range":
+                        return null;
+                }
+                if (name is "pad_index" or "ignore_dup_key" or "statistics_norecompute" or "statistics_incremental"
+                    or "allow_row_locks" or "allow_page_locks" or "optimize_for_sequential_key")
+                {
+                    return null;
+                }
+            }
+            return new StatementIndexOption.StorageParameter(_p.ComponentParser.ParseStorageParameter(state));
         }
 
         return null;
+    }
+
+    private static bool? ParsePgIndexBoolean(ParserState state)
+    {
+        if (!state.ConsumeTokenIs<Equal>())
+        {
+            return null;
+        }
+        Token token = state.Peek();
+        string value = ValueParser.ParseLiteralStringOptionalQuotes(state);
+        return value.ToUpperInvariant() switch
+        {
+            "ON" or "TRUE" or "YES" or "1" => true,
+            "OFF" or "FALSE" or "NO" or "0" => false,
+            _ => throw ParserState.ExpectedException("boolean", token)
+        };
     }
 
     private static bool ParseIsOn(ParserState state)
@@ -1160,6 +1240,10 @@ public class TableParser
 
     public IndexStorageLocation? ParseOptionalIndexStorageLocation(ParserState state)
     {
+        if (!_p.Grammar.HasFlag(Grammar.Ms))
+        {
+            return null;
+        }
         if (state.ParseKeyword(Keyword.ON))
         {
             Identifier partitionSchemeOrFileGroup = _ident(state);

@@ -85,7 +85,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
                     break;
                 case CreateIndex index:
-                    if (index.PgOptions != null || index.Name == null || index.Columns.Any(key => key.PgOptions != null))
+                    if (index.PgOptions != null || index.Name == null || index.Columns.Any(key => key.PgOptions != null)
+                        || index is CreateIndex.Standard { Options: not null } or CreateIndex.Unique { Options: not null })
                     {
                         throw new DefinitionException($"{index.GetType().Name} PostgreSQL index options", sourceRef);
                     }

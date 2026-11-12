@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -33,15 +34,15 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE INDEX items_idx ON items (id) INCLUDE (label, payload)")]
     [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) NULLS DISTINCT")]
     [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) NULLS NOT DISTINCT")]
-    [InlineData("CREATE INDEX items_idx ON items (id) WITH (fillfactor = 80)")]
-    [InlineData("CREATE INDEX items_idx ON items (id) WITH (custom_parameter = 4, fastupdate = 'off')")]
+    [InlineData("CREATE INDEX items_idx ON items (id) WITH (FILLFACTOR = 80)")]
+    [InlineData("CREATE INDEX items_idx ON items USING GIN (id) WITH (custom_parameter = 4, FASTUPDATE = OFF)")]
     [InlineData("CREATE INDEX items_idx ON items (id) TABLESPACE fast")]
     [InlineData("CREATE INDEX items_idx ON items (id) WHERE id > 0")]
-    [InlineData("CREATE INDEX items_idx ON items (id) WITH (fillfactor = 80) TABLESPACE fast WHERE id > 0")]
+    [InlineData("CREATE INDEX items_idx ON items (id) WITH (FILLFACTOR = 80) TABLESPACE fast WHERE id > 0")]
     [InlineData("CREATE INDEX items_idx ON items USING bloom (id)")]
     [InlineData("CREATE INDEX items_idx ON items USING \"btree\" (id)")]
     [InlineData("CREATE INDEX \"Index; SELECT 1\" ON \"Table; DROP TABLE items\" (\"Column\" \"Ops; SELECT 2\" (\"Option\" = 1)) TABLESPACE \"Space; SELECT 3\"")]
-    [InlineData("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON ONLY app.items USING BTREE (label COLLATE app.casefold app.text_ops (version = 1) DESC NULLS LAST, (id + 1) ASC NULLS FIRST) INCLUDE (payload) NULLS NOT DISTINCT WITH (fillfactor = 70, deduplicate_items = 'off') TABLESPACE fast WHERE app.keep(id)")]
+    [InlineData("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON ONLY app.items USING BTREE (label COLLATE app.casefold app.text_ops (version = 1) DESC NULLS LAST, (id + 1) ASC NULLS FIRST) INCLUDE (payload) NULLS NOT DISTINCT WITH (FILLFACTOR = 70, DEDUPLICATE_ITEMS = OFF) TABLESPACE fast WHERE app.keep(id)")]
     public void ExpandedIndexes_RoundTripsSqlJsonAndFormatting(string sql)
     {
         var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false);
@@ -100,8 +101,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.False(options.NullsDistinct);
         Assert.Equal("bloom", Assert.IsType<IndexMethod.Custom>(statement.IndexMethod).Method.Name);
         Assert.Equal("fast", options.Tablespace!.Name);
-        Assert.Equal("fillfactor", Assert.Single(options.StorageParameters!).Name.ToSql());
-        Assert.Null(statement.Options);
+        Assert.Equal(80U, Assert.IsType<StatementIndexOption.FillFactor>(Assert.Single(statement.Options!)).Value);
         Assert.Equal("app.text_ops", keyOptions.OperatorClass!.ToSql());
         Assert.Equal("bits", Assert.Single(keyOptions.OperatorClassParameters!).Name.ToSql());
         Assert.Equal(NullsOrder.First, keyOptions.NullsOrder);
@@ -127,7 +127,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement("create index items_idx on items using gin (id app.int_ops (mode = off)) with (fastupdate = off)"));
 
-        Assert.Equal("CREATE INDEX items_idx ON items USING GIN (id app.int_ops (mode = 'off')) WITH (fastupdate = 'off')", statement.ToSql());
+        Assert.Equal("CREATE INDEX items_idx ON items USING GIN (id app.int_ops (mode = 'off')) WITH (FASTUPDATE = OFF)", statement.ToSql());
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 
@@ -203,7 +203,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE UNIQUE INDEX items_idx ON items USING HASH (id) INCLUDE (payload)")]
     [InlineData("CREATE INDEX items_idx ON items (id) NULLS NOT DISTINCT")]
-    [InlineData("CREATE INDEX items_idx ON items (id app.unknown_ops (unknown_parameter = -1)) WITH (fillfactor = 101)")]
+    [InlineData("CREATE INDEX items_idx ON items (id app.unknown_ops (unknown_parameter = -1)) WITH (FILLFACTOR = 101)")]
     public void ExpandedIndexes_LeavesMethodAndOptionEligibilityToSemanticValidation(string sql)
     {
         var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false);
@@ -259,5 +259,109 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     public void ExpandedIndexes_RejectsMalformedAndOtherDialectForms(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData(null, "FILLFACTOR = 70", typeof(StatementIndexOption.FillFactor))]
+    [InlineData("HASH", "FILLFACTOR = 70", typeof(StatementIndexOption.FillFactor))]
+    [InlineData("SPGIST", "FILLFACTOR = 70", typeof(StatementIndexOption.FillFactor))]
+    [InlineData("GIST", "BUFFERING = AUTO", typeof(StatementIndexOption.PgBuffering))]
+    [InlineData("GIST", "BUFFERING = ON", typeof(StatementIndexOption.PgBuffering))]
+    [InlineData("GIST", "BUFFERING = OFF", typeof(StatementIndexOption.PgBuffering))]
+    [InlineData(null, "DEDUPLICATE_ITEMS = ON", typeof(StatementIndexOption.PgDeduplicateItems))]
+    [InlineData(null, "DEDUPLICATE_ITEMS", typeof(StatementIndexOption.PgDeduplicateItems))]
+    [InlineData("GIN", "FASTUPDATE = OFF", typeof(StatementIndexOption.PgFastUpdate))]
+    [InlineData("GIN", "GIN_PENDING_LIST_LIMIT = 4096", typeof(StatementIndexOption.PgGinPendingListLimit))]
+    [InlineData("BRIN", "AUTOSUMMARIZE = ON", typeof(StatementIndexOption.PgAutosummarize))]
+    [InlineData("BRIN", "PAGES_PER_RANGE = 128", typeof(StatementIndexOption.PgPagesPerRange))]
+    [InlineData("bloom", "custom_parameter = 70", typeof(StatementIndexOption.StorageParameter))]
+    [InlineData("bloom", "app.custom_parameter = 70", typeof(StatementIndexOption.StorageParameter))]
+    public void IndexStorageOptions_AreTypedAndRoundTrip(string? method, string option, Type expectedType)
+    {
+        string usingClause = method == null ? "" : $" USING {method}";
+        string sql = $"CREATE INDEX ix ON items{usingClause} (id) WITH ({option})";
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement(sql));
+
+        Assert.Equal(expectedType, Assert.Single(statement.Options!).GetType());
+        Assert.Null(statement.PgOptions);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+        Assert.Equal(sql, ParseStatement($"CREATE INDEX ix ON items{usingClause} (id) WITH ({option.ToLowerInvariant()})").ToSql());
+    }
+
+    [Theory]
+    [InlineData("BTREE", "buffering = AUTO")]
+    [InlineData("GIN", "FILLFACTOR = 70")]
+    [InlineData("GIN", "\"fillfactor\" = 70")]
+    [InlineData("HASH", "deduplicate_items = ON")]
+    [InlineData("GIST", "fastupdate = ON")]
+    [InlineData("GIN", "autosummarize = ON")]
+    [InlineData("BTREE", "gin_pending_list_limit = 4096")]
+    [InlineData("GIST", "pages_per_range = 128")]
+    [InlineData("BTREE", "PAD_INDEX = ON")]
+    [InlineData("BTREE", "\"PAD_INDEX\" = ON")]
+    public void IndexStorageOptions_RejectIneligibleOptionsAtTheirName(string method, string option)
+    {
+        string sql = $"CREATE INDEX ix ON items USING {method} (id) WITH ({option})";
+        ParserState state = GetState(sql);
+        var parser = new PgParser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.Parse(state, null));
+
+        Assert.Equal(sql.IndexOf(option, StringComparison.Ordinal), state.Peek().Location.Position);
+    }
+
+    [Theory]
+    [InlineData("GIST", "buffering = MAYBE")]
+    [InlineData("GIN", "fastupdate = 'maybe'")]
+    [InlineData("BRIN", "pages_per_range = -1")]
+    [InlineData("GIST", "buffering = AUTO, buffering = OFF")]
+    [InlineData("bloom", "custom_parameter = 1, CUSTOM_PARAMETER = 2")]
+    public void IndexStorageOptions_RejectInvalidValuesAndDuplicates(string method, string options)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE INDEX ix ON items USING {method} (id) WITH ({options})"));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX ix ON items (id + 1)", "id")]
+    [InlineData("CREATE INDEX ix ON items (id::int)", "id")]
+    [InlineData("CREATE INDEX ix ON items (sum(id) OVER ())", "sum")]
+    [InlineData("CREATE CLUSTERED INDEX ix ON items (id)", "CLUSTERED")]
+    [InlineData("CREATE INDEX ix USING BTREE ON items (id)", "USING")]
+    [InlineData("CREATE INDEX ix ON items (id) COMMENT 'description'", "COMMENT")]
+    [InlineData("CREATE INDEX ix ON items USING GIN (id) WITH (buffering = AUTO)", "buffering")]
+    public void IndexDiagnostics_PointAtTheOffendingSyntax(string sql, string offendingSyntax)
+    {
+        var exception = Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+        string rendered = new ParseException.WithText(exception, null, sql).Message;
+        int position = sql.IndexOf(offendingSyntax, StringComparison.Ordinal);
+
+        Assert.Contains($"{sql}\n{new string(' ', position)}^", rendered);
+    }
+
+    [Fact]
+    public void IndexStorageOptions_GenericNamesDoNotCollideWithVariantNames()
+    {
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement(
+            "CREATE INDEX ix ON items USING GIN (id) WITH (fastupdate = ON, PgFastUpdate = 70)"));
+
+        Assert.Collection(statement.Options!,
+            option => Assert.IsType<StatementIndexOption.PgFastUpdate>(option),
+            option => Assert.IsType<StatementIndexOption.StorageParameter>(option));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX ix ON items (id) TABLESPACE fast WHERE id > 0")]
+    [InlineData("CREATE UNIQUE INDEX ix ON items (id) TABLESPACE fast WHERE id > 0")]
+    public void Indexes_PgOptionsKeepFiltersAfterOptionsWithoutPositionFlag(string sql)
+    {
+        var statement = Assert.IsAssignableFrom<CreateIndex>(ParseStatement(sql)) with { FilterAfterOptions = false };
+
+        Assert.Equal(sql, statement.ToSql());
     }
 }
