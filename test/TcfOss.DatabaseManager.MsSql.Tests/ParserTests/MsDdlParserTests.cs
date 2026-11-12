@@ -168,6 +168,8 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("CREATE VIEW v AS SELECT 1 AS a", Label = "Bare")]
+    [InlineData("CREATE VIEW v AS SELECT 1 AS a WITH CHECK OPTION", Label = "Implicit check mode")]
+    [InlineData("CREATE VIEW v WITH SCHEMABINDING AS SELECT 1 AS a WITH CHECK OPTION", Label = "Schema binding and implicit check mode")]
     [InlineData("CREATE VIEW v (a) AS SELECT 1", Label = "Column list")]
     [InlineData("CREATE OR ALTER VIEW v AS SELECT 1 AS a", Label = "CREATE OR ALTER")]
     [InlineData("CREATE VIEW v WITH ENCRYPTION AS SELECT 1 AS a", Label = "WITH ENCRYPTION")]
@@ -182,6 +184,12 @@ public class MsDdlParserTests : ParserTestsBase<MsLexer, MsParser>
 
     [Theory]
     [InlineData("CREATE VIEW v WITH FOO AS SELECT 1 AS a", Label = "Unknown WITH option")]
+    [InlineData("CREATE TEMP VIEW v AS SELECT 1", Label = "PostgreSQL TEMP view")]
+    [InlineData("CREATE TEMPORARY VIEW v AS SELECT 1", Label = "PostgreSQL TEMPORARY view")]
+    [InlineData("CREATE RECURSIVE VIEW v (id) AS SELECT 1", Label = "PostgreSQL recursive view")]
+    [InlineData("CREATE TEMP RECURSIVE VIEW v (id) AS SELECT 1", Label = "PostgreSQL combined view modifiers")]
+    [InlineData("CREATE VIEW v WITH (security_barrier = TRUE) AS SELECT 1 AS a", Label = "PostgreSQL parenthesized options")]
+    [InlineData("CREATE VIEW v WITH (security_invoker) AS SELECT 1 AS a", Label = "PostgreSQL valueless option")]
     [InlineData("CREATE VIEW v WITH ENCRYPTION, ENCRYPTION AS SELECT 1 AS a", Label = "Duplicate ENCRYPTION")]
     [InlineData("CREATE ALGORITHM = MERGE VIEW v AS SELECT 1 AS a", Label = "MySQL ALGORITHM rejected")]
     [InlineData("CREATE DEFINER = `u`@`%` VIEW v AS SELECT 1 AS a", Label = "MySQL DEFINER rejected")]

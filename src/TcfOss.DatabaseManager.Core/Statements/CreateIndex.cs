@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
+using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -16,6 +17,10 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
     public bool IfNotExists { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
     public bool? IndexMethodAfterTableName { get; init; }
+    public bool FilterAfterOptions { get; init; }
+    public PgCreateIndexOptions? PgOptions { get; init; }
+
+    private bool HasTrailingFilter => FilterAfterOptions || PgOptions != null;
 
     private void WritePrefix(SqlTextWriter writer, string? kindKeyword, IndexOrganization? indexOrganization)
     {
@@ -33,6 +38,10 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
             writer.WriteSql($" {indexOrganization}");
         }
         writer.Write(" INDEX");
+        if (PgOptions?.Concurrently == true)
+        {
+            writer.Write(" CONCURRENTLY");
+        }
         if (IfNotExists)
         {
             writer.Write(" IF NOT EXISTS");
@@ -49,6 +58,100 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
                 yield return item;
             }
         }
+        using (context.Enter(ReferencedItemsContext.CreateIndexExpression))
+        {
+            IEnumerable<Expression> expressions = Columns.OfType<KeyPart.IndexExpression>().Select(key => key.Expression);
+            Expression? filter = this switch
+            {
+                Standard standard => standard.Filter,
+                Unique unique => unique.Filter,
+                _ => null
+            };
+            if (filter != null)
+            {
+                expressions = expressions.Append(filter);
+            }
+            foreach (Expression expression in expressions)
+            {
+                foreach (ItemRef item in expression.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>())
+                {
+                    yield return item;
+                }
+            }
+        }
+    }
+
+    public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+    {
+        var standard = this as Standard;
+        var unique = this as Unique;
+        IndexMethod? method = standard?.IndexMethod ?? unique?.IndexMethod;
+        IndexOrganization? organization = standard?.IndexOrganization ?? unique?.IndexOrganization;
+        IncludedColumns? included = standard?.IncludedColumns ?? unique?.IncludedColumns;
+        Expression? filter = standard?.Filter ?? unique?.Filter;
+        SqlValueList<StatementIndexOption>? options = standard?.Options ?? unique?.Options;
+        IndexStorageLocation? storage = standard?.StorageLocation ?? unique?.StorageLocation;
+        Comment? comment = standard?.Comment ?? unique?.Comment ?? (this as FullText)?.Comment ?? (this as Spatial)?.Comment;
+
+        Meta.FormatPreNonSql(writer, manager);
+        writer.Write(manager.Indent);
+        WritePrefix(writer, this switch { Unique => "UNIQUE", FullText => "FULLTEXT", Spatial => "SPATIAL", _ => null }, organization);
+        if (Name != null)
+        {
+            writer.Write(" ");
+            Name.FormatSql(writer, manager);
+        }
+        if (method != null && IndexMethodAfterTableName != true)
+        {
+            writer.Write(" USING ");
+            method.FormatSql(writer, manager);
+        }
+        writer.Write(PgOptions?.Only == true ? " ON ONLY " : " ON ");
+        TableName.FormatSql(writer, manager);
+        if (method != null && IndexMethodAfterTableName == true)
+        {
+            writer.Write(" USING ");
+            method.FormatSql(writer, manager);
+        }
+        writer.Write(" (");
+        writer.FormatDelimited(Columns, manager);
+        writer.Write(")");
+        if (included != null)
+        {
+            writer.Write(" ");
+            included.FormatSql(writer, manager);
+        }
+        WriteNullsDistinct(writer);
+        if (filter != null && !HasTrailingFilter)
+        {
+            writer.Write(" WHERE ");
+            filter.FormatSql(writer, manager);
+        }
+        if (options.SafeAny())
+        {
+            writer.Write(" WITH (");
+            writer.FormatDelimited(options, manager);
+            writer.Write(")");
+        }
+        if (storage != null)
+        {
+            writer.WriteSql($" {storage}");
+        }
+        if (PgOptions?.Tablespace != null)
+        {
+            writer.Write(" TABLESPACE ");
+            PgOptions.Tablespace.FormatSql(writer, manager);
+        }
+        if (filter != null && HasTrailingFilter)
+        {
+            writer.Write(" WHERE ");
+            filter.FormatSql(writer, manager);
+        }
+        if (comment != null)
+        {
+            writer.WriteSql($" {comment}");
+        }
+        Meta.FormatPostNonSql(writer, manager);
     }
 
     public record Standard(SqlValueList<KeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
@@ -64,12 +167,20 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         public override void ToSql(SqlTextWriter writer)
         {
             WritePrefix(writer, null, IndexOrganization);
-            writer.WriteSql($" {Name}");
+            if (Name != null)
+            {
+                writer.WriteSql($" {Name}");
+            }
             if (IndexMethod != null && IndexMethodAfterTableName != true)
             {
                 writer.WriteSql($" USING {IndexMethod}");
             }
-            writer.WriteSql($" ON {TableName}");
+            writer.Write(" ON ");
+            if (PgOptions?.Only == true)
+            {
+                writer.Write("ONLY ");
+            }
+            TableName.ToSql(writer);
             if (IndexMethod != null && IndexMethodAfterTableName == true)
             {
                 writer.WriteSql($" USING {IndexMethod}");
@@ -79,7 +190,8 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
             {
                 writer.WriteSql($" {IncludedColumns}");
             }
-            if (Filter != null)
+            WriteNullsDistinct(writer);
+            if (Filter != null && !HasTrailingFilter)
             {
                 writer.WriteSql($" WHERE {Filter}");
             }
@@ -91,6 +203,11 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
             if (StorageLocation != null)
             {
                 writer.WriteSql($" {StorageLocation}");
+            }
+            WritePgTail(writer);
+            if (Filter != null && HasTrailingFilter)
+            {
+                writer.WriteSql($" WHERE {Filter}");
             }
             if (Comment != null)
             {
@@ -127,12 +244,20 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         public override void ToSql(SqlTextWriter writer)
         {
             WritePrefix(writer, "UNIQUE", IndexOrganization);
-            writer.WriteSql($" {Name}");
+            if (Name != null)
+            {
+                writer.WriteSql($" {Name}");
+            }
             if (IndexMethod != null && IndexMethodAfterTableName != true)
             {
                 writer.WriteSql($" USING {IndexMethod}");
             }
-            writer.WriteSql($" ON {TableName}");
+            writer.Write(" ON ");
+            if (PgOptions?.Only == true)
+            {
+                writer.Write("ONLY ");
+            }
+            TableName.ToSql(writer);
             if (IndexMethod != null && IndexMethodAfterTableName == true)
             {
                 writer.WriteSql($" USING {IndexMethod}");
@@ -142,7 +267,8 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
             {
                 writer.WriteSql($" {IncludedColumns}");
             }
-            if (Filter != null)
+            WriteNullsDistinct(writer);
+            if (Filter != null && !HasTrailingFilter)
             {
                 writer.WriteSql($" WHERE {Filter}");
             }
@@ -153,6 +279,11 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
             if (StorageLocation != null)
             {
                 writer.WriteSql($" {StorageLocation}");
+            }
+            WritePgTail(writer);
+            if (Filter != null && HasTrailingFilter)
+            {
+                writer.WriteSql($" WHERE {Filter}");
             }
             if (Comment != null)
             {
@@ -191,6 +322,22 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
                 Options = Options,
                 StorageLocation = StorageLocation
             };
+        }
+    }
+
+    private void WriteNullsDistinct(SqlTextWriter writer)
+    {
+        if (PgOptions?.NullsDistinct != null)
+        {
+            writer.Write(PgOptions.NullsDistinct.Value ? " NULLS DISTINCT" : " NULLS NOT DISTINCT");
+        }
+    }
+
+    private void WritePgTail(SqlTextWriter writer)
+    {
+        if (PgOptions?.Tablespace != null)
+        {
+            writer.WriteSql($" TABLESPACE {PgOptions.Tablespace}");
         }
     }
 

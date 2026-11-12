@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects;
@@ -13,7 +14,7 @@ public record MyView(ObjectIdentifier Name, Select Body)
     public required Definer Definer { get; init; }
     public required SecurityContext SecurityContext { get; init; }
     public required ViewAlgorithm? Algorithm { get; init; }
-    public ViewCheckOption? CheckOption { get; init; }
+    public ViewCheckOptionScope? CheckOption { get; init; }
 
     public virtual bool Equals(MyView? other)
     {
@@ -40,7 +41,7 @@ public record MyView(ObjectIdentifier Name, Select Body)
             Definer = Definer,
             ViewAlgorithm = Algorithm,
             SecurityContext = SecurityContext,
-            ViewCheckOption = CheckOption,
+            ViewCheckOption = CheckOption == null ? null : new ViewCheckOption.Specified(CheckOption),
             Meta = new MetaData { RawText = RawBodyText }
         };
     }

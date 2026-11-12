@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
@@ -11,9 +12,46 @@ namespace TcfOss.DatabaseManager.Core.Statements.Components;
 public abstract record StatementTableConstraint(Identifier? Name = null) : IWriteSql
 {
     public Comment? Comment { get; init; }
+    public SqlValueList<PgConstraintOption>? PgOptions { get; init; }
 
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
+
+    public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+    {
+        if (this is ForeignKey foreignKey)
+        {
+            using (context.Enter(ReferencedItemsContext.ConstraintTable))
+            {
+                ItemRef? item = context.CreateObjectRef(foreignKey.ForeignTable);
+                if (item != null)
+                {
+                    yield return item;
+                }
+            }
+        }
+        using (context.Enter(ReferencedItemsContext.ConstraintExpression))
+        {
+            IEnumerable<Expression> expressions = this switch
+            {
+                Check check => [check.Expression],
+                PgExclusion exclusion => exclusion.Elements.Select(element => element.Key)
+                    .OfType<KeyPart.IndexExpression>().Select(key => key.Expression),
+                _ => []
+            };
+            if (this is PgExclusion { Predicate: { } predicate })
+            {
+                expressions = expressions.Append(predicate);
+            }
+            foreach (Expression expression in expressions)
+            {
+                foreach (ItemRef item in expression.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>())
+                {
+                    yield return item;
+                }
+            }
+        }
+    }
 
     private void WriteConstraintName(SqlTextWriter writer)
     {
@@ -35,11 +73,16 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         writer.Write(" ");
     }
 
-    private void WriteComment(SqlTextWriter writer)
+    private void WriteTail(SqlTextWriter writer)
     {
         if (Comment != null)
         {
             writer.WriteSql($" {Comment}");
+        }
+        foreach (PgConstraintOption option in PgOptions ?? [])
+        {
+            writer.Write(" ");
+            option.ToSql(writer);
         }
     }
 
@@ -59,7 +102,9 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
 
     public record PrimaryKey(SqlValueList<KeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
     {
-        public IndexMethod? IndexMethod { get; init; }
+        public PgConstraintIndexParameters? IndexParameters { get; init; }
+        public IncludedColumns? IncludedColumns { get; init; }
+        public BuiltInIndexMethod? IndexMethod { get; init; }
         public IndexOrganization? IndexOrganization { get; init; }
         public SqlValueList<StatementIndexOption>? Options { get; init; }
         public IndexStorageLocation? StorageLocation { get; init; }
@@ -77,15 +122,23 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.WriteSql($" USING {IndexMethod}");
             }
             writer.WriteSql($" ({Columns})");
+            if (IncludedColumns != null)
+            {
+                writer.WriteSql($" {IncludedColumns}");
+            }
             if (Options != null)
             {
                 writer.WriteSql($" WITH ({Options})");
+            }
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
             }
             if (StorageLocation != null)
             {
                 writer.WriteSql($" {StorageLocation}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -101,17 +154,27 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.WriteSql($"USING {IndexMethod} ");
             }
             FormatKeyParts(writer, Columns, manager);
+            if (IncludedColumns != null)
+            {
+                writer.Write(" ");
+                IncludedColumns.FormatSql(writer, manager);
+            }
             if (Options != null)
             {
                 writer.Write(" WITH (");
                 writer.FormatDelimited(Options, manager);
                 writer.Write(")");
             }
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
+            }
             if (StorageLocation != null)
             {
                 writer.WriteSql($" {StorageLocation}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -123,6 +186,8 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
 
     public record UniqueConstraint(SqlValueList<KeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
     {
+        public bool? NullsDistinct { get; init; }
+        public PgConstraintIndexParameters? IndexParameters { get; init; }
         public KeyLabel? KeyLabel { get; init; }
         public IndexMethod? IndexMethod { get; init; }
         public Identifier? IndexName { get; init; }
@@ -135,6 +200,10 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         {
             WriteConstraintName(writer);
             writer.Write("UNIQUE");
+            if (NullsDistinct != null)
+            {
+                writer.Write(NullsDistinct.Value ? " NULLS DISTINCT" : " NULLS NOT DISTINCT");
+            }
             if (IndexOrganization != null)
             {
                 writer.WriteSql($" {IndexOrganization}");
@@ -157,17 +226,25 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" WITH ({Options})");
             }
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
+            }
             if (StorageLocation != null)
             {
                 writer.WriteSql($" {StorageLocation}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
         {
             FormatConstraintName(writer, manager);
             writer.Write("UNIQUE");
+            if (NullsDistinct != null)
+            {
+                writer.Write(NullsDistinct.Value ? " NULLS DISTINCT" : " NULLS NOT DISTINCT");
+            }
             if (IndexOrganization != null)
             {
                 writer.WriteSql($" {IndexOrganization}");
@@ -195,11 +272,16 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.FormatDelimited(Options, manager);
                 writer.Write(")");
             }
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
+            }
             if (StorageLocation != null)
             {
                 writer.WriteSql($" {StorageLocation}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -226,7 +308,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" ON UPDATE {OnUpdate}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -247,7 +329,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" ON UPDATE {OnUpdate}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -263,7 +345,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         {
             WriteConstraintName(writer);
             writer.WriteSql($"CHECK ({Expression})");
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -272,12 +354,106 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             writer.Write("CHECK (");
             Expression.FormatSql(writer, manager);
             writer.Write(")");
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
             FormatSqlBody(writer, manager);
+        }
+    }
+
+    public record PgExclusion(SqlValueList<PgExclusionElement> Elements, Identifier? Name = null) : StatementTableConstraint(Name)
+    {
+        public PgConstraintIndexParameters? IndexParameters { get; init; }
+        public IndexMethod? Method { get; init; }
+        public IncludedColumns? IncludedColumns { get; init; }
+        public Expression? Predicate { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteConstraintName(writer);
+            writer.Write("EXCLUDE");
+            if (Method != null)
+            {
+                writer.WriteSql($" USING {Method}");
+            }
+            writer.WriteSql($" ({Elements})");
+            if (IncludedColumns != null)
+            {
+                writer.WriteSql($" {IncludedColumns}");
+            }
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
+            }
+            if (Predicate != null)
+            {
+                writer.WriteSql($" WHERE ({Predicate})");
+            }
+            WriteTail(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            FormatSqlBody(writer, manager);
+        }
+
+        public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatConstraintName(writer, manager);
+            writer.Write("EXCLUDE");
+            if (Method != null)
+            {
+                writer.Write(" USING ");
+                Method.FormatSql(writer, manager);
+            }
+            writer.Write(" (");
+            writer.FormatDelimited(Elements, manager);
+            writer.Write(")");
+            if (IncludedColumns != null)
+            {
+                writer.Write(" ");
+                IncludedColumns.FormatSql(writer, manager);
+            }
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
+            }
+            if (Predicate != null)
+            {
+                writer.Write(" WHERE (");
+                Predicate.FormatSql(writer, manager);
+                writer.Write(")");
+            }
+            WriteTail(writer);
+        }
+    }
+
+    public record PgUsingIndex(Identifier Index, bool IsPrimaryKey, Identifier? Name = null) : StatementTableConstraint(Name)
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteConstraintName(writer);
+            writer.WriteSql($"{(IsPrimaryKey ? "PRIMARY KEY" : "UNIQUE")} USING INDEX {Index}");
+            WriteTail(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            FormatSqlBody(writer, manager);
+        }
+
+        public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatConstraintName(writer, manager);
+            writer.Write(IsPrimaryKey ? "PRIMARY KEY USING INDEX " : "UNIQUE USING INDEX ");
+            Index.FormatSql(writer, manager);
+            WriteTail(writer);
         }
     }
 
@@ -332,7 +508,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.WriteSql($" {StorageLocation}");
             }
 
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -373,7 +549,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" {StorageLocation}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -394,7 +570,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.WriteSql($" {IndexName}");
             }
             writer.WriteSql($" ({Columns})");
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -408,7 +584,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             }
             writer.Write(" ");
             FormatKeyParts(writer, Columns, manager);
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -420,7 +596,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
 
     public record Spatial(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
-        public IndexMethod? IndexMethod { get; init; }
+        public BuiltInIndexMethod? IndexMethod { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -435,7 +611,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" USING {IndexMethod}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -453,7 +629,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" USING {IndexMethod}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -513,7 +689,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
                 writer.WriteSql($" {StorageLocation}");
             }
 
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
@@ -555,7 +731,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 writer.WriteSql($" {StorageLocation}");
             }
-            WriteComment(writer);
+            WriteTail(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)

@@ -237,7 +237,7 @@ public abstract class BaseInfoSchemaRepoTests
 
         Assert.Equal(Direction.Ascending, column.Direction);
         Assert.Null(column.Length);
-        Assert.Equal(IndexMethod.Btree, indexAsStandard.IndexMethod);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Btree, indexAsStandard.IndexMethod);
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Equal("really_active", uniqueCol2.Name.Name);
 
         Assert.NotNull(uniqueKey.IndexMethod);
-        Assert.Equal(IndexMethod.Btree, uniqueKey.IndexMethod);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Btree, uniqueKey.IndexMethod);
 
 
         var foreignKeys = table.ForeignKeys;
@@ -502,7 +502,7 @@ public abstract class BaseInfoSchemaRepoTests
 
         Assert.Equal("view_with_options", view.Name.Name);
         Assert.Equal(ViewAlgorithm.Merge, view.Algorithm);
-        Assert.Equal(ViewCheckOption.Local, view.CheckOption);
+        Assert.Equal((ViewCheckOptionScope)ViewCheckOptionScope.Local, view.CheckOption);
     }
 
     [Fact]

@@ -77,12 +77,168 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.NotNull(sourceManager.GetSourceRef(new ObjectHandle("catalog", "other", "mood")));
     }
 
-    [Fact]
-    public void ProcessStatements_RejectsUnsupportedStatements()
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT UNIQUE NULLS NOT DISTINCT)")]
+    [InlineData("CREATE TABLE items (id INT UNIQUE WITH (custom_parameter = 1))")]
+    [InlineData("CREATE TABLE items (id INT PRIMARY KEY WITH (custom_parameter = 1))")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (custom_parameter = 1))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (custom_parameter = 1))")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) USING INDEX TABLESPACE fast)")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) USING INDEX TABLESPACE fast)")]
+    [InlineData("CREATE TABLE items (id INT PRIMARY KEY DEFERRABLE)")]
+    [InlineData("CREATE TABLE items (id INT REFERENCES app.parents (id))")]
+    [InlineData("CREATE TABLE items (id INT CHECK (id > 0) NO INHERIT)")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE NULLS DISTINCT (id))")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) INCLUDE (id))")]
+    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES app.parents (id) NOT VALID")]
+    [InlineData("ALTER TABLE items ADD UNIQUE USING INDEX items_idx")]
+    [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
+    [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
+    [InlineData("SELECT 1")]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (2)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent (id DEFAULT 1) DEFAULT PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT) ON COMMIT DELETE ROWS")]
+    [InlineData("CREATE VIEW visible AS SELECT 1 WITH CHECK OPTION")]
+    [InlineData("CREATE TEMP VIEW visible AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY VIEW visible AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id) AS SELECT 1 UNION ALL SELECT id FROM walk")]
+    [InlineData("CREATE TEMP RECURSIVE VIEW walk (id) AS SELECT 1")]
+    [InlineData("CREATE VIEW visible WITH (security_barrier = TRUE) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH NO DATA")]
+    [InlineData("CREATE SEQUENCE app.ids AS BIGINT OWNED BY app.items.id")]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("ALTER SEQUENCE app.ids RESTART WITH 10")]
+    [InlineData("ALTER SEQUENCE ids OWNER TO CURRENT_USER")]
+    [InlineData("DROP SEQUENCE IF EXISTS ids CASCADE")]
+    [InlineData("DROP TYPE IF EXISTS app.mood, app.address CASCADE")]
+    [InlineData("DROP DOMAIN app.label RESTRICT")]
+    [InlineData("DROP TABLE items CASCADE")]
+    [InlineData("DROP VIEW visible RESTRICT")]
+    [InlineData("DROP INDEX items_idx CASCADE")]
+    [InlineData("DROP SCHEMA app, archive CASCADE")]
+    [InlineData("DROP FUNCTION IF EXISTS app.run(INT), app.run(TEXT) CASCADE")]
+    [InlineData("DROP PROCEDURE app.run(OUT result TEXT) RESTRICT")]
+    [InlineData("DROP ROUTINE app.run")]
+    [InlineData("DROP TRIGGER IF EXISTS audit ON app.items CASCADE")]
+    [InlineData("ALTER TABLE items ALTER id ADD GENERATED ALWAYS AS IDENTITY")]
+    [InlineData("CREATE INDEX CONCURRENTLY ON ONLY items (id)")]
+    [InlineData("CREATE INDEX ON items (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id NULLS LAST)")]
+    [InlineData("CREATE INDEX items_idx ON items USING bloom (id app.int_ops (bits = 4) DESC NULLS FIRST)")]
+    [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) INCLUDE (label) NULLS NOT DISTINCT WITH (fillfactor = 80) TABLESPACE fast WHERE id > 0")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (2)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE")]
+    [InlineData("ALTER TABLE items ALTER id SET GENERATED ALWAYS RESTART 10")]
+    [InlineData("ALTER TABLE items ADD COLUMN IF NOT EXISTS label app.label[]")]
+    [InlineData("ALTER TABLE items DROP COLUMN IF EXISTS label CASCADE")]
+    [InlineData("ALTER TABLE items RENAME label TO new_label")]
+    [InlineData("ALTER TABLE items ALTER label SET DATA TYPE TEXT USING label")]
+    [InlineData("ALTER TABLE items ALTER label SET DEFAULT 1 + 2")]
+    [InlineData("ALTER TABLE items ALTER label SET NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label SET EXPRESSION AS (other_label)")]
+    [InlineData("ALTER TABLE items ALTER label DROP EXPRESSION IF EXISTS")]
+    [InlineData("ALTER TABLE items ALTER label SET STATISTICS DEFAULT")]
+    [InlineData("ALTER TABLE items ALTER label SET (n_distinct = 5)")]
+    [InlineData("ALTER TABLE items ALTER label RESET (n_distinct)")]
+    [InlineData("ALTER TABLE items ALTER label SET STORAGE EXTENDED")]
+    [InlineData("ALTER TABLE items ALTER label SET COMPRESSION lz4")]
+    [InlineData("ALTER TABLE items OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER TABLE items SET SCHEMA archive")]
+    [InlineData("ALTER TABLE items SET TABLESPACE fast")]
+    [InlineData("ALTER TABLE items SET ACCESS METHOD heap")]
+    [InlineData("ALTER TABLE items CLUSTER ON items_idx")]
+    [InlineData("ALTER TABLE items SET WITHOUT CLUSTER")]
+    [InlineData("ALTER TABLE items SET (fillfactor = 70)")]
+    [InlineData("ALTER TABLE items RESET (fillfactor)")]
+    [InlineData("ALTER TABLE items SET LOGGED")]
+    [InlineData("ALTER TABLE items INHERIT app.parent")]
+    [InlineData("ALTER TABLE items NO INHERIT app.parent")]
+    [InlineData("ALTER TABLE items OF app.row_type")]
+    [InlineData("ALTER TABLE items NOT OF")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items DISABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items NO FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER ALL")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER USER")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER audit")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY DEFAULT")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY FULL")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY NOTHING")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX items_key")]
+    [InlineData("ALTER FUNCTION app.calculate(app.amount[]) IMMUTABLE")]
+    [InlineData("ALTER PROCEDURE app.run() SECURITY DEFINER")]
+    [InlineData("ALTER FUNCTION app.calculate() SET work_mem TO DEFAULT")]
+    [InlineData("ALTER FUNCTION app.calculate() SET search_path FROM CURRENT")]
+    [InlineData("ALTER FUNCTION app.calculate() RESET ALL")]
+    [InlineData("ALTER FUNCTION app.calculate() RENAME TO new_name")]
+    [InlineData("ALTER PROCEDURE app.run() OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER FUNCTION app.calculate() SET SCHEMA archive")]
+    [InlineData("ALTER PROCEDURE app.run() NO DEPENDS ON EXTENSION ext")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS app.summary, app.other CASCADE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO summary_next")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME COLUMN id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS 100, SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id RESET (n_distinct)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STORAGE EXTENDED")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET COMPRESSION lz4")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY CURRENT_USER SET TABLESPACE slow NOWAIT")]
+    public void ProcessStatements_RejectsUnsupportedStatements(string sql)
     {
         var builder = CreateBuilder();
+        var statements = ParseStatements(sql);
 
-        Assert.Throws<DefinitionException>(() => builder.ProcessStatements(ParseStatements("SELECT 1"), GetSchema(), 0));
+        var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 17));
+
+        Assert.Contains(statements[0].GetType().Name, exception.Message);
+        Assert.Equal(new SourceRef(17, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), exception.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("CREATE TEMP TABLE items (id INT)", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT PRESERVE ROWS", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT DELETE ROWS", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT DROP", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TEMP TABLE items ON COMMIT DROP AS SELECT 1", typeof(DefinitionException.TempTable))]
+    [InlineData("CREATE TABLE items AS SELECT 1", typeof(DefinitionException.CreateTableAsSelect))]
+    [InlineData("CREATE UNLOGGED TABLE items AS SELECT 1", typeof(DefinitionException.CreateTableAsSelect))]
+    public void ProcessStatements_RejectsTemporaryTablesAndCtasWithSources(string sql, Type expectedType)
+    {
+        var builder = CreateBuilder();
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        var exception = Assert.ThrowsAny<DefinitionException>(() => builder.ProcessStatements([statement], GetSchema(), 23));
+
+        Assert.IsType(expectedType, exception);
+        Assert.Equal(new SourceRef(23, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Fact]
@@ -1236,7 +1392,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgDefinition definition = builder.ToDefinition();
 
         PgTable table = Assert.Single(definition.Tables).Value;
-        Assert.Equal(IndexMethod.Hash, Assert.Single(table.Indexes.Values).Method);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Hash, Assert.Single(table.Indexes.Values).Method);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
@@ -1409,7 +1565,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var primaryKey = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints));
         StatementTableConstraint.PrimaryKey invalid = feature switch
         {
-            "method" => primaryKey with { IndexMethod = IndexMethod.Hash },
+            "method" => primaryKey with { IndexMethod = BuiltInIndexMethod.Hash },
             "organization" => primaryKey with { IndexOrganization = IndexOrganization.Clustered },
             "options" => primaryKey with { Options = [new StatementIndexOption.PadIndex(true)] },
             "storage" => primaryKey with { StorageLocation = new IndexStorageLocation.Filegroup(new Identifier("filegroup")) },
@@ -1440,38 +1596,33 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (FILLFACTOR = 70))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (FILLFACTOR = 70))")]
-    [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH (FILLFACTOR = 70)")]
-    [InlineData("CREATE TABLE items (id INT); CREATE UNIQUE INDEX ix ON items (id) WITH (FILLFACTOR = 70)")]
-    public void IndexOptions_ClassifyFillFactorAsNotImplemented(string sql)
+    public void ConstraintIndexOptions_RejectUnrepresentedParametersWithSourcedError(string sql)
     {
         var builder = CreateBuilder();
+        var statements = ParseStatements(sql);
 
-        var exception = Assert.Throws<NotImplementedException>(() =>
-        {
-            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
-            builder.ToDefinition();
-        });
-        Assert.Contains("FILLFACTOR", exception.Message);
+        var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 7));
+        Assert.Equal(new SourceRef(7, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Theory]
-    [InlineData("PAD_INDEX")]
-    [InlineData("IGNORE_DUP_KEY")]
-    [InlineData("STATISTICS_NORECOMPUTE")]
-    [InlineData("STATISTICS_INCREMENTAL")]
-    [InlineData("ALLOW_ROW_LOCKS")]
-    [InlineData("ALLOW_PAGE_LOCKS")]
-    [InlineData("OPTIMIZE_FOR_SEQUENTIAL_KEY")]
-    public void IndexOptions_RejectForeignOptionsWithDialectSyntaxError(string option)
+    [InlineData("", "FILLFACTOR = 70")]
+    [InlineData("", "deduplicate_items = ON")]
+    [InlineData(" USING GIST", "buffering = AUTO")]
+    [InlineData(" USING GIN", "fastupdate = OFF")]
+    [InlineData(" USING GIN", "gin_pending_list_limit = 4096")]
+    [InlineData(" USING BRIN", "autosummarize = ON")]
+    [InlineData(" USING BRIN", "pages_per_range = 128")]
+    [InlineData(" USING bloom", "custom_parameter = 70")]
+    public void IndexOptions_RejectUnrepresentedStorageParametersWithSourcedError(string method, string option)
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items (id) WITH ({option} = ON)"), GetSchema(), 7);
+        var statements = ParseStatements($"CREATE TABLE items (id INT); CREATE INDEX ix ON items{method} (id) WITH ({option})");
 
-        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(builder.ToDefinition);
-        Assert.Equal("PostgreSQL", exception.Dialect);
-        Assert.Equal($"{option} = ON", exception.Clause);
-        Assert.NotNull(exception.ObjectSourceRef);
-        Assert.Contains("does not support the clause", exception.Message);
+        var exception = Assert.Throws<DefinitionException>(() => builder.ProcessStatements(statements, GetSchema(), 7));
+
+        Assert.Contains("PostgreSQL index options", exception.Message);
+        Assert.Equal(new SourceRef(7, statements[1].Meta.Start!.Value, statements[1].Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     [Theory]
@@ -1482,9 +1633,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void TableConstraints_RejectInlineCommentsWithDialectSyntaxError(string constraint)
     {
         var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(Assert.Single(ParseStatements($"CREATE TABLE items (id INT, {constraint})")));
+        var invalid = Assert.Single(table.Constraints) with { Comment = new Comment("description") };
 
         var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.ProcessStatements(
-            ParseStatements($"CREATE TABLE items (id INT, {constraint} COMMENT 'description')"), GetSchema(), 0));
+            [table with { Constraints = [invalid] }], GetSchema(), 0));
         Assert.Equal("inline COMMENT", exception.Clause);
         Assert.NotNull(exception.ObjectSourceRef);
     }

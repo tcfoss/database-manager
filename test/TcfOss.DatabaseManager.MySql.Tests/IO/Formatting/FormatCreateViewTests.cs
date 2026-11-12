@@ -91,22 +91,26 @@ public class FormatCreateViewTests
         Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
 
-    [Fact]
-    public void CreateView_WithCheckOption()
+    [Theory]
+    [InlineData("WITH CHECK OPTION")]
+    [InlineData("WITH CASCADED CHECK OPTION")]
+    [InlineData("WITH LOCAL CHECK OPTION")]
+    public void CreateView_WithCheckOption(string clause)
     {
-        var text = "CREATE VIEW my_view AS SELECT 1 WITH CASCADED CHECK OPTION";
-        var formatted = """
+        var text = $"CREATE VIEW my_view AS SELECT 1 {clause}";
+        var formatted = $"""
         CREATE
         VIEW `my_view`
         AS
         SELECT
             1
-        WITH CASCADED CHECK OPTION;
+        {clause};
         """;
 
         using var formatter = Helpers.CreateFormatter(Helpers.s_pseudoTables1);
         var actual = formatter.GetFormatted(text);
         Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
+        Assert.Equal(actual, formatter.GetFormatted(actual));
     }
 
     [Fact]

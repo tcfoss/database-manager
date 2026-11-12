@@ -2312,6 +2312,39 @@ public abstract class MyDefinitionBuilderTestsBase
         }
     }
 
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("WITH CHECK OPTION", "CASCADED")]
+    [InlineData("WITH CASCADED CHECK OPTION", "CASCADED")]
+    [InlineData("WITH LOCAL CHECK OPTION", "LOCAL")]
+    public void OrdinaryViewCheckOptions_ConstructCanonicalMode(string clause, string? expectedMode)
+    {
+        string sql = $"""
+        CREATE TABLE `schema1`.`table1` (
+            `id` INT UNSIGNED NOT NULL,
+            PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB;
+        CREATE DEFINER = `root`@`localhost` SQL SECURITY DEFINER VIEW `schema1`.`my_view` AS
+        SELECT id FROM `schema1`.`table1` {clause};
+        """;
+
+        DefinitionBuilder.ProcessStatements(TextParser.ParseText(sql), Schema, 0);
+        var definition = DefinitionBuilder.ToDefinition();
+
+        var view = Assert.Single(definition.Views).Value;
+        Assert.Equal(expectedMode, view.CheckOption?.ToSql());
+        CreateView statement = view.ToCreateStatement(includeSchema: true);
+        if (expectedMode == null)
+        {
+            Assert.Null(statement.ViewCheckOption);
+        }
+        else
+        {
+            Assert.Equal(view.CheckOption, Assert.IsType<ViewCheckOption.Specified>(statement.ViewCheckOption).Scope);
+            Assert.EndsWith($"WITH {expectedMode} CHECK OPTION", statement.ToSql());
+        }
+    }
+
     [Fact]
     public void Validate_View_Definer_Missing_Throws()
     {

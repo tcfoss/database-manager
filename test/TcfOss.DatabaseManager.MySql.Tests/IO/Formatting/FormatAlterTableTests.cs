@@ -11,13 +11,18 @@ public class FormatAlterTableTests
     [InlineData("ADD COLUMN `mycolumn` VARCHAR(20) NOT NULL", "ADD COLUMN `mycolumn` VARCHAR(20) NOT NULL", Label = "add column")]
     [InlineData("ADD `mycolumn` VARCHAR(20) NOT NULL", "ADD `mycolumn` VARCHAR(20) NOT NULL", Label = "add shorthand column")]
     [InlineData("CHANGE COLUMN title book_title VARCHAR(100)", "CHANGE COLUMN `title` `book_title` VARCHAR(100)", Label = "change column")]
+    [InlineData("CHANGE title book_title VARCHAR(100)", "CHANGE `title` `book_title` VARCHAR(100)", Label = "change shorthand")]
     [InlineData("CHANGE COLUMN title book_title VARCHAR(100) FIRST", "CHANGE COLUMN `title` `book_title` VARCHAR(100) FIRST", Label = "change column first")]
     [InlineData("CHANGE COLUMN title book_title VARCHAR(100) AFTER id", "CHANGE COLUMN `title` `book_title` VARCHAR(100) AFTER `id`", Label = "change column after")]
     [InlineData("MODIFY COLUMN title VARCHAR(100)", "MODIFY COLUMN `title` VARCHAR(100)", Label = "modify column")]
+    [InlineData("MODIFY title VARCHAR(100)", "MODIFY `title` VARCHAR(100)", Label = "modify shorthand")]
     [InlineData("MODIFY COLUMN title VARCHAR(100) FIRST", "MODIFY COLUMN `title` VARCHAR(100) FIRST", Label = "modify column first")]
     [InlineData("MODIFY COLUMN title VARCHAR(100) AFTER id", "MODIFY COLUMN `title` VARCHAR(100) AFTER `id`", Label = "modify column after")]
     [InlineData("ALTER COLUMN title SET DEFAULT 'untitled'", "ALTER COLUMN `title` SET DEFAULT 'untitled'", Label = "set default")]
+    [InlineData("ALTER title SET DEFAULT 'untitled'", "ALTER `title` SET DEFAULT 'untitled'", Label = "set default shorthand")]
     [InlineData("ALTER COLUMN title DROP DEFAULT", "ALTER COLUMN `title` DROP DEFAULT", Label = "drop default")]
+    [InlineData("ALTER title DROP DEFAULT", "ALTER `title` DROP DEFAULT", Label = "drop default shorthand")]
+    [InlineData("DROP title", "DROP `title`", Label = "drop column shorthand")]
     [InlineData("ADD PRIMARY KEY (id)", "ADD PRIMARY KEY (`id`)", Label = "add primary key")]
     [InlineData("DROP PRIMARY KEY", "DROP PRIMARY KEY", Label = "drop primary key")]
     [InlineData("ADD CONSTRAINT uq UNIQUE (title)", "ADD CONSTRAINT `uq` UNIQUE (`title`)", Label = "add unique constraint")]
@@ -34,6 +39,7 @@ public class FormatAlterTableTests
         var actual = formatter.GetFormatted($"ALTER TABLE books {operation}");
 
         Assert.Equal($"ALTER TABLE `books`\n    {expectedOperation};", actual, ignoreLineEndingDifferences: true);
+        Assert.Equal(actual, formatter.GetFormatted(actual));
     }
 
     [Theory]

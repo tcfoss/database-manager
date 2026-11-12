@@ -1,3 +1,5 @@
+using TcfOss.DatabaseManager.Core;
+using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -7,10 +9,39 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyDdlParser(MyParser parser) : DdlParser(parser)
 {
-    protected override bool SupportsIndexMethodAfterTableName => false;
     protected override bool UseSqlRoutineTail(ParserState state) => false;
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
+    protected override bool SupportsDropRoutineSignatures => false;
+
+    protected override ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ON, advance: false);
+        return base.ParseDropIndexOnObject(state);
+    }
+
+    protected override bool SupportsDropObjectType(DroppableObject objectType)
+    {
+        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Sequence
+            && objectType != DroppableObject.Type && objectType != DroppableObject.Domain
+            && objectType != DroppableObject.Routine;
+    }
+
+    protected override ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        return null;
+    }
+
+    protected override bool SupportsDropObjectList(DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View;
+    }
+
+    protected override PgDropBehavior? ParseOptionalDropBehavior(ParserState state, DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View
+            ? base.ParseOptionalDropBehavior(state, objectType) : null;
+    }
 
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
     {
@@ -42,5 +73,10 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
     {
         eventsUseOr = false;
         return [];
+    }
+
+    protected override SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    {
+        return null;
     }
 }

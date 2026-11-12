@@ -11,7 +11,9 @@ public class CreateObjectOptions
     public SecurityContext? SecurityContext { get; init; }
     public Definer? Definer { get; init; }
     public bool Aggregate { get; init; }
-    public bool Temporary { get; init; }
+    public TemporaryLabel? TemporaryLabel { get; init; }
+    public bool Recursive { get; init; }
+    public bool Unlogged { get; init; }
 
-    public string[] AllSupportedTypes { get; init; } = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX", "TYPE", "DOMAIN"];
+    public string[] AllSupportedTypes { get; init; } = ["TABLE", "TRIGGER", "CONSTRAINT TRIGGER", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "PROCEDURE", "EVENT", "INDEX", "TYPE", "DOMAIN", "SEQUENCE"];
 }

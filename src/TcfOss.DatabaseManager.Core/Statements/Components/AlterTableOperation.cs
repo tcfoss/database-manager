@@ -18,6 +18,7 @@ public abstract record AlterTableOperation() : IWriteSql
     public record AddColumn(StatementColumn Column, bool PrintColumn) : AlterTableOperation
     {
         public AlterTableColumnPosition? Position { get; init; }
+        public bool IfNotExists { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -25,6 +26,10 @@ public abstract record AlterTableOperation() : IWriteSql
             if (PrintColumn)
             {
                 writer.WriteSql($" COLUMN");
+            }
+            if (IfNotExists)
+            {
+                writer.Write(" IF NOT EXISTS");
             }
             writer.WriteSql($" {Column}");
             if (Position != null)
@@ -41,6 +46,10 @@ public abstract record AlterTableOperation() : IWriteSql
             {
                 writer.Write("COLUMN ");
             }
+            if (IfNotExists)
+            {
+                writer.Write("IF NOT EXISTS ");
+            }
             Column.FormatSqlBody(writer, manager);
             if (Position != null)
             {
@@ -52,30 +61,54 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record DropColumn(Identifier Column) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
+        public bool IfExists { get; init; }
+        public PgDropBehavior? PgBehavior { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"DROP COLUMN {Column}");
+            writer.Write(PrintColumn ? "DROP COLUMN " : "DROP ");
+            if (IfExists)
+            {
+                writer.Write("IF EXISTS ");
+            }
+            Column.ToSql(writer);
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("DROP COLUMN ");
+            writer.Write(PrintColumn ? "DROP COLUMN " : "DROP ");
+            if (IfExists)
+            {
+                writer.Write("IF EXISTS ");
+            }
             Column.FormatSql(writer, manager);
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
         }
     }
 
     public record RenameColumn(Identifier OldName, Identifier NewName) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"RENAME COLUMN {OldName} TO {NewName}");
+            writer.Write(PrintColumn ? "RENAME COLUMN " : "RENAME ");
+            writer.WriteSql($"{OldName} TO {NewName}");
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("RENAME COLUMN ");
+            writer.Write(PrintColumn ? "RENAME COLUMN " : "RENAME ");
             OldName.FormatSql(writer, manager);
             writer.Write(" TO ");
             NewName.FormatSql(writer, manager);
@@ -84,11 +117,13 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record ChangeColumn(Identifier OldName, StatementColumn NewDefinition) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
         public AlterTableColumnPosition? Position { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"CHANGE COLUMN {OldName} {NewDefinition}");
+            writer.Write(PrintColumn ? "CHANGE COLUMN " : "CHANGE ");
+            writer.WriteSql($"{OldName} {NewDefinition}");
             if (Position != null)
             {
                 writer.WriteSql($" {Position}");
@@ -98,7 +133,7 @@ public abstract record AlterTableOperation() : IWriteSql
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("CHANGE COLUMN ");
+            writer.Write(PrintColumn ? "CHANGE COLUMN " : "CHANGE ");
             OldName.FormatSql(writer, manager);
             writer.Write(" ");
             NewDefinition.FormatSqlBody(writer, manager);
@@ -112,11 +147,13 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record ModifyColumn(StatementColumn NewDefinition) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
         public AlterTableColumnPosition? Position { get; init; }
 
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"MODIFY COLUMN {NewDefinition}");
+            writer.Write(PrintColumn ? "MODIFY COLUMN " : "MODIFY ");
+            writer.WriteSql($"{NewDefinition}");
             if (Position != null)
             {
                 writer.WriteSql($" {Position}");
@@ -126,7 +163,7 @@ public abstract record AlterTableOperation() : IWriteSql
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("MODIFY COLUMN ");
+            writer.Write(PrintColumn ? "MODIFY COLUMN " : "MODIFY ");
             NewDefinition.FormatSqlBody(writer, manager);
             if (Position != null)
             {
@@ -136,34 +173,240 @@ public abstract record AlterTableOperation() : IWriteSql
         }
     }
 
-    public record SetDefault(Identifier Column, StatementColumnOption.Default NewDefault) : AlterTableOperation
+    public record PgAttachPartition(ObjectName Partition, PgPartitionBound Bound) : AlterTableOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"ALTER COLUMN {Column} SET {NewDefault}");
+            writer.WriteSql($"ATTACH PARTITION {Partition} {Bound}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.WriteSqlI("ATTACH PARTITION ");
+            Partition.FormatSql(writer, manager);
+            writer.Write(" ");
+            Bound.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgDetachPartition(ObjectName Partition, PgDetachPartitionMode? Mode = null) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"DETACH PARTITION {Partition}");
+            if (Mode != null)
+            {
+                writer.WriteSql($" {Mode}");
+            }
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.WriteSqlI("DETACH PARTITION ");
+            Partition.FormatSql(writer, manager);
+            if (Mode != null)
+            {
+                writer.WriteSql($" {Mode}");
+            }
+        }
+    }
+
+    public record PgRelation(PgAlterRelationOperation Operation) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Operation.ToSql(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("ALTER COLUMN ");
+            Operation.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgRowSecurity(PgRowSecurityMode Mode) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"{Mode} ROW LEVEL SECURITY");
+        }
+    }
+
+    public record PgTriggerState(PgTriggerStateMode Mode, PgAlterTriggerTarget Target) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"{Mode} TRIGGER {Target}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.WriteSql($"{Mode} TRIGGER ");
+            Target.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgReplicaIdentity(PgReplicaIdentityMode Mode) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"REPLICA IDENTITY {Mode}");
+        }
+    }
+
+    public record PgReplicaIdentityUsingIndex(Identifier Index) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"REPLICA IDENTITY USING INDEX {Index}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("REPLICA IDENTITY USING INDEX ");
+            Index.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgPersistence(bool Logged) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(Logged ? "SET LOGGED" : "SET UNLOGGED");
+        }
+    }
+
+    public record PgInherit(ObjectName Parent) : AlterTableOperation
+    {
+        public bool No { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(No ? "NO INHERIT " : "INHERIT ");
+            Parent.ToSql(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(No ? "NO INHERIT " : "INHERIT ");
+            Parent.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgOf(ObjectName Type) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"OF {Type}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("OF ");
+            Type.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgNotOf : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("NOT OF");
+        }
+    }
+
+    public record PgIdentity(Identifier Column, SqlValueList<PgAlterIdentityOperation> Operations) : AlterTableOperation
+    {
+        public bool UseColumnKeyword { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(UseColumnKeyword ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} ");
+            writer.WriteDelimited(Operations, " ");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(UseColumnKeyword ? "ALTER COLUMN " : "ALTER ");
+            Column.FormatSql(writer, manager);
+            foreach (PgAlterIdentityOperation operation in Operations)
+            {
+                writer.Write(" ");
+                operation.FormatSql(writer, manager);
+            }
+        }
+    }
+
+    public record PgColumn(Identifier Column, PgAlterColumnOperation Operation) : AlterTableOperation
+    {
+        public bool PrintColumn { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} {Operation}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            Column.FormatSql(writer, manager);
+            writer.Write(" ");
+            Operation.FormatSql(writer, manager);
+        }
+    }
+
+    public record SetDefault(Identifier Column, StatementColumnOption.Default NewDefault) : AlterTableOperation
+    {
+        public bool PrintColumn { get; init; } = true;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} SET {NewDefault}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
             Column.FormatSql(writer, manager);
             writer.Write(" SET ");
-            NewDefault.ToSql(writer);
+            if (NewDefault is StatementColumnOption.Default.DefaultExpression expression)
+            {
+                writer.Write("DEFAULT (");
+                expression.Expression.FormatSql(writer, manager);
+                writer.Write(")");
+            }
+            else
+            {
+                NewDefault.FormatSql(writer, manager);
+            }
         }
     }
 
     public record DropDefault(Identifier Column) : AlterTableOperation
     {
+        public bool PrintColumn { get; init; } = true;
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"ALTER COLUMN {Column} DROP DEFAULT");
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
+            writer.WriteSql($"{Column} DROP DEFAULT");
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("ALTER COLUMN ");
+            writer.Write(PrintColumn ? "ALTER COLUMN " : "ALTER ");
             Column.FormatSql(writer, manager);
             writer.Write(" DROP DEFAULT");
         }
@@ -366,16 +609,101 @@ public abstract record AlterTableOperation() : IWriteSql
 
     public record DropConstraint(Identifier Name) : AlterTableOperation
     {
+        public bool IfExists { get; init; }
+        public PgDropBehavior? PgBehavior { get; init; }
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"DROP CONSTRAINT {Name}");
+            writer.WriteSql($"DROP CONSTRAINT{(IfExists ? " IF EXISTS" : "")} {Name}");
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             writer.Write(manager.Indent);
-            writer.Write("DROP CONSTRAINT ");
+            writer.Write(IfExists ? "DROP CONSTRAINT IF EXISTS " : "DROP CONSTRAINT ");
             Name.FormatSql(writer, manager);
+            if (PgBehavior != null)
+            {
+                writer.WriteSql($" {PgBehavior}");
+            }
+        }
+    }
+
+    public record RenameConstraint(Identifier OldName, Identifier NewName) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"RENAME CONSTRAINT {OldName} TO {NewName}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("RENAME CONSTRAINT ");
+            OldName.FormatSql(writer, manager);
+            writer.Write(" TO ");
+            NewName.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgAlterConstraint(Identifier Name, SqlValueList<PgConstraintOption> Options) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"ALTER CONSTRAINT {Name} {Options.ToSqlDelimited(" ")}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("ALTER CONSTRAINT ");
+            Name.FormatSql(writer, manager);
+            writer.WriteSql($" {Options.ToSqlDelimited(" ")}");
+        }
+    }
+
+    public record PgValidateConstraint(Identifier Name) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"VALIDATE CONSTRAINT {Name}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("VALIDATE CONSTRAINT ");
+            Name.FormatSql(writer, manager);
+        }
+    }
+
+    public record PgAddConstraint(StatementTableConstraint Constraint) : AlterTableOperation
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"ADD {Constraint}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            writer.Write("ADD ");
+            switch (Constraint)
+            {
+                case StatementTableConstraint.PgExclusion exclusion:
+                    exclusion.FormatSqlBody(writer, manager);
+                    break;
+                case StatementTableConstraint.PgUsingIndex usingIndex:
+                    usingIndex.FormatSqlBody(writer, manager);
+                    break;
+                default:
+                    Constraint.FormatSql(writer, manager);
+                    break;
+            }
         }
     }
 

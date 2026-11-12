@@ -67,10 +67,40 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void ApplyCreateTable_RejectsUnimplementedConstraints()
     {
-        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, KEY ix (id))"));
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, PRIMARY KEY (id))"));
+        var primaryKey = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(statement.Constraints));
+        statement = statement with { Constraints = [new StatementTableConstraint.Standard(primaryKey.Columns, new Identifier("ix"))] };
         var builder = CreateBuilder();
 
         Assert.Throws<NotImplementedException>(() => builder.ApplyCreateTable(statement));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AddIndexOrConstraint_RejectsUsingIndexWithSource(bool primaryKey)
+    {
+        var builder = CreateBuilder();
+        var source = new SourceRef(7, 0, 10);
+        var constraint = new StatementTableConstraint.PgUsingIndex(new Identifier("items_idx"), primaryKey);
+
+        var exception = Assert.Throws<DefinitionException>(() => builder.AddIndexOrConstraint(constraint, source));
+
+        Assert.Equal(source, exception.ObjectSourceRef);
+        Assert.Contains(nameof(CreateTable), exception.Message);
+    }
+
+    [Fact]
+    public void AddIndexOrConstraint_RejectsExclusionWithoutAttributesWithSource()
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, EXCLUDE (id WITH =))"));
+        var builder = CreateBuilder();
+        var source = new SourceRef(7, 0, 10);
+
+        var exception = Assert.Throws<DefinitionException>(() => builder.AddIndexOrConstraint(Assert.Single(statement.Constraints), source));
+
+        Assert.Equal(source, exception.ObjectSourceRef);
+        Assert.Contains(nameof(CreateTable), exception.Message);
     }
 
     [Fact]
@@ -314,12 +344,12 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id DESC))")]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY ((id + 1)))")]
+    [InlineData("CREATE INDEX ix ON items (id DESC)")]
+    [InlineData("CREATE INDEX ix ON items ((id + 1))")]
     public void AddPrimaryKey_RejectsNonColumnKeyPartsWithSourcedSyntaxError(string sql)
     {
-        var table = Assert.IsType<CreateTable>(ParseStatement(sql));
-        var constraint = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints));
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement(sql));
+        var constraint = new StatementTableConstraint.PrimaryKey(index.Columns);
         var sourceRef = new SourceRef(4, 10, 20);
         var builder = CreateBuilder();
 
@@ -616,7 +646,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var index = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items USING HASH ({columns})")) with { Options = [] };
         builder.AddIndex(index, null);
 
-        Assert.Equal(IndexMethod.Hash, Assert.Single(builder.ToTable(CreateManager()).Indexes.Values).Method);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Hash, Assert.Single(builder.ToTable(CreateManager()).Indexes.Values).Method);
     }
 
     [Fact]

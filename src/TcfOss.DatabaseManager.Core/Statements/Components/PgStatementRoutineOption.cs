@@ -93,18 +93,9 @@ public abstract record PgStatementRoutineOption : IWriteSql
 
     public record RoutineSetting(PgRoutineSetting Setting) : PgStatementRoutineOption
     {
-        public bool UseEqualSign { get; init; }
-
         public override void ToSql(SqlTextWriter writer)
         {
-            if (UseEqualSign && Setting is PgRoutineSetting.ToValues values)
-            {
-                writer.WriteSql($"SET {values.Name} = {values.Values.ToSqlDelimited()}");
-            }
-            else
-            {
-                Setting.ToSql(writer);
-            }
+            Setting.ToSql(writer);
         }
 
         public override string UniqueName => $"SET:{string.Join('.', Setting.Name.Values.Select(value => value.Name))}";

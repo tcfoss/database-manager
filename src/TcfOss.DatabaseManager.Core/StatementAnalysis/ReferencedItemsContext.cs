@@ -4,6 +4,7 @@ public enum ReferencedItemsContext
 {
     SelectValueList,
     AlterTableTarget,
+    AlterTableType,
     DropObjectStatement,
     SelectItem,
     UpdateClause,
@@ -20,5 +21,22 @@ public enum ReferencedItemsContext
     HavingClause,
     TruncateTarget,
     CreateTriggerTable,
-    CreateIndexTable
+    CreateIndexTable,
+    RefreshMaterializedViewTarget,
+    DropMaterializedViewTarget,
+    AlterMaterializedViewTarget,
+    SequenceTarget,
+    SequenceOwnedBy,
+    DropTypeTarget,
+    DropRoutineTarget,
+    AlterRoutineTarget,
+    DropTriggerTarget,
+    AlterColumnType,
+    AlterColumnExpression,
+    CreateTablePartitionParent,
+    CreateTablePartitionExpression,
+    AlterPartitionBound,
+    CreateIndexExpression,
+    ConstraintExpression,
+    ConstraintTable
 }

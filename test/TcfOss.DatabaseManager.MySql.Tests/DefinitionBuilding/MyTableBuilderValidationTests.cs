@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 using TcfOss.DatabaseManager.MySql.Lexing;
@@ -174,6 +175,39 @@ public class MyTableBuilderValidationTests
 
         var message = $"Unsupported in Definitions Error: {constraintType} on table '`def`.`schema1`.`myTable`' must be named.";
         Assert.Equal(message, exception.Message);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IndexMethods_RejectCustomMethodsWithSourcedSyntaxError(bool unique)
+    {
+        var builder = GetTableBuilder();
+        SqlValueList<KeyPart> columns = [new KeyPart.Column(new Identifier("col1"))];
+        var method = new IndexMethod.Custom(new Identifier("bloom"));
+        var source = new SourceRef(7, 3, 29);
+
+        var exception = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() =>
+        {
+            if (unique)
+            {
+                builder.AddUniqueKey(new StatementTableConstraint.UniqueConstraint(columns, new Identifier("ix"))
+                {
+                    IndexMethod = method
+                }, source);
+            }
+            else
+            {
+                builder.AddKey(new StatementTableConstraint.Standard(columns, new Identifier("ix"))
+                {
+                    IndexMethod = method
+                }, source);
+            }
+        });
+
+        Assert.Equal("MySQL", exception.Dialect);
+        Assert.Equal("custom index method", exception.Clause);
+        Assert.Equal(source, exception.ObjectSourceRef);
     }
 
     /// <summary>

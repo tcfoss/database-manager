@@ -359,7 +359,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 {
                     KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
                     IndexInfo first = indexInfo.First();
-                    (IndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
+                    (BuiltInIndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
 
                     primaryKey = new MyPrimaryKey(keyColumns)
                     {
@@ -371,7 +371,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                 {
                     var id = new Identifier(grouping.Key, _quoteStyle);
                     IndexInfo first = indexInfo.First();
-                    (IndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
+                    (BuiltInIndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
                     KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
 
                     uniqueKeys.Add(Handle.Create(id, _config.NameHandling), new MyUniqueKey(keyColumns, id)
@@ -596,7 +596,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             algorithm = ViewAlgorithm.Parse(agloMatch.Groups[1].Value);
         }
 
-        ViewCheckOption? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOption.Parse(isView.CheckOption!);
+        ViewCheckOptionScope? checkOption = isView.CheckOption == "NONE" ? null : ViewCheckOptionScope.Parse(isView.CheckOption!);
 
         return new MyView(viewId, body)
         {

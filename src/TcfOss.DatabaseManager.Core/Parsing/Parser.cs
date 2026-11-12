@@ -7,13 +7,15 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
-
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class Parser : IParser
 {
+    public virtual Grammar Grammar => Grammar.My | Grammar.Ms | Grammar.Pg;
+
     public virtual QuoteStyle DefaultQuoteStyle => QuoteStyle.Ansi;
 
     public ComponentParser ComponentParser { get; protected init; }
@@ -31,6 +33,11 @@ public class Parser : IParser
     public virtual bool SupportsPostgresRegexOperators => true;
     public virtual bool SupportsPostgresIdentitySyntax => true;
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
+    public virtual bool SupportsPostgresColumnAlterSyntax => true;
+    public virtual bool SupportsPostgresTableCreateSyntax => true;
+    public virtual bool SupportsPostgresConstraintSyntax => true;
+    public virtual bool SupportsPostgresTableAlterSyntax => true;
+    public virtual bool SupportsDefaultExpressionsWithoutParentheses => true;
     public virtual bool SupportsPostgresExpressionCollationSyntax => true;
     public virtual bool SupportsPostgresArrayAndRowExpressionSyntax => true;
     public virtual bool SupportsPostgresOperatorSyntax => true;
@@ -181,6 +188,7 @@ public class Parser : IParser
             Keyword.OPEN => ParseOpen(state),
             Keyword.CLOSE => ParseClose(state),
             Keyword.TRUNCATE => DdlParser.ParseTruncateTable(state),
+            Keyword.REFRESH => DdlParser.ParseRefreshMaterializedView(state),
             _ => throw ParserState.ExpectedException("SQL statement".Italic(), first)
         };
 #pragma warning restore IDE0072 // Add missing cases
@@ -261,7 +269,9 @@ public class Parser : IParser
         Definer? definer = ComponentParser.ParseOptionalDefiner(state);
         SecurityContext? securityContext = DdlParser.ParseSecurityContext(state);
         bool aggregate = state.ParseKeyword(Keyword.AGGREGATE);
-        bool temporary = state.ParseKeywordsAny(Keyword.TEMPORARY, Keyword.TEMP) != Keyword.undefined;
+        TemporaryLabel? temporaryLabel = ParseTemporaryLabel(state);
+        bool unlogged = temporaryLabel == null && state.ParseKeyword(Keyword.UNLOGGED);
+        bool recursive = state.ParseKeyword(Keyword.RECURSIVE);
 
         return new CreateObjectOptions
         {
@@ -270,13 +280,32 @@ public class Parser : IParser
             Definer = definer,
             SecurityContext = securityContext,
             Aggregate = aggregate,
-            Temporary = temporary
+            TemporaryLabel = temporaryLabel,
+            Recursive = recursive,
+            Unlogged = unlogged
         };
+    }
+
+    protected virtual TemporaryLabel? ParseTemporaryLabel(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TEMPORARY))
+        {
+            return TemporaryLabel.Temporary;
+        }
+        if (state.ParseKeyword(Keyword.TEMP))
+        {
+            return TemporaryLabel.Temp;
+        }
+        return null;
     }
 
     protected virtual void GuardCreateOptions(ParserState state, Word objectTypeToken, CreateObjectOptions options)
     {
         Keyword kw = objectTypeToken.Keyword;
+        if (options.Recursive && kw != Keyword.VIEW)
+        {
+            throw state.ExpectedException("VIEW");
+        }
         if (options.ViewAlgorithm != null && kw != Keyword.VIEW)
         {
             throw state.ExpectedException("VIEW");
@@ -293,9 +322,13 @@ public class Parser : IParser
         {
             throw state.ExpectedException("FUNCTION");
         }
-        if (options.Temporary && kw is not Keyword.TABLE)
+        if (options.Unlogged && kw is not (Keyword.TABLE or Keyword.SEQUENCE))
         {
-            throw state.ExpectedException("TABLE");
+            throw state.ExpectedException("TABLE", "SEQUENCE");
+        }
+        if (options.TemporaryLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.SEQUENCE))
+        {
+            throw state.ExpectedException("TABLE", "VIEW", "SEQUENCE");
         }
         if (options.CreateOrLabel != null && kw is not (Keyword.TABLE or Keyword.VIEW or Keyword.TRIGGER or Keyword.CONSTRAINT or Keyword.FUNCTION or Keyword.PROCEDURE or Keyword.EVENT or Keyword.INDEX))
         {
@@ -318,26 +351,31 @@ public class Parser : IParser
         return objectTypeWord.Keyword switch
         {
             Keyword.DOMAIN => DdlParser.ParseCreateDomain(state),
+            Keyword.SEQUENCE => DdlParser.ParseCreateSequence(state, options.TemporaryLabel, options.Unlogged),
             Keyword.TYPE => DdlParser.ParseCreateType(state),
-            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.Temporary),
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrReplace, options.TemporaryLabel, options.Unlogged),
             Keyword.TRIGGER or Keyword.CONSTRAINT => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
-            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext, options.TemporaryLabel, options.Recursive),
+            Keyword.MATERIALIZED => DdlParser.ParseCreateMaterializedView(state),
             Keyword.EVENT => DdlParser.ParseCreateEvent(state, options.CreateOrLabel, options.Definer),
             Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
             _ => throw state.ExpectedException(options.AllSupportedTypes)
         };
     }
 
-    private AlterTable ParseAlter(ParserState state)
+    protected virtual Statement ParseAlter(ParserState state)
     {
         state.ExpectKeyword(Keyword.ALTER);
 
         return state.Peek() switch
         {
             Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
-            _ => throw state.ExpectedException("TABLE", "PROCEDURE", "VIEW")
+            Word { Keyword: Keyword.MATERIALIZED } => DdlParser.ParseAlterMaterializedView(state),
+            Word { Keyword: Keyword.SEQUENCE } => DdlParser.ParseAlterSequence(state),
+            Word { Keyword: Keyword.FUNCTION or Keyword.PROCEDURE } => DdlParser.ParseAlterRoutine(state),
+            _ => throw state.ExpectedException("TABLE", "FUNCTION", "PROCEDURE", "VIEW", "MATERIALIZED VIEW", "SEQUENCE")
         };
     }
 

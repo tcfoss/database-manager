@@ -171,7 +171,7 @@ public class MyConfigLoaderTests
         Assert.Equal(MySqlNumericAttribute.Unsigned, config.AttributeDefaults.NumericAttribute);
         Assert.Equal<uint?>(25, config.AttributeDefaults.UnsignedBigIntWidth);
         Assert.Equal<uint?>(3, config.AttributeDefaults.SignedIntWidth);
-        Assert.Equal(IndexMethod.Hash, config.AttributeDefaults.IndexMethod);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Hash, config.AttributeDefaults.IndexMethod);
     }
 
     [Fact]
@@ -501,7 +501,7 @@ public class MyConfigLoaderTests
 
         var config = LoadConfig(rawConfig);
 
-        Assert.Equal(IndexMethod.Btree, config.AttributeDefaults.IndexMethod);
+        Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Btree, config.AttributeDefaults.IndexMethod);
         Assert.Equal(ReferentialAction.NoAction, config.AttributeDefaults.ForeignKeyOnUpdate);
         Assert.Equal(ReferentialAction.NoAction, config.AttributeDefaults.ForeignKeyOnDelete);
     }

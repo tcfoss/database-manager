@@ -170,7 +170,7 @@ public class InfoSchemaRepoHelperTests
                 ],
                 new Identifier("my_index"))
             {
-                IndexMethod = IndexMethod.Btree,
+                IndexMethod = BuiltInIndexMethod.Btree,
                 Comment = new Comment("index comment")
             });
 

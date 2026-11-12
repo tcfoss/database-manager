@@ -2,8 +2,11 @@
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
+using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
@@ -39,12 +42,129 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), INDEX my_index (SUBSTRING(my_val, 1, 3)))", Label = "computed index function")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val VARCHAR(5), INDEX my_index (my_val) INCLUDE (my_id))", Label = "index include one")]
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, my_val1 VARCHAR(5), my_val2 VARCHAR(5), INDEX my_index (my_val1) INCLUDE (my_val2, my_id))", Label = "index include multiple")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (unknown_option = 70))", Label = "generic index parameter")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index USING GIST (my_id) WITH (BUFFERING = AUTO))", Label = "method-specific index parameter")]
+    [InlineData("CREATE TABLE mytable (my_id INT, PRIMARY KEY (my_id) USING INDEX TABLESPACE fast)", Label = "primary key tablespace disambiguation")]
+    [InlineData("CREATE TABLE mytable (my_id INT, UNIQUE (my_id) USING INDEX TABLESPACE fast)", Label = "unique tablespace disambiguation")]
     public static void CreateTable_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE TEMP TABLE items (id INT) ON COMMIT PRESERVE ROWS")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DELETE ROWS")]
+    [InlineData("CREATE TEMP TABLE items ON COMMIT DROP AS SELECT 1")]
+    [InlineData("CREATE TABLE items SELECT 1")]
+    public void TablePersistence_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1, 2)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (MINVALUE) TO (MAXVALUE)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT PARTITION BY RANGE (id)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id) AS SELECT 1")]
+    public void TablePartitions_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("DEFAULT (app.compute(1))", "parent,app.compute")]
+    [InlineData("GENERATED ALWAYS AS (app.compute(1)) STORED", "parent,app.compute")]
+    [InlineData("NOT NULL", "parent")]
+    public void TablePartitions_OverrideExpressionsReportDependencies(string options, string expected)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE child PARTITION OF parent (id WITH OPTIONS {options}) DEFAULT"));
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        using var scope = context.Enter(ReferencedItemsContext.WhereClause);
+
+        ItemRef[] references = [.. statement.GetReferencedItems(context)];
+
+        Assert.Equal(expected.Split(','), references.OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql()));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        _ = statement.GetReferencedItems(context).Take(1).ToArray();
+        Assert.Equal(ReferencedItemsContext.WhereClause, context.CurrentContext);
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1, 2)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (MINVALUE) TO (MAXVALUE)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE")]
+    public void PartitionLifecycle_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON items USING BTREE (id)")]
+    [InlineData("CREATE INDEX items_idx USING BTREE ON items (id) INCLUDE (payload) WHERE id > 0")]
+    [InlineData("CREATE INDEX items_idx ON items USING BTREE (id) INCLUDE (payload) WHERE id > 0")]
+    [InlineData("CREATE INDEX ON ONLY items (id NULLS FIRST)")]
+    [InlineData("CREATE INDEX items_idx ON items USING bloom (id app.int_ops (bits = 4) DESC NULLS LAST)")]
+    [InlineData("CREATE INDEX items_idx ON items (label COLLATE app.casefold app.text_ops ASC NULLS FIRST) WITH (custom_parameter = 4) TABLESPACE fast WHERE id > 0")]
+    [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) NULLS NOT DISTINCT WITH (FILLFACTOR = 80) TABLESPACE fast WHERE id > 0")]
+    public void ExpandedIndexes_RoundTrip(string sql)
+    {
+        var statement = Assert.IsType<CreateIndex>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE NULLS NOT DISTINCT (id) DEFERRABLE INITIALLY DEFERRED)")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (FILLFACTOR = 70) USING INDEX TABLESPACE fast)")]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id) WITH (FILLFACTOR = 70) USING INDEX TABLESPACE fast)")]
+    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT ck CHECK (id > 0) NOT VALID")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT pk PRIMARY KEY USING INDEX items_idx")]
+    [InlineData("ALTER TABLE items RENAME CONSTRAINT old_name TO new_name")]
+    [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
+    [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
+    [InlineData("ALTER TABLE items DROP CONSTRAINT IF EXISTS fk CASCADE")]
+    public void Constraints_RoundTrip(string sql)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
+    [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2", "ALTER TABLE items ALTER COLUMN total SET DEFAULT (1 + 2)")]
+    public void DefaultExpressionsWithoutParentheses_RoundTrip(string sql, string expectedSql)
+    {
+        Assert.True(new Parser().SupportsDefaultExpressionsWithoutParentheses);
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 
     /* Spatial and Fulltext */
@@ -301,7 +421,7 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL, INDEX my_index USING WHAT (my_id))")]
     /* Column or constraint expected */
     [InlineData("CREATE TABLE mytable (my_id INT NOT NULL +)")]
-    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (unknown_option = ON))")]
+    [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (1 = ON))")]
     [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH (PAD_INDEX = invalid_value))")]
     [InlineData("CREATE TABLE mytable (my_id INT, INDEX my_index (my_id) WITH ())")]
     public static void CreateTable_ValidationFailure_ExpectedOneOfButFound(string sql)
@@ -405,91 +525,75 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
     /* Change/Modify Columns */
     [Theory]
-    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val VARCHAR(50) NOT NULL", null, Label = "modify column")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val VARCHAR(100) NULL", null, Label = "change column")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_val VARCHAR(100) NULL", null, Label = "change column same name")]
-    [InlineData("ALTER TABLE mytable MODIFY my_val VARCHAR(50) NOT NULL", "ALTER TABLE mytable MODIFY COLUMN my_val VARCHAR(50) NOT NULL", Label = "modify shorthand")]
-    [InlineData("ALTER TABLE mytable CHANGE my_val my_new_val VARCHAR(100) NULL", "ALTER TABLE mytable CHANGE COLUMN my_val my_new_val VARCHAR(100) NULL", Label = "change shorthand")]
-    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL AFTER other_col", null, Label = "modify column after")]
-    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL FIRST", null, Label = "modify column first")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL AFTER other_col", null, Label = "change column after")]
-    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL FIRST", null, Label = "change column first")]
-    public static void AlterTable_ChangeModifyColumns_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val VARCHAR(50) NOT NULL", Label = "modify column")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val VARCHAR(100) NULL", Label = "change column")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_val VARCHAR(100) NULL", Label = "change column same name")]
+    [InlineData("ALTER TABLE mytable MODIFY my_val VARCHAR(50) NOT NULL", Label = "modify shorthand")]
+    [InlineData("ALTER TABLE mytable CHANGE my_val my_new_val VARCHAR(100) NULL", Label = "change shorthand")]
+    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL AFTER other_col", Label = "modify column after")]
+    [InlineData("ALTER TABLE mytable MODIFY COLUMN my_val INT NOT NULL FIRST", Label = "modify column first")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL AFTER other_col", Label = "change column after")]
+    [InlineData("ALTER TABLE mytable CHANGE COLUMN my_val my_new_val INT NOT NULL FIRST", Label = "change column first")]
+    public static void AlterTable_ChangeModifyColumns_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Add Keys */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD PRIMARY KEY (my_id)", null, Label = "add primary key")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE (my_val)", null, Label = "add named unique")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE KEY (my_val)", null, Label = "add named unique key")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE INDEX (my_val)", null, Label = "add named unique index")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE (my_val)", null, Label = "add unnamed unique")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val)", null, Label = "add unnamed unique key")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE INDEX (my_val)", null, Label = "add unnamed unique index")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val1, my_val2)", null, Label = "add multi-column unique key")]
-    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY uidx_mytable_my_val (my_val)", null, Label = "add named unique key index")]
-    [InlineData("ALTER TABLE mytable ADD KEY idx_mytable_myval (my_val)", null, Label = "add key")]
-    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval (my_val)", null, Label = "add index")]
-    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval USING BTREE (my_val)", null, Label = "add btree index")]
-    [InlineData("ALTER TABLE mytable ADD FULLTEXT INDEX idx_mytable_myval (my_val)", null, Label = "add fulltext index")]
-    [InlineData("ALTER TABLE mytable ADD SPATIAL INDEX idx_mytable_myval (my_val)", null, Label = "add spatial index")]
-    public static void AlterTable_AddKeys_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD PRIMARY KEY (my_id)", Label = "add primary key")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE (my_val)", Label = "add named unique")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE KEY (my_val)", Label = "add named unique key")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT uidx_mytable_my_val UNIQUE INDEX (my_val)", Label = "add named unique index")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE (my_val)", Label = "add unnamed unique")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val)", Label = "add unnamed unique key")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE INDEX (my_val)", Label = "add unnamed unique index")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY (my_val1, my_val2)", Label = "add multi-column unique key")]
+    [InlineData("ALTER TABLE mytable ADD UNIQUE KEY uidx_mytable_my_val (my_val)", Label = "add named unique key index")]
+    [InlineData("ALTER TABLE mytable ADD KEY idx_mytable_myval (my_val)", Label = "add key")]
+    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval (my_val)", Label = "add index")]
+    [InlineData("ALTER TABLE mytable ADD INDEX idx_mytable_myval USING BTREE (my_val)", Label = "add btree index")]
+    [InlineData("ALTER TABLE mytable ADD FULLTEXT INDEX idx_mytable_myval (my_val)", Label = "add fulltext index")]
+    [InlineData("ALTER TABLE mytable ADD SPATIAL INDEX idx_mytable_myval (my_val)", Label = "add spatial index")]
+    public static void AlterTable_AddKeys_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Add Foreign Key */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD FOREIGN KEY (other_id) REFERENCES othertable (other_id)", null, Label = "add unnamed foreign key")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT fk_mytable_othertable FOREIGN KEY (other_id) REFERENCES othertable (other_id)", null, Label = "add named foreign key")]
-    public static void AlterTable_AddForeignKey_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD FOREIGN KEY (other_id) REFERENCES othertable (other_id)", Label = "add unnamed foreign key")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT fk_mytable_othertable FOREIGN KEY (other_id) REFERENCES othertable (other_id)", Label = "add named foreign key")]
+    public static void AlterTable_AddForeignKey_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Add Check */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD CHECK (my_val > 0)", null, Label = "add unnamed check")]
-    [InlineData("ALTER TABLE mytable ADD CONSTRAINT ck_mytable_nonneg CHECK (my_val > 0)", null, Label = "add named check")]
-    public static void AlterTable_AddCheck_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD CHECK (my_val > 0)", Label = "add unnamed check")]
+    [InlineData("ALTER TABLE mytable ADD CONSTRAINT ck_mytable_nonneg CHECK (my_val > 0)", Label = "add named check")]
+    public static void AlterTable_AddCheck_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
     }
 
     /* Drops */
     [Theory]
     [InlineData("ALTER TABLE mytable DROP COLUMN old_col", null, Label = "drop column")]
-    [InlineData("ALTER TABLE mytable DROP old_col", "ALTER TABLE mytable DROP COLUMN old_col", Label = "drop shorthand column")]
+    [InlineData("ALTER TABLE mytable DROP old_col", null, Label = "drop shorthand column")]
     [InlineData("ALTER TABLE mytable DROP PRIMARY KEY pk_name", null, Label = "drop named primary key")]
     [InlineData("ALTER TABLE mytable DROP FOREIGN KEY fk_mytable_othertable", null, Label = "drop foreign key")]
     [InlineData("ALTER TABLE mytable DROP INDEX my_index", "ALTER TABLE mytable DROP KEY my_index", Label = "drop index")]
@@ -578,18 +682,30 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
 
     /* Multiple Operations */
     [Theory]
-    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id)", null, Label = "multiple operations add")]
-    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id), DROP CONSTRAINT ck_mytable_nonneg", null, Label = "multiple operations add and drop")]
-    public static void AlterTable_MultipleOperations_TextMatch(string sql, string? realExpected)
+    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id)", Label = "multiple operations add")]
+    [InlineData("ALTER TABLE mytable ADD COLUMN new_col INT, ADD PRIMARY KEY (my_id), DROP CONSTRAINT ck_mytable_nonneg", Label = "multiple operations add and drop")]
+    [InlineData("ALTER TABLE mytable ALTER COLUMN label TYPE TEXT, ALTER label SET STATISTICS DEFAULT", Label = "column type and configuration")]
+    [InlineData("ALTER TABLE mytable ADD COLUMN IF NOT EXISTS label TEXT, DROP IF EXISTS old_label CASCADE", Label = "column existence flags")]
+    public static void AlterTable_MultipleOperations_TextMatch(string sql)
     {
         var parser = new Parser();
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
-        if (realExpected != null)
-        {
-            expected = realExpected;
-        }
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items OWNER TO CURRENT_ROLE, SET LOGGED, INHERIT app.parent, OF app.row_type")]
+    [InlineData("ALTER TABLE items SET TABLESPACE fast, SET ACCESS METHOD DEFAULT, SET (fillfactor = 70), RESET (fillfactor)")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER ALL, DISABLE TRIGGER USER, ENABLE ALWAYS TRIGGER audit, ENABLE REPLICA TRIGGER audit, REPLICA IDENTITY USING INDEX items_key")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY DEFAULT, REPLICA IDENTITY FULL, REPLICA IDENTITY NOTHING")]
+    public void AlterTableManagement_CoreGrammarRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 
     [Theory]
@@ -655,5 +771,53 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
         string sql = $"CREATE TABLE items (label VARCHAR(20) COLLATE {collation} NOT NULL)";
 
         Assert.Equal(sql, ParseStatement(sql).ToSql());
+    }
+
+    [Theory]
+    [InlineData(Grammar.Ms, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Pg, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Ms | Grammar.Pg, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Ms, "PAD_INDEX = ON", "PadIndex")]
+    [InlineData(Grammar.Ms, "IGNORE_DUP_KEY = OFF", "IgnoreDupKey")]
+    [InlineData(Grammar.Pg, "deduplicate_items = OFF", "PgDeduplicateItems")]
+    [InlineData(Grammar.Pg, "custom_parameter = 70", "StorageParameter")]
+    [InlineData(Grammar.My, "FILLFACTOR = 70", null)]
+    [InlineData(Grammar.Pg, "PAD_INDEX = ON", null)]
+    [InlineData(Grammar.Pg, "\"PAD_INDEX\" = ON", null)]
+    [InlineData(Grammar.Pg, "buffering = AUTO", null)]
+    [InlineData(Grammar.Ms, "custom_parameter = 70", null)]
+    [InlineData((Grammar)0, "FILLFACTOR = 70", null)]
+    public void IndexOptions_RespectGrammarWithoutConsumingUnsupportedOptions(Grammar grammar, string sql, string? expectedType)
+    {
+        var parser = new GrammarParser(grammar);
+        ParserState state = GetState(sql);
+        var start = state.Peek();
+
+        StatementIndexOption? option = parser.TableParser.ParseNextIndexOption(state);
+
+        if (expectedType == null)
+        {
+            Assert.Null(option);
+            Assert.Same(start, state.Peek());
+        }
+        else
+        {
+            Assert.Equal(expectedType, option!.GetType().Name);
+            Assert.IsType<Eof>(state.Peek());
+        }
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY")]
+    [InlineData("UNIQUE")]
+    public void ConstraintIndexMethods_RejectNonWordMethods(string constraint)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(
+            $"CREATE TABLE items (id INT, {constraint} (id) USING 123)"));
+    }
+
+    private sealed class GrammarParser(Grammar grammar) : Parser
+    {
+        public override Grammar Grammar => grammar;
     }
 }

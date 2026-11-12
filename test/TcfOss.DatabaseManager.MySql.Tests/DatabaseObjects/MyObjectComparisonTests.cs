@@ -32,7 +32,7 @@ public class MyObjectComparisonTests
             Definer = new Definer(new Account.IdentityWithHost(new ExtendedIdentifier("user"), new ExtendedIdentifier("host"))),
             SecurityContext = SecurityContext.Invoker,
             Algorithm = ViewAlgorithm.Merge,
-            CheckOption = ViewCheckOption.Cascaded,
+            CheckOption = ViewCheckOptionScope.Cascaded,
             RawBodyText = "RAW BODY TEXT 1"
         };
 

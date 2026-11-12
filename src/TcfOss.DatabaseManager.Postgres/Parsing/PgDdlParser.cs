@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -11,6 +12,32 @@ public class PgDdlParser(Parser parser) : DdlParser(parser)
 {
     protected override bool UseSqlRoutineTail(ParserState state) => true;
     protected override bool SupportsQualifiedTriggerNames => false;
+
+    protected override MsViewWithOptions? ParseOptionalViewWithOptions(ParserState state)
+    {
+        return null;
+    }
+
+    protected override bool ParseOptionalViewIfNotExists(ParserState state)
+    {
+        return false;
+    }
+
+    protected override ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        return null;
+    }
+
+    protected override ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ON, advance: false);
+        return base.ParseDropTriggerOnObject(state);
+    }
+
+    protected override bool ParseOptionalDropTemporary(ParserState state)
+    {
+        return false;
+    }
 
     public override TriggerTime ParseTriggerTime(ParserState state)
     {

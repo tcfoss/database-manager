@@ -10,12 +10,44 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsDdlParser(MsParser parser) : DdlParser(parser)
 {
-    protected override bool SupportsIndexMethodAfterTableName => false;
 
     protected override bool UseSqlRoutineTail(ParserState state) => false;
 
     protected override bool SupportsOmittedFunctionReturn => false;
     protected override bool SupportsPostgresTriggerSyntax => false;
+    protected override bool SupportsDropRoutineSignatures => false;
+
+    protected override ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ON, advance: false);
+        return base.ParseDropIndexOnObject(state);
+    }
+
+    protected override bool SupportsDropObjectType(DroppableObject objectType)
+    {
+        return objectType != DroppableObject.MaterializedView && objectType != DroppableObject.Domain
+            && objectType != DroppableObject.Routine;
+    }
+
+    protected override ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        return null;
+    }
+
+    protected override bool SupportsDropObjectList(DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View || objectType == DroppableObject.Sequence;
+    }
+
+    protected override bool ParseOptionalDropTemporary(ParserState state)
+    {
+        return false;
+    }
+
+    protected override PgDropBehavior? ParseOptionalDropBehavior(ParserState state, DroppableObject objectType)
+    {
+        return null;
+    }
 
     protected override RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction)
     {
@@ -86,4 +118,8 @@ public class MsDdlParser(MsParser parser) : DdlParser(parser)
         return true;
     }
 
+    protected override SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    {
+        return null;
+    }
 }

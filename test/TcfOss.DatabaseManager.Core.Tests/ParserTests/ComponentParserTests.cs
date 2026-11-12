@@ -139,6 +139,21 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ParseStorageParameter_RejectsInvalidNamePartLimits(int maxParts)
+    {
+        var state = GetState("fillfactor = 70");
+        var parser = new Parser();
+
+        var exception = Assert.ThrowsAny<ParseException>(() => parser.ComponentParser.ParseStorageParameter(state,
+            maxParts, requireValue: true, label: "storage parameter"));
+
+        Assert.Contains("storage parameter", exception.Message);
+        Assert.Equal("fillfactor", state.Peek().ToString());
+    }
+
+    [Theory]
     [InlineData("(`aardvark`)")]
     [InlineData("(`aardvark`, \"bobcat\")")]
     [InlineData("(`aardvark`, \"bobcat\", [cat])")]
@@ -471,5 +486,79 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
             var state = GetState(sql);
             Assert.Null(ComponentParser.ParseOptionalDefiner(state));
         }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(";")]
+    [InlineData(")")]
+    [InlineData("SELECT 1")]
+    public static void SequenceOption_AbsentLeavesInputUntouched(string sql)
+    {
+        var state = GetState(sql);
+        var next = state.Peek();
+        var parser = new Parser();
+
+        Assert.Null(parser.ComponentParser.ParseSequenceOption(state));
+        Assert.Equal(next, state.Peek());
+    }
+
+    [Theory]
+    [InlineData("RESTART")]
+    [InlineData("RESTART WITH 10")]
+    [InlineData("RESTART -5")]
+    public static void SequenceOption_AllowsRestartByDefault(string sql)
+    {
+        var state = GetState(sql);
+        var parser = new Parser();
+
+        var option = Assert.IsType<PgStatementSequenceOption.Restart>(parser.ComponentParser.ParseSequenceOption(state));
+
+        Assert.Equal(sql, option.ToSql());
+        Assert.True(state.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
+    [Theory]
+    [InlineData("RESTART")]
+    [InlineData("RESTART WITH 10")]
+    [InlineData("RESTART WITH")]
+    public static void SequenceOption_DisallowedRestartLeavesInputUntouched(string sql)
+    {
+        var state = GetState(sql);
+        var next = state.Peek();
+        var parser = new Parser();
+
+        Assert.Null(parser.ComponentParser.ParseSequenceOption(state, allowRestart: false));
+        Assert.Equal(next, state.Peek());
+    }
+
+    [Theory]
+    [InlineData("START WITH 10")]
+    [InlineData("CACHE 2")]
+    public static void SequenceOption_DisablingRestartPreservesOtherOptions(string sql)
+    {
+        var state = GetState(sql);
+        var parser = new Parser();
+
+        PgStatementSequenceOption? option = parser.ComponentParser.ParseSequenceOption(state, allowRestart: false);
+
+        Assert.NotNull(option);
+        Assert.Equal(sql, option.ToSql());
+        Assert.True(state.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
+    [Theory]
+    [InlineData("START")]
+    [InlineData("INCREMENT BY")]
+    [InlineData("CACHE")]
+    [InlineData("NO")]
+    [InlineData("NO CACHE")]
+    [InlineData("RESTART WITH")]
+    public static void SequenceOption_MalformedClauseThrows(string sql)
+    {
+        var state = GetState(sql);
+        var parser = new Parser();
+
+        Assert.ThrowsAny<ParseException>(() => parser.ComponentParser.ParseSequenceOption(state));
     }
 }

@@ -1,4 +1,5 @@
 ﻿using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
@@ -11,6 +12,8 @@ public class MyTableParserTests : ParserTestsBase<MyLexer, MyParser>
 {
     [Theory]
     [InlineData("CREATE TABLE mytable (id INT NOT NULL PRIMARY KEY)", Label = "primary key")]
+    [InlineData("CREATE TABLE mytable (id INT DEFAULT 5 NOT NULL)", Label = "literal default")]
+    [InlineData("CREATE TABLE mytable (id INT DEFAULT (1 + 2) NOT NULL)", Label = "parenthesized expression default")]
     [InlineData("CREATE TABLE mytable (id INT NOT NULL, last_update TIMESTAMP DEFAULT (CURRENT_TIMESTAMP()) ON UPDATE CURRENT_TIMESTAMP())", Label = "timestamp on update")]
     [InlineData("CREATE TABLE mytable (id INT, name VARCHAR(10)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci", Label = "engine equals charset collation")]
     [InlineData("CREATE TABLE mytable (id INT, name VARCHAR(10)) ENGINE InnoDB DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci", Label = "engine without equals")]
@@ -27,6 +30,48 @@ public class MyTableParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) USING BTREE)", "CREATE TABLE items (id INT, PRIMARY KEY USING BTREE (id))")]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id) USING BTREE)", "CREATE TABLE items (id INT, UNIQUE USING BTREE (id))")]
+    public void Constraints_IndexMethodAfterColumns_RoundTrips(string sql, string expectedSql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items DROP label")]
+    [InlineData("ALTER TABLE items DROP COLUMN label")]
+    [InlineData("ALTER TABLE items ALTER label SET DEFAULT 5")]
+    [InlineData("ALTER TABLE items ALTER COLUMN label SET DEFAULT 5")]
+    [InlineData("ALTER TABLE items ALTER label DROP DEFAULT")]
+    [InlineData("ALTER TABLE items ALTER COLUMN label DROP DEFAULT")]
+    [InlineData("ALTER TABLE items MODIFY label INT")]
+    [InlineData("ALTER TABLE items MODIFY COLUMN label INT")]
+    [InlineData("ALTER TABLE items CHANGE label new_label INT")]
+    [InlineData("ALTER TABLE items CHANGE COLUMN label new_label INT")]
+    public void AlterTable_PreservesOptionalColumnKeyword(string sql)
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2)")]
+    [InlineData("ALTER TABLE items ADD COLUMN total INT DEFAULT 1 + 2")]
+    [InlineData("ALTER TABLE items ALTER COLUMN total SET DEFAULT 1 + 2")]
+    public void DefaultExpressionsWithoutParentheses_RetainExistingRejection(string sql)
+    {
+        Assert.False(new MyParser().SupportsDefaultExpressionsWithoutParentheses);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     // Optional Text Length for Text Types

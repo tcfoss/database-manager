@@ -65,36 +65,95 @@ public class ComponentParser(Parser parser)
         return new ObjectName(idents);
     }
 
-    private KeyPart.Column ParseKeyPartColumn(ParserState state)
+    /// <summary>
+    /// Parses an object name with a bounded number of parts.
+    /// </summary>
+    /// <param name="state"></param>
+    /// <param name="minParts">The minimum number of parts. Must be at least 1.</param>
+    /// <param name="maxParts">The maximum number of parts. Must be greater than or equal to minParts.</param>
+    /// <param name="label">The label used in error messages.</param>
+    /// <returns>The parsed object name.</returns>
+    private ObjectName ParseBoundedObjectName(ParserState state, int minParts = 1, int maxParts = 2, string label = "object name")
+    {
+        SqlValueList<Identifier> idents = [];
+        while (idents.Count < maxParts)
+        {
+            Identifier ident = ParseIdentifier(state, label);
+            idents.Add(ident);
+
+            if (idents.Count == maxParts || !state.ConsumeTokenIs<Dot>())
+            {
+                break;
+            }
+        }
+        if (idents.Count < minParts)
+        {
+            throw ParserState.ExpectedCategoryException(label, state.Peek());
+        }
+        return new ObjectName(idents);
+    }
+
+    private KeyPart.Column ParseKeyPartColumn(ParserState state, bool permitLength, bool postgres, bool exclusion)
     {
         Identifier name = ParseIdentifier(state);
         uint? length = null;
-        if (state.ConsumeTokenIs<ParenOpen>())
+        if (permitLength && state.ConsumeTokenIs<ParenOpen>())
         {
             length = ValueParser.ParseLiteralUInt(state);
             state.ExpectRightParen();
         }
-        Direction? dir = ParseDirection(state);
+        (PgIndexKeyOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
 
         Token peeked = state.Peek();
-        if (peeked is not Comma and not ParenClose)
+        if (peeked is not Comma and not ParenClose && !(exclusion && state.PeekKeyword(Keyword.WITH)))
         {
             throw state.ExpectedException(")", ",");
         }
-        return new KeyPart.Column(name, length, dir);
+        return new KeyPart.Column(name, length, direction) { PgOptions = options };
     }
 
-    private KeyPart ParseKeyPartInList(ParserState state)
+    private KeyPart ParseKeyPartInList(ParserState state, bool allowLength, bool postgres, bool exclusion = false)
     {
-        if (state.TryParse(ParseKeyPartColumn, out KeyPart.Column? keyPartColumn))
+        if (state.TryParse(parserState => ParseKeyPartColumn(parserState, allowLength, postgres, exclusion), out KeyPart.Column? keyPartColumn))
         {
             return keyPartColumn;
         }
 
+        Token start = state.Peek();
         Expression expr = _p.ExpressionParser.ParseExpr(state);
-        Direction? dir = ParseDirection(state);
+        if (postgres && _p.Grammar == Grammar.Pg)
+        {
+            Expression key = expr is Collate collate ? collate.Expression : expr;
+            if (key is not (SingleIdentifier or Nested or FunctionCall or Cast { UsePostgresCastSyntax: false } or Position)
+                || key is FunctionCall { Over: not null } or FunctionCall { Filter: not null } or FunctionCall { WithinGroup: not null })
+            {
+                throw ParserState.ExpectedException("column name, function call, or parenthesized index expression", start);
+            }
+        }
+        (PgIndexKeyOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
 
-        return new KeyPart.IndexExpression(expr, dir);
+        return new KeyPart.IndexExpression(expr, direction) { PgOptions = options };
+    }
+
+    private (PgIndexKeyOptions? Options, Direction? Direction) ParseKeyPartTail(ParserState state, bool postgres)
+    {
+        ObjectName? operatorClass = null;
+        SqlValueList<PgStorageParameter>? parameters = null;
+        if (postgres && state.Peek() is Word { Keyword: not (Keyword.ASC or Keyword.DESC or Keyword.NULLS or Keyword.COLLATE or Keyword.WITH) })
+        {
+            operatorClass = ParseObjectName(state);
+            if (state.PeekIs<ParenOpen>())
+            {
+                parameters = state.ParseParenthesizedCommaSeparated(s => ParseStorageParameter(s, maxParts: 1, requireValue: true, "operator class parameter = value"), false);
+            }
+        }
+        Direction? direction = ParseDirection(state);
+        NullsOrder? nullsOrder = postgres ? ParseOptionalNullsOrder(state) : null;
+
+        PgIndexKeyOptions? options = operatorClass != null || nullsOrder != null
+            ? new PgIndexKeyOptions(operatorClass, parameters, nullsOrder) : null;
+
+        return (options, direction);
     }
 
     public SqlValueList<Identifier> ParseParenthisizedIdentifierList(ParserState state, bool allowEmpty)
@@ -102,9 +161,14 @@ public class ComponentParser(Parser parser)
         return state.ParseParenthesizedCommaSeparated(ParseIdentifier, allowEmpty);
     }
 
-    public SqlValueList<KeyPart> ParseParenthesizedKeyPartList(ParserState state, bool allowEmpty)
+    public SqlValueList<KeyPart> ParseParenthesizedKeyPartList(ParserState state, bool allowEmpty, bool allowLength = true, bool allowPgOptions = false)
     {
-        return state.ParseParenthesizedCommaSeparated(ParseKeyPartInList, allowEmpty);
+        return state.ParseParenthesizedCommaSeparated(parserState => ParseKeyPartInList(parserState, allowLength, allowPgOptions), allowEmpty);
+    }
+
+    public KeyPart ParseExclusionKeyPart(ParserState state)
+    {
+        return ParseKeyPartInList(state, allowLength: false, postgres: true, exclusion: true);
     }
 
     public static Direction? ParseDirection(ParserState state)
@@ -260,6 +324,49 @@ public class ComponentParser(Parser parser)
         state.ExpectToken<Equal>();
         Expression value = _p.ExpressionParser.ParseExpr(state);
         return new Assignment(target, value);
+    }
+
+    public virtual PgStatementSequenceOption? ParseSequenceOption(ParserState state, bool allowRestart = true)
+    {
+        if (allowRestart && state.ParseKeyword(Keyword.RESTART))
+        {
+            bool useWith = state.ParseKeyword(Keyword.WITH);
+            long? value = useWith || state.Peek() is NumericLiteral or Plus or Minus
+                ? ValueParser.ParseLiteralLong(state) : null;
+            return new PgStatementSequenceOption.Restart(value) { UseWith = useWith };
+        }
+        if (state.ParseKeyword(Keyword.START))
+        {
+            bool useWith = state.ParseKeyword(Keyword.WITH);
+            return new PgStatementSequenceOption.Start(ValueParser.ParseLiteralLong(state)) { UseWith = useWith };
+        }
+        if (state.ParseKeyword(Keyword.INCREMENT))
+        {
+            bool useBy = state.ParseKeyword(Keyword.BY);
+            return new PgStatementSequenceOption.Increment(ValueParser.ParseLiteralLong(state)) { UseBy = useBy };
+        }
+        bool no = state.ParseKeyword(Keyword.NO);
+        if (state.ParseKeyword(Keyword.MINVALUE))
+        {
+            return new PgStatementSequenceOption.MinValue(no ? null : ValueParser.ParseLiteralLong(state));
+        }
+        if (state.ParseKeyword(Keyword.MAXVALUE))
+        {
+            return new PgStatementSequenceOption.MaxValue(no ? null : ValueParser.ParseLiteralLong(state));
+        }
+        if (state.ParseKeyword(Keyword.CYCLE))
+        {
+            return new PgStatementSequenceOption.Cycle(!no);
+        }
+        if (!no && state.ParseKeyword(Keyword.CACHE))
+        {
+            return new PgStatementSequenceOption.Cache(ValueParser.ParseLiteralLong(state));
+        }
+        if (no)
+        {
+            throw state.ExpectedException("identity sequence option");
+        }
+        return null;
     }
 
     public virtual CreateOrLabel? ParseCreateOrLabel(ParserState state)
@@ -513,5 +620,50 @@ public class ComponentParser(Parser parser)
             return SetQuantifier.All;
         }
         return null;
+    }
+
+    public PgStorageParameter ParseStorageParameter(ParserState state, int maxParts, bool requireValue, string label = "storage parameter")
+    {
+        ObjectName name = ParseBoundedObjectName(state, 1, maxParts, label);
+        Value? value;
+        if (requireValue)
+        {
+            state.ExpectToken<Equal>();
+            value = ParseSimpleValue(state);
+        }
+        else
+        {
+            value = state.ConsumeTokenIs<Equal>() ? ParseSimpleValue(state) : null;
+        }
+        return new PgStorageParameter(name, value);
+    }
+
+    public ObjectName ParseStorageParameterName(ParserState state)
+    {
+        return ParseBoundedObjectName(state, 1, 2, "storage parameter name");
+    }
+
+    public PgStorageParameter ParseStorageParameter(ParserState state)
+    {
+        return ParseStorageParameter(state, maxParts: 2, requireValue: false);
+    }
+
+    public static Value ParseSimpleValue(ParserState state)
+    {
+        if (state.Peek() is Plus or Minus)
+        {
+            Token sign = state.Next();
+            Token token = state.Next();
+            if (token is NumericLiteral number)
+            {
+                return new Value.Number($"{sign}{number.Value}", number.IsLong);
+            }
+            throw ParserState.ExpectedException("number", token);
+        }
+        if (state.Peek() is Word { Keyword: not (Keyword.TRUE or Keyword.FALSE or Keyword.NULL) })
+        {
+            return new Value.SingleQuotedString(ValueParser.ParseLiteralStringOptionalQuotes(state));
+        }
+        return ValueParser.ParseValue(state);
     }
 }

@@ -28,7 +28,7 @@ public record AttributeDefaults
     public ReferentialAction? ForeignKeyOnUpdate { get; init; } = ReferentialAction.Restrict;
     public ReferentialAction? ForeignKeyOnDelete { get; init; } = ReferentialAction.Restrict;
 
-    public IndexMethod IndexMethod { get; init; } = IndexMethod.Btree;
+    public BuiltInIndexMethod IndexMethod { get; init; } = BuiltInIndexMethod.Btree;
 
     public SqlDataRelation? FunctionDataRelation { get; init; } = SqlDataRelation.ContainsSql;
     public SqlDataRelation? ProcedureDataRelation { get; init; } = SqlDataRelation.ContainsSql;

@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
@@ -20,6 +21,17 @@ public abstract record StatementColumnOption() : IWriteSql
 
     public abstract record WithConstraint(Identifier? Name) : StatementColumnOption
     {
+        public SqlValueList<PgConstraintOption>? PgOptions { get; init; }
+
+        protected void WriteConstraintOptions(SqlTextWriter writer)
+        {
+            foreach (PgConstraintOption option in PgOptions ?? [])
+            {
+                writer.Write(" ");
+                option.ToSql(writer);
+            }
+        }
+
         protected void WriteName(SqlTextWriter writer)
         {
             if (Name != null)
@@ -58,6 +70,7 @@ public abstract record StatementColumnOption() : IWriteSql
             {
                 WriteName(writer);
                 writer.Write("NOT NULL");
+                WriteConstraintOptions(writer);
             }
         }
     }
@@ -103,6 +116,7 @@ public abstract record StatementColumnOption() : IWriteSql
         {
             WriteName(writer);
             writer.WriteSql($"CHECK ({Expression})");
+            WriteConstraintOptions(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -111,33 +125,121 @@ public abstract record StatementColumnOption() : IWriteSql
             writer.Write("CHECK (");
             Expression.FormatSql(writer, manager);
             writer.Write(")");
+            WriteConstraintOptions(writer);
         }
     }
 
     public record PrimaryKey(Identifier? Name = null) : WithConstraint(Name)
     {
+        public PgConstraintIndexParameters? IndexParameters { get; init; }
         public override string DuplicateCheckKey => "PRIMARY";
 
         public override void ToSql(SqlTextWriter writer)
         {
+            WriteName(writer);
             writer.Write("PRIMARY KEY");
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
+            }
+            WriteConstraintOptions(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatName(writer, manager);
+            writer.Write("PRIMARY KEY");
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
+            }
+            WriteConstraintOptions(writer);
         }
     }
 
     public record Unique(Identifier? Name = null) : WithConstraint(Name)
     {
+        public bool? NullsDistinct { get; init; }
+        public PgConstraintIndexParameters? IndexParameters { get; init; }
         public override string DuplicateCheckKey => "UNIQUE";
 
         public override void ToSql(SqlTextWriter writer)
         {
             WriteName(writer);
             writer.Write("UNIQUE");
+            WriteNullsDistinct(writer);
+            if (IndexParameters != null)
+            {
+                writer.WriteSql($" {IndexParameters}");
+            }
+            WriteConstraintOptions(writer);
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
             FormatName(writer, manager);
             writer.Write("UNIQUE");
+            WriteNullsDistinct(writer);
+            if (IndexParameters != null)
+            {
+                writer.Write(" ");
+                IndexParameters.FormatSql(writer, manager);
+            }
+            WriteConstraintOptions(writer);
+        }
+
+        private void WriteNullsDistinct(SqlTextWriter writer)
+        {
+            if (NullsDistinct != null)
+            {
+                writer.Write(NullsDistinct.Value ? " NULLS DISTINCT" : " NULLS NOT DISTINCT");
+            }
+        }
+    }
+
+    public record PgReference(ObjectName Table, SqlValueList<Identifier>? Columns = null, Identifier? Name = null) : WithConstraint(Name)
+    {
+        public ReferentialAction? DeleteAction { get; init; }
+        public ReferentialAction? UpdateAction { get; init; }
+        public override string DuplicateCheckKey => "REFERENCES";
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteName(writer);
+            writer.WriteSql($"REFERENCES {Table}");
+            if (Columns != null)
+            {
+                writer.WriteSql($" ({Columns})");
+            }
+            WriteTail(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatName(writer, manager);
+            writer.Write("REFERENCES ");
+            Table.FormatSql(writer, manager);
+            if (Columns != null)
+            {
+                writer.Write(" (");
+                writer.FormatDelimited(Columns, manager);
+                writer.Write(")");
+            }
+            WriteTail(writer);
+        }
+
+        private void WriteTail(SqlTextWriter writer)
+        {
+            if (DeleteAction != null)
+            {
+                writer.WriteSql($" ON DELETE {DeleteAction}");
+            }
+            if (UpdateAction != null)
+            {
+                writer.WriteSql($" ON UPDATE {UpdateAction}");
+            }
+            WriteConstraintOptions(writer);
         }
     }
 

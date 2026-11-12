@@ -421,7 +421,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("CREATE TYPE mood AS ENUM ('happy')")]
     [InlineData("CREATE TYPE address AS (street TEXT)")]
     [InlineData("CREATE DOMAIN postcode AS TEXT")]
-    public void CreateTypeAndDomain_AreNotSupported(string sql)
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary AS SELECT 1 WITH NO DATA")]
+    public void PostgresCreateDeclarations_AreNotSupported(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
@@ -446,10 +448,11 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [Theory]
     [InlineData("CREATE CLUSTERED INDEX ix ON items (id)")]
     [InlineData("CREATE NONCLUSTERED INDEX ix ON items (id)")]
-    public void CreateIndex_OrganizationKeywords_TextMatch(string sql)
+    [InlineData("CREATE TABLE items (id INT, KEY ix CLUSTERED (id))")]
+    [InlineData("CREATE TABLE items (id INT, KEY ix NONCLUSTERED (id))")]
+    public void IndexOrganizationKeywords_AreRejected(string sql)
     {
-        var (expected, actual) = GetExpectedActual(sql, expectedSql: sql, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
-        Assert.Equal(expected, actual);
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]
@@ -855,5 +858,334 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
         ParseException expected = ParserState.ExpectedException("SELECT", first);
         Assert.Equal(new ParseException.WithText(expected, null, sql).Message, new ParseException.WithText(exception, null, sql).Message);
+    }
+
+    [Theory]
+    [InlineData("WITH CHECK OPTION", true)]
+    [InlineData("WITH CASCADED CHECK OPTION", false)]
+    [InlineData("WITH LOCAL CHECK OPTION", false)]
+    public void OrdinaryViewCheckOptions_PreserveImplicitAndExplicitModes(string clause, bool omittedMode)
+    {
+        string sql = $"CREATE VIEW v AS SELECT id FROM items {clause}";
+        var statement = Assert.IsType<CreateView>(ParseStatement(sql));
+
+        if (omittedMode)
+        {
+            Assert.IsType<ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        }
+        else
+        {
+            Assert.IsType<ViewCheckOption.Specified>(statement.ViewCheckOption);
+        }
+        Assert.Equal(clause, statement.ViewCheckOption!.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA")]
+    public void RefreshMaterializedViews_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("DROP MATERIALIZED VIEW summary")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS app.summary, app.other CASCADE")]
+    [InlineData("DROP MATERIALIZED VIEW summary RESTRICT")]
+    public void DropMaterializedViews_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("DROP TABLE IF EXISTS app.items, other_items CASCADE")]
+    [InlineData("DROP TEMPORARY TABLE items RESTRICT")]
+    [InlineData("DROP VIEW IF EXISTS visible, other_visible RESTRICT")]
+    [InlineData("DROP VIEW visible CASCADE")]
+    public void DropSharedTargets_AcceptsMySqlCompatibilitySuffixes(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.NotNull(statement.PgBehavior);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("DROP TYPE app.mood")]
+    [InlineData("DROP ROUTINE app.run")]
+    [InlineData("DROP FUNCTION app.run()")]
+    [InlineData("DROP FUNCTION app.run(INT)")]
+    [InlineData("DROP PROCEDURE app.run(IN id INT)")]
+    [InlineData("DROP FUNCTION app.run CASCADE")]
+    [InlineData("DROP PROCEDURE app.run RESTRICT")]
+    [InlineData("DROP TRIGGER audit ON app.items")]
+    [InlineData("DROP DOMAIN app.label")]
+    [InlineData("DROP SCHEMA app, archive")]
+    [InlineData("DROP SCHEMA app CASCADE")]
+    [InlineData("DROP DATABASE app RESTRICT")]
+    [InlineData("DROP INDEX items_idx, other_idx ON items")]
+    [InlineData("DROP INDEX items_idx ON items CASCADE")]
+    [InlineData("DROP TABLE items CASCADE RESTRICT")]
+    [InlineData("DROP VIEW visible RESTRICT CASCADE")]
+    public void DropSharedTargets_RejectsUnsupportedMySqlForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("DROP FUNCTION app.run")]
+    [InlineData("DROP FUNCTION IF EXISTS app.run")]
+    [InlineData("DROP PROCEDURE app.run")]
+    [InlineData("DROP PROCEDURE IF EXISTS app.run")]
+    [InlineData("DROP TRIGGER app.audit")]
+    public void DropRoutineAndTrigger_RetainNativeMySqlSimpleTargets(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Single(statement.Names);
+        Assert.Null(statement.OnObject);
+        Assert.Null(statement.PgBehavior);
+    }
+
+    [Theory]
+    [InlineData("CREATE SEQUENCE ids")]
+    [InlineData("CREATE TEMPORARY SEQUENCE ids")]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("ALTER SEQUENCE ids RESTART WITH 10")]
+    [InlineData("DROP SEQUENCE ids")]
+    [InlineData("ALTER TABLE items ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY")]
+    [InlineData("ALTER TABLE items ALTER id SET GENERATED ALWAYS")]
+    [InlineData("ALTER TABLE items ALTER id RESTART WITH 10")]
+    [InlineData("ALTER TABLE items ALTER id SET INCREMENT BY 2")]
+    [InlineData("ALTER TABLE items ALTER id DROP IDENTITY IF EXISTS")]
+    public void SequenceSyntax_RemainsUnsupportedBySharedMySqlMariaDbParser(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items ADD COLUMN IF NOT EXISTS label TEXT")]
+    [InlineData("ALTER TABLE items DROP COLUMN IF EXISTS label CASCADE")]
+    [InlineData("ALTER TABLE items ALTER label TYPE TEXT")]
+    [InlineData("ALTER TABLE items ALTER label SET DATA TYPE TEXT USING label")]
+    [InlineData("ALTER TABLE items ALTER label SET NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label DROP NOT NULL")]
+    [InlineData("ALTER TABLE items ALTER label SET EXPRESSION AS (label)")]
+    [InlineData("ALTER TABLE items ALTER label DROP EXPRESSION IF EXISTS")]
+    [InlineData("ALTER TABLE items ALTER label SET STATISTICS 100")]
+    [InlineData("ALTER TABLE items ALTER label SET (n_distinct = 5)")]
+    [InlineData("ALTER TABLE items ALTER label RESET (n_distinct)")]
+    [InlineData("ALTER TABLE items ALTER label SET STORAGE EXTENDED")]
+    [InlineData("ALTER TABLE items ALTER label SET COMPRESSION lz4")]
+    public void AlterTableColumnOperations_RejectPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE items OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER TABLE items SET SCHEMA archive")]
+    [InlineData("ALTER TABLE items SET TABLESPACE fast")]
+    [InlineData("ALTER TABLE items SET ACCESS METHOD heap")]
+    [InlineData("ALTER TABLE items CLUSTER ON items_idx")]
+    [InlineData("ALTER TABLE items SET WITHOUT CLUSTER")]
+    [InlineData("ALTER TABLE items SET (fillfactor = 70)")]
+    [InlineData("ALTER TABLE items RESET (fillfactor)")]
+    [InlineData("ALTER TABLE items SET LOGGED")]
+    [InlineData("ALTER TABLE items INHERIT app.parent")]
+    [InlineData("ALTER TABLE items NO INHERIT app.parent")]
+    [InlineData("ALTER TABLE items OF app.row_type")]
+    [InlineData("ALTER TABLE items NOT OF")]
+    [InlineData("ALTER TABLE items ENABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items DISABLE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items NO FORCE ROW LEVEL SECURITY")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE TRIGGER ALL")]
+    [InlineData("ALTER TABLE items DISABLE TRIGGER USER")]
+    [InlineData("ALTER TABLE items ENABLE ALWAYS TRIGGER audit")]
+    [InlineData("ALTER TABLE items ENABLE REPLICA TRIGGER audit")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY DEFAULT")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY FULL")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY NOTHING")]
+    [InlineData("ALTER TABLE items REPLICA IDENTITY USING INDEX items_key")]
+    public void AlterTableManagement_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("ALTER FUNCTION app.calculate() IMMUTABLE")]
+    [InlineData("ALTER FUNCTION app.calculate() SECURITY DEFINER")]
+    [InlineData("ALTER PROCEDURE app.run() SECURITY INVOKER")]
+    [InlineData("ALTER PROCEDURE app.run() SET work_mem TO DEFAULT")]
+    [InlineData("ALTER FUNCTION app.calculate() RESET ALL")]
+    [InlineData("ALTER FUNCTION app.calculate() RENAME TO new_name")]
+    [InlineData("ALTER PROCEDURE app.run() OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER FUNCTION app.calculate() SET SCHEMA archive")]
+    [InlineData("ALTER PROCEDURE app.run() DEPENDS ON EXTENSION ext")]
+    public void AlterRoutine_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void AlterDispatch_AcceptsTable()
+    {
+        const string sql = "ALTER TABLE items ADD COLUMN label TEXT";
+
+        var statement = Assert.IsType<AlterTable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO summary_next")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS 100, SET (fillfactor = 70)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY CURRENT_USER SET TABLESPACE slow NOWAIT")]
+    public void AlterMaterializedViews_AreRejectedBySharedMySqlMariaDbParser(string sql)
+    {
+        var state = GetState(sql);
+        var target = state.PeekNth(1);
+
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().ParseStatement(state));
+
+        Assert.Contains("Expected TABLE.", exception.Message);
+        Assert.Same(target, state.Peek());
+    }
+
+    [Fact]
+    public void DropIndex_RequiresOnTarget()
+    {
+        Assert.IsType<DropObject>(ParseStatement("DROP INDEX summary_idx ON summary"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatement("DROP INDEX summary_idx"));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW v WITH (security_barrier = TRUE) AS SELECT 1")]
+    [InlineData("CREATE VIEW v WITH (security_invoker) AS SELECT 1")]
+    public void OrdinaryViewOptions_RejectPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TEMP VIEW v AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY VIEW v AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE VIEW v (id) AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY RECURSIVE VIEW v (id) AS SELECT 1")]
+    public void OrdinaryViewModifiers_RejectPostgresDeclarations(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void OrdinaryViewModifiers_KeepTemporaryTablesSupported()
+    {
+        const string sql = "CREATE TEMPORARY TABLE items (id INT)";
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal("TEMPORARY", statement.Temporary!.ToSql());
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE UNLOGGED TABLE items AS SELECT 1")]
+    [InlineData("CREATE TEMP TABLE items (id INT)")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT PRESERVE ROWS")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DELETE ROWS")]
+    [InlineData("CREATE TEMPORARY TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
+    [InlineData("CREATE TEMPORARY TABLE items ON COMMIT DROP AS SELECT 1")]
+    public void TablePersistence_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (10)")]
+    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id app.int_ops)")]
+    [InlineData("CREATE TABLE items (label TEXT) PARTITION BY LIST (label COLLATE app.casefold)")]
+    public void TablePartitions_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child DEFAULT")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (2)")]
+    [InlineData("ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child CONCURRENTLY")]
+    [InlineData("ALTER TABLE parent DETACH PARTITION child FINALIZE")]
+    public void PartitionLifecycle_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX CONCURRENTLY items_idx ON items (id)")]
+    [InlineData("CREATE INDEX ON items (id)")]
+    [InlineData("CREATE INDEX items_idx ON ONLY items (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id app.int_ops (bits = 4))")]
+    [InlineData("CREATE INDEX items_idx ON items (id NULLS FIRST)")]
+    [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) NULLS NOT DISTINCT")]
+    [InlineData("CREATE INDEX items_idx ON items USING bloom (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id) WITH (custom_parameter = 1)")]
+    [InlineData("CREATE INDEX items_idx ON items (id) TABLESPACE fast")]
+    public void ExpandedIndexes_RejectsPostgresForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX items_idx USING ON items (id)")]
+    [InlineData("CREATE INDEX items_idx ON items (id) USING")]
+    [InlineData("CREATE INDEX items_idx ON items (id) USING GIST")]
+    [InlineData("CREATE INDEX items_idx USING bloom ON items (id)")]
+    public void IndexMethods_RejectsMissingAndUnsupportedMethods(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
+    [InlineData("CREATE TABLE items (id INT UNIQUE NULLS NOT DISTINCT)")]
+    [InlineData("CREATE TABLE items (id INT, UNIQUE (id) DEFERRABLE)")]
+    [InlineData("ALTER TABLE items ADD CONSTRAINT ck CHECK (id > 0) NOT VALID")]
+    [InlineData("ALTER TABLE items ADD UNIQUE USING INDEX items_idx")]
+    [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
+    [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
+    [InlineData("ALTER TABLE items RENAME CONSTRAINT old_name TO new_name")]
+    [InlineData("ALTER TABLE items DROP CONSTRAINT IF EXISTS fk CASCADE")]
+    public void Constraints_RejectsPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO.JsonConverters;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using Xunit.Sdk;
 
 [assembly: RegisterXunitSerializer(typeof(TcfOss.DatabaseManager.Core.Tests.Common.IdentifierTests.IdentifierSerializer), typeof(Identifier), typeof(CatalogIdentifier), typeof(SchemaIdentifier), typeof(ObjectIdentifier))]
@@ -309,6 +310,31 @@ public partial class IdentifierTests
     {
         var parts = Enumerable.Repeat("part", length).ToArray();
         Assert.Throws<IdentifierMismatchException.IdentifierLengthException>(() => ObjectIdentifier.FromStrings(parts, s_schema, QuoteStyle.Brackets));
+    }
+
+    [Theory]
+    [InlineData(QuoteStyle.None, ExtendedQuoteStyle.None)]
+    [InlineData(QuoteStyle.Ansi, ExtendedQuoteStyle.Ansi)]
+    [InlineData(QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks)]
+    [InlineData(QuoteStyle.Brackets, ExtendedQuoteStyle.Brackets)]
+    public void ExtendedIdentifier_ConversionPreservesNameQuotingAndSource(QuoteStyle quoteStyle, ExtendedQuoteStyle expectedQuoteStyle)
+    {
+        var identifier = new Identifier("owner_name", quoteStyle) { Source = new SourceRef(137, 3, 13) };
+
+        ExtendedIdentifier converted = identifier;
+
+        Assert.Equal(identifier.Name, converted.Name);
+        Assert.Equal(expectedQuoteStyle, converted.QuoteStyle);
+        Assert.Equal(identifier.Source, converted.Source);
+        Assert.Equal(identifier.ToString(), converted.ToString());
+    }
+
+    [Fact]
+    public void ExtendedIdentifier_ConversionPreservesAbsentSource()
+    {
+        ExtendedIdentifier converted = new Identifier("owner_name");
+
+        Assert.Null(converted.Source);
     }
 
     public class IdentifierSerializer : IXunitSerializer

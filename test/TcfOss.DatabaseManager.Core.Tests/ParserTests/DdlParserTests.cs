@@ -13,6 +13,18 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 // ReSharper disable ClassNeverInstantiated.Global
 public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 {
+    [Theory]
+    [InlineData("ALTER FUNCTION app.calculate(INT) IMMUTABLE SECURITY INVOKER COST 10 SET work_mem = DEFAULT RESET ALL RESTRICT")]
+    [InlineData("ALTER PROCEDURE app.run SET search_path FROM CURRENT RESET search_path")]
+    [InlineData("ALTER FUNCTION app.calculate(app.amount ARRAY) OWNER TO CURRENT_ROLE")]
+    public void AlterRoutine_CoreGrammarRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<AlterRoutine>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
     [Fact]
     public void CreateFunction_RoutineParametersParseKitchenSinkUnion()
     {
@@ -149,6 +161,14 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
 
     [Theory]
     [InlineData("CREATE VIEW myview AS SELECT a, b", Label = "CREATE VIEW basic")]
+    [InlineData("CREATE VIEW myview AS VALUES (1)", Label = "CREATE VIEW values query")]
+    [InlineData("CREATE VIEW myview AS (SELECT 1)", Label = "CREATE VIEW parenthesized query")]
+    [InlineData("CREATE TEMP VIEW myview AS SELECT a, b", Label = "CREATE VIEW temporary abbreviation")]
+    [InlineData("CREATE TEMPORARY VIEW myview AS SELECT a, b", Label = "CREATE VIEW temporary")]
+    [InlineData("CREATE RECURSIVE VIEW myview (id) AS SELECT 1 UNION ALL SELECT id FROM myview", Label = "CREATE VIEW recursive")]
+    [InlineData("CREATE OR REPLACE TEMP RECURSIVE VIEW myview (id) AS SELECT 1", Label = "CREATE VIEW combined modifiers")]
+    [InlineData("CREATE VIEW myview AS SELECT a, b WITH CHECK OPTION", Label = "CREATE VIEW implicit check mode")]
+    [InlineData("CREATE VIEW myview WITH (security_barrier = TRUE, security_invoker) AS SELECT a, b", Label = "CREATE VIEW PostgreSQL options")]
     [InlineData("CREATE OR REPLACE VIEW myview AS SELECT a, b", Label = "CREATE OR REPLACE VIEW")]
     [InlineData("CREATE OR ALTER VIEW myview AS SELECT a, b", Label = "CREATE OR ALTER VIEW")]
     [InlineData("CREATE VIEW IF NOT EXISTS myview AS SELECT a, b", Label = "CREATE VIEW IF NOT EXISTS")]
@@ -163,6 +183,26 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         var (expected, actual) = GetExpectedActual(parser.Parse, sql);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void CreateView_IfNotExistsPreservesKitchenSinkGrammar()
+    {
+        var statement = Assert.IsType<CreateView>(ParseStatement("CREATE VIEW IF NOT EXISTS myview AS SELECT 1"));
+
+        Assert.True(statement.IfNotExists);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("INSERT INTO items VALUES (1)")]
+    [InlineData("UPDATE items SET id = 1")]
+    [InlineData("DELETE FROM items")]
+    [InlineData("WITH seed AS (SELECT 1) DELETE FROM items")]
+    [InlineData("CALL app.run()")]
+    public void CreateView_InvalidQueryBody_ThrowsParseException(string body)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE VIEW v AS {body}"));
     }
 
     [Theory]
@@ -209,6 +249,16 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DROP PROCEDURE IF EXISTS myproc")]
     [InlineData("DROP EVENT myevent")]
     [InlineData("DROP EVENT IF EXISTS myevent")]
+    [InlineData("DROP FUNCTION app.run(INT), other_run() CASCADE")]
+    [InlineData("DROP PROCEDURE IF EXISTS app.run(IN id INT) RESTRICT")]
+    [InlineData("DROP ROUTINE app.run(), other_run")]
+    [InlineData("DROP TRIGGER audit ON app.items CASCADE")]
+    [InlineData("DROP TYPE IF EXISTS app.mood, app.address CASCADE")]
+    [InlineData("DROP DOMAIN app.label RESTRICT")]
+    [InlineData("DROP TABLE app.items CASCADE")]
+    [InlineData("DROP VIEW visible RESTRICT")]
+    [InlineData("DROP INDEX items_idx, other_idx CASCADE")]
+    [InlineData("DROP SCHEMA app, archive RESTRICT")]
     public static void DropObject_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -321,6 +371,10 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DROP TABLE IF EXISTS mytable1, mytable2", "TABLE", 2)]
     [InlineData("DROP VIEW myview1, myview2", "VIEW", 2)]
     [InlineData("DROP VIEW IF EXISTS myview1, myview2, myview3", "VIEW", 3)]
+    [InlineData("DROP TYPE app.mood, app.address CASCADE", "TYPE", 2)]
+    [InlineData("DROP DOMAIN IF EXISTS app.label, other_label RESTRICT", "DOMAIN", 2)]
+    [InlineData("DROP INDEX items_idx, other_idx", "INDEX", 2)]
+    [InlineData("DROP SCHEMA app, archive", "SCHEMA", 2)]
     public static void DropObject_MultipleNames_AreParsed(string sql, string expectedTypeName, int expectedCount)
     {
         var stmt = Assert.IsType<DropObject>(ParseStatement(sql));
@@ -336,7 +390,6 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("CREATE TRIGGER mytrigger UPDATE ON mytable FOR EACH ROW SELECT 1", "{ BEFORE | AFTER | INSTEAD OF | FOR }")]
     [InlineData("CREATE TRIGGER mytrigger AFTER ON mytable FOR EACH ROW SELECT 1", "{ INSERT | UPDATE | DELETE | TRUNCATE }")]
     [InlineData("CREATE ALGORITHM = INVALID VIEW myview AS SELECT 1 FROM mytable", "{ UNDEFINED | MERGE | TEMPTABLE }")]
-    [InlineData("CREATE VIEW myview AS SELECT 1 FROM mytable WITH MISSING CHECK OPTION", "{ CASCADED | LOCAL }")]
     [InlineData("CREATE EVENT myevent ON SCHEDULE MISSING", "{ AT | EVERY }")]
     [InlineData("CREATE PROCEDURE myproc () SQL SECURITY MISSING SELECT 1", "{ DEFINER | INVOKER }")]
     [InlineData("CREATE FUNCTION myfunc () RETURNS INT SQL SECURITY MISSING RETURN 1", "{ DEFINER | INVOKER }")]
@@ -350,6 +403,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData("CREATE VIEW myview AS SELECT 1 FROM mytable WITH MISSING CHECK OPTION", "CHECK")]
     [InlineData("CREATE PROCEDURE myproc () LANGUAGE MISSING SELECT 1", "SQL")]
     public static void MissingAttributes_Single_Throws(string sql, string missingParameter)
     {
@@ -513,5 +567,269 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
     public void CreateType_MalformedOrUnsupportedFormsThrow(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1) WITH NO DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW app.summary USING heap WITH (fillfactor = 70) TABLESPACE fast AS SELECT id FROM app.items WITH DATA")]
+    public void MaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("WITH DATA", true)]
+    [InlineData("WITH NO DATA", false)]
+    public void MaterializedViews_PopulationClauseWithoutLeadingTrivia(string population, bool expected)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement($"CREATE MATERIALIZED VIEW summary AS (SELECT 1){population}"));
+
+        Assert.Equal(expected, statement.WithData);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE OR REPLACE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE OR ALTER MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY MATERIALIZED VIEW summary AS SELECT 1")]
+    public void MaterializedViews_CoreParserRejectsUnsupportedOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE RECURSIVE TABLE items (id INT)")]
+    [InlineData("CREATE TEMPORARY INDEX ix ON items (id)")]
+    [InlineData("CREATE TEMP FUNCTION f() RETURNS INT RETURN 1")]
+    [InlineData("CREATE UNLOGGED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE UNLOGGED INDEX ix ON items (id)")]
+    [InlineData("CREATE UNLOGGED FUNCTION f() RETURNS INT RETURN 1")]
+    public void CreateModifiers_RejectUnsupportedTargets(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("CREATE TEMP SEQUENCE ids")]
+    public void SequencePersistence_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<CreateSequence>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary")]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW app.summary WITH NO DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary WITH DATA")]
+    public void RefreshMaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<RefreshMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_CoreParserRejectsConcurrentNoData()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("REFRESH MATERIALIZED VIEW CONCURRENTLY summary WITH NO DATA"));
+    }
+
+    [Theory]
+    [InlineData("DROP MATERIALIZED VIEW app.summary")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS summary")]
+    [InlineData("DROP MATERIALIZED VIEW app.summary, app.other CASCADE")]
+    [InlineData("DROP MATERIALIZED VIEW summary RESTRICT")]
+    public void DropMaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement(sql));
+
+        Assert.Equal(DroppableObject.MaterializedView, statement.ObjectType);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void DropMaterializedViews_LeaveOrdinaryViewIdentityUnchanged()
+    {
+        var statement = Assert.IsType<DropObject>(ParseStatement("DROP VIEW app.summary"));
+
+        Assert.Equal(DroppableObject.View, statement.ObjectType);
+        Assert.Null(statement.PgBehavior);
+        Assert.False(statement.IfExists);
+        Assert.False(statement.Temporary);
+        Assert.Null(statement.OnObject);
+        Assert.Equal("DROP VIEW app.summary", statement.ToSql());
+    }
+
+    [Fact]
+    public void DropMaterializedViews_CoreParserRejectsTemporaryModifier()
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("DROP TEMPORARY MATERIALIZED VIEW summary"));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW app.summary RENAME TO summary_next")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME id TO item_id")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (fillfactor = 70, autovacuum_enabled)")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RESET (fillfactor, toast.autovacuum_enabled)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO owner_name")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD heap")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION ext")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET (n_distinct = -0.5)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id RESET (n_distinct)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STORAGE PLAIN")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET COMPRESSION DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast, ALTER id SET STATISTICS 100")]
+    public void AlterMaterializedViews_CoreParserRoundTrips(string sql)
+    {
+        var statement = Assert.IsType<AlterMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void AlterMaterializedViews_LeaveAlterTableDispatchUnchanged()
+    {
+        var statement = Assert.IsType<AlterTable>(ParseStatement("ALTER TABLE items ADD COLUMN label TEXT"));
+
+        Assert.Equal("items", statement.Table.ToSql());
+        Assert.IsType<AlterTableOperation.AddColumn>(Assert.Single(statement.Operations));
+        Assert.Equal("ALTER TABLE items ADD COLUMN label TEXT", statement.ToSql());
+    }
+
+    [Fact]
+    public void BulkMaterializedViews_CoreParserRoundTrips()
+    {
+        const string sql = "ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY owner_name, CURRENT_ROLE SET TABLESPACE slow NOWAIT";
+        var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("CREATE SEQUENCE app.ids AS SMALLINT START WITH 10 INCREMENT BY 2 OWNED BY app.items.id")]
+    [InlineData("CREATE TEMPORARY SEQUENCE IF NOT EXISTS ids NO MINVALUE NO MAXVALUE CACHE 5 NO CYCLE")]
+    [InlineData("CREATE UNLOGGED SEQUENCE ids")]
+    [InlineData("ALTER SEQUENCE ids RESTART WITH -5 CACHE 2")]
+    [InlineData("ALTER SEQUENCE ids OWNER TO CURRENT_ROLE")]
+    [InlineData("DROP SEQUENCE IF EXISTS ids, app.more_ids CASCADE")]
+    [InlineData("ALTER TABLE IF EXISTS ONLY app.items ALTER COLUMN id SET GENERATED ALWAYS RESTART WITH 10")]
+    public static void SequenceSyntax_PreservesKitchenSinkGrammar(string sql)
+    {
+        var parser = new Parser();
+        var (expected, actual) = GetExpectedActual(parser.Parse, sql);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void SequenceOptions_CollectOptionsFromVirtualHook(bool alter)
+    {
+        var state = GetState("SEQUENCE ids RESET CACHE 2");
+        var parser = new ExtendedSequenceDdlParser(new Parser());
+        SqlValueList<PgStatementSequenceOption> options;
+        if (alter)
+        {
+            AlterSequence statement = parser.ParseAlterSequence(state);
+            options = Assert.IsType<PgAlterSequenceOperation.Parameters>(statement.Operation).Options;
+        }
+        else
+        {
+            options = parser.ParseCreateSequence(state, null, false).Options;
+        }
+
+        Assert.Equal(2, options.Count);
+        Assert.False(Assert.IsType<PgStatementSequenceOption.Cycle>(options[0]).Enabled);
+        Assert.Equal(2, Assert.IsType<PgStatementSequenceOption.Cache>(options[1]).Value);
+        Assert.True(state.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void SequenceOptions_DetectDuplicateOptionsFromVirtualHook(bool alter)
+    {
+        var state = GetState("SEQUENCE ids RESET CYCLE");
+        var parser = new ExtendedSequenceDdlParser(new Parser());
+
+        if (alter)
+        {
+            Assert.Throws<ParseException.Duplicate>(() => parser.ParseAlterSequence(state));
+        }
+        else
+        {
+            Assert.Throws<ParseException.Duplicate>(() => parser.ParseCreateSequence(state, null, false));
+        }
+    }
+
+    [Theory]
+    [InlineData("AS")]
+    [InlineData("OWNED")]
+    [InlineData("OWNED NONE")]
+    [InlineData("OWNED BY")]
+    [InlineData("NO")]
+    public static void SequenceOptions_RejectMalformedRecognizedClauses(string clause)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatement($"CREATE SEQUENCE ids {clause}"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public static void DropRoutine_SingleTargetHookPreservesSignatureAndTargetBoundary(bool additionalTarget)
+    {
+        var state = GetState($"DROP FUNCTION app.run(INT){(additionalTarget ? ", app.other()" : "")}");
+        var parser = new SingleTargetDdlParser(new Parser());
+
+        var statement = Assert.IsType<DropRoutine>(parser.ParseDropObject(state));
+
+        PgRoutineReference routine = Assert.Single(statement.Routines);
+        Assert.Equal("app.run", routine.Name.ToSql());
+        Assert.Single(routine.Parameters!);
+        Assert.Equal(additionalTarget, state.PeekIs<Core.Lexing.Tokens.Comma>());
+        Assert.Equal(!additionalTarget, state.PeekIs<Core.Lexing.Tokens.Eof>());
+    }
+
+    private sealed class SingleTargetDdlParser(Parser parser) : DdlParser(parser)
+    {
+        protected override bool SupportsDropObjectList(DroppableObject objectType) => false;
+    }
+
+    private sealed class ExtendedSequenceDdlParser(Parser parser) : DdlParser(parser)
+    {
+        protected override PgStatementSequenceOption? ParseNextSequenceOption(ParserState state, bool alter)
+        {
+            if (state.ParseKeyword(Keyword.RESET))
+            {
+                return new PgStatementSequenceOption.Cycle(false);
+            }
+            return base.ParseNextSequenceOption(state, alter);
+        }
     }
 }

@@ -20,11 +20,17 @@ namespace TcfOss.DatabaseManager.MsSql.Parsing;
 
 public class MsParser : Parser
 {
+    public override Grammar Grammar => Grammar.Ms;
+
     public override QuoteStyle DefaultQuoteStyle => QuoteStyle.Brackets;
     public override bool SupportsPostgresCastSyntax => false;
     public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
+    public override bool SupportsPostgresColumnAlterSyntax => false;
+    public override bool SupportsPostgresTableCreateSyntax => false;
+    public override bool SupportsPostgresConstraintSyntax => false;
+    public override bool SupportsPostgresTableAlterSyntax => false;
     public override bool SupportsPostgresExpressionCollationSyntax => false;
     public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
     public override bool SupportsPostgresOperatorSyntax => false;
@@ -83,11 +89,11 @@ public class MsParser : Parser
 
         return objectTypeWord.Keyword switch
         {
-            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrAlter, options.Temporary),
+            Keyword.TABLE => TableParser.ParseCreate(state, options.CreateOrLabel == CreateOrLabel.OrAlter, options.TemporaryLabel),
             Keyword.TRIGGER => DdlParser.ParseCreateTrigger(state, options.CreateOrLabel, options.Definer),
             Keyword.FUNCTION => DdlParser.ParseCreateFunction(state, options.Aggregate, options.CreateOrLabel, options.Definer),
             Keyword.PROCEDURE or Keyword.PROC => DdlParser.ParseCreateProcedure(state, options.CreateOrLabel, options.Definer),
-            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext),
+            Keyword.VIEW => DdlParser.ParseCreateView(state, options.CreateOrLabel, options.Definer, options.ViewAlgorithm, options.SecurityContext, options.TemporaryLabel, options.Recursive),
             Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
             _ => throw state.ExpectedException(options.AllSupportedTypes),
         };
@@ -173,7 +179,19 @@ public class MsParser : Parser
             Keyword.PRINT => ParsePrint(state),
             Keyword.THROW => ParseThrow(state),
             Keyword.RAISERROR => ParseRaiseError(state),
+            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
             _ => base.ParseKeywordStatement(state, first)
+        };
+    }
+
+    protected override Statement ParseAlter(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ALTER);
+
+        return state.Peek() switch
+        {
+            Word { Keyword: Keyword.TABLE } => TableParser.ParseAlter(state),
+            _ => throw state.ExpectedException("TABLE")
         };
     }
 

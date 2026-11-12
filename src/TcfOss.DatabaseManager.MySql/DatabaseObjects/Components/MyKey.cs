@@ -18,11 +18,11 @@ public abstract record MyKey(SqlValueList<KeyPart> Columns, Identifier? IndexNam
 
     public record Standard(SqlValueList<KeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
     {
-        public IndexMethod? IndexMethod { get; init; }
+        public BuiltInIndexMethod? IndexMethod { get; init; }
 
         public override StatementTableConstraint.Standard ToStatementConstraint(DifferFormatManager manager)
         {
-            IndexMethod? indexMethod = IndexMethod;
+            BuiltInIndexMethod? indexMethod = IndexMethod;
             if (manager.Formatting.OmitModifiersIfDefault && indexMethod == manager.AttributeDefaults.IndexMethod)
             {
                 indexMethod = null;

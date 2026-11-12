@@ -37,7 +37,7 @@ public record ExtendedIdentifier(string Name, ExtendedQuoteStyle QuoteStyle = Ex
             _ => ExtendedQuoteStyle.None
         };
 
-        return new ExtendedIdentifier(name.Name, newQuoteStyle);
+        return new ExtendedIdentifier(name.Name, newQuoteStyle) { Source = name.Source };
     }
 
     private static string QuoteString(string value, ExtendedQuoteStyle quoteStyle)

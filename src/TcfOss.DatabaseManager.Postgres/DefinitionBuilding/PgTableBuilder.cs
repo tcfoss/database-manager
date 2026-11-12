@@ -55,6 +55,14 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         var seenOptions = new HashSet<string>();
         foreach (StatementColumnOption option in typedColumn.Options)
         {
+            if (option is StatementColumnOption.WithConstraint { PgOptions: not null }
+                or StatementColumnOption.PgReference
+                or StatementColumnOption.PrimaryKey { IndexParameters: not null }
+                or StatementColumnOption.Unique { IndexParameters: not null }
+                or StatementColumnOption.Unique { NullsDistinct: not null })
+            {
+                throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL column constraint options", sourceRef);
+            }
             if (!seenOptions.Add(option.DuplicateCheckKey))
             {
                 throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef);
@@ -134,6 +142,10 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     public override void AddIndexOrConstraint(StatementTableConstraint constraint, SourceRef? sourceRef)
     {
         sourceRef ??= SourceRef;
+        if (constraint.PgOptions != null || constraint is StatementTableConstraint.PgExclusion || constraint is StatementTableConstraint.PgUsingIndex)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL constraint options", sourceRef);
+        }
         switch (constraint)
         {
             case StatementTableConstraint.PrimaryKey primaryKey:
@@ -243,12 +255,20 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
 
     private static void ValidateTablePrimaryKey(StatementTableConstraint.PrimaryKey primaryKey, SourceRef? sourceRef)
     {
-        ValidateConstraintIndexOptions(primaryKey.Comment, sourceRef, primaryKey.IndexMethod,
+        if (primaryKey.IncludedColumns != null || primaryKey.IndexParameters != null)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL primary key index parameters", sourceRef);
+        }
+        ValidateConstraintIndexOptions(primaryKey.Comment, sourceRef, primaryKey.IndexMethod != null ? new IndexMethod.BuiltIn(primaryKey.IndexMethod) : null,
             primaryKey.IndexOrganization, primaryKey.Options, primaryKey.StorageLocation);
     }
 
     private static void ValidateTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef? sourceRef)
     {
+        if (unique.NullsDistinct != null || unique.IndexParameters != null)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL unique constraint options", sourceRef);
+        }
         ValidateConstraintIndexOptions(unique.Comment, sourceRef, unique.IndexMethod,
             unique.IndexOrganization, unique.Options, unique.StorageLocation);
         if (unique.IndexName != null)
@@ -266,9 +286,9 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "inline COMMENT", sourceRef);
         }
-        if (method != null && method != IndexMethod.Btree)
+        if (method != null && method is IndexMethod.BuiltIn builtIn && builtIn.Method != BuiltInIndexMethod.Btree)
         {
-            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"USING {method} on PRIMARY KEY or UNIQUE", sourceRef);
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"USING {builtIn.Method} on PRIMARY KEY or UNIQUE", sourceRef);
         }
         if (organization != null)
         {
@@ -350,20 +370,20 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
         }
-        if (method != null && method != IndexMethod.Btree && columns.Any(part => part switch
+        if (method != null && !IndexMethod.IsBtree(method) && columns.Any(part => part switch
             {
                 KeyPart.Column column => column.Direction != null,
                 KeyPart.IndexExpression expression => expression.Direction != null,
                 _ => false
             }))
         {
-            throw new SqlSyntaxException.IndexDirectionNotSupported(name.Name, method.ToString(), Name.ToString(), sourceRef);
+            throw new SqlSyntaxException.IndexDirectionNotSupported(name.Name, method.ToSql(), Name.ToString(), sourceRef);
         }
-        if (method != null && method != IndexMethod.Btree && unique)
+        if (method != null && !IndexMethod.IsBtree(method) && unique)
         {
-            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"UNIQUE USING {method}", sourceRef);
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"UNIQUE USING {method.ToSql()}", sourceRef);
         }
-        ValidateIncludedColumnMethod(method ?? IndexMethod.Btree, includedColumns, sourceRef);
+        ValidateIncludedColumnMethod(method ?? IndexMethod.Default, includedColumns, sourceRef);
         SqlValueList<KeyPart> parts = NormalizeIndexParts(columns, sourceRef);
         foreach (KeyPart.IndexExpression part in parts.OfType<KeyPart.IndexExpression>())
         {
@@ -378,7 +398,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             Name = name,
             Unique = unique,
-            Method = method ?? IndexMethod.Btree,
+            Method = method ?? IndexMethod.Default,
             Predicate = normalizedPredicate,
             IncludedColumns = NormalizeIncludedColumns(includedColumns,
                 parts.OfType<KeyPart.Column>().Select(column => column.Name), name, sourceRef)
@@ -387,9 +407,9 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
 
     private static void ValidateIncludedColumnMethod(IndexMethod method, IncludedColumns? includedColumns, SourceRef? sourceRef)
     {
-        if (includedColumns != null && method != IndexMethod.Btree && method != IndexMethod.Gist && method != IndexMethod.SpGist)
+        if (includedColumns != null && !IndexMethod.IsBtree(method) && method is IndexMethod.BuiltIn builtIn && builtIn.Method != BuiltInIndexMethod.Gist && builtIn.Method != BuiltInIndexMethod.SpGist)
         {
-            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"INCLUDE with {method} indexes", sourceRef);
+            throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"INCLUDE with {method.ToSql()} indexes", sourceRef);
         }
     }
 

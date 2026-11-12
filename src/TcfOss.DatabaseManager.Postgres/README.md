@@ -92,6 +92,627 @@ claiming full PostgreSQL syntax validation. Database communication, hosting/CLI
 registration, migration generation, and integration
 tests are deferred.
 
+## Table Persistence And Temporary Lifecycle
+
+`CREATE [TEMP | TEMPORARY | UNLOGGED] TABLE [IF NOT EXISTS] ...` preserves
+temporary spelling in `CreateTable.Temporary` and PostgreSQL-specific options
+in nullable `PgCreateTableOptions`. Its required UNLOGGED flag is independent
+of optional `PgOnCommit`, which retains PRESERVE ROWS, DELETE ROWS, or DROP.
+Omitting ON COMMIT remains distinct from writing PostgreSQL's PRESERVE ROWS
+default. Existing CTAS parsing composes with ON COMMIT before AS SELECT.
+
+Core owns the grammar. MySQL/MariaDB retain TEMPORARY TABLE but reject the new
+PostgreSQL forms; SQL Server also rejects them. SQL/JSON round trips, identifier
+formatting/idempotence, source/comment/statement boundaries, atomic SQL bodies,
+CTAS query references and caller scopes, and malformed/deferred forms are tested.
+Traditional INHERITS, LIKE/copy options, deprecated GLOBAL/LOCAL qualifiers, and
+expanded CTAS variants remain deferred. Partition declarations are described
+below, followed by partition attachment/detachment.
+
+Parsing does not validate temporary-only ON COMMIT eligibility, schema/lifetime
+rules, crash recovery, replication, or execution. Temporary tables and CTAS keep
+their existing sourced construction errors. PostgreSQL creation options on
+persistent tables are explicitly rejected until the resolved model retains them.
+
+## Partition Declarations
+
+`CREATE TABLE ... PARTITION BY RANGE/LIST/HASH (...)` retains a typed
+`PgPartitionBy` in `PgCreateTableOptions`, with ordered column/function/
+parenthesized-expression keys, optional COLLATE, and named operator classes.
+`CREATE TABLE ... PARTITION OF parent ...` retains `PgPartitionOf`, including
+list IN bounds, range FROM/TO bounds, hash MODULUS/REMAINDER bounds, or DEFAULT.
+Range MINVALUE/MAXVALUE sentinels are distinct from expressions and quoted
+strings. Hash field order is preserved.
+
+Child declarations support inherited column overrides, optional WITH OPTIONS,
+existing column options/table constraints, and a following PARTITION BY for
+subpartitioning. Explicit empty body parentheses are retained. SQL/JSON round
+trips, identifier formatting/idempotence, source/comment/statement boundaries,
+atomic SQL bodies, typed payloads, malformed forms, and provider restrictions
+are tested. PostgreSQL rejects partition declarations combined with CTAS;
+existing shared CTAS behavior remains available in Core.
+
+Dependencies include the parent table and expression references under isolated
+contexts, preserving caller filters and scopes during partial enumeration.
+Collation/operator-class labels are not treated as independently resolved
+objects. Definition construction remains explicitly rejected with a sourced
+error. Parent lookup, inherited definitions, bound arity/overlap, key/bound
+eligibility, expression typing/immutability, catalog loading, migrations, and
+execution remain separate. Partition lifecycle parsing is described below.
+
+## Partition Lifecycle
+
+`ALTER TABLE [IF EXISTS] parent ATTACH PARTITION child ...` retains a typed
+`AlterTableOperation.PgAttachPartition`, reusing the declaration parser and
+`PgPartitionBound` for list, range, hash, and DEFAULT bounds. Range sentinels
+and hash field order keep their declaration behavior. Both table names retain
+qualification, quoting, and sources, with identifier-aware formatting.
+
+`ALTER TABLE [IF EXISTS] parent DETACH PARTITION child [CONCURRENTLY | FINALIZE]`
+retains `AlterTableOperation.PgDetachPartition` with nullable
+`PgDetachPartitionMode`. Omission remains distinct from either written mode.
+PostgreSQL rejects ONLY and comma-combined actions for both lifecycle forms.
+Core owns the grammar under the existing table-alter capability; MySQL/MariaDB
+and SQL Server reject these PostgreSQL forms.
+
+Dependencies include the target and attached/detached existing table, plus
+ATTACH bound expression references under an isolated context. Caller filters
+and scopes survive full and partial enumeration without capturing caller
+columns or local variables. Unresolved references remain unknown. SQL/JSON
+round trips, formatting/idempotence, typed payloads, comments/source spans,
+statement/atomic boundaries, malformed/standalone combinations, provider
+distinctions, and sourced unsupported construction are unit-tested.
+
+Parsing does not resolve tables, partition membership, strategy/key compatibility,
+bound arity/overlap, column/constraint compatibility, or existing data. It does
+not enforce CONCURRENTLY's transaction/default-partition restrictions or
+FINALIZE's pending-detach prerequisite; acceptance in an atomic body establishes
+syntax, not executability. Index/trigger effects, privileges, locking, catalog
+loading, definition mutation, migration generation, and execution remain
+separate. PostgreSQL definition construction still explicitly rejects these
+ALTER statements with sourced errors.
+
+## Expanded Index Declarations
+
+`CREATE [UNIQUE] INDEX [CONCURRENTLY] [[IF NOT EXISTS] name] ON [ONLY] table`
+reuses `CreateIndex.Standard` and `CreateIndex.Unique`. Omitted index names remain
+null; IF NOT EXISTS still requires a name. `IndexMethod.BuiltIn` wraps existing
+`BuiltInIndexMethod` values, while `IndexMethod.Custom` retains quoted/custom
+access-method identifiers. Nullable `PgCreateIndexOptions` retains other written
+prefix/trailing options. PostgreSQL permits USING only after the target name.
+MySQL resolved objects retain `BuiltInIndexMethod`; their builders explicitly
+reject custom methods with a sourced dialect exception.
+
+Key parts retain columns or existing expression ASTs, with COLLATE expressions,
+qualified operator classes, ordered scalar operator-class parameters, explicit
+ASC/DESC, and optional NULLS FIRST/LAST. Nullable `PgIndexKeyOptions` retains the
+new decorations without synthesizing omitted defaults. Bare function calls and
+parenthesized expressions are accepted; unparenthesized arithmetic/casts and
+window-function syntax are rejected. Numeric-argument function calls are not
+misclassified as MySQL column-prefix lengths.
+
+Trailing clauses follow PostgreSQL order: INCLUDE, NULLS [NOT] DISTINCT, WITH
+storage parameters, TABLESPACE, then WHERE. Index storage parameters share the
+`StatementIndexOption` hierarchy with SQL Server options. `FillFactor` is shared;
+PostgreSQL variants retain buffering, deduplication, fast update, GIN pending-list
+limits, autosummarization, and pages per range. Known parameters are gated by
+their built-in access method, treating an omitted method as BTREE without
+synthesizing it in the AST. Known but ineligible parameters do not fall through
+to the generic `StorageParameter` variant. Generic and operator-class parameters
+reuse `PgStorageParameter`; bare word values normalize to quoted strings.
+Typed option names emit uppercase, and typed booleans emit ON/OFF. Written NULLS
+DISTINCT remains distinct from omission.
+
+Core owns the shared grammar. The owning parser's `Grammar` mask enables all
+dialects in Core; provider parsers select My, Ms, or Pg. Index clauses and options
+are gated before consuming their tokens, keeping unsupported fields absent and
+diagnostics at the offending clause rather than validating a completed index.
+
+SQL/JSON round trips, recursive identifier formatting/idempotence, typed options,
+quoted names, source/comment/statement boundaries, atomic SQL bodies, malformed
+and foreign-dialect forms, and provider restrictions are unit-tested. References
+include the indexed table or view and expression/predicate object dependencies.
+Isolated contexts avoid capturing caller variables/columns and preserve filters
+and partial-enumeration scopes. Access methods, collations, operator classes,
+parameter labels, and tablespaces do not become independent object dependencies.
+
+Method/operator-class/collation lookup, catalog-dependent option eligibility,
+expression typing and immutability, index suitability, partition behavior, privileges, CONCURRENTLY
+transaction restrictions, locking, catalog loading, migrations, and execution
+remain separate. Atomic-body acceptance establishes syntax, not executability.
+Existing supported named indexes still construct; unnamed indexes and the new
+PostgreSQL index/key components raise a sourced `DefinitionException` rather
+than silently dropping their meaning. ALTER/DROP INDEX extensions remain
+separate work.
+
+## Constraint Declarations And Lifecycle
+
+Table and inline constraints retain written DEFERRABLE/NOT DEFERRABLE and
+INITIALLY DEFERRED/IMMEDIATE options in nullable lists of typed
+`PgConstraintOption` entries, preserving their written order. Omitted
+attributes remain absent. UNIQUE directly retains NULLS DISTINCT/NULLS NOT DISTINCT
+before its key list; CHECK retains NO INHERIT. Inline REFERENCES retains its
+target, optional column list, referential actions, and deferrability options.
+
+`EXCLUDE [USING method] (... WITH operator, ...)` reuses index keys, expression
+ASTs, and operator references, including `OPERATOR(schema.symbol)`. Exclusion
+keys support parenthesized expressions, COLLATE, qualified operator classes and
+scalar parameters, direction, and null ordering. INCLUDE, storage parameters,
+USING INDEX TABLESPACE, and a parenthesized WHERE predicate are retained.
+Storage parameters and the index tablespace have a separate
+`PgConstraintIndexParameters` component with complete SQL and formatting output.
+Its storage parameters use the same `StatementIndexOption` variants and parser
+as standalone CREATE INDEX, with the selected access method passed through.
+Methods remain nullable rather than defaulting to BTREE or GIST.
+
+ALTER TABLE reuses existing ADD operations, with NOT VALID accepted after a
+constraint declaration. DROP CONSTRAINT retains IF EXISTS and CASCADE/RESTRICT.
+RENAME CONSTRAINT is standalone, while ALTER CONSTRAINT, VALIDATE CONSTRAINT,
+and ADD PRIMARY KEY/UNIQUE USING INDEX support the applicable action lists.
+ONLY and table-level IF EXISTS retain their existing behavior. Core owns shared
+grammar; MySQL/MariaDB and SQL Server reject the new PostgreSQL forms.
+
+SQL/JSON round trips, recursive identifier formatting/idempotence, typed payloads,
+quoted names, sources/comments, statement boundaries, atomic SQL bodies,
+malformed syntax, provider restrictions, and sourced unsupported construction
+are unit-tested. Dependencies include referenced foreign tables and functions
+in CHECK/exclusion expressions, not constraint labels, operators, operator
+classes, or tablespaces. Traversal preserves caller filters and scopes without
+capturing caller columns or local variables.
+
+New constraint options/exclusions/inline references and lifecycle statements
+raise sourced `DefinitionException` errors until resolved definitions retain
+their meaning. Existing supported plain constraints remain supported. Parsing
+does not establish constraint eligibility, operator/index suitability, catalog
+existence, expression typing, privileges, validation results, locking behavior,
+or transaction executability. Catalog loading, definition mutation, migration
+generation, and execution remain separate. Temporal WITHOUT OVERLAPS/PERIOD,
+ENFORCED/NOT ENFORCED, table-level NOT NULL constraints, and further foreign-key
+clause extensions are outside this slice.
+
+## Sequences And Identity Alterations
+
+`CREATE [TEMP | TEMPORARY | UNLOGGED] SEQUENCE [IF NOT EXISTS] name ...`
+produces Core's `CreateSequence`, retaining persistence spelling and ordered
+`PgStatementSequenceOption` nodes. Options cover AS SMALLINT/INTEGER/BIGINT,
+START [WITH], INCREMENT [BY], MINVALUE/MAXVALUE and their NO forms, CACHE,
+CYCLE/NO CYCLE, and OWNED BY a qualified column or NONE. INT/INT2/INT4/INT8 type
+aliases normalize to canonical spellings. The numeric option parser is shared
+with existing identity-column declarations through `ComponentParser`.
+
+`AlterSequence` retains IF EXISTS and a typed `PgAlterSequenceOperation`:
+ordered parameter changes (including RESTART with an optional value), OWNER TO,
+RENAME TO, SET SCHEMA, and SET LOGGED/UNLOGGED. Owner specifications reuse
+`Account`, including CURRENT_ROLE, CURRENT_USER, SESSION_USER, and quoted names.
+`DROP SEQUENCE` reuses `DropObject` with multiple targets, IF EXISTS, and optional
+CASCADE/RESTRICT. Ordinary-view and materialized-view syntax remains separate.
+
+`ALTER TABLE [IF EXISTS] [ONLY] name ALTER [COLUMN] column ...` supports ADD
+GENERATED ALWAYS/BY DEFAULT AS IDENTITY with optional sequence options, SET
+GENERATED, RESTART, SET numeric/bounds/cache/cycle options, and DROP IDENTITY
+[IF EXISTS]. Ordered grouped SET/RESTART changes and comma-separated column
+alterations retain their structure. Core owns the grammar; the MySQL/MariaDB
+and SQL Server parsers retain their previous rejection of sequence CREATE/ALTER
+and PostgreSQL identity forms rather than acquiring them through shared dispatch.
+SQL Server accepts its native DROP SEQUENCE syntax, including IF EXISTS and
+multiple names, but not CASCADE/RESTRICT.
+
+SQL/JSON round trips, formatting, identifier sources, comments and statement
+boundaries, SQL atomic bodies, signed 64-bit bounds, and provider distinctions
+are unit-tested. Dependency traversal reports existing ALTER/DROP targets and
+OWNED BY table references, not newly declared sequence names, owner roles, or
+rename/schema destinations; sequence targets remain unknown until resolution
+exists. Dependency filters and caller scopes are preserved.
+
+This completes the bounded sequence/identity ALTER parsing milestone, not
+sequence execution or semantic validation. Increment/cache validity, bound and
+type compatibility, ownership/schema restrictions, identity eligibility,
+temporary lifetimes, privileges, and locking are not resolved. Schema-qualified
+or quoted sequence type names and alternate numeric literal spellings remain
+grammar extensions. Definition construction explicitly rejects sequence
+lifecycle and identity ALTER statements with sourced diagnostics. Resolved
+sequences, implicit serial/identity sequence construction, catalog loading,
+migrations, and execution remain deferred.
+
+## Column Structural And Configuration Alterations
+
+`ALTER TABLE [IF EXISTS] [ONLY] name ...` supports ADD [COLUMN] [IF NOT EXISTS],
+DROP [COLUMN] [IF EXISTS] with optional CASCADE/RESTRICT, and standalone
+RENAME [COLUMN] old TO new. Optional COLUMN spelling, existence flags, and
+omitted versus explicit drop behavior survive SQL/JSON round trips.
+
+`ALTER [COLUMN] name ...` supports TYPE and SET DATA TYPE with optional COLLATE
+and USING expressions, SET/DROP DEFAULT, SET/DROP NOT NULL, SET EXPRESSION AS
+(expression), and DROP EXPRESSION [IF EXISTS]. Defaults and USING/generated
+expressions reuse the existing expression grammar. Ordered comma-separated
+actions compose with the existing identity alterations.
+
+`Parser.SupportsDefaultExpressionsWithoutParentheses` controls full expression
+defaults in both column declarations and ALTER operations. It is enabled in Core,
+PostgreSQL, and SQL Server; the shared MySQL/MariaDB parser retains its existing
+default parsing. Literal defaults keep their literal AST variant. Declaration
+defaults stop before a trailing column COLLATE clause, while ALTER defaults can
+include expression COLLATE directly.
+
+Column configuration covers SET STATISTICS integer/DEFAULT, SET/RESET option
+lists, SET STORAGE PLAIN/EXTERNAL/EXTENDED/MAIN, and SET COMPRESSION name/DEFAULT.
+Core's shared `PgColumnConfigurationOperation` replaces the materialized-view-only
+component and is reused by both table and materialized-view column alterations.
+Option assignments require scalar values; quoted compression names remain
+distinct from DEFAULT. Core owns the grammar; MySQL/MariaDB and SQL Server retain
+their existing implemented ALTER forms without inheriting these PostgreSQL
+extensions. PostgreSQL rejects MySQL MODIFY/CHANGE, FIRST/AFTER positions,
+AUTO_INCREMENT, and character-set alterations.
+
+SQL/JSON round trips, typed payloads, formatting/idempotence, sources/comments,
+statement/atomic boundaries, malformed clauses, provider distinctions, and sourced
+unsupported construction are unit-tested. Dependency traversal reports the
+existing table, written named/array element types and collations, and references
+within defaults/generated/USING expressions. Types and collations remain
+unresolved; configuration names and rename destinations are not dependencies.
+Filters and caller scopes are preserved, including partial enumeration.
+
+This completes the bounded structural/configuration column parsing slice.
+Type conversion, column eligibility, option names/values and statistics limits,
+dependency/cascade effects, catalog updates, migration generation, and execution
+remain deferred. PostgreSQL definition construction explicitly rejects these
+ALTER statements. Table-level/dependency-sensitive ALTER and broader routine
+ALTER forms are separate follow-up work.
+
+## Table Management And Dependency Links
+
+The first bounded table-level ALTER slice supports OWNER TO, SET SCHEMA,
+SET TABLESPACE, SET ACCESS METHOD name/DEFAULT, CLUSTER ON, SET WITHOUT CLUSTER,
+storage-parameter SET/RESET, SET LOGGED/UNLOGGED, INHERIT/NO INHERIT, and OF/NOT OF.
+Owner specifications retain named roles and CURRENT_ROLE/CURRENT_USER/SESSION_USER;
+quoted access-method names remain distinct from DEFAULT. Storage parameters reuse
+the existing scalar-value grammar, including optional values and toast-qualified
+names. SET SCHEMA is standalone and rejects ONLY; the other new actions compose
+with column alterations. Table rename also rejects ONLY.
+
+Core owns the grammar. `PgAlterRelationOperation` generalizes the former
+materialized-view operation component, and `DdlParser.ParseOptionalAlterRelationOperation`
+shares ownership, placement, access-method, storage, and clustering parsing.
+Table-specific persistence, inheritance, and composite-type links remain distinct
+`AlterTableOperation` variants. `SupportsPostgresTableAlterSyntax` narrows these
+forms out of the MySQL/MariaDB and SQL Server parsers without changing their
+existing ALTER syntax or statement spelling preservation. Materialized views do
+not acquire table-specific persistence or inheritance syntax.
+
+Dependency traversal reports written INHERIT/NO INHERIT parents as table references
+and OF types as unresolved references, preserving filters and caller scopes even
+when enumeration stops early. Owner roles, destination schemas/tablespaces,
+storage labels, access methods, and table-local clustering index names are not
+reported as independent database objects. SQL/JSON round trips, formatting,
+sources/comments, statement/atomic boundaries, malformed/standalone clauses,
+provider distinctions, and sourced unsupported construction are unit-tested.
+
+This does not complete the table-level ALTER roadmap item. Bulk tablespace moves,
+explicit descendant `*` spelling, rule states, legacy SET WITHOUT OIDS, and
+expanded constraint operations remain pending. Partition lifecycle parsing is
+implemented in its own slice above. Parent/type/role lookup, compatibility,
+privileges, physical rewrites, catalog updates, migration generation, and execution are deferred;
+PostgreSQL definition construction still explicitly rejects ALTER statements.
+
+## Table Security And Replication State
+
+ALTER TABLE supports ENABLE/DISABLE ROW LEVEL SECURITY and FORCE/NO FORCE ROW
+LEVEL SECURITY, trigger ENABLE/DISABLE for named triggers or ALL/USER selectors,
+ENABLE ALWAYS/REPLICA for named triggers, and REPLICA IDENTITY
+DEFAULT/FULL/NOTHING/USING INDEX. All compose with existing combinable actions,
+including under IF EXISTS and ONLY; standalone rename/SET SCHEMA restrictions
+still apply.
+
+Core owns the parsing under `SupportsPostgresTableAlterSyntax`; MySQL/MariaDB and
+SQL Server retain their previous implemented syntax. Typed `AlterTableOperation`
+variants use `PgRowSecurityMode`, `PgTriggerStateMode`, `PgReplicaIdentityMode`,
+and `PgAlterTriggerTarget`. ALL/USER selectors remain distinct from quoted trigger
+names, including names with those spellings. ALWAYS/REPLICA reject the unquoted
+selectors. Named triggers and replica-identity indexes are single identifiers,
+preserving quoting and sources and using identifier-aware formatting.
+
+Reference traversal retains the existing target-table behavior; trigger names
+and table-local index labels do not invent independent object dependencies or
+inherit colliding pseudo-table/local-variable classifications. SQL/JSON round
+trips, formatting/idempotence, typed payloads, comments/source spans, following
+statements, SQL atomic bodies, mixed operations, filters/partial-enumeration
+scopes, malformed/deferred forms, provider distinctions, and sourced unsupported
+construction are unit-tested.
+
+This slice does not add policy declarations, resolve triggers/indexes, validate
+index suitability or privileges, apply table-state changes during definition
+construction, or implement replication behavior, catalog loading, migrations,
+or execution. Parsing a command inside an atomic body does not establish its
+executability. Rule controls and legacy administration remain deferred;
+constraints remain a separate slice, and partition lifecycle parsing is
+described above.
+
+## Shared DROP Options And Type/Domain Targets
+
+Core's `DropObject` supports TYPE and DOMAIN targets with optional IF EXISTS,
+multiple undecorated names, and CASCADE/RESTRICT. Omitted behavior remains null
+rather than becoming an explicit RESTRICT. Names preserve quoting and sources;
+TYPE/DOMAIN dependencies remain unresolved object references, not table/view,
+column, or local-variable references.
+
+PostgreSQL also accepts target lists and behavior suffixes for TABLE, VIEW,
+MATERIALIZED VIEW, SEQUENCE, INDEX, and SCHEMA. Provider hooks narrow target
+support, list cardinality, TEMPORARY, and optional behavior. PostgreSQL rejects
+DROP TEMPORARY and MySQL/SQL Server's DROP INDEX ... ON syntax. SQL Server accepts
+single-target DROP TYPE and multi-target DROP SEQUENCE without behavior suffixes.
+MySQL/MariaDB reject TYPE/DOMAIN and retain their required INDEX ... ON form;
+TABLE/VIEW compatibility CASCADE/RESTRICT suffixes are accepted and preserved,
+without implying PostgreSQL cascade semantics.
+
+SQL/JSON round trips, formatting, identifier sources, comments, statement/atomic
+boundaries, dependency filters/scopes, and provider distinctions are unit-tested.
+This is bounded parsing support: decorated DROP TYPE names,
+DROP INDEX CONCURRENTLY, dependency resolution,
+cascade effects, catalog updates, migration generation, and execution remain
+deferred. PostgreSQL definition construction explicitly rejects these DROP
+statements with sourced diagnostics.
+
+## Routine DROP Signatures And Trigger Targets
+
+`DROP FUNCTION`, `DROP PROCEDURE`, and `DROP ROUTINE` produce Core's `DropRoutine`
+with ordered `PgRoutineReference` targets, IF EXISTS, and optional
+CASCADE/RESTRICT. Each target has nullable parameters: null preserves an omitted
+signature, while an empty list preserves `()`. Arguments reuse
+`StatementRoutineParameter` and `DataTypeReference`, retaining optional names and
+IN/OUT/INOUT/VARIADIC modes, named and array types, and identifier sources.
+Defaults and SQL Server parameter options are not accepted. Existing type alias
+normalization applies. Core parses this syntax once; MySQL/MariaDB and SQL Server
+reject signatures and ROUTINE while retaining their native simple FUNCTION and
+PROCEDURE `DropObject` statements. `DdlParser.ParseDropObject` now returns
+`Statement` to accommodate both forms.
+
+`DROP TRIGGER [IF EXISTS] name ON table [CASCADE | RESTRICT]` reuses `DropObject`.
+PostgreSQL requires ON and an unqualified trigger name through existing
+trigger-name narrowing. MySQL/MariaDB and SQL Server do not acquire this
+PostgreSQL table-target grammar. ON targets use identifier-aware formatting.
+Dependency traversal reports unresolved routine targets and written named
+signature types, not argument names or built-in types. Trigger names remain
+unresolved separately from their table targets; filters and caller scopes are
+preserved even when enumeration stops early.
+
+SQL/JSON round trips, omission distinctions, formatting, comments, sources,
+statement/atomic boundaries, provider restrictions, and sourced unsupported
+definition construction are unit-tested. Signature parsing follows the existing
+shared parameter and identifier rules, without adding stricter reserved-word
+validation. Overload lookup, OUT/VARIADIC identity semantics, object existence,
+dependency/cascade effects, aggregate-specific DROP syntax, SQL Server DDL
+trigger targets, catalog loading, migrations, and execution remain deferred.
+
+## Routine ALTER Forms
+
+`ALTER FUNCTION` and `ALTER PROCEDURE` produce Core's `AlterRoutine`, with a
+`PgRoutineKind`, shared `PgRoutineReference`, ordered `PgAlterRoutineOperation`
+actions, and optional trailing RESTRICT for attribute/configuration lists.
+Omitted signatures remain distinct from `()`. Written arguments reuse the DROP
+signature parser, including modes, optional names, named/array types, and sources;
+defaults are not accepted.
+
+Functions support volatility, null-input behavior, PARALLEL, COST, ROWS, and
+security attributes through the existing routine-option parser. Procedures accept
+security attributes, not function-only options. Both support configuration SET
+with TO/=, scalar value lists, FROM CURRENT, or DEFAULT, plus RESET name and
+RESET ALL. Unquoted DEFAULT is a distinct action, not the quoted string
+`'DEFAULT'`; quoted `"ALL"` remains a parameter name rather than RESET ALL.
+Action order and delimiter spelling are retained. Shared SET head/value parsing
+also serves CREATE without changing its existing behavior.
+
+RENAME TO, OWNER TO, SET SCHEMA, and [NO] DEPENDS ON EXTENSION are standalone
+forms, reusing the relation-operation components and narrow owner parser. They
+do not combine with attributes or take trailing RESTRICT. Names use
+identifier-aware formatting; destinations and owner roles do not become object
+dependencies. Routine targets and written named signature types remain unresolved
+references, isolated from colliding tables/local variables and preserving filters
+and caller scopes even on partial enumeration.
+
+Core owns the grammar. Existing MySQL/MariaDB and SQL Server ALTER dispatch
+continues to reject these PostgreSQL forms. SQL/JSON, formatting/idempotence,
+typed settings/signatures, sources/comments, statement/atomic boundaries,
+dependency scopes, malformed and inapplicable actions, provider distinctions,
+Core reuse, and sourced unsupported construction are unit-tested.
+
+This bounded slice excludes generic ALTER ROUTINE, LEAKPROOF/SUPPORT and other
+advanced routine attributes, body/language/return-type replacement, overload
+lookup, argument identity, target/role/extension resolution, ROWS applicability,
+configuration semantics, privileges, definition-state mutation, catalog loading,
+migrations, and execution. Parsing inside an atomic body does not establish
+executability. PostgreSQL definition construction explicitly rejects AlterRoutine.
+
+## Ordinary Views
+
+`CREATE [OR REPLACE] VIEW name [(columns)] WITH (options) AS query` retains an
+ordered option list in nullable `CreateView.PgOptions`. It reuses Core's
+`PgStorageParameter` representation for optional scalar assignments, including
+`security_barrier`, `security_invoker`, and `check_option`. Omitted options remain
+null; names and optional values retain their order. Bare word values normalize
+to quoted strings. Known option names, value types, duplicates, conflicts, and
+query eligibility are not semantically validated.
+
+Core owns the shared grammar. MySQL/MariaDB and SQL Server reject PostgreSQL's
+parenthesized options; PostgreSQL rejects SQL Server's ENCRYPTION/SCHEMABINDING
+view options. `WITH [LOCAL | CASCADED] CHECK OPTION` composes with the declaration
+options. `CreateView.ViewCheckOption` uses the statement variants
+`ViewCheckOption.Unspecified` and `ViewCheckOption.Specified(ViewCheckOptionScope)`
+to retain omitted versus explicit scopes for SQL/JSON round trips and formatting.
+No clause has a null check option. Canonical MySQL/MariaDB views use nullable
+`ViewCheckOptionScope`, resolving an unspecified scope to CASCADED and emitting
+explicit scopes when converted back to statements.
+Core also accepts this valid unqualified form for MySQL/MariaDB and SQL Server;
+MySQL/MariaDB definition construction keeps the effective mode rather than the
+statement spelling. PostgreSQL updateability/check-option eligibility validation
+remains deferred.
+Materialized-view population, access-method, and tablespace clauses do not become
+ordinary-view clauses.
+PostgreSQL also rejects IF NOT EXISTS, OR ALTER, and MySQL ALGORITHM/DEFINER/SQL
+SECURITY declaration modifiers. Core retains its kitchen-sink IF NOT EXISTS
+grammar through a provider hook. Both view kinds require query bodies rather
+than arbitrary statements: SELECT, VALUES, WITH queries, and parenthesized
+queries are covered, with parse diagnostics for non-query bodies.
+
+`CREATE [OR REPLACE] [TEMP | TEMPORARY] [RECURSIVE] VIEW ...` preserves temporary
+spelling in nullable `CreateView.TemporaryLabel` and recursion in `Recursive`.
+Recursive views require a nonempty column list and do not accept a trailing
+CHECK OPTION clause. Their implicit unqualified self-reference is handled through
+the existing recursive CTE dependency traversal; external and schema-qualified
+references remain dependencies. The statement body is not rewritten into a CTE.
+MySQL/MariaDB and SQL Server reject temporary and recursive view declarations.
+TEMPORARY TABLE remains supported in MySQL/MariaDB, and Core/PostgreSQL temporary
+table statements also retain TEMP versus TEMPORARY spelling.
+
+SQL/JSON round trips, ordered fields, identifier sources, statement boundaries,
+query-only dependencies, recursive identifier formatting, and formatter
+idempotence are unit-tested. A pre-existing shared nested-query formatter issue
+can duplicate comments trailing a bare query; comment idempotence here covers
+the trailing CHECK OPTION boundary instead. The bounded ordinary-view declaration
+parsing milestone is complete. Shared query grammar extensions (including TABLE
+shorthand), expanded scalar argument forms, and resolved view construction remain
+follow-ups.
+Recursive-query eligibility, temporary-object lifetime/schema restrictions, and
+automatic temporariness from referenced objects are not semantically resolved.
+Definition construction explicitly rejects ordinary views rather than discarding
+their options. Catalog loading, migrations, and execution remain deferred.
+
+## Materialized Views
+
+`CREATE MATERIALIZED VIEW` supports `IF NOT EXISTS`, an optional column list,
+`USING` an access method, `WITH (...)` storage parameters, `TABLESPACE`, and
+`WITH DATA` / `WITH NO DATA`. Its separate Core `CreateMaterializedView` AST
+retains the query and declaration options without treating it as an ordinary
+view. Nullable `WithData` distinguishes omission from either explicit clause.
+Core owns the shared grammar; PostgreSQL dispatch enables it while the shared
+MySQL/MariaDB parser and SQL Server reject materialized-view declarations.
+
+Queries reuse SELECT, VALUES, WITH, and parenthesized query parsing. Storage
+parameters retain their names, optional scalar values, and qualified parameter
+names such as `toast.autovacuum_enabled`. Bare word values normalize to quoted
+strings. TABLE query shorthand, additional storage-argument forms, expression
+values, catalog-backed option/access-method validation, and query eligibility
+checks are not implemented in this slice. PostgreSQL's unsupported OR REPLACE
+and temporary materialized-view forms are rejected.
+
+SQL/JSON round trips, recursive identifier formatting, formatter idempotence,
+query dependencies, source spans, query-boundary comments, invalid syntax, and
+provider boundaries are unit-tested. Dependency traversal follows the query,
+not the target, storage parameters, access method, or tablespace. Definition
+construction raises a sourced unsupported-statement error rather than dropping
+the declaration.
+
+`REFRESH MATERIALIZED VIEW [CONCURRENTLY] name [WITH [NO] DATA]` produces a
+separate Core `RefreshMaterializedView` AST. It retains concurrency and omitted
+versus explicit population clauses, and rejects `CONCURRENTLY` with
+`WITH NO DATA`. MySQL/MariaDB and SQL Server reject refresh statements.
+SQL/JSON round trips, quoted identifier formatting, formatter idempotence,
+statement sources/comments/terminators, atomic SQL bodies, and dependency
+filters are unit-tested. Dependency traversal reports the target as unknown
+and isolates it from enclosing column/variable contexts; it does not pretend
+that the target has been resolved as an ordinary view or table.
+
+`DROP MATERIALIZED VIEW [IF EXISTS] name [, ...] [CASCADE | RESTRICT]` reuses
+Core's `DropObject` with a distinct `DroppableObject.MaterializedView` target
+kind. Nullable `PgBehavior` retains omission versus explicit RESTRICT; multiple
+targets keep their order and quoting. MySQL/MariaDB and SQL Server reject this
+target through the shared DROP parser's provider hook. TEMPORARY, CONCURRENTLY,
+and repeated/conflicting behaviors are rejected. SQL/JSON round trips,
+formatting/idempotence, source/comment/terminator boundaries, atomic SQL bodies,
+and dependency filters are unit-tested. A separate reference context keeps
+unresolved materialized-view targets distinct from ordinary views and local
+variables. Behavior suffixes on other DROP targets remain outside this slice.
+
+`ALTER MATERIALIZED VIEW [IF EXISTS] name` supports `RENAME TO`, column renaming
+with or without the COLUMN keyword, `SET SCHEMA`, `SET TABLESPACE`,
+storage-parameter `SET (...)` / `RESET (...)`, `OWNER TO`,
+`SET ACCESS METHOD`, `CLUSTER ON`, and `SET WITHOUT CLUSTER`. A separate
+`AlterMaterializedView` statement with ordered `Operations` and typed
+`PgAlterMaterializedViewOperation` variants retains each form and its identifier
+fields; the single-action constructor remains available. Core owns parsing;
+MySQL/MariaDB and SQL Server reject these statements
+without changing their existing ALTER TABLE behavior. SQL/JSON round trips,
+recursive identifier formatting/idempotence, sources/comments/terminators,
+atomic SQL bodies, and dependency filters are unit-tested. Dependencies report
+only the unresolved target, not destination names, in an isolated context.
+
+Storage SET and RESET retain parameter order and one- or two-part names,
+including `toast.autovacuum_enabled`. SET shares CREATE's optional scalar-value
+model, preserving omitted values and normalizing bare words to quoted strings.
+RESET accepts names only. Lists must be nonempty; expression values, additional
+storage-argument forms, and RESET assignments are rejected. Storage names are
+not object dependencies. SQL/JSON, formatting, source boundaries, atomic bodies,
+provider rejection, and sourced builder rejection are unit-tested. Parameter
+applicability, duplicates, and value types/ranges are not catalog-validated.
+
+`OWNER TO` accepts an explicit role identifier, `CURRENT_ROLE`, `CURRENT_USER`,
+or `SESSION_USER`. It reuses Core's `Account` variants to distinguish named
+roles from special roles: `"CURRENT_USER"` remains an `Account.Identity` with
+identifier source metadata preserved through `ExtendedIdentifier` conversion.
+PostgreSQL role parsing stays narrower than shared account parsing. SQL/JSON
+round trips, quoted/special-role formatting and idempotence,
+sources/comments/terminators, atomic bodies, target-only dependencies, provider
+rejection, and sourced builder rejection are unit-tested. Role names do not add
+database-object dependencies. Qualified roles, string literals, host accounts,
+and special-role function-call syntax are rejected. Role lookup, ownership
+checks, SET ROLE eligibility, schema privileges, and ownership execution are
+not implemented.
+
+`SET ACCESS METHOD` accepts a method identifier or DEFAULT; separate typed
+operations keep DEFAULT distinct from a quoted method named `"default"`.
+`CLUSTER ON` retains a single index identifier, while `SET WITHOUT CLUSTER`
+clears the default clustering-index selection. Neither clustering action runs
+CLUSTER. SQL/JSON round trips, identifier formatting/idempotence, sources,
+comments/terminators, atomic bodies, target-only dependencies, provider rejection,
+and sourced builder rejection are unit-tested. Method and index names do not add
+independent object dependencies. Qualified names, string literals, missing
+operands and unsupported modifiers are rejected. Method
+eligibility, index existence/ownership/suitability, privileges, locking, physical
+rewrites, and execution are not implemented.
+
+Column actions support `ALTER [COLUMN] name SET STATISTICS` with a signed integer
+or DEFAULT, `SET (...)` option assignments, `RESET (...)` option names,
+`SET STORAGE` with PLAIN / EXTERNAL / EXTENDED / MAIN / DEFAULT, and
+`SET COMPRESSION` with a method identifier or DEFAULT. Typed column operations
+preserve COLUMN spelling, parameters, identifier sources, and default selections.
+Option values reuse scalar storage-value parsing; expressions, qualified option
+names, missing assignments, and empty lists are rejected. Statistics ranges,
+option applicability, and compression eligibility remain semantic checks.
+
+`[NO] DEPENDS ON EXTENSION name` retains the extension identifier and NO flag;
+it is a standalone form without IF EXISTS. Combinable actions retain their order
+in a comma-separated list. Renames, schema moves, and extension dependencies
+remain standalone and are rejected inside action lists.
+
+`ALTER MATERIALIZED VIEW ALL IN TABLESPACE source [OWNED BY role [, ...]]
+SET TABLESPACE destination [NOWAIT]` produces a separate
+`AlterMaterializedViewsInTablespace` statement. It retains tablespace identifiers,
+optional ordered Account filters, NOWAIT, and source metadata, without inventing
+individual-object dependencies. Bulk forms, column/extension actions, ordered
+lists, SQL/JSON round trips, formatting/idempotence, comments/terminators, atomic
+bodies, invalid syntax, provider boundaries, and sourced builder rejection are
+unit-tested.
+
+Basic standard/unique index declarations reuse `CreateIndex` with the
+materialized-view target name, including supported INCLUDE/filter syntax.
+PostgreSQL `DROP INDEX [IF EXISTS] name` does not accept ON; MySQL/MariaDB and
+SQL Server still require their ON target. The declaration/index/refresh/drop-index
+workflow is unit-tested. Expanded CREATE INDEX grammar, including CONCURRENTLY,
+is described above. ALTER/DROP INDEX extensions remain separate work; TABLE query
+shorthand and expanded storage-argument forms remain explicit shared follow-ups.
+
+The bounded materialized-view lifecycle parsing milestone is complete. Target,
+column and destination lookup, name collisions, privileges, dependency updates, tablespace
+eligibility, and ALTER execution are not implemented. Parsing these statements
+inside atomic SQL bodies does not validate their executability.
+
+Definition construction rejects refresh, DROP, and ALTER commands with source
+information. Resolved materialized-view objects, catalog loading, index resolution,
+and migrations remain deferred. DROP does not check target existence,
+ownership, or dependencies, or execute cascades. Refresh target lookup, unique-index
+and existing-population prerequisites, privileges, locking, and execution are
+not implemented. Parsing refresh commands in atomic SQL bodies does not check
+whether those bodies can execute on PostgreSQL.
+
 ## SQL-Body Context
 
 Unquoted SQL routine bodies enable `ParseContext.NarrowSqlOnly` for their
@@ -459,7 +1080,9 @@ lookup, broader PostgreSQL routine syntax, and migration comparison remain defer
 Table options and unsupported column options explicitly
 throw `NotImplementedException`; `CREATE TABLE AS SELECT` is rejected rather
 than silently dropping the query. Temporary-table construction is rejected with
-`NotSupportedException` until temporary-schema semantics can be represented.
+a sourced `DefinitionException.TempTable` until temporary-schema semantics can
+be represented. Persistent PostgreSQL table creation options likewise raise a
+sourced `DefinitionException` rather than silently losing their meaning.
 
 ## Table Constraints And Indexes
 
@@ -473,13 +1096,16 @@ canonically `NOT NULL`. Simple key constraints support plain column lists;
 advanced index decorations and column prefix lengths are rejected explicitly.
 
 Foreign-dialect clauses such as inline COMMENT, CLUSTERED/NONCLUSTERED,
-SQL Server index options, and ON filegroup/partition-scheme placement raise
-the resource-backed `SqlSyntaxException.UnsupportedDialectClause`, carrying
-the dialect, offending clause, and statement source. Constraint and standalone
-index validation share these checks. PostgreSQL FILLFACTOR is valid syntax but
-its construction support is deferred, so it raises `NotImplementedException`
-rather than a dialect syntax error. Options validation remains separate so
-individual supported PostgreSQL options can be implemented later.
+SQL Server index options, and ON filegroup/partition-scheme placement are rejected
+while parsing. Manually supplied legacy constraint/index components retain
+resource-backed `SqlSyntaxException.UnsupportedDialectClause` checks, carrying
+the dialect, offending clause, and statement source. Legacy constraint
+`Options` containing FILLFACTOR still raise `NotImplementedException`.
+Parsed constraint and standalone index storage parameters share typed
+`StatementIndexOption` variants and a generic extension-parameter variant.
+Their construction support remains deferred: unrepresented parameters,
+including FILLFACTOR, raise a sourced `DefinitionException` rather than being
+silently dropped. Syntactic eligibility and construction support remain separate.
 
 Foreign keys resolve referenced tables after all declarations have been collected,
 including forward references. Final validation checks referenced tables/columns,

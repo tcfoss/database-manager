@@ -17,10 +17,10 @@ public readonly record struct IndexInfo()
     public required string IndexName { get; init; }
     public required uint SeqInIndex { get; init; }
 
-    public (IndexMethod? Method, Comment? Comment) GetIndexTypeAndComment(ILexer lexer, IParser parser)
+    public (BuiltInIndexMethod? Method, Comment? Comment) GetIndexTypeAndComment(ILexer lexer, IParser parser)
     {
         var indexMethodState = new ParserState([.. lexer.Tokenize(IndexType)]);
-        IndexMethod indexMethod = parser.TableParser.ParseIndexMethod(indexMethodState);
+        BuiltInIndexMethod indexMethod = parser.TableParser.ParseIndexMethod(indexMethodState);
 
         Comment? comment = null;
         if (IndexComment != "")

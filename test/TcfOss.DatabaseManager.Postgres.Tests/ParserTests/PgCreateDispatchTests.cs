@@ -1,7 +1,9 @@
+using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -20,12 +22,68 @@ public class PgCreateDispatchTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE PROCEDURE p() BEGIN ATOMIC SELECT 1; END", typeof(CreateProcedure))]
     [InlineData("CREATE VIEW v AS SELECT 1", typeof(CreateView))]
     [InlineData("CREATE OR REPLACE VIEW v AS SELECT 1", typeof(CreateView))]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1", typeof(CreateMaterializedView))]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1) WITH NO DATA", typeof(CreateMaterializedView))]
+    [InlineData("CREATE MATERIALIZED VIEW summary USING heap WITH (fillfactor = 70, autovacuum_enabled, toast.autovacuum_enabled = false) TABLESPACE fast AS SELECT 1 WITH DATA", typeof(CreateMaterializedView))]
     [InlineData("CREATE INDEX ix ON t (id)", typeof(CreateIndex.Standard))]
     [InlineData("CREATE TEMP TABLE t (id INT)", typeof(CreateTable))]
     [InlineData("CREATE DOMAIN positive AS INTEGER CHECK (VALUE > 0)", typeof(CreateDomain))]
     public void SupportedSharedCreateStatements_Dispatch(string sql, Type expectedType)
     {
         Assert.IsType(expectedType, ParseStatement(sql));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 + 2 NOT NULL, other INT)", "CREATE TABLE items (total INT DEFAULT (1 + 2) NOT NULL, other INT)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT (1) + 2)", "CREATE TABLE items (total INT DEFAULT ((1) + 2))")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT (1 + 2))", "CREATE TABLE items (total INT DEFAULT (1 + 2))")]
+    [InlineData("CREATE TABLE items (total INT CONSTRAINT initial_total DEFAULT 1 + 2 CHECK (total > 0))", "CREATE TABLE items (total INT CONSTRAINT initial_total DEFAULT (1 + 2) CHECK (total > 0))")]
+    [InlineData("CREATE TABLE items (label TEXT DEFAULT 'a' || 'b' COLLATE \"C\")", "CREATE TABLE items (label TEXT DEFAULT ('a' || 'b') COLLATE \"C\")")]
+    public void ColumnDefaultExpressionsWithoutParentheses_RoundTrip(string sql, string expectedSql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+        StatementColumn column = statement.Columns[0];
+        var defaultOption = Assert.Single(column.Options.OfType<StatementColumnOption.Default.DefaultExpression>());
+
+        Assert.True(new PgParser().SupportsDefaultExpressionsWithoutParentheses);
+        Assert.IsType<Core.Expressions.BinaryOperator>(defaultOption.Expression);
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        using var formatter = IO.Formatting.Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.IsType<CreateTable>(ParseStatement(formatted));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("5", true)]
+    [InlineData("NULL", true)]
+    [InlineData("'a'", true)]
+    [InlineData("(5)", false)]
+    public void ColumnDefaults_RetainLiteralAndExpressionVariants(string value, bool literal)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (label TEXT DEFAULT {value})"));
+        StatementColumnOption option = Assert.Single(Assert.Single(statement.Columns).Options);
+
+        if (literal)
+        {
+            Assert.IsType<StatementColumnOption.Default.DefaultValue>(option);
+        }
+        else
+        {
+            Assert.IsType<StatementColumnOption.Default.DefaultExpression>(option);
+        }
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 +)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT 1 +, other INT)")]
+    [InlineData("CREATE TABLE items (total INT DEFAULT)")]
+    public void IncompleteColumnDefaultExpressions_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]
@@ -285,5 +343,121 @@ public class PgCreateDispatchTests : ParserTestsBase<PgLexer, PgParser>
     public void ColumnCollations_RejectInvalidDeclarations(string clause)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"CREATE TABLE items (label TEXT {clause})"));
+    }
+
+    [Theory]
+    [InlineData("CREATE MATERIALIZED VIEW app.summary AS SELECT id FROM app.items")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1), (2) WITH NO DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW summary USING heap AS SELECT 1 WITH DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (fillfactor = 70, autovacuum_enabled) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (toast.autovacuum_enabled = FALSE) TABLESPACE fast AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS WITH seed (id) AS (SELECT 1) SELECT id FROM seed WITH DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS (SELECT 1 UNION SELECT 2) WITH NO DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (fillfactor = +70, autovacuum_vacuum_cost_delay = -1) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW \"App\".\"Summary\" (\"Id\") USING \"Heap\" TABLESPACE \"Fast\" AS SELECT 1 WITH NO DATA")]
+    public void MaterializedViews_RoundTripSqlAndJson(string sql)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, Serialization.FromJson<CreateMaterializedView>(Serialization.ToJson(statement)));
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(" WITH DATA", true)]
+    [InlineData(" WITH NO DATA", false)]
+    public void MaterializedViews_PreservePopulationClausePresence(string clause, bool? expected)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement($"CREATE MATERIALIZED VIEW summary AS SELECT 1{clause}"));
+
+        Assert.Equal(expected, statement.WithData);
+        Assert.Null(statement.Columns);
+        Assert.Null(statement.AccessMethod);
+        Assert.Null(statement.StorageParameters);
+        Assert.Null(statement.Tablespace);
+        Assert.False(statement.IfNotExists);
+    }
+
+    [Fact]
+    public void MaterializedViews_PreserveDeclarationOptions()
+    {
+        const string sql = "CREATE MATERIALIZED VIEW IF NOT EXISTS app.summary (id, label) USING heap WITH (fillfactor = 70, autovacuum_enabled, toast.autovacuum_enabled = FALSE) TABLESPACE fast AS SELECT id, label FROM app.items WITH NO DATA";
+
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement(sql));
+
+        Assert.Equal("app.summary", statement.Name.ToSql());
+        Assert.Equal(new[] { "id", "label" }, statement.Columns!.Select(column => column.Name));
+        Assert.True(statement.IfNotExists);
+        Assert.Equal("heap", statement.AccessMethod?.Name);
+        Assert.Equal("fast", statement.Tablespace?.Name);
+        Assert.False(statement.WithData);
+        Assert.Collection(statement.StorageParameters!,
+            parameter => Assert.Equal("70", Assert.IsType<Value.Number>(parameter.Value).Value),
+            parameter => Assert.Null(parameter.Value),
+            parameter =>
+            {
+                Assert.Equal("toast.autovacuum_enabled", parameter.Name.ToSql());
+                Assert.False(Assert.IsType<Value.Boolean>(parameter.Value).Value);
+            });
+    }
+
+    [Theory]
+    [InlineData("on", "'on'")]
+    [InlineData("off", "'off'")]
+    [InlineData("'it''s; opaque'", "'it''s; opaque'")]
+    [InlineData("$$opaque; text$$", "$$opaque; text$$")]
+    public void MaterializedViews_PreserveScalarStorageValues(string input, string expected)
+    {
+        var statement = Assert.IsType<CreateMaterializedView>(ParseStatement($"CREATE MATERIALIZED VIEW summary WITH (setting = {input}) AS SELECT 1"));
+
+        Assert.Equal(expected, Assert.Single(statement.StorageParameters!).Value!.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Fact]
+    public void MaterializedViews_PreserveStatementBoundariesAndQueryDependencies()
+    {
+        const string sql = "CREATE MATERIALIZED VIEW app.summary USING heap WITH (fillfactor = 70) TABLESPACE fast AS SELECT app.adjust(id) AS id FROM app.items WITH NO DATA; SELECT 2;";
+        var statements = new PgParser().Parse(GetState(sql, sourceId: 137), null);
+        var statement = Assert.IsType<CreateMaterializedView>(statements[0]);
+
+        Assert.Equal(2, statements.Count);
+        Assert.Equal(0, statement.Meta.Start);
+        Assert.Equal(sql.IndexOf(';'), statement.Meta.End);
+        Assert.Equal(sql.IndexOf(';') + 1, statement.Meta.EndPlusTerminatorLength);
+        Assert.Equal(137, statement.Name.Values[1].Source?.SourceId);
+        Assert.EndsWith("FROM app.items", statement.Body.ToSql());
+        Assert.Equal("SELECT 2", statements[1].ToSql());
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All, FunctionNameProvider = new FunctionNameProvider() };
+        string[] dependencies = [.. statement.GetReferencedItems(context).OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql()).OrderBy(name => name, StringComparer.Ordinal)];
+        Assert.Equal(new[] { "app.adjust", "app.items" }, dependencies);
+    }
+
+    [Theory]
+    [InlineData("CREATE OR REPLACE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE TEMP MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE TEMPORARY MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE UNLOGGED MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE RECURSIVE MATERIALIZED VIEW summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED summary AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary () AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary USING AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH () AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (fillfactor =) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (fillfactor = 1 + 2) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (fillfactor = 70,) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (app.toast.setting = 1) AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary TABLESPACE app.fast AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary TABLESPACE fast USING heap AS SELECT 1")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS INSERT INTO items VALUES (1)")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS WITH seed AS (SELECT 1) INSERT INTO items VALUES (1)")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH CHECK OPTION")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH NO")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1 WITH DATA WITH DATA")]
+    public void MaterializedViews_RejectInvalidDeclarations(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

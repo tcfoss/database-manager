@@ -18,7 +18,6 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class DdlParser
 {
-    protected virtual bool SupportsIndexMethodAfterTableName => true;
     protected virtual RoutineParamsSupportStyle GetRoutineParamsSupportStyle(bool isFunction) => RoutineParamsSupportStyle.KitchenSink;
     protected virtual bool SupportsOmittedFunctionReturn => true;
     protected virtual bool SupportsPostgresTriggerSyntax => true;
@@ -259,7 +258,7 @@ public class DdlParser
     /// ]]>
     /// </code>
     /// </summary>
-    private static MsViewWithOptions? ParseOptionalViewWithOptions(ParserState state)
+    protected virtual MsViewWithOptions? ParseOptionalViewWithOptions(ParserState state)
     {
         if (!state.ParseKeyword(Keyword.WITH))
         {
@@ -629,19 +628,19 @@ public class DdlParser
 
     private static ViewCheckOption? ParseViewCheckOption(ParserState state)
     {
-        ViewCheckOption? option = null;
-        if (state.ParseKeyword(Keyword.WITH))
+        if (!state.ParseKeyword(Keyword.WITH))
         {
-            option = state.Peek() switch
-            {
-                Word { Keyword: Keyword.CASCADED } => ViewCheckOption.Cascaded,
-                Word { Keyword: Keyword.LOCAL } => ViewCheckOption.Local,
-                _ => throw state.ExpectedException<ViewCheckOption>()
-            };
-            state.Next();
-            state.ExpectKeywordsAll(Keyword.CHECK, Keyword.OPTION);
+            return null;
         }
-        return option;
+
+        ViewCheckOptionScope? scope = state.MaybeParseStringEnum<ViewCheckOptionScope>();
+        state.ExpectKeywordsAll(Keyword.CHECK, Keyword.OPTION);
+
+        if (scope is not null)
+        {
+            return new ViewCheckOption.Specified(scope);
+        }
+        return new ViewCheckOption.Unspecified();
     }
 
     protected virtual SqlValueList<StatementRoutineParameter> ParseRoutineParameterList(ParserState state, bool isFunction)
@@ -1092,6 +1091,104 @@ public class DdlParser
         };
     }
 
+    public AlterRoutine ParseAlterRoutine(ParserState state)
+    {
+        PgRoutineKind kind = state.ParseStringEnum<PgRoutineKind>();
+        PgRoutineReference routine = ParseRoutineReference(state);
+        PgAlterRelationOperation? standalone = null;
+        if (state.ParseKeyword(Keyword.RENAME))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            standalone = new PgAlterRelationOperation.RenameTo(_parseIdentifier(state));
+        }
+        else if (state.ParseKeyword(Keyword.OWNER))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            standalone = new PgAlterRelationOperation.OwnerTo(ParsePostgresOwner(state));
+        }
+        else if (state.ParseKeywordsAll(Keyword.SET, Keyword.SCHEMA))
+        {
+            standalone = new PgAlterRelationOperation.SetSchema(_parseIdentifier(state));
+        }
+        else if (state.Peek() is Word { Keyword: Keyword.NO or Keyword.DEPENDS })
+        {
+            bool no = state.ParseKeyword(Keyword.NO);
+            state.ExpectKeywordsAll(Keyword.DEPENDS, Keyword.ON, Keyword.EXTENSION);
+            standalone = new PgAlterRelationOperation.DependsOnExtension(_parseIdentifier(state)) { No = no };
+        }
+        if (standalone != null)
+        {
+            return new AlterRoutine(kind, routine, [new PgAlterRoutineOperation.Relation(standalone)]);
+        }
+
+        SqlValueList<PgAlterRoutineOperation> operations = [];
+        while (true)
+        {
+            PgAlterRoutineOperation? operation = ParseNextAlterRoutineOperation(state, kind == PgRoutineKind.Function);
+            if (operation == null)
+            {
+                break;
+            }
+            operations.Add(operation);
+        }
+        if (operations.Count == 0)
+        {
+            throw state.ExpectedException("ALTER routine action");
+        }
+        return new AlterRoutine(kind, routine, operations) { Restrict = state.ParseKeyword(Keyword.RESTRICT) };
+    }
+
+    protected virtual PgAlterRoutineOperation? ParseNextAlterRoutineOperation(ParserState state, bool isFunction)
+    {
+        if (state.ParseKeyword(Keyword.RESET))
+        {
+            return state.ParseKeyword(Keyword.ALL)
+                ? new PgAlterRoutineOperation.ResetAll()
+                : new PgAlterRoutineOperation.Reset(_parseObjectName(state));
+        }
+        if (state.ParseKeyword(Keyword.SET))
+        {
+            return new PgAlterRoutineOperation.SetOption(ParseStatementRoutineSetting(state, true));
+        }
+        if (state.PeekKeyword(Keyword.LANGUAGE))
+        {
+            return null;
+        }
+        PgStatementRoutineOption? option = ParseNextRoutineOption(state, isFunction);
+        return option == null ? null : new PgAlterRoutineOperation.SetOption(option);
+    }
+
+    private PgStatementRoutineOption.RoutineSetting ParseStatementRoutineSetting(ParserState state, bool allowToDefault)
+    {
+        ObjectName name = _parseObjectName(state);
+        if (state.ParseKeywordsAll(Keyword.FROM, Keyword.CURRENT))
+        {
+            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.FromCurrent(name));
+        }
+
+        SettingAssignmentOperator op;
+        if (state.ConsumeTokenIs<Equal>())
+        {
+            op = SettingAssignmentOperator.EqualTo;
+        }
+        else if (state.ParseKeyword(Keyword.TO))
+        {
+            op = SettingAssignmentOperator.To;
+        }
+        else
+        {
+            throw state.ExpectedException("=", "TO");
+        }
+
+        if (allowToDefault && state.ParseKeyword(Keyword.DEFAULT))
+        {
+            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToDefault(name) { Op = op });
+        }
+
+        SqlValueList<Value> values = state.ParseCommaSeparated(ComponentParser.ParseSimpleValue);
+        return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToValues(name, values) { Op = op });
+    }
+
     private void ParseRoutineOptions(ParserState state, SqlValueList<PgStatementRoutineOption> options, HashSet<string> seenOptions, bool isFunction)
     {
         while (true)
@@ -1119,27 +1216,7 @@ public class DdlParser
 
         if (state.ParseKeyword(Keyword.SET))
         {
-            ObjectName key = _parseObjectName(state);
-            if (state.ParseKeywordsAll(Keyword.FROM, Keyword.CURRENT))
-            {
-                return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.FromCurrent(key));
-            }
-            bool equalSign;
-            if (state.ConsumeTokenIs<Equal>())
-            {
-                equalSign = true;
-            }
-            else if (state.ParseKeyword(Keyword.TO))
-            {
-                equalSign = false;
-            }
-            else
-            {
-                throw state.ExpectedException("=", "TO");
-            }
-            SqlValueList<Value> values = state.ParseCommaSeparated(ParseRoutineSettingValue);
-            return new PgStatementRoutineOption.RoutineSetting(new PgRoutineSetting.ToValues(key, values)) { UseEqualSign = equalSign };
-
+            return ParseStatementRoutineSetting(state, false);
         }
 
         List<Keyword> securityMatch = state.ParseKeywordSequence(KeywordSearchCondition.Optional(Keyword.EXTERNAL), Keyword.SECURITY);
@@ -1212,10 +1289,10 @@ public class DdlParser
             return new PgStatementRoutineOption.Rows(ParsePositiveRoutineNumber(state));
         }
 
-        Keyword volatility = state.ParseKeywordsAny(Keyword.IMMUTABLE, Keyword.STABLE, Keyword.VOLATILE);
-        if (volatility != Keyword.undefined)
+        PgRoutineVolatility? volatility = state.MaybeParseStringEnum<PgRoutineVolatility>();
+        if (volatility is not null)
         {
-            return new PgStatementRoutineOption.Volatility(PgRoutineVolatility.Parse(volatility.ToString()));
+            return new PgStatementRoutineOption.Volatility(volatility);
         }
 
         return null;
@@ -1234,24 +1311,6 @@ public class DdlParser
         throw ParserState.ExpectedException("positive number", token);
     }
 
-    private static Value ParseRoutineSettingValue(ParserState state)
-    {
-        if (state.Peek() is Plus or Minus)
-        {
-            Token sign = state.Next();
-            Token token = state.Next();
-            if (token is NumericLiteral number)
-            {
-                return new Value.Number($"{sign}{number.Value}", number.IsLong);
-            }
-            throw ParserState.ExpectedException("number", token);
-        }
-        if (state.Peek() is Word { Keyword: not (Keyword.TRUE or Keyword.FALSE or Keyword.NULL) })
-        {
-            return new Value.SingleQuotedString(ValueParser.ParseLiteralStringOptionalQuotes(state));
-        }
-        return ValueParser.ParseValue(state);
-    }
 
     protected ParsedRoutineTail ParseSqlRoutineTail(ParserState state, bool isFunction)
     {
@@ -1316,21 +1375,128 @@ public class DdlParser
         };
     }
 
-    public virtual CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext)
+    public CreateSequence ParseCreateSequence(ParserState state, TemporaryLabel? temporaryLabel, bool unlogged)
+    {
+        state.ExpectKeyword(Keyword.SEQUENCE);
+        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+        ObjectName name = _parseObjectName(state);
+        return new CreateSequence(name, ParseSequenceOptions(state))
+        {
+            IfNotExists = ifNotExists,
+            TemporaryLabel = temporaryLabel,
+            Unlogged = unlogged
+        };
+    }
+
+    public AlterSequence ParseAlterSequence(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.SEQUENCE);
+        bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
+        ObjectName name = _parseObjectName(state);
+        PgAlterSequenceOperation operation;
+        if (state.ParseKeywordsAll(Keyword.OWNER, Keyword.TO))
+        {
+            operation = new PgAlterSequenceOperation.OwnerTo(ParsePostgresOwner(state));
+        }
+        else if (state.ParseKeywordsAll(Keyword.RENAME, Keyword.TO))
+        {
+            operation = new PgAlterSequenceOperation.RenameTo(_parseIdentifier(state));
+        }
+        else if (state.ParseKeyword(Keyword.SET))
+        {
+            if (state.ParseKeyword(Keyword.SCHEMA))
+            {
+                operation = new PgAlterSequenceOperation.SetSchema(_parseIdentifier(state));
+            }
+            else
+            {
+                Keyword persistence = state.ParseKeywordsAny(Keyword.LOGGED, Keyword.UNLOGGED);
+                if (persistence == Keyword.undefined)
+                {
+                    throw state.ExpectedException("SCHEMA", "LOGGED", "UNLOGGED");
+                }
+                operation = new PgAlterSequenceOperation.SetPersistence(persistence == Keyword.UNLOGGED);
+            }
+        }
+        else
+        {
+            SqlValueList<PgStatementSequenceOption> options = ParseSequenceOptions(state, true);
+            if (options.Count == 0)
+            {
+                throw state.ExpectedCategoryException("sequence alteration");
+            }
+            operation = new PgAlterSequenceOperation.Parameters(options);
+        }
+        return new AlterSequence(name, operation) { IfExists = ifExists };
+    }
+
+    private SqlValueList<PgStatementSequenceOption> ParseSequenceOptions(ParserState state, bool alter = false)
+    {
+        SqlValueList<PgStatementSequenceOption> options = [];
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        while (true)
+        {
+            Location location = state.Peek().Location;
+            PgStatementSequenceOption? option = ParseNextSequenceOption(state, alter);
+            if (option == null)
+            {
+                return options;
+            }
+            if (!used.Add(option.UniqueName))
+            {
+                throw new ParseException.Duplicate(option.UniqueName, location);
+            }
+            options.Add(option);
+        }
+    }
+
+    protected virtual PgStatementSequenceOption? ParseNextSequenceOption(ParserState state, bool alter)
+    {
+        if (!alter && state.PeekKeyword(Keyword.RESTART))
+        {
+            return null;
+        }
+        if (state.ParseKeyword(Keyword.AS))
+        {
+            return new PgStatementSequenceOption.DataType(state.ParseStringEnum<PgSequenceDataType>());
+        }
+        if (state.ParseKeyword(Keyword.OWNED))
+        {
+            state.ExpectKeyword(Keyword.BY);
+            ObjectName? column = state.ParseKeyword(Keyword.NONE) ? null : _parseObjectName(state);
+            if (column is { Values.Count: < 2 or > 4 })
+            {
+                throw state.ExpectedCategoryException("qualified column name");
+            }
+            return new PgStatementSequenceOption.OwnedBy(column);
+        }
+        return _p.ComponentParser.ParseSequenceOption(state);
+    }
+
+    public virtual CreateView ParseCreateView(ParserState state, CreateOrLabel? createOrLabel, Definer? definer, ViewAlgorithm? viewAlgorithm, SecurityContext? securityContext, TemporaryLabel? temporaryLabel, bool recursive)
     {
         state.ExpectKeyword(Keyword.VIEW);
-        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+        bool ifNotExists = ParseOptionalViewIfNotExists(state);
 
         ObjectName name = _parseObjectName(state);
+        if (recursive && !state.PeekIs<ParenOpen>())
+        {
+            throw state.ExpectedException("(");
+        }
         SqlValueList<Identifier>? columns = state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
 
+        SqlValueList<PgStorageParameter>? pgOptions = ParseOptionalPgViewOptions(state);
         MsViewWithOptions? msOptions = ParseOptionalViewWithOptions(state);
 
         state.ExpectKeyword(Keyword.AS);
 
-        Select body = (Select)_p.ParseStatement(state);
+        Select body = ParseViewQuery(state);
 
-        ViewCheckOption? viewCheckOption = ParseViewCheckOption(state);
+        ViewCheckOption? viewCheckOption = null;
+        if (!recursive)
+        {
+            viewCheckOption = ParseViewCheckOption(state);
+        }
 
         return new CreateView(name, body)
         {
@@ -1340,8 +1506,309 @@ public class DdlParser
             Definer = definer,
             ViewAlgorithm = viewAlgorithm,
             SecurityContext = securityContext,
+            TemporaryLabel = temporaryLabel,
+            Recursive = recursive,
             ViewCheckOption = viewCheckOption,
             MsOptions = msOptions,
+            PgOptions = pgOptions,
+        };
+    }
+
+    protected virtual SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    {
+        if (!state.PeekKeyword(Keyword.WITH) || !state.PeekNthIs<ParenOpen>(1))
+        {
+            return null;
+        }
+        state.ExpectKeyword(Keyword.WITH);
+        return state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false);
+    }
+
+    protected virtual bool ParseOptionalViewIfNotExists(ParserState state)
+    {
+        return state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+    }
+
+    private Select ParseViewQuery(ParserState state)
+    {
+        Token start = state.Peek();
+        if (start is not (Word { Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH } or ParenOpen))
+        {
+            throw state.ExpectedException("SELECT", "VALUES", "WITH", "subquery");
+        }
+        if (_p.ParseStatement(state) is not Select body)
+        {
+            throw ParserState.ExpectedCategoryException("view query", start);
+        }
+        return body;
+    }
+
+    public virtual CreateMaterializedView ParseCreateMaterializedView(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.MATERIALIZED, Keyword.VIEW);
+        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+
+        ObjectName name = _parseObjectName(state);
+
+        SqlValueList<Identifier>? columns = state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
+
+        Identifier? accessMethod = state.ParseKeyword(Keyword.USING) ? _parseIdentifier(state) : null;
+
+        SqlValueList<PgStorageParameter>? storageParameters = state.ParseKeyword(Keyword.WITH)
+            ? state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false)
+            : null;
+
+        Identifier? tablespace = state.ParseKeyword(Keyword.TABLESPACE) ? _parseIdentifier(state) : null;
+
+        state.ExpectKeyword(Keyword.AS);
+        Select body = ParseViewQuery(state);
+
+        bool? withData = null;
+        Token populationToken = state.Peek();
+        if (state.ParseKeyword(Keyword.WITH))
+        {
+            if (populationToken.PreNonSql?.Items.Any(nonSql => nonSql is Statements.Components.NonSql.Comment) == true)
+            {
+                body.Meta.PostNonSql = populationToken.PreNonSql.Items;
+            }
+            withData = !state.ParseKeyword(Keyword.NO);
+            state.ExpectKeyword(Keyword.DATA);
+        }
+
+        return new CreateMaterializedView(name, body)
+        {
+            Columns = columns,
+            IfNotExists = ifNotExists,
+            AccessMethod = accessMethod,
+            StorageParameters = storageParameters,
+            Tablespace = tablespace,
+            WithData = withData
+        };
+    }
+
+    public virtual Statement ParseAlterMaterializedView(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.MATERIALIZED, Keyword.VIEW);
+        if (state.ParseKeyword(Keyword.ALL))
+        {
+            state.ExpectKeywordsAll(Keyword.IN, Keyword.TABLESPACE);
+            Identifier tablespace = _parseIdentifier(state);
+            SqlValueList<Account>? ownedBy = state.ParseKeywordsAll(Keyword.OWNED, Keyword.BY)
+                ? state.ParseCommaSeparated(ParsePostgresOwner)
+                : null;
+            state.ExpectKeywordsAll(Keyword.SET, Keyword.TABLESPACE);
+            Identifier newTablespace = _parseIdentifier(state);
+            return new AlterMaterializedViewsInTablespace(tablespace, newTablespace)
+            {
+                OwnedBy = ownedBy,
+                Nowait = state.ParseKeyword(Keyword.NOWAIT)
+            };
+        }
+
+        bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
+
+        ObjectName name = _parseObjectName(state);
+
+        PgAlterRelationOperation first = ParseAlterMaterializedViewOperation(state, ifExists);
+        SqlValueList<PgAlterRelationOperation> operations = [first];
+        if (IsCombinableMaterializedViewOperation(first))
+        {
+            while (state.ConsumeTokenIs<Comma>())
+            {
+                PgAlterRelationOperation next = ParseAlterMaterializedViewOperation(state, ifExists);
+                if (!IsCombinableMaterializedViewOperation(next))
+                {
+                    throw state.ExpectedCategoryException("combinable materialized-view action");
+                }
+                operations.Add(next);
+            }
+        }
+        return new AlterMaterializedView(name, operations) { IfExists = ifExists };
+    }
+
+    private static bool IsCombinableMaterializedViewOperation(PgAlterRelationOperation operation)
+    {
+        return operation is not (PgAlterRelationOperation.RenameTo
+            or PgAlterRelationOperation.RenameColumn
+            or PgAlterRelationOperation.SetSchema
+            or PgAlterRelationOperation.DependsOnExtension);
+    }
+
+    private PgAlterRelationOperation ParseAlterMaterializedViewOperation(ParserState state, bool ifExists)
+    {
+        PgAlterRelationOperation? shared = ParseOptionalAlterRelationOperation(state);
+        if (shared != null)
+        {
+            return shared;
+        }
+        PgAlterRelationOperation operation;
+        if (state.Peek() is Word { Keyword: Keyword.NO or Keyword.DEPENDS } && !ifExists)
+        {
+            bool no = state.ParseKeyword(Keyword.NO);
+            state.ExpectKeywordsAll(Keyword.DEPENDS, Keyword.ON, Keyword.EXTENSION);
+            operation = new PgAlterRelationOperation.DependsOnExtension(_parseIdentifier(state)) { No = no };
+        }
+        else if (state.ParseKeyword(Keyword.RENAME))
+        {
+            if (state.ParseKeyword(Keyword.TO))
+            {
+                operation = new PgAlterRelationOperation.RenameTo(_parseIdentifier(state));
+            }
+            else
+            {
+                bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
+                Identifier oldName = _parseIdentifier(state);
+                state.ExpectKeyword(Keyword.TO);
+                operation = new PgAlterRelationOperation.RenameColumn(oldName, _parseIdentifier(state))
+                {
+                    UseColumnKeyword = useColumnKeyword
+                };
+            }
+        }
+        else if (state.ParseKeyword(Keyword.ALTER))
+        {
+            bool useColumnKeyword = state.ParseKeyword(Keyword.COLUMN);
+            Identifier column = _parseIdentifier(state);
+            operation = new PgAlterRelationOperation.AlterColumn(column, ParseColumnConfigurationOperation(state))
+            {
+                UseColumnKeyword = useColumnKeyword
+            };
+        }
+        else
+        {
+            throw state.ExpectedException("RENAME", "SET", "RESET", "OWNER", "CLUSTER", "ALTER", "DEPENDS", "NO");
+        }
+        return operation;
+    }
+
+    public PgAlterRelationOperation? ParseOptionalAlterRelationOperation(ParserState state)
+    {
+        PgAlterRelationOperation operation;
+        if (state.ParseKeyword(Keyword.SET))
+        {
+            if (state.PeekIs<ParenOpen>())
+            {
+                operation = new PgAlterRelationOperation.SetStorageParameters(
+                    state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false));
+            }
+            else if (state.ParseKeyword(Keyword.ACCESS))
+            {
+                state.ExpectKeyword(Keyword.METHOD);
+                operation = state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgAlterRelationOperation.SetDefaultAccessMethod()
+                    : new PgAlterRelationOperation.SetAccessMethod(_parseIdentifier(state));
+            }
+            else if (state.ParseKeyword(Keyword.WITHOUT))
+            {
+                state.ExpectKeyword(Keyword.CLUSTER);
+                operation = new PgAlterRelationOperation.SetWithoutCluster();
+            }
+            else
+            {
+                Keyword target = state.ParseKeywordsAny(Keyword.SCHEMA, Keyword.TABLESPACE);
+                operation = target switch
+                {
+                    Keyword.SCHEMA => new PgAlterRelationOperation.SetSchema(_parseIdentifier(state)),
+                    Keyword.TABLESPACE => new PgAlterRelationOperation.SetTablespace(_parseIdentifier(state)),
+                    _ => throw state.ExpectedException("SCHEMA", "TABLESPACE", "ACCESS", "WITHOUT", "(")
+                };
+            }
+        }
+        else if (state.ParseKeyword(Keyword.RESET))
+        {
+            operation = new PgAlterRelationOperation.ResetStorageParameters(
+                state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameterName, false));
+        }
+        else if (state.ParseKeyword(Keyword.OWNER))
+        {
+            state.ExpectKeyword(Keyword.TO);
+            operation = new PgAlterRelationOperation.OwnerTo(ParsePostgresOwner(state));
+        }
+        else if (state.ParseKeyword(Keyword.CLUSTER))
+        {
+            state.ExpectKeyword(Keyword.ON);
+            operation = new PgAlterRelationOperation.ClusterOn(_parseIdentifier(state));
+        }
+        else
+        {
+            return null;
+        }
+        return operation;
+    }
+
+    private Account ParsePostgresOwner(ParserState state)
+    {
+        Keyword role = state.ParseKeywordsAny(Keyword.CURRENT_ROLE, Keyword.CURRENT_USER, Keyword.SESSION_USER);
+        return role switch
+        {
+            Keyword.CURRENT_ROLE => new Account.CurrentRole(),
+            Keyword.CURRENT_USER => new Account.CurrentUser(),
+            Keyword.SESSION_USER => new Account.SessionUser(),
+            _ => new Account.Identity(_parseIdentifier(state))
+        };
+    }
+
+    public PgColumnConfigurationOperation ParseColumnConfigurationOperation(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.RESET))
+        {
+            return new PgColumnConfigurationOperation.ResetOptions(state.ParseParenthesizedCommaSeparated(_parseIdentifier, false));
+        }
+        state.ExpectKeyword(Keyword.SET);
+        if (state.PeekIs<ParenOpen>())
+        {
+            return new PgColumnConfigurationOperation.SetOptions(state.ParseParenthesizedCommaSeparated(ParseMaterializedViewColumnOption, false));
+        }
+        Keyword kind = state.ParseKeywordsAny(Keyword.STATISTICS, Keyword.STORAGE, Keyword.COMPRESSION);
+        switch (kind)
+        {
+            case Keyword.STATISTICS:
+                return state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgColumnConfigurationOperation.SetDefaultStatistics()
+                    : new PgColumnConfigurationOperation.SetStatistics(ValueParser.ParseLiteralInt(state));
+            case Keyword.COMPRESSION:
+                return state.ParseKeyword(Keyword.DEFAULT)
+                    ? new PgColumnConfigurationOperation.SetDefaultCompression()
+                    : new PgColumnConfigurationOperation.SetCompression(_parseIdentifier(state));
+            case Keyword.STORAGE:
+                Token start = state.Peek();
+                Identifier mode = _parseIdentifier(state);
+                if (mode.QuoteStyle != QuoteStyle.None || !PgColumnStorageMode.TryParse(mode.Name, out PgColumnStorageMode? storageMode))
+                {
+                    throw ParserState.ExpectedCategoryException("column storage mode", start);
+                }
+                return new PgColumnConfigurationOperation.SetStorage(storageMode);
+            default:
+                throw state.ExpectedException("STATISTICS", "STORAGE", "COMPRESSION", "(");
+        }
+    }
+
+    private PgStorageParameter ParseMaterializedViewColumnOption(ParserState state)
+    {
+        PgStorageParameter parameter = _p.ComponentParser.ParseStorageParameter(state, maxParts: 1, requireValue: true, "materialized view column option");
+        return parameter;
+    }
+
+    public virtual RefreshMaterializedView ParseRefreshMaterializedView(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.REFRESH, Keyword.MATERIALIZED, Keyword.VIEW);
+        bool concurrently = state.ParseKeyword(Keyword.CONCURRENTLY);
+        ObjectName name = _parseObjectName(state);
+        bool? withData = null;
+        if (state.ParseKeyword(Keyword.WITH))
+        {
+            Token populationToken = state.Peek();
+            withData = !state.ParseKeyword(Keyword.NO);
+            if (concurrently && !withData.Value)
+            {
+                throw ParserState.ExpectedException("DATA", populationToken);
+            }
+            state.ExpectKeyword(Keyword.DATA);
+        }
+        return new RefreshMaterializedView(name)
+        {
+            Concurrently = concurrently,
+            WithData = withData
         };
     }
 
@@ -1427,81 +1894,132 @@ public class DdlParser
 
     public CreateIndex ParseCreateIndex(ParserState state, CreateOrLabel? createOrLabel = null)
     {
-        Keyword kindKw = state.ParseKeywordsAny(Keyword.UNIQUE, Keyword.FULLTEXT, Keyword.SPATIAL);
-        bool allowIndexMethod = kindKw is Keyword.undefined or Keyword.UNIQUE;
+        if (createOrLabel != null && !_p.Grammar.HasFlag(Grammar.My))
+        {
+            throw state.ExpectedException("CREATE [UNIQUE] INDEX");
+        }
+        Keyword kindKw = state.ParseKeyword(Keyword.UNIQUE)
+            ? Keyword.UNIQUE
+            : _p.Grammar.Any(Grammar.My | Grammar.Ms)
+                ? state.ParseKeywordsAny(Keyword.FULLTEXT, Keyword.SPATIAL)
+                : Keyword.undefined;
+        bool supportsIndexOptions = kindKw is Keyword.undefined or Keyword.UNIQUE;
 
-        IndexOrganization? indexOrganization = _p.TableParser.ParseOptionalIndexOrganization(state);
+        IndexOrganization? indexOrganization = _p.Grammar.HasFlag(Grammar.Ms) ? _p.TableParser.ParseOptionalIndexOrganization(state) : null;
 
         state.ExpectKeyword(Keyword.INDEX);
 
-        bool ifNotExists = state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
+        bool concurrently = supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.CONCURRENTLY);
+        bool ifNotExists = _p.Grammar.Any(Grammar.My | Grammar.Pg) && state.ParseKeywordsAll(Keyword.IF, Keyword.NOT, Keyword.EXISTS);
 
-        Identifier indexName = _parseIdentifier(state);
+        Identifier? indexName = _p.Grammar.HasFlag(Grammar.Pg) && !ifNotExists && state.PeekKeyword(Keyword.ON)
+            ? null
+            : _parseIdentifier(state);
 
         IndexMethod? method = null;
-        if (allowIndexMethod && state.ParseKeyword(Keyword.USING))
+
+        if (supportsIndexOptions && _p.Grammar.HasFlag(Grammar.My) && state.ParseKeyword(Keyword.USING))
         {
-            method = _p.TableParser.ParseIndexMethod(state);
+            method = ParseCreateIndexMethod(state);
         }
 
         state.ExpectKeyword(Keyword.ON);
+        bool only = supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.ONLY);
+
         ObjectName tableName = _parseObjectName(state);
+
         bool? indexMethodAfterTableName = null;
-        if (allowIndexMethod && state.PeekKeyword(Keyword.USING))
+
+        if (supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg) && state.PeekKeyword(Keyword.USING))
         {
-            if (!SupportsIndexMethodAfterTableName)
-            {
-                throw state.ExpectedException("(");
-            }
-            state.Next();
             if (method != null)
             {
                 throw new ParseException.Duplicate("index_method".Italic(), state.Peek().Location);
             }
-            method = _p.TableParser.ParseIndexMethod(state);
+            state.Next();
+            method = ParseCreateIndexMethod(state);
             indexMethodAfterTableName = true;
         }
 
-        SqlValueList<KeyPart> columns = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
+        bool allowPgOptions = supportsIndexOptions && _p.Grammar.HasFlag(Grammar.Pg);
+
+        SqlValueList<KeyPart> columns = _p.ComponentParser.ParseParenthesizedKeyPartList(
+            state, allowEmpty: false, allowLength: !allowPgOptions, allowPgOptions: allowPgOptions);
 
         IncludedColumns? includedColumns = null;
         Expression? filter = null;
         SqlValueList<StatementIndexOption>? options = null;
         IndexStorageLocation? storageLocation = null;
+        bool? nullsDistinct = null;
+        bool filterAfterOptions = false;
+        Identifier? tablespace = null;
 
-        if (allowIndexMethod)
+        if (supportsIndexOptions)
         {
-            includedColumns = _p.TableParser.ParseOptionalIncludedColumns(state);
-            if (state.ParseKeyword(Keyword.WHERE))
+            includedColumns = _p.Grammar.Any(Grammar.Ms | Grammar.Pg)
+                ? _p.TableParser.ParseOptionalIncludedColumns(state)
+                : null;
+
+            if (_p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.NULLS))
+            {
+                nullsDistinct = !state.ParseKeyword(Keyword.NOT);
+                state.ExpectKeyword(Keyword.DISTINCT);
+            }
+
+            if (_p.Grammar.HasFlag(Grammar.Ms) && state.ParseKeyword(Keyword.WHERE))
             {
                 filter = _p.ExpressionParser.ParseExpr(state);
             }
 
             if (state.PeekKeyword(Keyword.WITH))
             {
-                options = _p.TableParser.ParseIndexOptions(state);
+                options = _p.TableParser.ParseIndexOptions(state, method);
             }
 
-            storageLocation = _p.TableParser.ParseOptionalIndexStorageLocation(state);
+            if (_p.Grammar.HasFlag(Grammar.Pg) && state.ParseKeyword(Keyword.TABLESPACE))
+            {
+                tablespace = _parseIdentifier(state);
+            }
+
+            storageLocation = _p.Grammar.HasFlag(Grammar.Ms)
+                ? _p.TableParser.ParseOptionalIndexStorageLocation(state)
+                : null;
+
+            if (_p.Grammar.HasFlag(Grammar.Pg) && filter == null && state.ParseKeyword(Keyword.WHERE))
+            {
+                filterAfterOptions = true;
+                filter = _p.ExpressionParser.ParseExpr(state);
+            }
         }
 
-        if (allowIndexMethod && state.PeekKeyword(Keyword.USING))
+        if (supportsIndexOptions && _p.Grammar.HasFlag(Grammar.My) && state.PeekKeyword(Keyword.USING))
         {
             if (method != null)
             {
                 throw new ParseException.Duplicate("index_method".Italic(), state.Peek().Location);
             }
             state.Next();
-            method = _p.TableParser.ParseIndexMethod(state);
+            method = ParseCreateIndexMethod(state);
+            indexMethodAfterTableName = null;
         }
 
-        Comment? comment = ComponentParser.ParseComment(state);
+        Comment? comment = _p.Grammar.HasFlag(Grammar.My)
+            ? ComponentParser.ParseComment(state)
+            : null;
 
-        return kindKw switch
+        PgCreateIndexOptions? pgOptions = concurrently || only || nullsDistinct != null || tablespace != null
+            ? new PgCreateIndexOptions(concurrently, only)
+            {
+                NullsDistinct = nullsDistinct,
+                Tablespace = tablespace
+            } : null;
+
+        CreateIndex statement = kindKw switch
         {
             Keyword.UNIQUE => new CreateIndex.Unique(columns, indexName, tableName)
             {
                 IndexMethodAfterTableName = indexMethodAfterTableName,
+                PgOptions = pgOptions,
                 IndexMethod = method,
                 IndexOrganization = indexOrganization,
                 IncludedColumns = includedColumns,
@@ -1527,6 +2045,7 @@ public class DdlParser
             _ => new CreateIndex.Standard(columns, indexName, tableName)
             {
                 IndexMethodAfterTableName = indexMethodAfterTableName,
+                PgOptions = pgOptions,
                 IndexMethod = method,
                 IndexOrganization = indexOrganization,
                 IncludedColumns = includedColumns,
@@ -1538,6 +2057,22 @@ public class DdlParser
                 CreateOrLabel = createOrLabel,
             },
         };
+
+        return statement with { FilterAfterOptions = filterAfterOptions };
+    }
+
+    private IndexMethod ParseCreateIndexMethod(ParserState state)
+    {
+        if (!_p.Grammar.HasFlag(Grammar.Pg))
+        {
+            return new IndexMethod.BuiltIn(_p.TableParser.ParseIndexMethod(state));
+        }
+        BuiltInIndexMethod? builtIn = state.MaybeParseStringEnum<BuiltInIndexMethod>();
+        if (builtIn is not null)
+        {
+            return new IndexMethod.BuiltIn(builtIn);
+        }
+        return new IndexMethod.Custom(_parseIdentifier(state));
     }
 
     public CreateType ParseCreateType(ParserState state)
@@ -1696,21 +2231,70 @@ public class DdlParser
         return null;
     }
 
-    public DropObject ParseDropObject(ParserState state)
+    protected virtual bool SupportsDropObjectType(DroppableObject objectType) => true;
+
+    protected virtual bool SupportsDropRoutineSignatures => true;
+
+    protected virtual bool SupportsDropObjectList(DroppableObject objectType)
+    {
+        return objectType == DroppableObject.Table || objectType == DroppableObject.View
+            || objectType == DroppableObject.MaterializedView || objectType == DroppableObject.Sequence
+            || objectType == DroppableObject.Type || objectType == DroppableObject.Domain
+            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema
+            || objectType == DroppableObject.Function || objectType == DroppableObject.Procedure
+            || objectType == DroppableObject.Routine;
+    }
+
+    protected virtual bool ParseOptionalDropTemporary(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.TEMPORARY);
+    }
+
+    protected virtual PgDropBehavior? ParseOptionalDropBehavior(ParserState state, DroppableObject objectType)
+    {
+        if (objectType == DroppableObject.Table || objectType == DroppableObject.View
+            || objectType == DroppableObject.MaterializedView || objectType == DroppableObject.Sequence
+            || objectType == DroppableObject.Type || objectType == DroppableObject.Domain
+            || objectType == DroppableObject.Index || objectType == DroppableObject.Schema
+            || objectType == DroppableObject.Function || objectType == DroppableObject.Procedure
+            || objectType == DroppableObject.Routine || objectType == DroppableObject.Trigger)
+        {
+            return state.MaybeParseStringEnum<PgDropBehavior>();
+        }
+        return null;
+    }
+
+    protected virtual ObjectName? ParseDropIndexOnObject(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.ON) ? _parseObjectName(state) : null;
+    }
+
+    protected virtual ObjectName? ParseDropTriggerOnObject(ParserState state)
+    {
+        return state.ParseKeyword(Keyword.ON) ? _parseObjectName(state) : null;
+    }
+
+    public Statement ParseDropObject(ParserState state)
     {
         state.ExpectKeyword(Keyword.DROP);
 
-        bool temporary = state.ParseKeyword(Keyword.TEMPORARY);
+        bool temporary = ParseOptionalDropTemporary(state);
 
-        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.TRIGGER, Keyword.VIEW, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX);
+        Token typeToken = state.Peek();
+        Keyword typeToDropKw = state.ParseKeywordsAny(Keyword.TABLE, Keyword.PROCEDURE, Keyword.FUNCTION, Keyword.ROUTINE, Keyword.TRIGGER, Keyword.VIEW, Keyword.MATERIALIZED, Keyword.EVENT, Keyword.SCHEMA, Keyword.DATABASE, Keyword.INDEX, Keyword.SEQUENCE, Keyword.TYPE, Keyword.DOMAIN);
 
         DroppableObject typeToDrop = typeToDropKw switch
         {
             Keyword.TABLE => DroppableObject.Table,
             Keyword.PROCEDURE => DroppableObject.Procedure,
             Keyword.FUNCTION => DroppableObject.Function,
+            Keyword.ROUTINE => DroppableObject.Routine,
             Keyword.TRIGGER => DroppableObject.Trigger,
             Keyword.VIEW => DroppableObject.View,
+            Keyword.MATERIALIZED => DroppableObject.MaterializedView,
+            Keyword.SEQUENCE => DroppableObject.Sequence,
+            Keyword.TYPE => DroppableObject.Type,
+            Keyword.DOMAIN => DroppableObject.Domain,
             Keyword.EVENT => DroppableObject.Event,
             Keyword.SCHEMA => DroppableObject.Schema,
             Keyword.DATABASE => DroppableObject.Database,
@@ -1718,25 +2302,79 @@ public class DdlParser
             _ => throw state.ExpectedException<DroppableObject>()
         };
 
+        if (!SupportsDropObjectType(typeToDrop))
+        {
+            throw ParserState.ExpectedCategoryException("DROP target", typeToken);
+        }
+        if (temporary && (typeToDrop == DroppableObject.MaterializedView || typeToDrop == DroppableObject.Sequence
+            || typeToDrop == DroppableObject.Type || typeToDrop == DroppableObject.Domain
+            || typeToDrop == DroppableObject.Function || typeToDrop == DroppableObject.Procedure
+            || typeToDrop == DroppableObject.Routine))
+        {
+            throw ParserState.ExpectedCategoryException("non-temporary DROP target", typeToken);
+        }
+        if (typeToDrop == DroppableObject.MaterializedView)
+        {
+            state.ExpectKeyword(Keyword.VIEW);
+        }
+
         bool ifExists = state.ParseKeywordsAll(Keyword.IF, Keyword.EXISTS);
 
-        SqlValueList<ObjectName> names = typeToDropKw is Keyword.TABLE or Keyword.VIEW
-            ? state.ParseCommaSeparated(_parseObjectName)
-            : [_parseObjectName(state)];
+        if (SupportsDropRoutineSignatures && (typeToDrop == DroppableObject.Function
+            || typeToDrop == DroppableObject.Procedure || typeToDrop == DroppableObject.Routine))
+        {
+            SqlValueList<PgRoutineReference> routines = SupportsDropObjectList(typeToDrop)
+                ? state.ParseCommaSeparated(ParseRoutineReference)
+                : [ParseRoutineReference(state)];
+
+            return new DropRoutine(routines, typeToDrop)
+            {
+                IfExists = ifExists,
+                PgBehavior = ParseOptionalDropBehavior(state, typeToDrop)
+            };
+        }
+
+        Func<ParserState, ObjectName> parseName = typeToDrop == DroppableObject.Trigger ? ParseTriggerName : _parseObjectName;
+        SqlValueList<ObjectName> names = SupportsDropObjectList(typeToDrop)
+            ? state.ParseCommaSeparated(parseName)
+            : [parseName(state)];
 
         ObjectName? onObject = null;
         if (typeToDrop == DroppableObject.Index)
         {
-            state.ExpectKeyword(Keyword.ON);
-            onObject = _parseObjectName(state);
+            onObject = ParseDropIndexOnObject(state);
         }
+        else if (typeToDrop == DroppableObject.Trigger)
+        {
+            onObject = ParseDropTriggerOnObject(state);
+        }
+
+        PgDropBehavior? pgBehavior = ParseOptionalDropBehavior(state, typeToDrop);
 
         return new DropObject(names, typeToDrop)
         {
             IfExists = ifExists,
             Temporary = temporary,
-            OnObject = onObject
+            OnObject = onObject,
+            PgBehavior = pgBehavior
         };
+    }
+
+    private PgRoutineReference ParseRoutineReference(ParserState state)
+    {
+        ObjectName name = _parseObjectName(state);
+        SqlValueList<StatementRoutineParameter>? parameters = null;
+        if (state.PeekIs<ParenOpen>())
+        {
+            RoutineParamsSupportStyle style = RoutineParamsSupportStyle.PostgreSqlFunction with
+            {
+                DefaultSyntax = RoutineParameterDefaultSyntax.None,
+                DefaultKinds = RoutineParameterDefaultKind.None
+            };
+            parameters = state.ParseParenthesizedCommaSeparated(
+                parameterState => ParseRoutineParameter(parameterState, style), allowEmpty: true);
+        }
+        return new PgRoutineReference(name, parameters);
     }
 
     public Truncate ParseTruncateTable(ParserState state)

@@ -519,4 +519,317 @@ public class FormatComponentsTests
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("CREATE TEMP VIEW visible AS SELECT 1", "CREATE TEMP VIEW", false, "TEMP")]
+    [InlineData("CREATE TEMPORARY VIEW visible AS SELECT 1 WITH CHECK OPTION", "CREATE TEMPORARY VIEW", false, "TEMPORARY")]
+    [InlineData("CREATE RECURSIVE VIEW walk (id) AS SELECT 1 UNION ALL SELECT id FROM walk", "CREATE RECURSIVE VIEW", true, null)]
+    [InlineData("CREATE OR REPLACE TEMP RECURSIVE VIEW app.walk (id) WITH (security_invoker = TRUE) AS SELECT 1 UNION ALL SELECT id FROM walk", "CREATE OR REPLACE TEMP RECURSIVE VIEW", true, "TEMP")]
+    [InlineData("/* lead */ CREATE TEMPORARY RECURSIVE VIEW \"Walk; --\" (id) AS /* body */ SELECT 1 UNION ALL SELECT id FROM \"Walk; --\"", "CREATE TEMPORARY RECURSIVE VIEW", true, "TEMPORARY")]
+    public void OrdinaryViewModifiers_FormatAndReparseIdempotently(string sql, string expectedPrefix, bool recursive, string? temporary)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedPrefix, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
+        Assert.Equal(recursive, statement.Recursive);
+        Assert.Equal(temporary, statement.TemporaryLabel?.ToSql());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW visible AS SELECT 1")]
+    [InlineData("CREATE VIEW visible (id) AS VALUES (1)")]
+    [InlineData("CREATE VIEW visible AS WITH seed AS (SELECT 1 AS id) SELECT id FROM seed")]
+    [InlineData("CREATE VIEW visible AS (SELECT 1)")]
+    public void OrdinaryViewSyntax_QueryBodiesFormatIdempotently(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        var statement = Assert.IsType<CreateView>(Assert.Single(new PgParser().Parse([.. new PgLexer().Tokenize(formatted)])));
+        Assert.False(statement.IfNotExists);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("TEMP")]
+    [InlineData("TEMPORARY")]
+    public void OrdinaryViewModifiers_FormatTemporaryTablesIdempotently(string modifier)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted($"CREATE {modifier} TABLE items (id INT)");
+
+        Assert.Contains($"CREATE {modifier} TABLE", formatted.NormalizeWhitespace());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void OrdinaryViewModifiers_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC CREATE TEMP VIEW visible AS SELECT 1; CREATE TEMP RECURSIVE VIEW walk (id) AS SELECT 1 UNION ALL SELECT id FROM walk; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("CREATE TEMP RECURSIVE", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW app.visible AS SELECT id FROM app.items WITH CHECK OPTION")]
+    [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (security_barrier) AS SELECT id FROM app.items WITH CHECK OPTION")]
+    [InlineData("/* lead */ CREATE VIEW v AS /* body */ SELECT 1 WITH CHECK OPTION /* tail */")]
+    [InlineData("CREATE VIEW \"v; DROP TABLE items; --\" AS SELECT 1 WITH CHECK OPTION")]
+    public void OrdinaryViewCheckOptions_FormatAndReparseIdempotently(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("WITH CHECK OPTION", formatted.NormalizeWhitespace());
+        Assert.DoesNotContain("WITH CASCADED CHECK OPTION", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
+        Assert.IsType<Core.Statements.Components.ViewCheckOption.Unspecified>(statement.ViewCheckOption);
+        Assert.Equal("WITH CHECK OPTION", statement.ViewCheckOption.ToSql());
+        Assert.Contains("\nWITH CHECK OPTION", formatted.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CREATE VIEW app.visible WITH (security_barrier = TRUE, security_invoker) AS SELECT * FROM app.items", "WITH (\"security_barrier\" = TRUE, \"security_invoker\")")]
+    [InlineData("CREATE OR REPLACE VIEW app.visible (id) WITH (check_option = 'local') AS SELECT id FROM app.items WITH LOCAL CHECK OPTION", "WITH LOCAL CHECK OPTION")]
+    [InlineData("CREATE VIEW \"v; DROP TABLE items; --\" WITH (\"setting; --\" = 'it''s; opaque') AS SELECT 1", "WITH (\"setting; --\" = 'it''s; opaque')")]
+    [InlineData("/* lead */ CREATE VIEW v WITH (security_barrier) AS /* body */ SELECT 1 WITH LOCAL CHECK OPTION /* tail */", "/* tail */")]
+    public void OrdinaryViewOptions_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
+        Assert.NotEmpty(statement.PgOptions!);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS SELECT 1", "CREATE MATERIALIZED VIEW \"summary\"")]
+    [InlineData("CREATE MATERIALIZED VIEW IF NOT EXISTS summary (id) AS VALUES (1) WITH NO DATA", "IF NOT EXISTS \"summary\" (\"id\")")]
+    [InlineData("CREATE MATERIALIZED VIEW app.summary USING heap WITH (fillfactor = 70, autovacuum_enabled) TABLESPACE fast AS SELECT id FROM app.items WITH DATA", "USING \"heap\" WITH (\"fillfactor\" = 70, \"autovacuum_enabled\") TABLESPACE \"fast\"")]
+    [InlineData("CREATE MATERIALIZED VIEW summary WITH (toast.autovacuum_enabled = false) AS SELECT 1", "WITH (\"toast\".\"autovacuum_enabled\" = FALSE)")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS WITH seed (id) AS (SELECT 1) SELECT id FROM seed WITH NO DATA", "WITH NO DATA")]
+    [InlineData("CREATE MATERIALIZED VIEW summary AS /* body */ SELECT 1 /* tail */ WITH NO DATA", "/* tail */")]
+    [InlineData("CREATE MATERIALIZED VIEW \"summary; DROP TABLE items; --\" WITH (setting = 'it''s; opaque') AS SELECT 1", "\"summary; DROP TABLE items; --\"")]
+    public void MaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<CreateMaterializedView>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("REFRESH MATERIALIZED VIEW summary", "REFRESH MATERIALIZED VIEW \"summary\"")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY app.summary", "CONCURRENTLY \"app\".\"summary\"")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH DATA", "\"summary\" WITH DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW summary WITH NO DATA", "\"summary\" WITH NO DATA")]
+    [InlineData("REFRESH MATERIALIZED VIEW CONCURRENTLY \"App\".\"Summary\" WITH DATA", "CONCURRENTLY \"App\".\"Summary\" WITH DATA")]
+    [InlineData("/* lead */ REFRESH MATERIALIZED VIEW summary WITH NO DATA /* tail */", "/* tail */")]
+    [InlineData("REFRESH MATERIALIZED VIEW \"summary; DROP TABLE items; --\"", "\"summary; DROP TABLE items; --\"")]
+    public void RefreshMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<RefreshMaterializedView>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void RefreshMaterializedViews_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ REFRESH MATERIALIZED VIEW app.summary WITH NO DATA /* tail */; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("REFRESH MATERIALIZED VIEW \"app\".\"summary\" WITH NO DATA", formatted);
+        Assert.Contains("/* lead */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
+        Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<RefreshMaterializedView>());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("DROP MATERIALIZED VIEW summary", "DROP MATERIALIZED VIEW \"summary\"")]
+    [InlineData("DROP MATERIALIZED VIEW IF EXISTS app.summary, app.other CASCADE", "IF EXISTS \"app\".\"summary\", \"app\".\"other\" CASCADE")]
+    [InlineData("DROP MATERIALIZED VIEW \"App\".\"Summary\" RESTRICT", "\"App\".\"Summary\" RESTRICT")]
+    [InlineData("/* lead */ DROP MATERIALIZED VIEW summary CASCADE /* tail */", "/* tail */")]
+    [InlineData("DROP MATERIALIZED VIEW \"summary; DROP TABLE items; --\"", "\"summary; DROP TABLE items; --\"")]
+    public void DropMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<DropObject>(new PgParser().ParseStatement(state));
+        Assert.Equal(DroppableObject.MaterializedView, statement.ObjectType);
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void DropMaterializedViews_FormatAtomicBodyIdempotently()
+    {
+        const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ DROP MATERIALIZED VIEW app.summary, app.other CASCADE /* tail */; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("DROP MATERIALIZED VIEW \"app\".\"summary\", \"app\".\"other\" CASCADE", formatted);
+        Assert.Contains("/* lead */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
+        Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<DropObject>());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW app.summary RENAME TO summary_next", "\"app\".\"summary\" RENAME TO \"summary_next\"")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS summary RENAME COLUMN id TO item_id", "IF EXISTS \"summary\" RENAME COLUMN \"id\" TO \"item_id\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME id TO item_id", "RENAME \"id\" TO \"item_id\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET SCHEMA archive", "SET SCHEMA \"archive\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET TABLESPACE fast", "SET TABLESPACE \"fast\"")]
+    [InlineData("ALTER MATERIALIZED VIEW \"App\".\"Summary\" RENAME COLUMN \"Id\" TO \"ItemId\"", "RENAME COLUMN \"Id\" TO \"ItemId\"")]
+    [InlineData("/* lead */ ALTER MATERIALIZED VIEW summary RENAME TO summary_next /* tail */", "/* tail */")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RENAME TO \"next; DROP TABLE items; --\"", "RENAME TO \"next; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary SET (fillfactor = 70, autovacuum_enabled)", "SET (\"fillfactor\" = 70, \"autovacuum_enabled\")")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (toast.autovacuum_enabled = false)", "SET (\"toast\".\"autovacuum_enabled\" = FALSE)")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (fillfactor, toast.autovacuum_enabled)", "RESET (\"fillfactor\", \"toast\".\"autovacuum_enabled\")")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET (\"setting; DROP TABLE items; --\" = 'it''s; opaque')", "SET (\"setting; DROP TABLE items; --\" = 'it''s; opaque')")]
+    [InlineData("ALTER MATERIALIZED VIEW summary RESET (\"setting; DROP TABLE items; --\")", "RESET (\"setting; DROP TABLE items; --\")")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary OWNER TO owner_name", "OWNER TO \"owner_name\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"MixedCase\"", "OWNER TO \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_ROLE", "OWNER TO CURRENT_ROLE")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO CURRENT_USER", "OWNER TO CURRENT_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO SESSION_USER", "OWNER TO SESSION_USER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"CURRENT_USER\"", "OWNER TO \"CURRENT_USER\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary OWNER TO \"role; DROP TABLE items; --\"", "OWNER TO \"role; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW IF EXISTS app.summary SET ACCESS METHOD heap", "SET ACCESS METHOD \"heap\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"MixedCase\"", "SET ACCESS METHOD \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD DEFAULT", "SET ACCESS METHOD DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET ACCESS METHOD \"default\"", "SET ACCESS METHOD \"default\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON summary_idx", "CLUSTER ON \"summary_idx\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary CLUSTER ON \"index; DROP TABLE items; --\"", "CLUSTER ON \"index; DROP TABLE items; --\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary SET WITHOUT CLUSTER", "SET WITHOUT CLUSTER")]
+    [InlineData("ALTER MATERIALIZED VIEW summary DEPENDS ON EXTENSION ext", "DEPENDS ON EXTENSION \"ext\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary NO DEPENDS ON EXTENSION \"MixedCase\"", "NO DEPENDS ON EXTENSION \"MixedCase\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER COLUMN id SET STATISTICS 100", "ALTER COLUMN \"id\" SET STATISTICS 100")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET STATISTICS DEFAULT", "ALTER \"id\" SET STATISTICS DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET STORAGE EXTENDED", "ALTER \"body\" SET STORAGE EXTENDED")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET COMPRESSION lz4", "ALTER \"body\" SET COMPRESSION \"lz4\"")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER body SET COMPRESSION DEFAULT", "ALTER \"body\" SET COMPRESSION DEFAULT")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER id SET (n_distinct = -0.5), ALTER id RESET (n_distinct)", "SET (\"n_distinct\" = -0.5), ALTER \"id\" RESET (\"n_distinct\")")]
+    [InlineData("ALTER MATERIALIZED VIEW summary ALTER \"column; DROP TABLE items; --\" SET STATISTICS 100", "ALTER \"column; DROP TABLE items; --\" SET STATISTICS 100")]
+    public void AlterMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<AlterMaterializedView>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SET SCHEMA archive", "SET SCHEMA \"archive\"")]
+    [InlineData("SET (fillfactor = 70)", "SET (\"fillfactor\" = 70)")]
+    [InlineData("RESET (fillfactor)", "RESET (\"fillfactor\")")]
+    [InlineData("OWNER TO owner_name", "OWNER TO \"owner_name\"")]
+    [InlineData("OWNER TO CURRENT_ROLE", "OWNER TO CURRENT_ROLE")]
+    [InlineData("OWNER TO \"CURRENT_USER\"", "OWNER TO \"CURRENT_USER\"")]
+    [InlineData("SET ACCESS METHOD heap", "SET ACCESS METHOD \"heap\"")]
+    [InlineData("SET ACCESS METHOD DEFAULT", "SET ACCESS METHOD DEFAULT")]
+    [InlineData("CLUSTER ON summary_idx", "CLUSTER ON \"summary_idx\"")]
+    [InlineData("SET WITHOUT CLUSTER", "SET WITHOUT CLUSTER")]
+    [InlineData("ALTER id SET STATISTICS 100, SET (fillfactor = 70)", "ALTER \"id\" SET STATISTICS 100, SET (\"fillfactor\" = 70)")]
+    [InlineData("NO DEPENDS ON EXTENSION ext", "NO DEPENDS ON EXTENSION \"ext\"")]
+    public void AlterMaterializedViews_FormatAtomicBodyIdempotently(string clause, string expectedClause)
+    {
+        string sql = $"CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC /* lead */ ALTER MATERIALIZED VIEW app.summary {clause} /* tail */; SELECT 2; END";
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains($"ALTER MATERIALIZED VIEW \"app\".\"summary\" {expectedClause}", formatted);
+        Assert.Contains("/* lead */", formatted);
+        Assert.Contains("/* tail */", formatted);
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
+        Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<AlterMaterializedView>());
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast SET TABLESPACE slow", "TABLESPACE \"fast\" SET TABLESPACE \"slow\"")]
+    [InlineData("/* lead */ ALTER MATERIALIZED VIEW ALL IN TABLESPACE fast OWNED BY owner_name, CURRENT_USER SET TABLESPACE slow NOWAIT /* tail */", "OWNED BY \"owner_name\", CURRENT_USER SET TABLESPACE \"slow\" NOWAIT")]
+    [InlineData("ALTER MATERIALIZED VIEW ALL IN TABLESPACE \"old; space\" OWNED BY \"CURRENT_USER\" SET TABLESPACE \"NewSpace\"", "OWNED BY \"CURRENT_USER\" SET TABLESPACE \"NewSpace\"")]
+    public void BulkMaterializedViews_FormatAndReparseIdempotently(string sql, string expectedClause)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
+        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(new PgParser().ParseStatement(state));
+        Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

@@ -51,13 +51,17 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             switch (statement)
             {
                 case CreateTable table:
-                    if (table.Temporary)
+                    if (table.Temporary != null)
                     {
                         throw new DefinitionException.TempTable(table.Name.ToString(), sourceRef);
                     }
                     if (table.AsSelect != null)
                     {
                         throw new DefinitionException.CreateTableAsSelect(table.Name.ToString(), sourceRef);
+                    }
+                    if (table.PgOptions != null)
+                    {
+                        throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL options", sourceRef);
                     }
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
                     var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, sourceRef);
@@ -81,6 +85,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
                     break;
                 case CreateIndex index:
+                    if (index.PgOptions != null || index.Name == null || index.Columns.Any(key => key.PgOptions != null)
+                        || index is CreateIndex.Standard { Options: not null } or CreateIndex.Unique { Options: not null })
+                    {
+                        throw new DefinitionException($"{index.GetType().Name} PostgreSQL index options", sourceRef);
+                    }
                     _pendingIndexes.Add((index, activeSchemaId, sourceRef));
                     break;
                 case CreateTrigger trigger:
@@ -201,7 +210,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 case PgStatementRoutineOption.RoutineSetting setting:
                     PgRoutineSetting canonicalSetting = setting.Setting switch
                     {
-                        PgRoutineSetting.ToValues values => values with { Values = [.. values.Values] },
+                        PgRoutineSetting.ToValues values => values with { Values = [.. values.Values], Op = SettingAssignmentOperator.To },
                         PgRoutineSetting.FromCurrent current => throw new DefinitionException.RoutineSettingFromCurrent(routine, current.Name, sourceRef),
                         _ => throw new DefensiveGuardException("routine setting type", setting.Setting.GetType())
                     };

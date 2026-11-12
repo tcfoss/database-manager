@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 
@@ -20,11 +21,23 @@ public abstract record PgRoutineSetting(ObjectName Name) : IWriteSql
         }
     }
 
-    public record ToValues(ObjectName Name, SqlValueList<Value> Values) : PgRoutineSetting(Name)
+    public record ToDefault(ObjectName Name) : PgRoutineSetting(Name)
     {
+        public SettingAssignmentOperator Op { get; init; } = SettingAssignmentOperator.To;
+
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"SET {Name} TO {Values.ToSqlDelimited()}");
+            writer.WriteSql($"SET {Name} {Op} DEFAULT");
+        }
+    }
+
+    public record ToValues(ObjectName Name, SqlValueList<Value> Values) : PgRoutineSetting(Name)
+    {
+        public SettingAssignmentOperator Op { get; init; } = SettingAssignmentOperator.To;
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"SET {Name} {Op} {Values.ToSqlDelimited()}");
         }
     }
 }

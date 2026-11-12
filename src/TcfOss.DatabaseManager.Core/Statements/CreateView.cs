@@ -4,6 +4,8 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
@@ -12,12 +14,15 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
 {
     public SqlValueList<Identifier>? Columns { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
+    public TemporaryLabel? TemporaryLabel { get; init; }
+    public bool Recursive { get; init; }
     public bool IfNotExists { get; init; }
     public Definer? Definer { get; init; }
     public ViewAlgorithm? ViewAlgorithm { get; init; }
     public SecurityContext? SecurityContext { get; init; }
     public ViewCheckOption? ViewCheckOption { get; init; }
     public MsViewWithOptions? MsOptions { get; init; }
+    public SqlValueList<PgStorageParameter>? PgOptions { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
@@ -43,6 +48,14 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         {
             writer.WriteSql($" SQL SECURITY {SecurityContext}");
         }
+        if (TemporaryLabel != null)
+        {
+            writer.WriteSql($" {TemporaryLabel}");
+        }
+        if (Recursive)
+        {
+            writer.Write(" RECURSIVE");
+        }
         writer.Write(" VIEW");
         if (IfNotExists)
         {
@@ -57,6 +70,10 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         {
             writer.WriteSql($" {MsOptions}");
         }
+        if (PgOptions != null)
+        {
+            writer.WriteSql($" WITH ({PgOptions})");
+        }
         if (options.PreferRawText && Meta.RawText != null)
         {
             writer.WriteLine();
@@ -69,12 +86,11 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         }
         else
         {
-
             writer.WriteSql($" AS {Body}");
 
             if (ViewCheckOption != null)
             {
-                writer.WriteSql($" WITH {ViewCheckOption} CHECK OPTION");
+                writer.WriteSql($" {ViewCheckOption}");
             }
         }
     }
@@ -86,6 +102,14 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
         if (CreateOrLabel != null)
         {
             writer.WriteSql($" {CreateOrLabel}");
+        }
+        if (TemporaryLabel != null)
+        {
+            writer.WriteSql($" {TemporaryLabel}");
+        }
+        if (Recursive)
+        {
+            writer.Write(" RECURSIVE");
         }
         // Indented modifiers: ALGORITHM, DEFINER, SQL SECURITY
         bool hasModifiers = ViewAlgorithm != null || Definer != null || SecurityContext != null;
@@ -128,26 +152,38 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
             writer.WriteLine();
             writer.WriteSqlI($"{MsOptions}");
         }
+        if (PgOptions != null)
+        {
+            writer.WriteLine();
+            writer.WriteSqlI("WITH (");
+            writer.FormatDelimited(PgOptions, manager);
+            writer.Write(")");
+        }
         // AS
         writer.WriteLine();
         writer.WriteSqlI("AS");
         // Body (Select)
-        writer.WriteLine();
+        if (!Body.StartsWithNewLines)
+        {
+            writer.WriteLine();
+        }
         Body.FormatSql(writer, manager);
         // WITH CHECK OPTION
         if (ViewCheckOption != null)
         {
             writer.WriteLine();
-            writer.WriteSqlI($"WITH {ViewCheckOption} CHECK OPTION");
+            writer.WriteSqlI($"{ViewCheckOption}");
         }
         Meta.FormatPostNonSql(writer, manager);
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
-        foreach (ItemRef item in Body.GetReferencedItems(context))
+        if (Recursive)
         {
-            yield return item;
+            var recursiveQuery = new CommonTableExpression([new CommonTableExpressionBody(Name.Values[^1], Columns, Body)], true);
+            return recursiveQuery.GetReferencedItems(context, []);
         }
+        return Body.GetReferencedItems(context);
     }
 }

@@ -308,9 +308,9 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
             YearPrecision = ApplyIntegerOverride(baseDefaults.YearPrecision, overrideDefaults.YearPrecision),
             IndexMethod = overrideDefaults.IndexMethod switch
             {
-                ConfigParsing.Attributes.IndexMethod.Btree => IndexMethod.Btree,
-                ConfigParsing.Attributes.IndexMethod.Hash => IndexMethod.Hash,
-                ConfigParsing.Attributes.IndexMethod.Rtree => IndexMethod.Rtree,
+                ConfigParsing.Attributes.IndexMethod.Btree => BuiltInIndexMethod.Btree,
+                ConfigParsing.Attributes.IndexMethod.Hash => BuiltInIndexMethod.Hash,
+                ConfigParsing.Attributes.IndexMethod.Rtree => BuiltInIndexMethod.Rtree,
                 ConfigParsing.Attributes.IndexMethod.NotSet => baseDefaults.IndexMethod,
                 _ => throw new ConfigurationException.InvalidFieldOneOfException("IndexMethod", overrideDefaults.IndexMethod, ["Btree", "Hash", "Rtree", "NotSet"])
             },

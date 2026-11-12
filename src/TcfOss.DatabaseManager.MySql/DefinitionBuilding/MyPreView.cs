@@ -12,7 +12,7 @@ public record MyPreView(ObjectIdentifier Name, Select Body, PseudoTable Selectab
     public required Definer Definer { get; init; }
     public required SecurityContext SecurityContext { get; init; }
     public required ViewAlgorithm Algorithm { get; init; }
-    public ViewCheckOption? CheckOption { get; init; }
+    public ViewCheckOptionScope? CheckOption { get; init; }
 
     public override MyView ToNormalized(SchemaIdentifier schemaId, IEnumerable<PseudoTable> pseudoTables, INormalizeSql normalizer)
     {

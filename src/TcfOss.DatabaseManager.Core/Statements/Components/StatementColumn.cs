@@ -47,6 +47,45 @@ public abstract record StatementColumn(Identifier Name, SqlValueList<StatementCo
         }
     }
 
+    public record PgPartitionOverride(Identifier Name, SqlValueList<StatementColumnOption> Options)
+        : StatementColumn(Name, Options)
+    {
+        public bool WithOptions { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Name.ToSql(writer);
+            if (WithOptions)
+            {
+                writer.Write(" WITH OPTIONS");
+            }
+            if (Options.Any())
+            {
+                writer.WriteSql($" {Options.ToSqlDelimited(" ")}");
+            }
+        }
+
+        public override void FormatSqlBody(SqlTextWriter writer, FormatManager manager)
+        {
+            Name.FormatSql(writer, manager);
+            if (WithOptions)
+            {
+                writer.Write(" WITH OPTIONS");
+            }
+            foreach (StatementColumnOption option in Options)
+            {
+                writer.Write(" ");
+                option.FormatSql(writer, manager);
+            }
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.Write(manager.Indent);
+            FormatSqlBody(writer, manager);
+        }
+    }
+
     public record MsComputed(Identifier Name, Expression Expression, SqlValueList<StatementColumnOption> Options)
         : StatementColumn(Name, Options)
     {
