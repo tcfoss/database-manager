@@ -418,7 +418,7 @@ public class StatementReferencedItemsTests
     private static Statement ParseStatement(string sql)
     {
         var tokens = new GenericLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         return new Parser().ParseStatement(state);
     }
 }

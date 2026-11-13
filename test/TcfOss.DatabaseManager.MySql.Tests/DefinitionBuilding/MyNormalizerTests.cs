@@ -93,7 +93,7 @@ public class MyNormalizerTests
         var config = TestConfig.GetMyTestConfig();
         var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
         var parser = new MyParser();
-        Expression expression = parser.ExpressionParser.ParseExpr(new ParserState([.. new MyLexer().Tokenize(sql)]));
+        Expression expression = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)]));
 
         Assert.Equal(expected, normalizer.NormalizeExpression(expression).ToSql());
     }

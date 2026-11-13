@@ -11,7 +11,7 @@ namespace TcfOss.DatabaseManager.Postgres.Parsing;
 
 public class PgParser : Parser
 {
-    public override Grammar Grammar => Grammar.Pg;
+    public override Grammar Grammar => Grammar.Pg | Grammar.PgPl;
 
     protected override StatementLabel? MaybeParseStatementLabel(ParserState state)
     {
@@ -35,7 +35,7 @@ public class PgParser : Parser
 
     protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
-        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && state.StatementLabel != null)
+        if (!state.PgPl && state.StatementLabel != null)
         {
             throw ParserState.ExpectedException("SQL statement", token);
         }
@@ -44,7 +44,7 @@ public class PgParser : Parser
 
     protected override Statement ParseKeywordStatement(ParserState state, Word first)
     {
-        if (!state.Context.HasFlag(ParseContext.NarrowSqlOnly))
+        if (state.PgPl)
         {
             return base.ParseKeywordStatement(state, first);
         }
@@ -60,7 +60,7 @@ public class PgParser : Parser
 
     protected override Statement ParseBegin(ParserState state)
     {
-        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
+        if (!state.PgPl && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
             throw state.ExpectedException("BEGIN ATOMIC");
         }

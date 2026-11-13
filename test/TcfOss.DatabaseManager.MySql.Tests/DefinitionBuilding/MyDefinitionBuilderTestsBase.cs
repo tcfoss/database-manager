@@ -2838,7 +2838,7 @@ public abstract class MyDefinitionBuilderTestsBase
         {
             var lexer = new MyLexer();
             var parser = new MyParser();
-            return parser.DataTypeParser.ParseDataType(new ParserState([.. lexer.Tokenize(serializedValue)]));
+            return parser.DataTypeParser.ParseDataType(new ParserState(Grammar.My, [.. lexer.Tokenize(serializedValue)]));
         }
 
         public bool IsSerializable(Type type, object? value, out string failureReason)

@@ -766,17 +766,18 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("LEAVE outer_loop", Label = "Leave")]
     [InlineData("ITERATE outer_loop", Label = "Iterate")]
     [InlineData("USE app", Label = "Use")]
-    public void SqlOnlyContext_NarrowsOnlyWhenEnabled(string sql)
+    public void SqlGrammar_RejectsProceduralSyntax(string sql)
     {
         Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
 
         ParserState state = GetState(sql);
-        using (state.EnterContext(ParseContext.NarrowSqlOnly))
+        using (state.EnterGrammarContext(Grammar.Pg))
         {
             Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
-            Assert.Equal(ParseContext.NarrowSqlOnly, state.Context);
+            Assert.Equal(Grammar.Pg, state.Grammar);
             Assert.Null(state.StatementLabel);
         }
+        Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
         Assert.Equal(ParseContext.None, state.Context);
     }
 
@@ -795,6 +796,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
             Assert.IsType<BeginEnd>(statements[1]);
             Assert.IsType<LabeledStatement.Pg>(statements[2]);
             Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
             Assert.Null(state.StatementLabel);
             Assert.IsType<Eof>(state.Peek());
         }
@@ -816,6 +818,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         {
             Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
             Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
             Assert.Null(state.StatementLabel);
         }
         Assert.Equal(ParseContext.None, state.Context);

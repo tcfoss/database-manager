@@ -493,7 +493,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var lexer = new GenericLexer();
         var parser = new Parser();
         var tokens = lexer.Tokenize("");
-        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState(Grammar.All, [.. tokens])));
 
         Assert.Contains("SQL statement", exception.Message);
     }
@@ -504,7 +504,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var lexer = new GenericLexer();
         var parser = new Parser();
         var tokens = lexer.Tokenize("ASC");
-        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState(Grammar.All, [.. tokens])));
 
         Assert.Contains("SQL statement", exception.Message);
     }
@@ -537,7 +537,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var lexer = new GenericLexer();
         var parser = new Parser();
         var tokens = lexer.Tokenize("WITH cte AS (SELECT 1) ASC");
-        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState(Grammar.All, [.. tokens])));
 
         Assert.Contains("{ SELECT | VALUES | INSERT | UPDATE | DELETE }", exception.Message);
     }

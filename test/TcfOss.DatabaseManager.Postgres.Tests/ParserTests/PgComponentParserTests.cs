@@ -23,7 +23,7 @@ public class PgComponentParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("\"#dog\"")]
     public void Identifiers_PreserveSpellingQuotingAndSource(string sql)
     {
-        var state = new ParserState(GetTokens(sql), sourceId: 7);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens(sql), sourceId: 7);
         Identifier identifier = new PgParser().ComponentParser.ParseIdentifier(state);
 
         Assert.Equal(sql, identifier.ToSql());

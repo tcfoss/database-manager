@@ -80,7 +80,7 @@ public static class PrecedenceManagerTests
     [InlineData("!~*", Precedence.PgOperator, null, Label = "!~*")]
     public static void Next_Precedence_By_Keyword_String(string keyword, Precedence expectedPrecedence, int? overrideExpected)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(keyword)]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(keyword)]);
 
         var pm = new PrecedenceManager();
 
@@ -93,7 +93,7 @@ public static class PrecedenceManagerTests
     [Fact]
     public static void DoublePipe_Precedence_IsStringConcat()
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize("||")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("||")]);
         var pm = new PrecedenceManager();
 
         Assert.Equal(pm.GetPrecedence(Precedence.StringConcat), pm.GetNextPrecedence(state));
@@ -102,7 +102,7 @@ public static class PrecedenceManagerTests
     [Fact]
     public static void At_Precedence_Time_Zone_Match()
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize("AT TIME ZONE")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("AT TIME ZONE")]);
         var pm = new PrecedenceManager();
 
         var actual = pm.GetNextPrecedence(state);
@@ -114,7 +114,7 @@ public static class PrecedenceManagerTests
     [Fact]
     public static void At_Precedence_Time_Zone_Failure()
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize("AT SELECT")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("AT SELECT")]);
         var pm = new PrecedenceManager();
 
         var actual = pm.GetNextPrecedence(state);
@@ -128,7 +128,7 @@ public static class PrecedenceManagerTests
     [InlineData("NOT BETWEEN a AND b")]
     public static void Not_In_Between(string text)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(text)]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(text)]);
         var pm = new PrecedenceManager();
 
         var actual = pm.GetNextPrecedence(state);
@@ -145,7 +145,7 @@ public static class PrecedenceManagerTests
     [InlineData("NOT RLIKE 'dog%'")]
     public static void Not_Like_Etc(string text)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(text)]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(text)]);
         var pm = new PrecedenceManager();
 
         var actual = pm.GetNextPrecedence(state);
@@ -159,7 +159,7 @@ public static class PrecedenceManagerTests
     [InlineData("NOT (a > b)")]
     public static void Not_Other(string text)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(text)]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(text)]);
         var pm = new PrecedenceManager();
 
         var actual = pm.GetNextPrecedence(state);

@@ -24,7 +24,7 @@ public static class ParserStateTests
     [Fact]
     public static void Peek_Gives_First()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         Assert.Equal(new Word("SELECT") { Location = new Lexing.Location() }, s.Peek());
     }
@@ -32,7 +32,7 @@ public static class ParserStateTests
     [Fact]
     public static void Next_Gives_First()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         Assert.Equal(new Word("SELECT") { Location = new Lexing.Location() }, s.Next());
     }
@@ -40,7 +40,7 @@ public static class ParserStateTests
     [Fact]
     public static void Peek_After_Next_Gives_Second_Non_Whitespace()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         s.Next();
 
         Assert.Equal(new Word("a") { Location = new Lexing.Location() }, s.Peek());
@@ -49,7 +49,7 @@ public static class ParserStateTests
     [Fact]
     public static void Next_After_Next_Gives_Second_Non_Whitespace()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         s.Next();
 
         Assert.Equal(new Word("a") { Location = new Lexing.Location() }, s.Next());
@@ -58,7 +58,7 @@ public static class ParserStateTests
     [Fact]
     public static void PeekNth_Eof()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         Assert.True(s.PeekNth(100) is Eof);
     }
@@ -74,7 +74,7 @@ public static class ParserStateTests
         whitespace.Add(new Core.Statements.Components.NonSql.Newlines(1));
         var trivia = new NonSqlContainer(whitespace) { Location = new Lexing.Location() { Line = 1, Column = 9, Position = 8 } };
         Token[] tokens = [.. expected, trivia];
-        var s = new ParserState(tokens, sourceId: 7);
+        var s = new ParserState(Grammar.All, tokens, sourceId: 7);
 
         Assert.Equal(7, s.SourceId);
         Assert.True(s.PeekN(0).IsEmpty);
@@ -109,21 +109,21 @@ public static class ParserStateTests
     [Fact]
     public static void PeekKeyword_Matches_True()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         Assert.True(s.PeekKeyword(Keyword.SELECT));
     }
 
     [Fact]
     public static void PeekKeyword_NonMatches_False()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         Assert.False(s.PeekKeyword(Keyword.UPDATE));
     }
 
     [Fact]
     public static void PeekKeyword_NonKeyword_False()
     {
-        var s = new ParserState([new Semicolon() { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new Semicolon() { Location = new Lexing.Location() }]);
         Assert.False(s.PeekKeyword(Keyword.CREATE));
     }
 
@@ -132,7 +132,7 @@ public static class ParserStateTests
     [InlineData(true)]
     public static void PseudoKeyword_ConsumptionIsOptional(bool consume)
     {
-        var state = new ParserState(TokenSet1);
+        var state = new ParserState(Grammar.All, TokenSet1);
         Token first = state.Peek();
 
         Assert.True(state.TryGetPseudoKeyword(out string text, out Keyword keyword, consume));
@@ -146,7 +146,7 @@ public static class ParserStateTests
     [Fact]
     public static void PeekN_Match()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         var expected = new Token[]
         {
             new Word("SELECT") { Location = new Lexing.Location() },
@@ -160,7 +160,7 @@ public static class ParserStateTests
     [Fact]
     public static void PeekN_NonMatch()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         var expected = new Token[]
         {
             new Word("SELECT") { Location = new Lexing.Location() },
@@ -175,7 +175,7 @@ public static class ParserStateTests
     public static void PeekN_Returns_View_Without_Advancing()
     {
         Token[] tokens = TokenSet1;
-        var s = new ParserState(tokens);
+        var s = new ParserState(Grammar.All, tokens);
         s.Next();
 
         ReadOnlySpan<Token> peeked = s.PeekN(2);
@@ -190,7 +190,7 @@ public static class ParserStateTests
     [Fact]
     public static void Rewind_Reverses_Next_1()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         var expected = s.Peek();
 
@@ -205,7 +205,7 @@ public static class ParserStateTests
     [Fact]
     public static void Rewind_Reverses_Next_3()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         var expected = s.Peek();
 
@@ -224,7 +224,7 @@ public static class ParserStateTests
     [Fact]
     public static void Rewind_At_Start_No_Effect()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         var expected = s.Peek();
         s.Rewind();
@@ -237,7 +237,7 @@ public static class ParserStateTests
     [Fact]
     public static void RewindToSaved()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         s.Next();
 
@@ -258,7 +258,7 @@ public static class ParserStateTests
     [Fact]
     public static void RewindToSaved_NoSave_NoEffect()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         s.Next();
         s.Next();
@@ -275,7 +275,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectKeyword_Match_Advances_Pointer()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         s.ExpectKeyword(Keyword.SELECT);
 
@@ -285,7 +285,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectKeyword_NonMatch_Throws()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() => s.ExpectKeyword(Keyword.UPDATE));
         var expectedMessage = string.Format(ErrorMessages.Err_Parse_ExpectedButFound, "UPDATE", "SELECT");
@@ -295,7 +295,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectKeyword_Empty_Throws()
     {
-        var s = new ParserState([]);
+        var s = new ParserState(Grammar.All, []);
 
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() => s.ExpectKeyword(Keyword.SELECT));
         var expectedMessage = string.Format(ErrorMessages.Err_Parse_ExpectedButFound, "SELECT", "end of input".Italic());
@@ -305,7 +305,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectToken_Match_Advances_Pointer()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         s.Next();
         s.Next();
 
@@ -317,7 +317,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectToken_NonMatch_Throws()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
         s.Next();
         s.Next();
 
@@ -347,21 +347,21 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeyword_Success()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.True(s.ParseKeyword(Keyword.CREATE));
     }
 
     [Fact]
     public static void ParseKeyword_Failure()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.False(s.ParseKeyword(Keyword.UPDATE));
     }
 
     [Fact]
     public static void ParseKeyword_Eof()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Token next;
         while ((next = s.Next()) is not Eof)
         {
@@ -375,21 +375,21 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordsAll_Success()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.True(s.ParseKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.TABLE));
     }
 
     [Fact]
     public static void ParseKeywordsAll_Failure()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.False(s.ParseKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.VIEW));
     }
 
     [Fact]
     public static void ParseKeywordsAll_Eof()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Token next;
         while ((next = s.Next()) is not Eof)
         {
@@ -403,7 +403,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordsAll_Eof_Minus_One()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
 
         while (s.Next() is not Eof)
         {
@@ -419,28 +419,28 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordsAny_First()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.Equal(Keyword.CREATE, s.ParseKeywordsAny(Keyword.CREATE, Keyword.ALTER, Keyword.DROP));
     }
 
     [Fact]
     public static void ParseKeywordsAny_Later()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.Equal(Keyword.CREATE, s.ParseKeywordsAny(Keyword.DROP, Keyword.ALTER, Keyword.CREATE));
     }
 
     [Fact]
     public static void ParseKeywordsAny_NoMatch()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.Equal(Keyword.undefined, s.ParseKeywordsAny(Keyword.DROP, Keyword.ALTER, Keyword.EXECUTE));
     }
 
     [Fact]
     public static void ParseKeywordsAny_Eof()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Token next;
         while ((next = s.Next()) is not Eof)
         {
@@ -454,7 +454,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         var actual = s.ParseKeywordSequence(Ksc.OneOf(Keyword.ALTER, Keyword.CREATE), Ksc.Optionals(Keyword.OR, Keyword.REPLACE), Keyword.TABLE);
         var expected = new List<Keyword>()
         {
@@ -469,7 +469,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_With_Optional_Fake()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         var actual = s.ParseKeywordSequence(Ksc.OneOf(Keyword.ALTER, Keyword.CREATE), Ksc.Optionals(Keyword.OR, Keyword.REPLACE), Ksc.Optional(Keyword.TEMPORARY), Keyword.TABLE);
         var expected = new List<Keyword>()
         {
@@ -484,7 +484,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_With_Optional_Seq_Fake()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         var actual = s.ParseKeywordSequence(Ksc.OneOf(Keyword.ALTER, Keyword.CREATE), Ksc.Optionals(Keyword.OR, Keyword.REPLACE, Keyword.NOT), Keyword.TABLE);
         Assert.Empty(actual);
     }
@@ -492,7 +492,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_With_Optional_Seq_Real_Fake()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         var actual = s.ParseKeywordSequence(Ksc.Required(Keyword.CREATE), Ksc.Optionals(Keyword.OR, Keyword.REPLACE), Ksc.Optionals(Keyword.OR, Keyword.REPLACE), Keyword.TABLE);
         var expected = new List<Keyword>()
         {
@@ -507,7 +507,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_Failure()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         var actual = s.ParseKeywordSequence(Ksc.OneOf(Keyword.ALTER, Keyword.CREATE), Ksc.Optionals(Keyword.OR, Keyword.REPLACE), Keyword.VIEW);
         Assert.Empty(actual);
     }
@@ -517,7 +517,7 @@ public static class ParserStateTests
     [InlineData(true)]
     public static void ParseKeywordSequence_Partial_Failure_Restores_Position(bool useOneOf)
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         s.Next();
         Token expected = s.Peek();
         Ksc required = useOneOf ? Ksc.OneOf(Keyword.VIEW, Keyword.INDEX) : Ksc.Required(Keyword.VIEW);
@@ -531,7 +531,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_Optional_First_Match()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
 
         List<Keyword> actual = s.ParseKeywordSequence(Ksc.Optional(Keyword.TEMPORARY), Ksc.Optional(Keyword.CREATE));
 
@@ -549,7 +549,7 @@ public static class ParserStateTests
             new Word("CREATE") { Location = new Lexing.Location() },
             new Word("TABLE") { Location = new Lexing.Location() }
         ];
-        var state = new ParserState(tokens);
+        var state = new ParserState(Grammar.All, tokens);
 
         List<Keyword> found = afterRequiredKeyword
             ? state.ParseKeywordSequence(Ksc.Required(Keyword.CREATE), Ksc.Optionals())
@@ -570,7 +570,7 @@ public static class ParserStateTests
     public static void ParseKeywordSequence_Unrecognized_Condition_Does_Not_Consume_Tokens()
     {
         Token[] tokens = TokenSet1;
-        var state = new ParserState(tokens);
+        var state = new ParserState(Grammar.All, tokens);
 
         List<Keyword> found = state.ParseKeywordSequence(new UnrecognizedKeywordSearchCondition());
 
@@ -583,7 +583,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_No_Matches_Returns_Independent_Empty_Lists()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Token expected = s.Peek();
 
         List<Keyword> first = s.ParseKeywordSequence(Ksc.Optional(Keyword.TEMPORARY));
@@ -597,7 +597,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseKeywordSequence_Eof()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Token next;
         while ((next = s.Next()) is not Eof)
         {
@@ -612,28 +612,28 @@ public static class ParserStateTests
     [Fact]
     public static void PeekKeywordsAll_Match_Match()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.True(s.PeekKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.TABLE));
     }
 
     [Fact]
     public static void PeekKeywordsAll_Match_NonMatch()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
         Assert.False(s.PeekKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE, Keyword.DATABASE));
     }
 
     [Fact]
     public static void PeekKeywordsAllEqual_NonKeyword_NonMatch()
     {
-        var s = new ParserState([new Word("SELECT") { Location = new Lexing.Location() }, new Asterisk() { Location = new Lexing.Location() }, new Word("FROM") { Location = new Lexing.Location() }, new Word("my_table") { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new Word("SELECT") { Location = new Lexing.Location() }, new Asterisk() { Location = new Lexing.Location() }, new Word("FROM") { Location = new Lexing.Location() }, new Word("my_table") { Location = new Lexing.Location() }]);
         Assert.False(s.PeekKeywordsAll(Keyword.SELECT, Keyword.DISTINCT));
     }
 
     [Fact]
     public static void PeekKeywordsAll_Match_Eof()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
 
         while (s.Next() is not Eof)
         {
@@ -647,7 +647,7 @@ public static class ParserStateTests
     public static void PeekKeywordsAllEqual_Handles_Empty_And_Short_Input_Without_Advancing()
     {
         Token[] tokens = [new Word("CREATE") { Location = new Lexing.Location() }];
-        var s = new ParserState(tokens);
+        var s = new ParserState(Grammar.All, tokens);
 
         Assert.True(s.PeekKeywordsAll());
         Assert.True(s.PeekKeywordsAll(Keyword.CREATE));
@@ -662,7 +662,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectKeywordsAll_Match_Advance_Pointer()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
 
         s.ExpectKeywordsAll(Keyword.CREATE, Keyword.OR, Keyword.REPLACE);
 
@@ -672,7 +672,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectKeywordsAll_Match_Throws()
     {
-        var s = new ParserState(TokenSet2);
+        var s = new ParserState(Grammar.All, TokenSet2);
 
         Assert.Throws<ParseException.ExpectedButFound>(() =>
         {
@@ -694,7 +694,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesized()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
 
         Assert.True(s.PeekIs<ParenOpen>());
         string actual = s.ParseParenthesized(x =>
@@ -713,7 +713,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparated()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
 
         var expected = new SqlValueList<string>() { "a", "b", "c" };
 
@@ -725,7 +725,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparated_Empty_Allowed()
     {
-        var s = new ParserState([new ParenOpen() { Location = new Lexing.Location() }, new ParenClose() { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new ParenOpen() { Location = new Lexing.Location() }, new ParenClose() { Location = new Lexing.Location() }]);
 
         var actual = s.ParseParenthesizedCommaSeparated(x => x.Next().ToString() ?? "", true);
 
@@ -736,7 +736,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparated_Empty_Forbidden()
     {
-        var s = new ParserState([new ParenOpen() { Location = new Lexing.Location() }, new ParenClose() { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new ParenOpen() { Location = new Lexing.Location() }, new ParenClose() { Location = new Lexing.Location() }]);
 
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() =>
         {
@@ -750,7 +750,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparated_Missing_Forbidden()
     {
-        var s = new ParserState([new Semicolon() { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new Semicolon() { Location = new Lexing.Location() }]);
 
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() =>
         {
@@ -764,7 +764,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparatedOptional()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
 
         var expected = new SqlValueList<string>() { "a", "b", "c" };
 
@@ -776,7 +776,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparatedOptional_Missing_Allowed()
     {
-        var s = new ParserState([new Semicolon() { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new Semicolon() { Location = new Lexing.Location() }]);
 
         var actual = s.ParseParenthesizedCommaSeparatedOptional(x => x.Next().ToString() ?? "", true);
 
@@ -787,7 +787,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparatedOptional_Empty_Allowed()
     {
-        var s = new ParserState([new ParenOpen() { Location = new Lexing.Location() }, new ParenClose() { Location = new Lexing.Location() }]);
+        var s = new ParserState(Grammar.All, [new ParenOpen() { Location = new Lexing.Location() }, new ParenClose() { Location = new Lexing.Location() }]);
 
         var actual = s.ParseParenthesizedCommaSeparatedOptional(x => x.Next().ToString() ?? "", true);
 
@@ -798,7 +798,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseParenthesizedCommaSeparatedOptional_Empty_Forbidden()
     {
-        var s = new ParserState([
+        var s = new ParserState(Grammar.All, [
             new ParenOpen() { Location = new Lexing.Location() },
             new ParenClose() { Location = new Lexing.Location() }
         ]);
@@ -815,7 +815,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseInit_Condition_True()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
         var actual = s.ParseInit(s.Next() is ParenOpen, _ => "PARSED", "NOT PARSED");
         var expected = "PARSED";
 
@@ -825,7 +825,7 @@ public static class ParserStateTests
     [Fact]
     public static void ParseInit_Condition_False()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
         var actual = s.ParseInit(s.Next() is ParenClose, _ => "PARSED", "NOT PARSED");
         var expected = "NOT PARSED";
 
@@ -835,7 +835,7 @@ public static class ParserStateTests
     [Fact]
     public static void TryParse_Success()
     {
-        var state = new ParserState(TokenSet3);
+        var state = new ParserState(Grammar.All, TokenSet3);
         state.Next();
 
         var success = state.TryParse(s =>
@@ -856,7 +856,7 @@ public static class ParserStateTests
     [Fact]
     public static void TryParse_Fail_Exception()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
         s.Next();
 
         var success = s.TryParse(state =>
@@ -876,7 +876,7 @@ public static class ParserStateTests
     [Fact]
     public static void TryParse_Fail_Null()
     {
-        var s = new ParserState(TokenSet3);
+        var s = new ParserState(Grammar.All, TokenSet3);
         s.Next();
 
         var success = s.TryParse(state =>
@@ -906,7 +906,7 @@ public static class ParserStateTests
     [Fact]
     public static void ExpectedException_EnumLike()
     {
-        var s = new ParserState(TokenSet1);
+        var s = new ParserState(Grammar.All, TokenSet1);
 
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() =>
         {
@@ -919,7 +919,7 @@ public static class ParserStateTests
     [Fact]
     public static void EmptyTokenSet()
     {
-        var s = new ParserState([]);
+        var s = new ParserState(Grammar.All, []);
         var peeked = s.Peek();
 
         Assert.True(peeked is Eof);
@@ -933,12 +933,12 @@ public static class ParserStateTests
     [InlineData(ParseContext.DefaultExpression)]
     [InlineData(ParseContext.StringLiteralAsStatement)]
     [InlineData(ParseContext.BeginAtomic)]
-    [InlineData(ParseContext.NarrowSqlOnly)]
-    [InlineData(ParseContext.BeginAtomic | ParseContext.NarrowSqlOnly)]
+    [InlineData(ParseContext.PgProceduralBlock)]
+    [InlineData(ParseContext.BeginAtomic | ParseContext.PgProceduralBlock)]
     [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.BeginAtomic)]
     public static void EnterContext_RestoresNestedEnablingAndDisabling(ParseContext context)
     {
-        var state = new ParserState([]);
+        var state = new ParserState(Grammar.All, []);
         Assert.Equal(ParseContext.None, state.Context);
 
         using (state.EnterContext(context))
@@ -962,7 +962,7 @@ public static class ParserStateTests
     [Fact]
     public static void EnterContext_UpdatesOnlyRequestedFlags()
     {
-        var state = new ParserState([]);
+        var state = new ParserState(Grammar.All, []);
         const ParseContext outer = ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.BeginAtomic;
         using (state.EnterContext(outer))
         {
@@ -986,7 +986,7 @@ public static class ParserStateTests
     [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression, ParseContext.DomainCheck | ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
     public static void EnterContext_RestoresPreviousContextOnException(ParseContext initial, ParseContext inner)
     {
-        var state = new ParserState([]);
+        var state = new ParserState(Grammar.All, []);
         using (state.EnterContext(initial))
         {
             Assert.Throws<InvalidOperationException>((Action)(() =>
@@ -1003,10 +1003,45 @@ public static class ParserStateTests
         Assert.Equal(ParseContext.None, state.Context);
     }
 
+    [Theory]
+    [InlineData(Grammar.All)]
+    [InlineData(Grammar.Pg | Grammar.PgPl)]
+    [InlineData(Grammar.PgPl)]
+    public static void EnterGrammarContext_RestoresNestedGrammarOnException(Grammar initial)
+    {
+        var state = new ParserState(initial, []);
+        using (state.EnterContext(ParseContext.DomainCheck))
+        {
+            using (state.EnterGrammarContext(Grammar.Pg))
+            {
+                Assert.True(state.Pg);
+                Assert.True(state.PgAny);
+                Assert.False(state.PgPl);
+                Assert.False(state.My);
+                Assert.False(state.Ms);
+                Assert.Throws<InvalidOperationException>((Action)(() =>
+                {
+                    using (state.EnterGrammarContext(Grammar.PgPl))
+                    {
+                        Assert.True(state.PgPl);
+                        Assert.True(state.PgAny);
+                        Assert.False(state.Pg);
+                        Assert.Equal(ParseContext.DomainCheck, state.Context);
+                        throw new InvalidOperationException();
+                    }
+                }));
+                Assert.Equal(Grammar.Pg, state.Grammar);
+            }
+            Assert.Equal(initial, state.Grammar);
+            Assert.Equal(ParseContext.DomainCheck, state.Context);
+        }
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
     [Fact]
     public static void EnterStatementScope_RestoresNestedLabelsAndClearsUnlabeledChildren()
     {
-        var state = new ParserState([], sourceId: 17);
+        var state = new ParserState(Grammar.All, [], sourceId: 17);
         var outerLabel = new StatementLabel(new Identifier("outer_label"), 0, StatementLabelDialect.My, null, null, null);
         var innerLabel = new StatementLabel(new Identifier("inner_label"), 0, StatementLabelDialect.My, null, null, null);
 
@@ -1036,7 +1071,7 @@ public static class ParserStateTests
         Token[] tokens = hasInnerLabel
             ? [new Word("inner_label") { Location = new Lexing.Location() }, new Colon { Location = new Lexing.Location() }, new Word("SELECT") { Location = new Lexing.Location() }]
             : [new Word("SELECT") { Location = new Lexing.Location() }];
-        var state = new ParserState(tokens);
+        var state = new ParserState(Grammar.All, tokens);
 
         var outerToken = new Word("outer_label") { Location = new Lexing.Location() };
         var outerLabel = new StatementLabel(

@@ -121,7 +121,7 @@ public class ComponentParser(Parser parser)
 
         Token start = state.Peek();
         Expression expr = _p.ExpressionParser.ParseExpr(state);
-        if (postgres && _p.Grammar == Grammar.Pg)
+        if (postgres && state.PgAny)
         {
             Expression key = expr is Collate collate ? collate.Expression : expr;
             if (key is not (SingleIdentifier or Nested or FunctionCall or Cast { UsePostgresCastSyntax: false } or Position)

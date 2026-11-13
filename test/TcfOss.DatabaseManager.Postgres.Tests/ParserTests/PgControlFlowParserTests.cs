@@ -105,7 +105,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void ProceduralDeclarations_CoreFallbackRestoresPosition()
     {
-        ParserState state = GetState("DECLARE x INT; SELECT 1; BEGIN NULL; END");
+        var state = new ParserState(Grammar.All, GetTokens("DECLARE x INT; SELECT 1; BEGIN NULL; END"));
         var exception = Assert.Throws<ParseException.DialectRequired>(() => new Parser().Parse(state, null));
         Assert.Contains("Local variable declaration", exception.Message);
         Assert.True(state.PeekKeyword(Keyword.DECLARE));
@@ -153,6 +153,19 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         ParserState state = GetState("<<original>> BEGIN NULL; END");
         var statement = Assert.IsType<LabeledStatement.Pg>(new LabelTransformingParser().ParseStatement(state));
         Assert.Equal("transformed", statement.Label.Name);
+    }
+
+    [Theory]
+    [InlineData(Grammar.PgPl)]
+    [InlineData(Grammar.Pg | Grammar.PgPl)]
+    public void ProceduralGrammar_AllowsBlocksAndSharedPostgresSql(Grammar grammar)
+    {
+        const string sql = "<<label>> DECLARE x INT; BEGIN CREATE TYPE mood AS ENUM ('happy'); NULL; END label";
+        var state = new ParserState(grammar, GetTokens(sql));
+        var labeled = Assert.IsType<LabeledStatement.Pg>(Assert.Single(new PgParser().Parse(state, null)));
+        var block = Assert.IsType<BeginEnd>(labeled.SubStatement);
+        Assert.IsType<CreateType.Enumerated>(block.Statements[0]);
+        Assert.Equal(grammar, state.Grammar);
     }
 
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)

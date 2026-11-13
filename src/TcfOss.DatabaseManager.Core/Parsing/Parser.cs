@@ -14,7 +14,7 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class Parser : IParser
 {
-    public virtual Grammar Grammar => Grammar.My | Grammar.Ms | Grammar.Pg;
+    public virtual Grammar Grammar => Grammar.All;
 
     public virtual QuoteStyle DefaultQuoteStyle => QuoteStyle.Ansi;
 
@@ -65,7 +65,7 @@ public class Parser : IParser
 
     public virtual SqlValueList<Statement> Parse(Token[] tokens, int sourceId = 0)
     {
-        var state = new ParserState(tokens, sourceId);
+        var state = new ParserState(Grammar, tokens, sourceId);
         return Parse(state, null);
     }
 
@@ -134,7 +134,7 @@ public class Parser : IParser
 
     protected virtual StatementLabel? MaybeParseStatementLabel(ParserState state)
     {
-        if (Grammar.HasFlag(Grammar.Pg))
+        if (state.PgPl)
         {
             StatementLabel? label = MaybeParsePgStatementLabel(state);
             if (label != null)
@@ -142,7 +142,7 @@ public class Parser : IParser
                 return label;
             }
         }
-        return Grammar.HasFlag(Grammar.My) ? MaybeParseMyStatementLabel(state) : null;
+        return state.My ? MaybeParseMyStatementLabel(state) : null;
     }
 
     protected static StatementLabel? MaybeParseMyStatementLabel(ParserState state)
@@ -165,7 +165,7 @@ public class Parser : IParser
 
     protected StatementLabel? MaybeParsePgStatementLabel(ParserState state)
     {
-        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) || state.Peek() is not OperatorToken { Value: "<<" })
+        if (!state.PgPl || state.Peek() is not OperatorToken { Value: "<<" })
         {
             return null;
         }
@@ -234,7 +234,7 @@ public class Parser : IParser
             Keyword.DROP => DdlParser.ParseDropObject(state),
             Keyword.IF => ControlFlowParser.ParseIf(state),
             Keyword.DECLARE => ParseDeclare(state),
-            Keyword.NULL when Grammar.AllowsPgProcedural(state) && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
+            Keyword.NULL when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
             Keyword.SET => ParseSet(state),
             Keyword.BEGIN => ParseBegin(state),
             Keyword.RETURN => ParseReturn(state),
@@ -456,7 +456,7 @@ public class Parser : IParser
                 return ControlFlowParser.ParseBeginAtomic(state);
             }
         }
-        if (Grammar.AllowsPgProcedural(state))
+        if (state.PgPl)
         {
             return ControlFlowParser.ParsePgBeginEnd(state);
         }
@@ -482,9 +482,9 @@ public class Parser : IParser
         {
             return ControlFlowParser.ParseDeclareCursor(state);
         }
-        if (Grammar.AllowsPgProcedural(state))
+        if (state.PgPl)
         {
-            if (!Grammar.Any(Grammar.My | Grammar.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
+            if (!(state.My || state.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
             {
                 return ControlFlowParser.ParsePgBeginEnd(state);
             }

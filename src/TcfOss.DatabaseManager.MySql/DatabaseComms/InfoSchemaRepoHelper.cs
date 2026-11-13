@@ -32,7 +32,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
     private ParserState GetState(string text)
     {
-        return new ParserState([.. _lexer.Tokenize(text)]);
+        return new ParserState(_parser.Grammar, [.. _lexer.Tokenize(text)]);
     }
 
     public Expression ParseExpr(string text)
@@ -156,7 +156,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         }
 
         List<Token> tokens = _lexer.Tokenize(text);
-        var defState = new ParserState([.. tokens]);
+        var defState = new ParserState(_parser.Grammar, [.. tokens]);
 
         if (defState.TryParse(ValueParser.ParseValue, out Value? val))
         {

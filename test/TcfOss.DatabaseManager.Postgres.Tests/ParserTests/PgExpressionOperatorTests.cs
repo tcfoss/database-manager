@@ -32,7 +32,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         var parser = new Parser();
         Token[] tokens = [.. new PgLexer().Tokenize("value::INT")];
 
-        Cast cast = Assert.IsType<Cast>(parser.ExpressionParser.ParseExpr(new ParserState(tokens)));
+        Cast cast = Assert.IsType<Cast>(parser.ExpressionParser.ParseExpr(new ParserState(Grammar.Pg | Grammar.PgPl, tokens)));
         Assert.True(cast.UsePostgresCastSyntax);
     }
 
@@ -105,7 +105,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void Collations_AreAcceptedByKitchenSinkParser()
     {
         var parser = new Parser();
-        var state = new ParserState([.. new PgLexer().Tokenize("value COLLATE \"C\"")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize("value COLLATE \"C\"")]);
 
         Assert.IsType<Collate>(parser.ExpressionParser.ParseExpr(state));
     }
@@ -196,10 +196,10 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void EscapeStrings_LiteralStringConsumersReceiveDecodedText()
     {
-        var state = new ParserState([.. new PgLexer().Tokenize("E'line\\n\\u00e9'")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize("E'line\\n\\u00e9'")]);
         Assert.Equal("line\n\u00e9", ValueParser.ParseLiteralString(state));
 
-        state = new ParserState([.. new PgLexer().Tokenize("E'\\x41'")]);
+        state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize("E'\\x41'")]);
         Assert.Equal("A", ValueParser.ParseLiteralStringOptionalQuotes(state));
     }
 
@@ -207,7 +207,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void EscapeStrings_AreAcceptedByKitchenSinkLexerAndParser()
     {
         var parser = new Parser();
-        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize("E'it\\'s'")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize("E'it\\'s'")]);
 
         var expression = Assert.IsType<LiteralValue>(parser.ExpressionParser.ParseExpr(state));
         Assert.Equal("it's", Assert.IsType<Core.Common.Value.EscapeString>(expression.Value).DecodedValue);
@@ -268,10 +268,10 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void UnicodeStrings_LiteralStringConsumersReceiveDecodedText()
     {
-        var state = new ParserState([.. new PgLexer().Tokenize("U&'it''s !00e9' UESCAPE '!'")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize("U&'it''s !00e9' UESCAPE '!'")]);
         Assert.Equal("it's \u00e9", ValueParser.ParseLiteralString(state));
 
-        state = new ParserState([.. new PgLexer().Tokenize("U&'\\0041'")]);
+        state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize("U&'\\0041'")]);
         Assert.Equal("A", ValueParser.ParseLiteralStringOptionalQuotes(state));
     }
 
@@ -281,7 +281,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void UnicodeStrings_AreAcceptedByKitchenSinkLexerAndParser(string sql)
     {
         var parser = new Parser();
-        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize(sql)]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize(sql)]);
         var expression = Assert.IsType<LiteralValue>(parser.ExpressionParser.ParseExpr(state));
         Assert.Equal("data", Assert.IsType<Core.Common.Value.UnicodeString>(expression.Value).DecodedValue);
     }
@@ -319,7 +319,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     {
         var parser = new Parser();
         const string sql = "U&\"d!0061ta\" UESCAPE '!'";
-        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize(sql)]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize(sql)]);
         Expression expression = parser.ExpressionParser.ParseExpr(state);
 
         Assert.Equal("\"data\"", expression.ToSql());
@@ -518,7 +518,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void BitStrings_BinaryFormIsAcceptedByKitchenSinkLexerAndParser()
     {
         var parser = new Parser();
-        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize("B'00101'")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize("B'00101'")]);
         var expression = Assert.IsType<LiteralValue>(parser.ExpressionParser.ParseExpr(state));
 
         Assert.Equal(new Core.Common.Value.BitString("00101"), expression.Value);
@@ -561,10 +561,10 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("X'f'")]
     public void BitStrings_LiteralStringConsumersRejectThem(string sql)
     {
-        var state = new ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         Assert.ThrowsAny<ParseException>(() => ValueParser.ParseLiteralString(state));
 
-        state = new ParserState([.. new PgLexer().Tokenize(sql)]);
+        state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         Assert.ThrowsAny<ParseException>(() => ValueParser.ParseLiteralStringOptionalQuotes(state));
     }
 
@@ -576,7 +576,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("$0", 0, "$0")]
     public void PositionalParameters_ParseCanonicalizeAndPreserveSourceSpan(string sql, int expected, string canonical)
     {
-        var state = new ParserState([.. new PgLexer().Tokenize(sql)], 37);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize(sql)], 37);
         var parameter = Assert.IsType<PositionalParameter>(new PgParser().ExpressionParser.ParseExpr(state));
 
         Assert.Equal(expected, parameter.Number);
@@ -624,7 +624,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void PositionalParameters_AreAcceptedByKitchenSinkLexerAndParser()
     {
         var parser = new Parser();
-        var state = new ParserState([.. new Core.Lexing.GenericLexer().Tokenize("$1")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize("$1")]);
 
         Assert.Equal(new PositionalParameter(1), parser.ExpressionParser.ParseExpr(state));
     }
@@ -771,7 +771,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void ArrayAndRowExpressions_AreAcceptedByKitchenSinkParser()
     {
         var parser = new Parser();
-        var state = new ParserState([.. new PgLexer().Tokenize("ARRAY[ROW(value)]")]);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, [.. new PgLexer().Tokenize("ARRAY[ROW(value)]")]);
 
         Assert.IsType<ArrayConstructor.Elements>(parser.ExpressionParser.ParseExpr(state));
         Assert.True(state.PeekIs<Eof>());
@@ -862,7 +862,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void CompositeSliceBounds_PreserveIdentifierSourceSpans()
     {
         const string sql = "arr[(item).\"Lo\":bounds.hi]";
-        var state = new ParserState(GetTokens(sql), 37);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens(sql), 37);
         var array = Assert.IsType<ArraySubscript>(new PgParser().ExpressionParser.ParseExpr(state));
         var slice = Assert.IsType<ArraySubscriptDimension.Slice>(Assert.Single(array.Dimensions));
         var lower = Assert.IsType<CompositeAccess.Field>(slice.LowerBound);
@@ -1007,7 +1007,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void QualifiedOperators_PreserveSchemaSourceSpansAndKitchenSinkSupport()
     {
         const string sql = "left OPERATOR(\"app\".@>) right";
-        var state = new ParserState(GetTokens(sql), 37);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens(sql), 37);
         var expression = Assert.IsType<PgBinaryOperator>(new Parser().ExpressionParser.ParseExpr(state));
 
         Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 14, 19), expression.Operator.Schema!.Source);
@@ -1083,7 +1083,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(3u, qualified.Qualifier.Precision);
 
         const string sql = "INTERVAL '1-2' YEAR TO MONTH + next_value";
-        var state = new ParserState(GetTokens(sql), 37);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens(sql), 37);
         var addition = Assert.IsType<BinaryOperator>(new PgParser().ExpressionParser.ParseExpr(state));
         var interval = Assert.IsType<PgIntervalLiteral>(addition.Left);
         Assert.Equal(Core.BuiltIn.DateTimeUnit.Year, interval.Qualifier!.StartField);
@@ -1261,7 +1261,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     public void PostgresBindings_ClassifyQuantifiersAndAssociativity(string sql, Precedence precedence)
     {
         var manager = new PgPrecedenceManager();
-        var state = new ParserState(GetTokens(sql));
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens(sql));
         var originalToken = state.Peek();
 
         PrecedenceManager.Binding binding = manager.GetNextBinding(state);
@@ -1381,7 +1381,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(Assert.IsType<Between>(ParseExpression("a BETWEEN b AND c")).Symmetric);
         var power = Assert.IsType<PgBinaryOperator>(ParseExpression("stamp AT LOCAL ^ value"));
         Assert.IsType<AtLocal>(power.Left);
-        var state = new ParserState(GetTokens("items.stamp AT LOCAL"), 37);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens("items.stamp AT LOCAL"), 37);
         var sourced = Assert.IsType<AtLocal>(new Parser().ExpressionParser.ParseExpr(state));
         Assert.Equal(new Core.Statements.LabelAttributes.SourceRef(37, 0, 11), Assert.IsType<CompoundIdentifier>(sourced.Timestamp).Source);
         Assert.IsType<Eof>(state.Peek());
@@ -1464,7 +1464,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         var exception = Assert.ThrowsAny<ParseException>(() => ParseExpression(sql));
         Assert.Contains("      ^", new ParseException.WithText(exception, null, sql).Message);
 
-        var state = new ParserState(GetTokens("a BETWEEN NOT b AND c"));
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens("a BETWEEN NOT b AND c"));
         using ParserState.Scope scope = state.EnterContext(ParseContext.DomainCheck | ParseContext.BeginAtomic);
         ParseContext expected = state.Context;
         Assert.ThrowsAny<ParseException>(() => new PgParser().ExpressionParser.ParseExpr(state));

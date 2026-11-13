@@ -198,7 +198,7 @@ public class ReferencedItemsTests
     public void WildcardExpression_ReturnsNothing()
     {
         var tokens = new GenericLexer().Tokenize("*");
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
 
         var items = expr.GetReferencedItems(new ReferencedItemsManager
@@ -213,7 +213,7 @@ public class ReferencedItemsTests
     public void QualifiedWildcardExpression_IncludesQualifierIfBroad()
     {
         var tokens = new GenericLexer().Tokenize("mytable.*");
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
 
         var items = expr.GetReferencedItems(new ReferencedItemsManager
@@ -229,7 +229,7 @@ public class ReferencedItemsTests
     public void QualifiedWildcardExpression_ReturnsNothingIfNarrow()
     {
         var tokens = new GenericLexer().Tokenize("mytable.*");
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
 
         var items = expr.GetReferencedItems(new ReferencedItemsManager
@@ -1238,14 +1238,14 @@ public class ReferencedItemsTests
     public static Expression ParseExpression(string sql)
     {
         var tokens = new GenericLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         return new Parser().ExpressionParser.ParseExpr(state);
     }
 
     private static Select ParseSelect(string sql)
     {
         var tokens = new GenericLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         return (Select)new Parser().ParseStatement(state);
     }
 }

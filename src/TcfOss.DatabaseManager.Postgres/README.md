@@ -742,13 +742,21 @@ whether those bodies can execute on PostgreSQL.
 
 ## SQL-Body Context
 
-Unquoted SQL routine bodies enable `ParseContext.NarrowSqlOnly` for their
-statements. PostgreSQL rejects procedural blocks, statement labels, handler and
-condition declarations, and legacy procedural cursor/loop-control commands only
-while this flag is set. Core retains its broader grammar. The existing
-`BeginAtomic` flag permits the opener and is cleared before parsing its contents;
-`NarrowSqlOnly` remains active until body parsing finishes. Both flags restore
-their previous values when the scope exits, including after parse errors.
+`ParserState` owns the active grammar. Its constructor requires a grammar;
+the token-array parser entry point initializes it from `IParser.Grammar`.
+Core defaults to `Grammar.All`, and PostgreSQL defaults to `Grammar.Pg |
+Grammar.PgPl`, preserving standalone SQL and procedural parsing.
+The `My`, `Ms`, `Pg`, and `PgPl` accessors test individual flags; `PgAny`
+matches either PostgreSQL grammar, including shared SQL syntax in PL/pgSQL.
+
+Unquoted SQL routine bodies use `EnterGrammarContext` to enable `Grammar.Pg`
+and disable `Grammar.PgPl`. PostgreSQL rejects procedural blocks, statement
+labels, handler and condition declarations, and legacy procedural cursor/loop
+commands when `PgPl` is absent. Core retains any MySQL/MSSQL grammar flags.
+The existing `BeginAtomic` context flag permits the opener and is cleared
+before parsing its contents. Grammar and context scopes restore their previous
+values independently, including after parse errors. `PgProceduralBlock` remains
+a structural context for statements such as `NULL` within a block.
 
 Quoted routine bodies remain opaque; they are not automatically reparsed.
 

@@ -87,7 +87,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData(Keyword.INTERSECT)]
     public void Output_ClauseKeyword_IsNotConsumedAsAlias(Keyword keyword)
     {
-        var state = new ParserState(GetTokens($"INSERT INTO mytable OUTPUT inserted.id {keyword}"));
+        var state = new ParserState(Grammar.All, GetTokens($"INSERT INTO mytable OUTPUT inserted.id {keyword}"));
         var parser = new Parser();
 
         Assert.ThrowsAny<ParseException>(() => parser.DmlParser.ParseInsert(state, null));

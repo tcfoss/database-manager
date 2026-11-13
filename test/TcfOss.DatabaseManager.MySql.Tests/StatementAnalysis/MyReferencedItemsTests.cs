@@ -95,7 +95,7 @@ public class MyReferencedItemsTests
     private static Expression ParseExpression(string sql)
     {
         var tokens = new MyLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.My, [.. tokens]);
         return new MyParser().ExpressionParser.ParseExpr(state);
     }
 }

@@ -21,7 +21,7 @@ public class FormatComponentsTests
     [InlineData("SELECT result.value FROM LATERAL (SELECT $1 AS original) AS result (value)", "result")]
     public void FromRelations_FormatAliasColumnsAndRetainFunctionStructure(string sql, string expectedAlias)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         Select statement = Assert.IsType<Select>(new PgParser().ParseStatement(state));
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -35,7 +35,7 @@ public class FormatComponentsTests
             Assert.Contains("WITH ORDINALITY", formatted);
         }
         Assert.Contains("\"result\".\"value\"", formatted);
-        var formattedState = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var formattedState = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Select>(new PgParser().ParseStatement(formattedState));
         Assert.True(formattedState.PeekIs<Core.Lexing.Tokens.Eof>());
     }
@@ -282,7 +282,7 @@ public class FormatComponentsTests
     [InlineData("ROW(items.*, (item).*)", "ROW(items.*, (\"item\").*)")]
     public void ArrayRowAndCompositeExpressions_FormatRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -301,7 +301,7 @@ public class FormatComponentsTests
     [InlineData("OPERATOR(app.@) value", "OPERATOR(\"app\".@) \"value\"")]
     public void PostgresOperators_FormatOperandsAndSchemaNames(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -319,7 +319,7 @@ public class FormatComponentsTests
     [InlineData("INTERVAL $duration$1 day$duration$")]
     public void IntervalLiterals_FormatWithoutLosingModifiersOrLiteralSpelling(string sql)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -336,7 +336,7 @@ public class FormatComponentsTests
     [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME(ARRAY[\"items\".\"other\"])")]
     public void RemainingComparisons_FormatOperandsRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -350,7 +350,7 @@ public class FormatComponentsTests
     [InlineData("value LIKE ANY(SELECT pattern FROM items)", "\"value\" LIKE ANY( SELECT \"pattern\" FROM \"items\")")]
     public void QuantifiedSubqueries_FormatOperandsRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -387,7 +387,7 @@ public class FormatComponentsTests
     [InlineData("value NOT SIMILAR TO pattern", "\"value\" NOT SIMILAR TO \"pattern\"")]
     public void Predicates_FormatOperandsAndModifiers(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -402,7 +402,7 @@ public class FormatComponentsTests
     [InlineData("SIMILAR TO")]
     public void KitchenSinkPatterns_FormatLegacyAnyAndCharacterEscape(string op)
     {
-        var state = new Core.Parsing.ParserState([.. new Core.Lexing.GenericLexer().Tokenize($"value NOT {op} ANY(pattern) ESCAPE '!'")]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize($"value NOT {op} ANY(pattern) ESCAPE '!'")]);
         var expression = new Core.Parsing.Parser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -428,7 +428,7 @@ public class FormatComponentsTests
 
         Assert.Contains("\"app\".\"items\"", formatted);
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -451,7 +451,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -472,7 +472,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Select>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -493,7 +493,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Select>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -513,7 +513,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -533,7 +533,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedPrefix, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
         Assert.Equal(recursive, statement.Recursive);
         Assert.Equal(temporary, statement.TemporaryLabel?.ToSql());
@@ -596,7 +596,7 @@ public class FormatComponentsTests
 
         Assert.Contains("WITH CHECK OPTION", formatted.NormalizeWhitespace());
         Assert.DoesNotContain("WITH CASCADED CHECK OPTION", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
         Assert.IsType<Core.Statements.Components.ViewCheckOption.Unspecified>(statement.ViewCheckOption);
         Assert.Equal("WITH CHECK OPTION", statement.ViewCheckOption.ToSql());
@@ -618,7 +618,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
         Assert.NotEmpty(statement.PgOptions!);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -641,11 +641,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateMaterializedView>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
+        Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -664,11 +664,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<RefreshMaterializedView>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -683,7 +683,7 @@ public class FormatComponentsTests
         Assert.Contains("REFRESH MATERIALIZED VIEW \"app\".\"summary\" WITH NO DATA", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<RefreshMaterializedView>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -704,12 +704,12 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<DropObject>(new PgParser().ParseStatement(state));
         Assert.Equal(DroppableObject.MaterializedView, statement.ObjectType);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -724,7 +724,7 @@ public class FormatComponentsTests
         Assert.Contains("DROP MATERIALIZED VIEW \"app\".\"summary\", \"app\".\"other\" CASCADE", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<DropObject>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -776,11 +776,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<AlterMaterializedView>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -807,7 +807,7 @@ public class FormatComponentsTests
         Assert.Contains($"ALTER MATERIALIZED VIEW \"app\".\"summary\" {expectedClause}", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<AlterMaterializedView>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -825,11 +825,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 }

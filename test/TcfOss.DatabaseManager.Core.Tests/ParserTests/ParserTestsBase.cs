@@ -16,7 +16,7 @@ namespace TcfOss.DatabaseManager.Core.Tests.ParserTests;
 
 public class ParserTestsBase<TLexer, TParser>
     where TLexer : ILexer, new()
-    where TParser : Parser, new()
+    where TParser : IParser, new()
 {
     protected static Token[] GetTokens(string sql)
     {
@@ -27,7 +27,7 @@ public class ParserTestsBase<TLexer, TParser>
     protected static ParserState GetState(string sql, int sourceId = 0)
     {
         var tokens = new TLexer().Tokenize(sql);
-        return new ParserState([.. tokens], sourceId);
+        return new ParserState(new TParser().Grammar, [.. tokens], sourceId);
     }
 
     protected static SqlValueList<Statement> ParseStatements(ParserState state)

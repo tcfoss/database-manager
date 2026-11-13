@@ -75,11 +75,21 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 
+    [Theory]
+    [InlineData(Grammar.Pg)]
+    [InlineData(Grammar.PgPl)]
+    [InlineData(Grammar.Pg | Grammar.PgPl)]
+    public void IndexExpressions_RejectUnparenthesizedArithmeticInAnyPostgresGrammar(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("CREATE INDEX items_idx ON items (id + 1)"));
+        Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+    }
+
     [Fact]
     public void ExpandedIndexes_DirectDdlParserRejectsReplacement()
     {
         var parser = new PgParser();
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize("INDEX items_idx ON items (id)")]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize("INDEX items_idx ON items (id)")]);
 
         var exception = Assert.ThrowsAny<ParseException>(() => parser.DdlParser.ParseCreateIndex(state,
             Core.Statements.LabelAttributes.CreateOrLabel.OrReplace));

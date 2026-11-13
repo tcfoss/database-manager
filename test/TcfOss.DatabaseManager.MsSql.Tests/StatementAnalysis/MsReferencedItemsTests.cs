@@ -397,7 +397,7 @@ public class MsReferencedItemsTests
     private static Statement ParseStatement(string sql)
     {
         var tokens = new MsLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.Ms, [.. tokens]);
         return new MsParser().ParseStatement(state);
     }
 

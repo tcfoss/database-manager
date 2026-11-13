@@ -35,7 +35,7 @@ public class ControlFlowParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() =>
-            parser.ControlFlowParser.ParseDeclareConditionHandler(new ParserState(GetTokens(sql))));
+            parser.ControlFlowParser.ParseDeclareConditionHandler(new ParserState(Grammar.All, GetTokens(sql))));
 
         Assert.Contains("CONTINUE", exception.Message);
         Assert.Contains("EXIT", exception.Message);

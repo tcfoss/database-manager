@@ -754,7 +754,7 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [Fact]
     public void ReferentialAction_Unknown_Throws()
     {
-        var state = new ParserState(GetTokens("DOUNKNOWNTHING"));
+        var state = new ParserState(Grammar.All, GetTokens("DOUNKNOWNTHING"));
 
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => TableParser.ParseReferentialAction(state));
         var expectedTemplate = "Expected one of {{ {0} }}. Found {1}.";
@@ -776,6 +776,8 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData(Grammar.Ms, "FILLFACTOR = 70", "FillFactor")]
     [InlineData(Grammar.Pg, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.PgPl, "FILLFACTOR = 70", "FillFactor")]
+    [InlineData(Grammar.Pg | Grammar.PgPl, "deduplicate_items = OFF", "PgDeduplicateItems")]
     [InlineData(Grammar.Ms | Grammar.Pg, "FILLFACTOR = 70", "FillFactor")]
     [InlineData(Grammar.Ms, "PAD_INDEX = ON", "PadIndex")]
     [InlineData(Grammar.Ms, "IGNORE_DUP_KEY = OFF", "IgnoreDupKey")]
@@ -789,8 +791,8 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData((Grammar)0, "FILLFACTOR = 70", null)]
     public void IndexOptions_RespectGrammarWithoutConsumingUnsupportedOptions(Grammar grammar, string sql, string? expectedType)
     {
-        var parser = new GrammarParser(grammar);
-        ParserState state = GetState(sql);
+        var parser = new Parser();
+        var state = new ParserState(grammar, GetTokens(sql));
         var start = state.Peek();
 
         StatementIndexOption? option = parser.TableParser.ParseNextIndexOption(state);
@@ -816,8 +818,4 @@ public class TableParserTests : ParserTestsBase<GenericLexer, Parser>
             $"CREATE TABLE items (id INT, {constraint} (id) USING 123)"));
     }
 
-    private sealed class GrammarParser(Grammar grammar) : Parser
-    {
-        public override Grammar Grammar => grammar;
-    }
 }

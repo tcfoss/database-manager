@@ -103,7 +103,7 @@ public class NormalizerTests
     {
         var lexer = new GenericLexer();
         var parser = new Parser();
-        var parserState = new ParserState([.. lexer.Tokenize(sqlText)]);
+        var parserState = new ParserState(Grammar.All, [.. lexer.Tokenize(sqlText)]);
 
         var identifier = parser.ComponentParser.ParseIdentifier(parserState);
 
@@ -717,7 +717,7 @@ public class NormalizerTests
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var parser = new Parser();
-        var expression = parser.ExpressionParser.ParseExpr(new ParserState([.. new GenericLexer().Tokenize(sqlText)]));
+        var expression = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(sqlText)]));
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
         var normalized = flatten ? normalizer.NormalizeExpression(expression) : normalizer.NormalizeExpressionNoFlatten(expression);
         return normalized.ToSql();
@@ -893,7 +893,7 @@ public class NormalizerTests
         const string sql = "SELECT d.book_id FROM ((SELECT book_id FROM book UNION SELECT book_id FROM book_author) INTERSECT SELECT book_id FROM book) AS d";
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
-        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(sql)])));
 
         Select normalized = normalizer.NormalizeSelect(query, flatten: flatten);
 
@@ -1043,7 +1043,7 @@ public class NormalizerTests
     public void ExpressionCollations_FollowRequestedFlattening(bool flatten)
     {
         var parser = new Parser();
-        var state = new ParserState([.. new GenericLexer().Tokenize("(full_title || description) COLLATE app.locale")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("(full_title || description) COLLATE app.locale")]);
         Expression expression = parser.ExpressionParser.ParseExpr(state);
         var normalizationSettings = new Core.Configuration.Parsing.NormalizationSettings
         {
@@ -1079,7 +1079,7 @@ public class NormalizerTests
     public void PositionalParameters_NormalizationPreservesParametersAndRespectsFlattening(bool flatten, string expected)
     {
         var parser = new Parser();
-        var state = new ParserState([.. new GenericLexer().Tokenize("($001 + $2)")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("($001 + $2)")]);
         Expression expression = parser.ExpressionParser.ParseExpr(state);
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
@@ -1136,7 +1136,7 @@ public class NormalizerTests
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         var normalizer = new Normalizer(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
-        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(sql)])));
         Expression[] expressions = [new Subquery(query), new Exists(query, false), new ArrayConstructor.Subquery(query)];
         foreach (Expression expression in expressions)
         {
@@ -1156,7 +1156,7 @@ public class NormalizerTests
         const string sql = "SELECT (1 + 2) AS id FROM (items LEFT JOIN other ON items.id = other.id) RIGHT JOIN last ON items.id = last.id";
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
         Normalizer normalizer = new(config, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider()));
-        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState([.. new GenericLexer().Tokenize(sql)])));
+        var query = Assert.IsType<Select>(new Parser().ParseStatement(new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(sql)])));
 
         Select normalized = normalizer.NormalizeSelect(query, flatten: flatten);
 

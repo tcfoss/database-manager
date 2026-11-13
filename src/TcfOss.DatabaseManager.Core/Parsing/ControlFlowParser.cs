@@ -63,7 +63,7 @@ public class ControlFlowParser
         }
 
         state.ExpectKeyword(Keyword.BEGIN);
-        bool strictTerminator = hasDeclare || !_p.Grammar.Any(Grammar.My | Grammar.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg;
+        bool strictTerminator = hasDeclare || !(state.My || state.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg;
         var blockEnd = new EndSubstatements
         {
             RequireTerminatorBeforeEnd = strictTerminator,

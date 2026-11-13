@@ -41,6 +41,11 @@ use corresponding folders where they need dialect-specific implementations.
 - `Parsing/` converts tokens into the statement and expression AST. `Parser.cs`
 	orchestrates sub-parsers such as `DdlParser`, `SelectParser`, and `TableParser`.
 	They share a `ParserState` token stream for look-ahead and backtracking.
+	`ParserState` also owns the active grammar, supplied explicitly at construction.
+	Use its `My`, `Ms`, `Pg`, `PgPl`, and `PgAny` accessors for dialect gates;
+	`PgAny` includes shared PostgreSQL SQL syntax in either SQL or PL/pgSQL.
+	`EnterGrammarContext` temporarily replaces the active grammar and restores it
+	on disposal.
 
 ### Parsed statements and expressions
 

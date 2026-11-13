@@ -468,7 +468,7 @@ public class DdlParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() =>
-            parser.DdlParser.ParseCreateProcedure(new ParserState(GetTokens("FUNCTION myfunc () RETURNS INT RETURN 1"))));
+            parser.DdlParser.ParseCreateProcedure(new ParserState(Grammar.All, GetTokens("FUNCTION myfunc () RETURNS INT RETURN 1"))));
 
         Assert.Contains("PROCEDURE", exception.Message);
         Assert.Contains("PROC", exception.Message);

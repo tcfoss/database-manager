@@ -9,6 +9,5 @@ public enum ParseContext
     StringLiteralAsStatement = 1 << 2,
     BeginAtomic = 1 << 3,
     BetweenBound = 1 << 4,
-    NarrowSqlOnly = 1 << 5,
     PgProceduralBlock = 1 << 6
 }

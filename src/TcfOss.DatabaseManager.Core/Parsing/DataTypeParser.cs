@@ -265,7 +265,7 @@ public class DataTypeParser(Parser parser)
 
     public virtual DataTypeReference ParseRoutineDataTypeReference(ParserState state, bool allowPgTypeOf = true)
     {
-        if (parser.Grammar.HasFlag(Grammar.Pg))
+        if (state.PgAny)
         {
             if (allowPgTypeOf && IsPgTypeOfReferenceAhead(state))
             {
