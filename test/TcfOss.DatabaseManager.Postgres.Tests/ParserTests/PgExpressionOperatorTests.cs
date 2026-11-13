@@ -1148,10 +1148,14 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("value = ANY(ARRAY[1, 2])")]
+    [InlineData("5 = ANY(ARRAY[1] || ARRAY[5])")]
+    [InlineData("5 = ANY((SELECT ARRAY[1]) || ARRAY[5])")]
     [InlineData("value <> ALL(ARRAY[1, 2])")]
     [InlineData("value >= SOME(ARRAY[1, 2])")]
     [InlineData("value = ANY(SELECT other FROM items)")]
     [InlineData("value < ALL(WITH c AS (SELECT other FROM items) SELECT other FROM c)")]
+    [InlineData("value = ANY((SELECT 1) UNION SELECT 2)")]
+    [InlineData("value = ANY((WITH c AS (SELECT 1) SELECT 1 FROM c))")]
     [InlineData("value > ANY(ARRAY[]) AND active")]
     public void QuantifiedComparisons_ParseArraysAndQueriesWithOuterBoundaries(string sql)
     {
@@ -1162,6 +1166,45 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
         Expression[] expressions = [expression];
         Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Theory]
+    [InlineData("value = ANY((SELECT 1) INTERSECT SELECT 2)")]
+    [InlineData("value = ANY((SELECT 1) EXCEPT SELECT 2)")]
+    [InlineData("value = ANY((SELECT 1) ORDER BY 1)")]
+    [InlineData("value = ANY((SELECT 1) LIMIT 1)")]
+    [InlineData("value = ANY((SELECT 1) OFFSET 1)")]
+    [InlineData("value = ANY((SELECT 1) FETCH FIRST 1 ROWS ONLY)")]
+    [InlineData("value = ANY((SELECT id FROM items) FOR UPDATE)")]
+    public void QuantifiedComparisons_ParseParenthesizedQueryContinuations(string sql)
+    {
+        var expression = Assert.IsType<QuantifiedBinaryOperator>(ParseExpression(sql));
+
+        Assert.IsType<Subquery>(expression.Right);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("(WITH c AS (SELECT 1) SELECT 1 FROM c)")]
+    [InlineData("(VALUES (1))")]
+    [InlineData("((SELECT 1) UNION SELECT 2)")]
+    [InlineData("((WITH c AS (SELECT 1) SELECT 1 FROM c))")]
+    [InlineData("((SELECT 1) + 2)")]
+    public void ParenthesizedExpressions_ParseQueriesAndScalarExpressions(string sql)
+    {
+        Expression expression = ParseExpression(sql);
+
+        Assert.Equal(sql, expression.ToSql());
+        Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("value = ANY((SELECT 1")]
+    [InlineData("value = ANY((SELECT fn(1)")]
+    public void ParenthesizedSubqueries_RejectUnexpectedEnd(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseExpression(sql));
     }
 
     [Theory]

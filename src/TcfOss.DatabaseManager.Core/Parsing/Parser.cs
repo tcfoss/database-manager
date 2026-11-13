@@ -30,7 +30,6 @@ public class Parser : IParser
 
     public PrecedenceManager PrecedenceManager { get; protected init; }
     public virtual bool SupportsPostgresCastSyntax => true;
-    public virtual bool SupportsPostgresRegexOperators => true;
     public virtual bool SupportsPostgresIdentitySyntax => true;
     public virtual bool SupportsPostgresColumnCollationSyntax => true;
     public virtual bool SupportsPostgresColumnAlterSyntax => true;

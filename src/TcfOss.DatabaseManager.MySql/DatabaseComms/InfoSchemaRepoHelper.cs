@@ -37,7 +37,18 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
     public Expression ParseExpr(string text)
     {
-        return _parser.ExpressionParser.ParseExpr(GetState(text));
+        ParserState state = GetState(text);
+        Expression expr = _parser.ExpressionParser.ParseExpr(state);
+        GuardIncompleteExpression(state, text);
+        return expr;
+    }
+
+    private void GuardIncompleteExpression(ParserState state, string text)
+    {
+        if (state.Peek() is not Eof)
+        {
+            throw new InvalidOperationException($"Incomplete expression. Parser class: {_parser.GetType().Name}. Body: {text}");
+        }
     }
 
     public Account ParseAccount(string text)
@@ -157,20 +168,19 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
         List<Token> tokens = _lexer.Tokenize(text);
         var defState = new ParserState(_parser.Grammar, [.. tokens]);
+        Expression defaultExpression = _parser.ExpressionParser.ParseExpr(defState);
+        GuardIncompleteExpression(defState, text);
 
-        if (defState.TryParse(ValueParser.ParseValue, out Value? val))
+        if (defaultExpression is LiteralValue literalValue)
         {
+            Value val = literalValue.Value;
             if (val is Value.HexString hexString)
             {
                 return new ColumnOption.ColumnDefault.DefaultValue(hexString with { Value = hexString.Value.ToUpperInvariant() });
             }
             return new ColumnOption.ColumnDefault.DefaultValue(val);
         }
-
-        Expression defaultExpression = _parser.ExpressionParser.ParseExpr(defState);
-
         return new ColumnOption.ColumnDefault.DefaultExpression(defaultExpression);
-
     }
 
     public ColumnOption.Generated? ParseGenerated(string? text, string columnExtra, bool removeSlashesBeforeQuotes)
@@ -217,6 +227,10 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         ParserState updateState = GetState(text);
         updateState.ExpectKeywordsAll(Keyword.ON, Keyword.UPDATE);
         Expression onUpdateExpr = _parser.ExpressionParser.ParseExpr(updateState);
+        if (updateState.Peek() is not Eof)
+        {
+            throw updateState.ExpectedException("end of expression");
+        }
         return new ColumnOption.OnUpdate(onUpdateExpr);
     }
 

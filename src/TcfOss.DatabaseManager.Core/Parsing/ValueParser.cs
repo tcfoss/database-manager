@@ -34,6 +34,24 @@ public class ValueParser
         };
     }
 
+    public static bool IsNextLiteralValue(ParserState state)
+    {
+        Token token = state.Peek();
+        return token switch
+        {
+            Word w => w.Keyword is Keyword.TRUE or Keyword.FALSE or Keyword.NULL,
+            NumericLiteral => true,
+            StringLiteral => true,
+            EscapeStringLiteral => true,
+            UnicodeStringLiteral => true,
+            DollarQuotedStringLiteral => true,
+            NationalStringLiteral => true,
+            HexStringLiteral => true,
+            BitStringLiteral => true,
+            _ => false
+        };
+    }
+
     public static string ParseLiteralString(ParserState state)
     {
         Token token = state.Next();

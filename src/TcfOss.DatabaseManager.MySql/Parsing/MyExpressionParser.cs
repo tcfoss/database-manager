@@ -82,9 +82,9 @@ public class MyExpressionParser(MyParser parser)
         return new MatchAgainst(columns, matchValue, modifier);
     }
 
-    protected override Expression ParseQuantifiedOperand(ParserState state, short precedence)
+    protected override Core.Expressions.Components.FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
     {
-        return ParseLegacyQuantifiedOperand(state, precedence);
+        return null;
     }
 
     protected override bool SupportsQuantifiedOperator(BinaryOperatorOp op)
@@ -92,13 +92,8 @@ public class MyExpressionParser(MyParser parser)
         return IsComparisonOperator(op);
     }
 
-    protected override BinaryOperatorOp? GetBinaryOperator(Token token)
+    protected override BinaryOperatorOp? GetBinaryOperator(ParserState state, Token token)
     {
-        return token is DoublePipe ? BinaryOperatorOp.Or : base.GetBinaryOperator(token);
-    }
-
-    protected override Core.Expressions.Components.FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
-    {
-        return null;
+        return token is DoublePipe ? BinaryOperatorOp.Or : base.GetBinaryOperator(state, token);
     }
 }

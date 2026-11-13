@@ -356,7 +356,8 @@ public class SelectParser
         }
         else if (state.ConsumeTokenIs<ParenOpen>())
         {
-            Select subquery = ParseSelect(state, null);
+            CommonTableExpression? cte = state.PeekKeyword(Keyword.WITH) ? ParseCommonTableExpression(state) : null;
+            Select subquery = ParseSelect(state, cte);
             body = new SelectBody.Nested(subquery);
 
             state.ExpectRightParen();

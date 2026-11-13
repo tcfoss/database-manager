@@ -21,18 +21,13 @@ public class MsExpressionParser(MsParser parser) : ExpressionParser(parser)
         return null;
     }
 
-    protected override Expression ParseQuantifiedOperand(ParserState state, short precedence)
+    protected override Core.Expressions.Components.FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
     {
-        return ParseLegacyQuantifiedOperand(state, precedence);
+        return null;
     }
 
     protected override bool SupportsQuantifiedOperator(Core.BuiltIn.BinaryOperator op)
     {
         return IsComparisonOperator(op);
-    }
-
-    protected override Core.Expressions.Components.FunctionArgument? ParseOptionalVariadicArgument(ParserState state)
-    {
-        return null;
     }
 }

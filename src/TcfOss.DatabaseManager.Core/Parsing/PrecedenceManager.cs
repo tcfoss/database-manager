@@ -75,6 +75,10 @@ public class PrecedenceManager
                 return default;
             }
         }
+        if (state.Context.HasFlag(ParseContext.DefaultExpression) && state.PeekKeyword(Keyword.COLLATE))
+        {
+            return default;
+        }
 
         Precedence? precedence = GetOperatorPrecedence(state);
         return precedence == null ? default : GetBinding(precedence.Value);

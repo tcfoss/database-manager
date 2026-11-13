@@ -387,7 +387,6 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         var parser = new Parser();
         Assert.True(parser.SupportsPostgresCastSyntax);
-        Assert.True(parser.SupportsPostgresRegexOperators);
     }
 
     [Theory]

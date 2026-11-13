@@ -18,6 +18,18 @@ public class InfoSchemaRepoHelperTests
     private readonly MyLexer _lexer = new();
     private readonly MyParser _parser = new();
 
+    [Fact]
+    public void ExpressionParsing_RejectsTrailingTokens()
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        Assert.Throws<InvalidOperationException>(() => repoHelper.ParseExpr("value unexpected"));
+        Assert.Throws<InvalidOperationException>(() => repoHelper.ParseColumnDefault("1 unexpected", false));
+        Assert.Throws<ParseException.ExpectedButFound>(() => repoHelper.ParseOnUpdate("ON UPDATE value unexpected"));
+        var expression = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(repoHelper.ParseColumnDefault("1 + 2", false));
+        Assert.Equal("1 + 2", expression.Expression.ToSql());
+    }
+
     [Theory]
     [InlineData("'myname'@'myhost'", QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks, "myname", "myhost")]
     [InlineData("'myname'", QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks, "myname", null)]

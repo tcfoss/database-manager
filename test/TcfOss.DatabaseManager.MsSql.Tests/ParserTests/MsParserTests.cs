@@ -290,7 +290,6 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var parser = new MsParser();
         Assert.False(parser.SupportsPostgresCastSyntax);
-        Assert.False(parser.SupportsPostgresRegexOperators);
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
     }
@@ -416,13 +415,22 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("ANY")]
     [InlineData("ALL")]
     [InlineData("SOME")]
-    public void QuantifiedComparisons_ParseScalarOperands(string quantifier)
+    public void QuantifiedComparisons_RejectScalarOperands(string quantifier)
     {
-        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a = {quantifier}(1)"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression($"a = {quantifier}(1)"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression($"a = {quantifier}((1))"));
+    }
 
-        Assert.Equal(Core.BuiltIn.BinaryOperator.Equal, expression.Operator);
-        Assert.Equal(quantifier, expression.Quantifier.ToString());
-        Assert.IsType<Core.Expressions.LiteralValue>(expression.Right);
+    [Theory]
+    [InlineData("a = ANY((SELECT 1))")]
+    [InlineData("a = ANY(((SELECT 1)))")]
+    [InlineData("a = ANY((SELECT 1) UNION SELECT 2)")]
+    public void QuantifiedComparisons_ParseNestedQueries(string sql)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression(sql));
+
+        Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(sql, expression.ToSql());
         Assert.Equal(expression, ParseExpression(expression.ToSql()));
     }
 

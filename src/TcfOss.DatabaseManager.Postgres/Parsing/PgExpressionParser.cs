@@ -12,16 +12,6 @@ public class PgExpressionParser(PgParser parser) : ExpressionParser(parser)
     protected override bool UsesRestrictedBetweenBounds => true;
     protected override bool SupportsLegacyPatternAny => false;
 
-    protected override bool IsGenericOperatorToken(Token token)
-    {
-        return token is Caret || base.IsGenericOperatorToken(token);
-    }
-
-    protected override BinaryOperator? GetBinaryOperator(Token token)
-    {
-        return token is Caret ? null : base.GetBinaryOperator(token);
-    }
-
     protected override PatternEscape ParsePatternEscape(ParserState state)
     {
         return new PatternEscape.Expression(ParseSubExpression(state, _pm.GetPrecedence(Precedence.Escape)));
@@ -30,5 +20,15 @@ public class PgExpressionParser(PgParser parser) : ExpressionParser(parser)
     protected override Core.Expressions.Attributes.FunctionArgumentOperator? PeekOptionalFunctionArgumentOperator(ParserState state)
     {
         return state.PeekNth(1) is Equal ? null : base.PeekOptionalFunctionArgumentOperator(state);
+    }
+
+    protected override bool IsGenericOperatorToken(Token token)
+    {
+        return token is Caret || base.IsGenericOperatorToken(token);
+    }
+
+    protected override BinaryOperator? GetBinaryOperator(ParserState state, Token token)
+    {
+        return token is Caret ? null : base.GetBinaryOperator(state, token);
     }
 }

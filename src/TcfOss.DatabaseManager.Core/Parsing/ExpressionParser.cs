@@ -56,10 +56,6 @@ public class ExpressionParser
 
         while (true)
         {
-            if (state.Context.HasFlag(ParseContext.DefaultExpression) && state.PeekKeyword(Keyword.COLLATE))
-            {
-                break;
-            }
             PrecedenceManager.Binding nextBinding = _pm.GetNextBinding(state);
             short nextPrecedence = nextBinding.Precedence;
             if (precedence >= nextPrecedence)
@@ -79,10 +75,6 @@ public class ExpressionParser
 
     protected virtual Expression ParsePrefix(ParserState state)
     {
-        if (state.Context.HasFlag(ParseContext.BetweenBound) && state.PeekKeyword(Keyword.NOT))
-        {
-            throw state.ExpectedException("expression");
-        }
         if (!state.PeekKeyword(Keyword.INTERVAL) && _p.DataTypeParser.IsDataTypeStart(state.Peek())
             && state.TryParse((s) =>
         {
@@ -129,6 +121,7 @@ public class ExpressionParser
                 or UnicodeStringLiteral
                 or BitStringLiteral
                 or DollarQuotedStringLiteral
+                or HexStringLiteral
                 or NationalStringLiteral => ParseValueExpr(state),
             Word => ParseMultipart(state),
             ParenOpen => ParseParenOpen(state),
@@ -171,7 +164,7 @@ public class ExpressionParser
             };
         }
 
-        BinaryOperatorOp? op = GetBinaryOperator(token);
+        BinaryOperatorOp? op = GetBinaryOperator(state, token);
         if (op != null)
         {
             return ParseInfixBinaryOperator(state, token, op, left, precedence);
@@ -195,12 +188,12 @@ public class ExpressionParser
         Keyword qualifierKeyword = state.ParseKeywordsAny(Keyword.ANY, Keyword.ALL, Keyword.SOME);
         if (qualifierKeyword != Keyword.undefined)
         {
-            Expression right = ParseQuantifiedOperand(state, precedence);
-
             if (!SupportsQuantifiedOperator(op))
             {
                 throw ParserState.ExpectedCategoryException("comparison_operator", token);
             }
+
+            Expression right = ParseQuantifiedOperand(state);
 
             // ReSharper disable once SwitchExpressionHandlesSomeKnownEnumValuesWithExceptionInDefault
             return qualifierKeyword switch
@@ -213,41 +206,6 @@ public class ExpressionParser
         }
 
         return new BinaryOperatorExp(left, op, ParseSubExpression(state, precedence));
-    }
-
-    protected virtual bool SupportsQuantifiedOperator(BinaryOperatorOp op)
-    {
-        return op != BinaryOperatorOp.And && op != BinaryOperatorOp.Or && op != BinaryOperatorOp.Xor;
-    }
-
-    protected static bool IsComparisonOperator(BinaryOperatorOp op)
-    {
-        return op == BinaryOperatorOp.GreaterThan || op == BinaryOperatorOp.GreaterThanOrEqual
-            || op == BinaryOperatorOp.LessThan || op == BinaryOperatorOp.LessThanOrEqual
-            || op == BinaryOperatorOp.Equal || op == BinaryOperatorOp.NotEqual;
-    }
-
-    protected virtual bool IsGenericOperatorToken(Token token)
-    {
-        return token is OperatorToken or Word { Keyword: Keyword.OPERATOR };
-    }
-
-    protected virtual Expression ParseQuantifiedOperand(ParserState state, short precedence)
-    {
-        return ParseCompleteQuantifiedOperand(state);
-    }
-
-    protected Expression ParseLegacyQuantifiedOperand(ParserState state, short precedence)
-    {
-        state.ExpectLeftParen();
-        if (PeekSubquery(state))
-        {
-            state.Rewind();
-            return ParseSubExpression(state, precedence);
-        }
-        Expression right = ParseSubExpression(state, precedence);
-        state.ExpectRightParen();
-        return right;
     }
 
     private PgUnaryOperator ParsePostgresUnaryOperator(ParserState state)
@@ -271,26 +229,29 @@ public class ExpressionParser
             Keyword.SOME => AggregateQuantifier.Some,
             _ => null
         };
-        Expression right = quantifier != null ? ParseCompleteQuantifiedOperand(state) : ParseSubExpression(state, precedence);
+        Expression right = quantifier != null ? ParseQuantifiedOperand(state) : ParseSubExpression(state, precedence);
         return new PgBinaryOperator(left, reference, right) { Quantifier = quantifier };
     }
 
-    private Expression ParseCompleteQuantifiedOperand(ParserState state)
+    private Expression ParseQuantifiedOperand(ParserState state)
     {
-        if (UsesRestrictedBetweenBounds && state.Context.HasFlag(ParseContext.BetweenBound))
+        if (state.PgAny && state.Context.HasFlag(ParseContext.BetweenBound))
         {
             throw state.ExpectedException("restricted expression");
         }
         state.ExpectLeftParen();
         Expression right;
-        if (PeekSubquery(state) || state.PeekKeyword(Keyword.WITH) || state.PeekKeyword(Keyword.VALUES))
+        if (PeekSubquery(state))
         {
-            CommonTableExpression? cte = state.PeekKeyword(Keyword.WITH) ? _p.SelectParser.ParseCommonTableExpression(state) : null;
-            right = new Subquery(_p.SelectParser.ParseSelect(state, cte));
+            right = new Subquery(ParseSubquerySelect(state));
+        }
+        else if (state.PgAny)
+        {
+            right = ParseExpr(state);
         }
         else
         {
-            right = ParseExpr(state);
+            throw state.ExpectedCategoryException("subquery");
         }
         state.ExpectRightParen();
         return right;
@@ -314,7 +275,7 @@ public class ExpressionParser
             }
         }
         Token token = state.Next();
-        if (!IsGenericOperatorToken(token) && GetBinaryOperator(token) == null)
+        if (!IsGenericOperatorToken(token) && GetBinaryOperator(state, token) == null)
         {
             throw ParserState.ExpectedException("operator name", token);
         }
@@ -408,11 +369,43 @@ public class ExpressionParser
 
     private static bool PeekSubquery(ParserState state)
     {
-        if (state.ParseKeywordsAny(Keyword.SELECT, Keyword.WITH) == Keyword.undefined)
+        int offset = 0;
+        while (state.PeekNth(offset) is ParenOpen)
+        {
+            offset++;
+        }
+        if (state.PeekNth(offset) is not Word { Keyword: Keyword.SELECT or Keyword.WITH or Keyword.VALUES })
         {
             return false;
         }
-        state.Rewind();
+        if (offset == 0)
+        {
+            return true;
+        }
+
+        int parenthesisDepth = offset;
+        int depth = parenthesisDepth;
+        while (depth > 0)
+        {
+            switch (state.PeekNth(++offset))
+            {
+                case Eof:
+                    return false;
+                case ParenOpen:
+                    depth++;
+                    break;
+                case ParenClose:
+                    depth--;
+                    // A parenthesized scalar subquery followed by an expression operator is not a query body.
+                    if (depth < parenthesisDepth && state.PeekNth(offset + 1) is not (ParenClose
+                        or Word { Keyword: Keyword.UNION or Keyword.INTERSECT or Keyword.EXCEPT
+                            or Keyword.ORDER or Keyword.LIMIT or Keyword.OFFSET or Keyword.FETCH or Keyword.FOR }))
+                    {
+                        return false;
+                    }
+                    break;
+            }
+        }
         return true;
     }
 
@@ -880,6 +873,10 @@ public class ExpressionParser
 
     private Expression ParseNot(ParserState state)
     {
+        if (state.Context.HasFlag(ParseContext.BetweenBound))
+        {
+            throw state.ExpectedCategoryException("expression");
+        }
         state.ExpectKeyword(Keyword.NOT);
 
         if (state.Peek() is Word { Keyword: Keyword.EXISTS })
@@ -966,7 +963,7 @@ public class ExpressionParser
                 {
                     throw state.ExpectedException("pattern expression");
                 }
-                return (ParseCompleteQuantifiedOperand(state), null, false, quantifier);
+                return (ParseQuantifiedOperand(state), null, false, quantifier);
             }
             Expression postgresPattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
             PatternEscape? escape = null;
@@ -1073,10 +1070,9 @@ public class ExpressionParser
 
         Expression expr;
 
-        Expression? subquery = TryParseExpressionSubquery(state);
-        if (subquery != null)
+        if (PeekSubquery(state))
         {
-            expr = subquery;
+            expr = new Subquery(ParseSubquerySelect(state));
         }
         // TODO TryParseLambda
         else
@@ -1122,15 +1118,10 @@ public class ExpressionParser
         throw state.ExpectedException("[NOT] NULL", "[NOT] TRUE", "[NOT] FALSE", "[NOT] DISTINCT FROM");
     }
 
-    private Subquery? TryParseExpressionSubquery(ParserState state)
+    private Select ParseSubquerySelect(ParserState state)
     {
-        Token next = state.Peek();
-        if (next is Word { Keyword: Keyword.SELECT })
-        {
-            return new Subquery(_p.SelectParser.ParseSelect(state, null));
-        }
-        // TODO: Consider parsing CTE query here?
-        return null;
+        CommonTableExpression? cte = state.PeekKeyword(Keyword.WITH) ? _p.SelectParser.ParseCommonTableExpression(state) : null;
+        return _p.SelectParser.ParseSelect(state, cte);
     }
 
 
@@ -1143,12 +1134,7 @@ public class ExpressionParser
         }
 
         state.ExpectLeftParen();
-        CommonTableExpression? cte = null;
-        if (state.PeekKeyword(Keyword.WITH))
-        {
-            cte = _p.SelectParser.ParseCommonTableExpression(state);
-        }
-        Select query = _p.SelectParser.ParseSelect(state, cte);
+        Select query = ParseSubquerySelect(state);
         state.ExpectRightParen();
         return new ArrayConstructor.Subquery(query);
     }
@@ -1289,14 +1275,25 @@ public class ExpressionParser
         return new DomainValue();
     }
 
-    protected virtual BinaryOperatorOp? GetBinaryOperator(Token token)
+    protected virtual bool SupportsQuantifiedOperator(BinaryOperatorOp op)
     {
-        if (token is Tilde or TildeAsterisk or NotTilde or NotTildeAsterisk
-            && !_p.SupportsPostgresRegexOperators)
-        {
-            return null;
-        }
+        return op.Kind is not (BinaryOperatorOp.ValueKind.And or BinaryOperatorOp.ValueKind.Or or BinaryOperatorOp.ValueKind.Xor);
+    }
 
+    protected static bool IsComparisonOperator(BinaryOperatorOp op)
+    {
+        return op.Kind is BinaryOperatorOp.ValueKind.GreaterThan or BinaryOperatorOp.ValueKind.GreaterThanOrEqual
+                or BinaryOperatorOp.ValueKind.LessThan or BinaryOperatorOp.ValueKind.LessThanOrEqual
+                or BinaryOperatorOp.ValueKind.Equal or BinaryOperatorOp.ValueKind.NotEqual;
+    }
+
+    protected virtual bool IsGenericOperatorToken(Token token)
+    {
+        return token is OperatorToken or Word { Keyword: Keyword.OPERATOR };
+    }
+
+    protected virtual BinaryOperatorOp? GetBinaryOperator(ParserState state, Token token)
+    {
         return token switch
         {
             Equal => BinaryOperatorOp.Equal,
@@ -1317,10 +1314,10 @@ public class ExpressionParser
             Pipe => BinaryOperatorOp.BitwiseOr,
             Caret => BinaryOperatorOp.BitwiseXor,
             Ampersand => BinaryOperatorOp.BitwiseAnd,
-            Tilde => BinaryOperatorOp.RegexMatch,
-            TildeAsterisk => BinaryOperatorOp.RegexMatchCaseInsensitive,
-            NotTilde => BinaryOperatorOp.RegexNotMatch,
-            NotTildeAsterisk => BinaryOperatorOp.RegexNotMatchCaseInsensitive,
+            Tilde when state.PgAny => BinaryOperatorOp.RegexMatch,
+            TildeAsterisk when state.PgAny => BinaryOperatorOp.RegexMatchCaseInsensitive,
+            NotTilde when state.PgAny => BinaryOperatorOp.RegexNotMatch,
+            NotTildeAsterisk when state.PgAny => BinaryOperatorOp.RegexNotMatchCaseInsensitive,
             _ => null
         };
     }
