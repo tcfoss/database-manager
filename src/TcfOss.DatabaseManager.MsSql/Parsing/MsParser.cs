@@ -167,7 +167,6 @@ public class MsParser : Parser
         return first.Keyword switch
         {
             Keyword.EXEC or Keyword.EXECUTE => ParseExecute(state, first.Keyword),
-            Keyword.WHILE => ParseWhile(state),
             Keyword.BREAK => ParseBreak(state),
             Keyword.CONTINUE => ParseContinue(state),
             Keyword.COMMIT => ParseCommit(state),
@@ -318,18 +317,6 @@ public class MsParser : Parser
             },
             _ => true,
         };
-    }
-
-    /// <summary>
-    /// Parses a T-SQL <c>WHILE</c> loop:
-    /// <c>WHILE &lt;bool-expr&gt; &lt;stmt&gt;</c>.
-    /// </summary>
-    private While ParseWhile(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.WHILE);
-        Expression condition = ExpressionParser.ParseExpr(state);
-        Statement body = ParseStatement(state);
-        return new While(condition, body);
     }
 
     /// <summary>

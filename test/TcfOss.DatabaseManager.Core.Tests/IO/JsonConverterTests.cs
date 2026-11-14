@@ -12,6 +12,23 @@ namespace TcfOss.DatabaseManager.Core.Tests.IO;
 public class JsonConverterTests
 {
     [Theory]
+    [InlineData("counter", QuoteStyle.None, SigilKind.Variable)]
+    [InlineData("counter value", QuoteStyle.Brackets, SigilKind.Variable)]
+    [InlineData("counter value", QuoteStyle.Ansi, SigilKind.Variable)]
+    [InlineData("counter value", QuoteStyle.Backticks, SigilKind.Variable)]
+    [InlineData("@counter", QuoteStyle.Ansi, SigilKind.None)]
+    public void IdentifierConverter_RoundTrip_PreservesVariableSigilAndQuoting(string name, QuoteStyle quoteStyle, SigilKind sigil)
+    {
+        var identifier = new Identifier(name, quoteStyle, sigil);
+
+        string json = Serialization.ToJson(identifier);
+        Identifier actual = Serialization.FromJson<Identifier>(json);
+
+        Assert.Equal(identifier, actual);
+        Assert.Equal(identifier.ToString(), actual.ToString());
+    }
+
+    [Theory]
     [InlineData(typeof(Identifier))]
     [InlineData(typeof(SchemaIdentifier))]
     [InlineData(typeof(ObjectIdentifier))]
@@ -32,6 +49,9 @@ public class JsonConverterTests
     [Theory]
     [InlineData(typeof(Identifier), "")]
     [InlineData(typeof(Identifier), "name.extra")]
+    [InlineData(typeof(Identifier), "@")]
+    [InlineData(typeof(Identifier), "@@counter")]
+    [InlineData(typeof(Identifier), "@counter.extra")]
     [InlineData(typeof(SchemaIdentifier), "catalog")]
     [InlineData(typeof(SchemaIdentifier), "catalog.schema.extra")]
     [InlineData(typeof(ObjectIdentifier), "catalog.schema")]

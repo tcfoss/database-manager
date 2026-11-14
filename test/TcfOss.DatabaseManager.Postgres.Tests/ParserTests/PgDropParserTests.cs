@@ -19,6 +19,7 @@ public class PgDropParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("DROP TYPE app.mood")]
     [InlineData("DROP TYPE IF EXISTS app.mood, app.address CASCADE")]
     [InlineData("DROP TYPE \"App\".\"Mood\" RESTRICT")]
+    [InlineData("DROP TYPE App.MixedCase, \"App\".\"MixedCase\"")]
     [InlineData("DROP DOMAIN app.label")]
     [InlineData("DROP DOMAIN IF EXISTS app.label, other_label RESTRICT")]
     [InlineData("DROP DOMAIN \"App\".\"Label\" CASCADE")]
@@ -48,12 +49,13 @@ public class PgDropParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(statement.ObjectType, formattedStatement.ObjectType);
         Assert.Equal(statement.IfExists, formattedStatement.IfExists);
         Assert.Equal(statement.PgBehavior, formattedStatement.PgBehavior);
-        Assert.Equal(statement.OnObject?.Values.Select(identifier => identifier.Name),
-            formattedStatement.OnObject?.Values.Select(identifier => identifier.Name));
+        Assert.Equal(statement.OnObject?.Values.Select(identifier => Handle.GetNamePart(identifier, NameHandling.LowercaseUnlessQuoted)),
+            formattedStatement.OnObject?.Values.Select(identifier => Handle.GetNamePart(identifier, NameHandling.LowercaseUnlessQuoted)));
         Assert.Equal(statement.Names.Count, formattedStatement.Names.Count);
         foreach (var (First, Second) in statement.Names.Zip(formattedStatement.Names))
         {
-            Assert.Equal(First.Values.Select(identifier => identifier.Name), Second.Values.Select(identifier => identifier.Name));
+            Assert.Equal(First.Values.Select(identifier => Handle.GetNamePart(identifier, NameHandling.LowercaseUnlessQuoted)),
+                Second.Values.Select(identifier => Handle.GetNamePart(identifier, NameHandling.LowercaseUnlessQuoted)));
         }
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }

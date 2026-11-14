@@ -27,6 +27,11 @@ public class MsControlFlowParser : ControlFlowParser
         return ParseMsIf(state);
     }
 
+    public override While ParseWhile(ParserState state)
+    {
+        return ParseMsWhile(state);
+    }
+
     /// <summary>
     /// Parses a T-SQL <c>DECLARE</c> statement. T-SQL syntax differs from
     /// MySQL: each declaration is a <c>@name TYPE [= expr]</c> tuple and

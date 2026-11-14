@@ -1,4 +1,6 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -7,47 +9,134 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-/// <summary>
-/// A T-SQL-style <c>WHILE</c> loop:
-/// <c>WHILE &lt;bool-expr&gt; &lt;stmt&gt;</c>. The body is a single
-/// statement (typically a <c>BEGIN…END</c> block).
-/// </summary>
-public record While(Expression Condition, Statement Body) : Statement
+public abstract record While(Expression Condition) : Statement
 {
-    public override void ToSql(SqlTextWriter writer)
+    public record My(Expression Condition, SqlValueList<Statement> Statements) : While(Condition)
     {
-        writer.WriteSql($"WHILE {Condition} ");
-        Body.ToSql(writer);
+        public Identifier? EndLabel { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteBlocked(writer, Statements, "DO", "WHILE", EndLabel);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatBlocked(writer, manager, Statements, "DO", "WHILE", EndLabel);
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            return GetBlockedReferencedItems(context, Statements);
+        }
     }
 
-    public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+    public record Pg(Expression Condition, SqlValueList<Statement> Statements) : While(Condition)
+    {
+        public Identifier? EndLabel { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            WriteBlocked(writer, Statements, "LOOP", "LOOP", EndLabel);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            FormatBlocked(writer, manager, Statements, "LOOP", "LOOP", EndLabel);
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            return GetBlockedReferencedItems(context, Statements);
+        }
+    }
+
+    public record Ms(Expression Condition, Statement Body) : While(Condition)
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"WHILE {Condition} ");
+            Body.ToSql(writer);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Meta.FormatPreNonSql(writer, manager);
+            manager.WriteBlockPart(writer, "WHILE");
+            writer.Write(" ");
+            Condition.FormatSql(writer, manager);
+            bool indentBody = Body is not BeginEnd;
+            if (indentBody)
+            {
+                manager.IncreaseIndent();
+            }
+            Body.FormatSql(writer, manager);
+            if (indentBody)
+            {
+                manager.DecreaseIndent();
+            }
+            Meta.FormatPostNonSql(writer, manager);
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            foreach (ItemRef item in Condition.GetReferencedItems(context))
+            {
+                yield return item;
+            }
+            foreach (ItemRef item in Body.GetReferencedItems(context))
+            {
+                yield return item;
+            }
+        }
+    }
+
+    protected void WriteBlocked(SqlTextWriter writer, SqlValueList<Statement> statements, string start, string end, Identifier? endLabel)
+    {
+        writer.WriteSql($"WHILE {Condition} {start} ");
+        writer.WriteTerminated(statements.NonInert());
+        writer.WriteSql($"END {end}");
+        if (endLabel != null)
+        {
+            writer.WriteSql($" {endLabel}");
+        }
+    }
+
+    protected void FormatBlocked(SqlTextWriter writer, FormatManager manager, SqlValueList<Statement> statements, string start, string end, Identifier? endLabel)
     {
         Meta.FormatPreNonSql(writer, manager);
         manager.WriteBlockPart(writer, "WHILE");
         writer.Write(" ");
         Condition.FormatSql(writer, manager);
-        bool indentBody = Body is not BeginEnd;
-        if (indentBody)
+        writer.WriteSql($" {start}");
+        manager.IncreaseIndent();
+        foreach (Statement statement in statements)
         {
-            manager.IncreaseIndent();
+            statement.FormatSql(writer, manager);
+            manager.TerminateStatement(writer, statement);
         }
-        Body.FormatSql(writer, manager);
-        if (indentBody)
+        manager.DecreaseIndent();
+        manager.WriteBlockPart(writer, $"END {end}");
+        if (endLabel != null)
         {
-            manager.DecreaseIndent();
+            writer.Write(" ");
+            endLabel.FormatSql(writer, manager);
         }
         Meta.FormatPostNonSql(writer, manager);
     }
 
-    public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+    protected IEnumerable<ItemRef> GetBlockedReferencedItems(ReferencedItemsManager context, SqlValueList<Statement> statements)
     {
         foreach (ItemRef item in Condition.GetReferencedItems(context))
         {
             yield return item;
         }
-        foreach (ItemRef item in Body.GetReferencedItems(context))
+        foreach (Statement statement in statements)
         {
-            yield return item;
+            foreach (ItemRef item in statement.GetReferencedItems(context))
+            {
+                yield return item;
+            }
         }
     }
 }

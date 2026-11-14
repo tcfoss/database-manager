@@ -853,4 +853,45 @@ public class FormatComponentsTests
         Assert.Contains(expectedBranch, formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("<<label>> WHILE source.value > 0 LOOP CALL app.work(); /* closing */ END LOOP label", "label")]
+    [InlineData("<<Outer_Label>> WHILE source.value > 0 LOOP CALL app.work(); /* closing */ END LOOP outer_label", "outer_label")]
+    public void ProceduralWhile_FormatsConditionAndLoopLabelsRecursively(string sql, string expectedLabel)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains($"<<\"{expectedLabel}\">>", formatted);
+        Assert.Contains("WHILE \"source\".\"value\" > 0 LOOP", formatted);
+        Assert.Contains($"END LOOP \"{expectedLabel}\";", formatted);
+        Assert.Equal(1, formatted.Split("/* closing */", StringSplitOptions.None).Length - 1);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SELECT MixedCase FROM App.Items", "\"mixedcase\"", "FROM \"app\".\"items\"")]
+    [InlineData("SELECT \"MixedCase\" FROM \"App\".\"Items\"", "\"MixedCase\"", "FROM \"App\".\"Items\"")]
+    public void Identifiers_PreserveCaseSemanticsWhenQuoted(string sql, string expectedColumn, string expectedFrom)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedColumn, formatted);
+        Assert.Contains(expectedFrom, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("<<Outer_Label>> LOOP CALL app.work(); END LOOP OUTER_LABEL")]
+    [InlineData("<<Outer_Label>> BEGIN NULL; END OUTER_LABEL")]
+    public void ProceduralLabels_PreserveCaseFoldingWhenQuoted(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("<<\"outer_label\">>", formatted);
+        Assert.Contains(" \"outer_label\";", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

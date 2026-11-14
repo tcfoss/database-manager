@@ -1,5 +1,6 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -114,5 +115,17 @@ public class ControlFlowParserTests : ParserTestsBase<GenericLexer, Parser>
             Assert.Empty(statements.OfType<InertOnly>());
         }
         Assert.Equal(!consumeEnd, state.PeekKeyword(Keyword.END));
+    }
+
+    [Theory]
+    [InlineData("LOOP SELECT 1; END LOOP", typeof(Loop))]
+    [InlineData("WHILE TRUE LOOP SELECT 1; END LOOP", typeof(While.Pg))]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END WHILE", typeof(While.My))]
+    [InlineData("WHILE 1 = 1 SELECT 1", typeof(While.Ms))]
+    public void Loops_DispatchUsingAvailableGrammar(string sql, Type expectedType)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
     }
 }

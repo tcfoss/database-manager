@@ -112,20 +112,7 @@ public class ControlFlowParser
         }
 
         state.ExpectKeyword(Keyword.END);
-        Identifier? endLabel = null;
-
-        if (state.Peek() is Word && state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
-        {
-            Token token = state.Peek();
-            endLabel = _parseIdentifier(state);
-            Identifier startLabel = state.StatementLabel.Value.Label;
-            string startName = startLabel.QuoteStyle == QuoteStyle.None ? startLabel.Name.ToLowerInvariant() : startLabel.Name;
-            string endName = endLabel.QuoteStyle == QuoteStyle.None ? endLabel.Name.ToLowerInvariant() : endLabel.Name;
-            if (!string.Equals(startName, endName, StringComparison.Ordinal))
-            {
-                throw ParserState.ExpectedException("matching block label", token);
-            }
-        }
+        Identifier? endLabel = ParsePgEndLabel(state, "matching block label");
 
         PgBlockOptions? options = declarations != null || handlers != null || endLabel != null
             ? new PgBlockOptions(declarations, handlers, endLabel)
@@ -181,6 +168,105 @@ public class ControlFlowParser
             return new PgExceptionCondition.Others();
         }
         return new PgExceptionCondition.Named(_parseIdentifier(state));
+    }
+
+    public Loop ParseLoop(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.LOOP);
+        SqlValueList<Statement> statements = ParseLoopStatements(state, Keyword.LOOP);
+        Identifier? endLabel = ParseLoopEndLabel(state);
+        return new Loop(statements)
+        {
+            EndLabel = endLabel
+        };
+    }
+
+    public virtual While ParseWhile(ParserState state)
+    {
+        if ((state.My || state.PgPl) && state.TryParse(ParseMyOrPgWhile, out While? blocked))
+        {
+            return blocked;
+        }
+        if (state.Ms && state.TryParse(ParseMsWhile, out While.Ms? inline))
+        {
+            return inline;
+        }
+        throw new ParseException.DialectRequired("WHILE syntax", state.Peek().Location);
+    }
+
+    protected While ParseMyOrPgWhile(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.WHILE);
+        Expression condition = _parseExpr(state);
+        if (state.PgPl && state.ParseKeyword(Keyword.LOOP))
+        {
+            SqlValueList<Statement> statements = ParseLoopStatements(state, Keyword.LOOP);
+            return new While.Pg(condition, statements) { EndLabel = ParseLoopEndLabel(state) };
+        }
+        if (state.My && state.ParseKeyword(Keyword.DO))
+        {
+            SqlValueList<Statement> statements = ParseLoopStatements(state, Keyword.WHILE);
+            return new While.My(condition, statements) { EndLabel = ParseLoopEndLabel(state) };
+        }
+        throw state.ExpectedException(state.My && state.PgPl ? ["DO", "LOOP"] : state.PgPl ? ["LOOP"] : ["DO"]);
+    }
+
+    protected While.Ms ParseMsWhile(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.WHILE);
+        Expression condition = _parseExpr(state);
+        return new While.Ms(condition, _p.ParseStatement(state));
+    }
+
+    private SqlValueList<Statement> ParseLoopStatements(ParserState state, Keyword end)
+    {
+        string expected = $"END {end}";
+        var ender = new EndSubstatements
+        {
+            RequireTerminatorBeforeEnd = state.PgPl || end == Keyword.WHILE,
+            GetFinished = s => s.PeekKeywordsAll(Keyword.END, end),
+            GetEofException = s => s.ExpectedException(expected)
+        };
+        SqlValueList<Statement> statements = _p.Parse(state, ender);
+        if (end == Keyword.WHILE && !statements.NonInert().Any())
+        {
+            throw state.ExpectedException("statement");
+        }
+        state.ExpectKeywordsAll(Keyword.END, end);
+        return statements;
+    }
+
+    private Identifier? ParseLoopEndLabel(ParserState state)
+    {
+        if (state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
+        {
+            return ParsePgEndLabel(state, "matching loop label");
+        }
+        Identifier? label = state.StatementLabel?.Label;
+        if (label != null && state.Peek() is Word word && string.Equals(word.Value, label.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            state.Next();
+            return label;
+        }
+        return null;
+    }
+
+    private Identifier? ParsePgEndLabel(ParserState state, string expected)
+    {
+        if (state.Peek() is not Word || state.StatementLabel?.Dialect != StatementLabelDialect.Pg)
+        {
+            return null;
+        }
+        Token token = state.Peek();
+        Identifier endLabel = _parseIdentifier(state);
+        Identifier startLabel = state.StatementLabel.Value.Label;
+        string startName = startLabel.QuoteStyle == QuoteStyle.None ? startLabel.Name.ToLowerInvariant() : startLabel.Name;
+        string endName = endLabel.QuoteStyle == QuoteStyle.None ? endLabel.Name.ToLowerInvariant() : endLabel.Name;
+        if (!string.Equals(startName, endName, StringComparison.Ordinal))
+        {
+            throw ParserState.ExpectedException(expected, token);
+        }
+        return endLabel;
     }
 
     public virtual Statement ParseIf(ParserState state)

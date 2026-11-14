@@ -262,6 +262,84 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(formatted, Format(Assert.Single(Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)))));
     }
 
+    [Theory]
+    [InlineData("LOOP CALL app.work(); END LOOP")]
+    [InlineData("LOOP END LOOP")]
+    [InlineData("WHILE FALSE LOOP END LOOP")]
+    [InlineData("WHILE value > 0 LOOP CALL app.work(); END LOOP")]
+    [InlineData("<<outer_label>> LOOP WHILE TRUE LOOP CALL app.work(); END LOOP; END LOOP outer_label")]
+    [InlineData("<<Outer_Label>> WHILE TRUE LOOP CALL app.work(); END LOOP outer_label")]
+    [InlineData("<<\"Outer\">> WHILE TRUE LOOP CALL app.work(); END LOOP \"Outer\"")]
+    [InlineData("BEGIN LOOP WHILE TRUE LOOP NULL; END LOOP; END LOOP; NULL; END")]
+    public void ProceduralLoops_RoundTripSqlFormattingAndJson(string sql)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("LOOP CALL app.work() END LOOP")]
+    [InlineData("LOOP CALL app.work(); END")]
+    [InlineData("WHILE TRUE CALL app.work(); END LOOP")]
+    [InlineData("WHILE TRUE DO CALL app.work(); END WHILE")]
+    [InlineData("WHILE TRUE LOOP CALL app.work() END LOOP")]
+    [InlineData("WHILE TRUE LOOP CALL app.work(); END WHILE")]
+    [InlineData("<<a>> LOOP CALL app.work(); END LOOP b")]
+    [InlineData("<<a>> WHILE TRUE LOOP CALL app.work(); END LOOP b")]
+    [InlineData("<<\"A\">> LOOP CALL app.work(); END LOOP a")]
+    [InlineData("LOOP CALL app.work(); END LOOP missing_label")]
+    public void ProceduralLoops_RejectInvalidSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("LOOP CALL app.work(); END LOOP")]
+    [InlineData("WHILE TRUE LOOP CALL app.work(); END LOOP")]
+    public void ProceduralLoops_AreRejectedBySqlOnlyGrammar(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(state, null));
+    }
+
+    [Fact]
+    public void ProceduralLoopLabels_PreserveSourceAndRestoreOuterScope()
+    {
+        const string sql = "<<outer_label>> LOOP <<inner_label>> WHILE TRUE LOOP CALL app.work(); END LOOP inner_label; LOOP END LOOP; END LOOP outer_label; SELECT 1";
+        var state = GetState(sql, sourceId: 9);
+        SqlValueList<Statement> statements = ParseStatements(state);
+        var outer = Assert.IsType<LabeledStatement.Pg>(statements[0]);
+        var loop = Assert.IsType<Loop>(outer.SubStatement);
+        Statement[] body = [.. loop.Statements.NonInert()];
+        var inner = Assert.IsType<LabeledStatement.Pg>(body[0]);
+        var innerWhile = Assert.IsType<While.Pg>(inner.SubStatement);
+        Assert.Equal("inner_label", innerWhile.EndLabel!.Name);
+        Assert.Null(Assert.IsType<Loop>(body[1]).EndLabel);
+        Assert.Equal("outer_label", loop.EndLabel!.Name);
+        Assert.Equal(9, loop.EndLabel.Source!.Value.SourceId);
+        Assert.Equal(sql.LastIndexOf("outer_label", StringComparison.Ordinal), loop.EndLabel.Source.Value.Start);
+        Assert.IsType<Select>(statements[1]);
+        Assert.Null(state.StatementLabel);
+    }
+
+    [Theory]
+    [InlineData("<< /* first */ label /* second */ >> LOOP CALL app.work(); /* third */ END LOOP label")]
+    [InlineData("<< /* first */ label /* second */ >> WHILE TRUE LOOP CALL app.work(); /* third */ END LOOP label")]
+    public void ProceduralLoops_PreserveLabelAndClosingComments(string sql)
+    {
+        string formatted = Format(ParseStatement(sql));
+        foreach (string marker in new[] { "first", "second", "third" })
+        {
+            Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
+        }
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)

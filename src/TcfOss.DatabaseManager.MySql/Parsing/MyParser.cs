@@ -147,6 +147,11 @@ public class MyParser : Parser
                 break;
             }
 
+            if (expectingTerminator && endChecker is { RequireTerminatorBeforeEnd: true })
+            {
+                throw ParserState.ExpectedException("end of statement", next);
+            }
+
             if (endChecker?.GetFinished(state) ?? false)
             {
                 if (next.PreNonSql.SafeAny() && endChecker.PreserveEndTrivia(next))
@@ -191,7 +196,6 @@ public class MyParser : Parser
     {
         Statement? statement = first.Keyword switch
         {
-            Keyword.LOOP => ParseLoop(state),
             Keyword.SIGNAL => ParseSignal(state),
             Keyword.RESIGNAL => ParseResignal(state),
             Keyword.START => ParseStartTransaction(state),
@@ -239,29 +243,6 @@ public class MyParser : Parser
             return new FetchGroupNextRow();
         }
         return base.ParseFetch(state);
-    }
-
-    private Loop ParseLoop(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.LOOP);
-
-        var ender = new EndSubstatements
-        {
-            GetFinished = s => s.ParseKeywordsAll(Keyword.END, Keyword.LOOP),
-            GetEofException = s => s.ExpectedException("END LOOP")
-        };
-
-        SqlValueList<Statement> subStatements = Parse(state, ender);
-
-        Identifier? endLabel = null;
-        Identifier? label = state.StatementLabel?.Label;
-        if (label != null && state.Peek() is Word w && w.Value == label.Name)
-        {
-            state.Next();
-            endLabel = label;
-        }
-
-        return new Loop(subStatements) { EndLabel = endLabel };
     }
 
     private SignalInformationItem ParseSignalInformationItem(ParserState state)

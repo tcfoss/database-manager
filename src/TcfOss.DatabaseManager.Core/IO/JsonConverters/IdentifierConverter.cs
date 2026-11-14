@@ -37,7 +37,8 @@ public partial class IdentifierConverter : JsonConverter<Identifier>
         }
 
         (string Value, QuoteStyle QuoteStyle) name = ParseSingle(match.Groups[1].Value);
-        return new Identifier(name.Value, name.QuoteStyle);
+        SigilKind sigil = given.StartsWith('@') ? SigilKind.Variable : SigilKind.None;
+        return new Identifier(name.Value, name.QuoteStyle, sigil);
     }
 
     public static (string Value, QuoteStyle QuoteStyle) ParseSingle(string given)
@@ -57,6 +58,6 @@ public partial class IdentifierConverter : JsonConverter<Identifier>
         return (given, quoteStyle);
     }
 
-    [GeneratedRegex(@"^((?:`[^`]+`)|(?:\[[^\[\]]+\])|(?:""[^""]+"")|(?:[A-Za-z_]\w*))$")]
+    [GeneratedRegex(@"^@?((?:`[^`]+`)|(?:\[[^\[\]]+\])|(?:""[^""]+"")|(?:[A-Za-z_]\w*))$")]
     private static partial Regex GenerateIdentifierRegex();
 }

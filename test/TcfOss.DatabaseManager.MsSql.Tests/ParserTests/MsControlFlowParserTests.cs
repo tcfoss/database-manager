@@ -1,4 +1,6 @@
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -55,6 +57,9 @@ public class MsControlFlowParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+        var statement = Assert.IsType<While.Ms>(ParseStatement(text));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
     }
 
     [Theory]
@@ -91,5 +96,23 @@ public class MsControlFlowParserTests : ParserTestsBase<MsLexer, MsParser>
         """;
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("WHILE 1 = 1 PRINT 1")]
+    [InlineData("WHILE 1 = 1 BEGIN PRINT 1; BREAK; END")]
+    public void While_InlineVariantRoundTripsJson(string sql)
+    {
+        var statement = Assert.IsType<While.Ms>(ParseStatement(sql));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("WHILE 1 = 1 LOOP SELECT 1; END LOOP")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END WHILE")]
+    public void While_RejectsBlockedDialectSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

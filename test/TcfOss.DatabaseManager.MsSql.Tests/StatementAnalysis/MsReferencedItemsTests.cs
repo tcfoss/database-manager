@@ -361,7 +361,7 @@ public class MsReferencedItemsTests
     [InlineData("WHILE @outer > 0 WHILE @inner > 0 PRINT @body", "outer", "inner", "body")]
     public void While_ReferencesConditionBeforeBody(string text, params string[] expectedNames)
     {
-        var stmt = Assert.IsType<While>(ParseStatement(text));
+        var stmt = Assert.IsType<While.Ms>(ParseStatement(text));
 
         var items = stmt.GetReferencedItems(CreateReferencedItemsManager()).ToList();
 

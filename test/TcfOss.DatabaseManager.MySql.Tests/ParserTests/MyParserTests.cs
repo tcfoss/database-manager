@@ -1225,4 +1225,43 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("WHILE value > 0 DO SET value = value - 1; END WHILE")]
+    [InlineData("while_label: WHILE value > 0 DO SET value = value - 1; END WHILE while_label")]
+    [InlineData("WHILE 1 = 1 DO LOOP SELECT 1; END LOOP; END WHILE")]
+    public void While_RoundTripsBlockedSyntaxAndJson(string sql)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("Outer_Label: LOOP SELECT 1; END LOOP outer_label")]
+    [InlineData("Outer_Label: WHILE 1 = 1 DO SELECT 1; END WHILE outer_label")]
+    public void LoopEndLabels_MatchCaseInsensitively(string sql)
+    {
+        var statement = Assert.IsType<LabeledStatement.My>(ParseStatement(sql));
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(Format(statement), Format(ParseStatement(Format(statement))));
+    }
+
+    [Theory]
+    [InlineData("WHILE 1 = 1 LOOP SELECT 1; END LOOP")]
+    [InlineData("WHILE 1 = 1 SELECT 1")]
+    [InlineData("WHILE 1 = 1 DO END WHILE")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1 END WHILE")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END LOOP")]
+    [InlineData("label: WHILE 1 = 1 DO SELECT 1; END WHILE other")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END WHILE label")]
+    public void While_RejectsInvalidAndOtherDialectSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

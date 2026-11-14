@@ -9,4 +9,9 @@ public class PgControlFlowParser(Parser parser) : ControlFlowParser(parser)
     {
         return ParseMyOrPgIf(state, true);
     }
+
+    public override While ParseWhile(ParserState state)
+    {
+        return ParseMyOrPgWhile(state);
+    }
 }

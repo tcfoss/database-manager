@@ -25,6 +25,11 @@ public class MyControlFlowParser : ControlFlowParser
         return ParseMyOrPgIf(state, false);
     }
 
+    public override While ParseWhile(ParserState state)
+    {
+        return ParseMyOrPgWhile(state);
+    }
+
     public override DeclareLocalVariable ParseDeclareLocalVariable(ParserState state)
     {
         state.ExpectKeyword(Keyword.DECLARE);
