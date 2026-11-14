@@ -39,8 +39,6 @@ public class MyParser : Parser
     public override bool SupportsPostgresExpressionCollationSyntax => false;
     public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
     public override bool SupportsPostgresOperatorSyntax => false;
-    public override bool SupportsPostgresIntervalLiteralSyntax => false;
-    protected override bool SupportsCommentOn => false;
 
     public MyParser()
     {

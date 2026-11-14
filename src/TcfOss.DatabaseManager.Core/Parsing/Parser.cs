@@ -40,9 +40,6 @@ public class Parser : IParser
     public virtual bool SupportsPostgresExpressionCollationSyntax => true;
     public virtual bool SupportsPostgresArrayAndRowExpressionSyntax => true;
     public virtual bool SupportsPostgresOperatorSyntax => true;
-    public virtual bool SupportsPostgresIntervalLiteralSyntax => true;
-    public virtual bool SupportsMySqlIntervalExpressionSyntax => true;
-    protected virtual bool SupportsCommentOn => true;
     public Func<string, bool> IsBuiltInFunction { get; protected init; }
     public Func<string, bool> AllowsFunctionCallWithoutParentheses { get; protected init; }
 
@@ -179,7 +176,7 @@ public class Parser : IParser
             throw state.ExpectedException(">>");
         }
         state.Next(); // Consume the closing ">>" operator token
-        if (state.Peek() is not Word { Keyword: Keyword.BEGIN or Keyword.DECLARE})
+        if (state.Peek() is not Word { Keyword: Keyword.BEGIN or Keyword.DECLARE })
         {
             throw state.ExpectedException("BEGIN or DECLARE");
         }
@@ -228,7 +225,7 @@ public class Parser : IParser
             Keyword.DELETE => DmlParser.ParseDelete(state, null),
             Keyword.WITH => ParseCteQuery(state),
             Keyword.CREATE => ParseCreate(state),
-            Keyword.COMMENT when SupportsCommentOn => DdlParser.ParseCommentOn(state),
+            Keyword.COMMENT when state.PgAny => DdlParser.ParseCommentOn(state),
             Keyword.ALTER => ParseAlter(state),
             Keyword.DROP => DdlParser.ParseDropObject(state),
             Keyword.IF => ControlFlowParser.ParseIf(state),

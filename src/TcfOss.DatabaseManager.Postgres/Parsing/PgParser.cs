@@ -18,8 +18,6 @@ public class PgParser : Parser
         return MaybeParsePgStatementLabel(state);
     }
 
-    public override bool SupportsMySqlIntervalExpressionSyntax => false;
-
     public PgParser()
     {
         PrecedenceManager = new PgPrecedenceManager();

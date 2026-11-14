@@ -25,9 +25,6 @@ public class ExpressionParser
     private readonly PrecedenceManager _pm;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
 
-    protected virtual bool UsesRestrictedBetweenBounds => false;
-    protected virtual bool SupportsLegacyPatternAny => true;
-
     public ExpressionParser(Parser parser)
     {
         _p = parser;
@@ -350,18 +347,19 @@ public class ExpressionParser
         }
         if (state.ParseKeyword(Keyword.LIKE))
         {
-            return ParseLike(state, left, negated);
+            (Expression? pattern, PatternEscape? escape, AggregateQuantifier? quantifier) = ParsePatternMatch(state);
+            return new Like(left, negated, pattern, escape) { Quantifier = quantifier };
         }
         if (state.ParseKeyword(Keyword.ILIKE))
         {
-            (Expression? pattern, PatternEscape? escape, bool any, AggregateQuantifier? quantifier) = ParsePatternMatch(state);
-            return new ILike(left, negated, pattern, escape, any) { Quantifier = quantifier };
+            (Expression? pattern, PatternEscape? escape, AggregateQuantifier? quantifier) = ParsePatternMatch(state);
+            return new ILike(left, negated, pattern, escape) { Quantifier = quantifier };
         }
         if (state.ParseKeyword(Keyword.SIMILAR))
         {
             state.ExpectKeyword(Keyword.TO);
-            (Expression? pattern, PatternEscape? escape, bool any, AggregateQuantifier? _) = ParsePatternMatch(state, false);
-            return new SimilarTo(left, negated, pattern, escape, any);
+            (Expression? pattern, PatternEscape? escape, AggregateQuantifier? _) = ParsePatternMatch(state, false);
+            return new SimilarTo(left, negated, pattern, escape);
         }
 
         throw new DefensiveGuardException("infix keyword", keyword.ToString(), "PrecedenceManager.GetNextPrecedence call in ParseSubExpression will prevent us from getting here.");
@@ -398,8 +396,11 @@ public class ExpressionParser
                     depth--;
                     // A parenthesized scalar subquery followed by an expression operator is not a query body.
                     if (depth < parenthesisDepth && state.PeekNth(offset + 1) is not (ParenClose
-                        or Word { Keyword: Keyword.UNION or Keyword.INTERSECT or Keyword.EXCEPT
-                            or Keyword.ORDER or Keyword.LIMIT or Keyword.OFFSET or Keyword.FETCH or Keyword.FOR }))
+                            or Word
+                        {
+                            Keyword: Keyword.UNION or Keyword.INTERSECT or Keyword.EXCEPT
+                            or Keyword.ORDER or Keyword.LIMIT or Keyword.OFFSET or Keyword.FETCH or Keyword.FOR
+                        }))
                     {
                         return false;
                     }
@@ -940,53 +941,45 @@ public class ExpressionParser
         return state.ParseParenthesized<Expression>((innerState) => new Exists(_p.SelectParser.ParseSelect(innerState, null), negated));
     }
 
-    private Like ParseLike(ParserState state, Expression expr, bool negated)
+    private (Expression Pattern, PatternEscape? Escape, AggregateQuantifier? Quantifier) ParsePatternMatch(ParserState state, bool allowQuantifier = true)
     {
-        (Expression? pattern, PatternEscape? escape, bool any, AggregateQuantifier? quantifier) = ParsePatternMatch(state);
-        return new Like(expr, negated, pattern, escape, any) { Quantifier = quantifier };
-    }
-
-    private (Expression Pattern, PatternEscape? Escape, bool Any, AggregateQuantifier? Quantifier) ParsePatternMatch(ParserState state, bool allowQuantifier = true)
-    {
-        if (_p.SupportsPostgresOperatorSyntax && (!SupportsLegacyPatternAny || !state.PeekKeyword(Keyword.ANY)))
+        if (state.PgAny)
         {
-            AggregateQuantifier? quantifier = state.ParseKeywordsAny(Keyword.ANY, Keyword.ALL, Keyword.SOME) switch
-            {
-                Keyword.ANY => AggregateQuantifier.Any,
-                Keyword.ALL => AggregateQuantifier.All,
-                Keyword.SOME => AggregateQuantifier.Some,
-                _ => null
-            };
+            AggregateQuantifier? quantifier = state.MaybeParseStringEnum<AggregateQuantifier>();
+
             if (quantifier != null)
             {
                 if (!allowQuantifier)
                 {
                     throw state.ExpectedException("pattern expression");
                 }
-                return (ParseQuantifiedOperand(state), null, false, quantifier);
+                Expression operand = ParseQuantifiedOperand(state);
+                return (operand is Subquery ? operand : new Nested(operand), null, quantifier);
             }
+
             Expression postgresPattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
-            PatternEscape? escape = null;
-            if (state.ParseKeyword(Keyword.ESCAPE))
-            {
-                escape = ParsePatternEscape(state);
-            }
-            return (postgresPattern, escape, false, null);
+            PatternEscape? escape = ParseOptionalPatternEscape(state);
+            return (postgresPattern, escape, null);
         }
-        bool any = state.ParseKeyword(Keyword.ANY);
+
         Expression pattern = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like));
         PatternEscape? characterEscape = ParseOptionalCharacterEscape(state);
 
-        return (pattern, characterEscape, any, null);
+        return (pattern, characterEscape, null);
     }
 
-    protected virtual PatternEscape ParsePatternEscape(ParserState state)
+    protected virtual PatternEscape? ParseOptionalPatternEscape(ParserState state)
     {
-        if (state.PeekIs<StringLiteral>())
+        if (!state.ParseKeyword(Keyword.ESCAPE))
         {
-            return new PatternEscape.Character(ValueParser.ParseLiteralString(state));
+            return null;
         }
-        return new PatternEscape.Expression(ParseSubExpression(state, _pm.GetPrecedence(Precedence.Like)));
+        Expression expression = ParseSubExpression(state, _pm.GetPrecedence(Precedence.Escape));
+        if (expression is LiteralValue literalValue && literalValue.Value is Value.SingleQuotedString str)
+        {
+            return new PatternEscape.Character(str.Value);
+        }
+        return new PatternEscape.Expression(expression);
     }
 
     private static PatternEscape.Character? ParseOptionalCharacterEscape(ParserState state)
@@ -1012,7 +1005,7 @@ public class ExpressionParser
         }
         short prec = _pm.GetPrecedence(Precedence.Between);
         Expression low;
-        if (UsesRestrictedBetweenBounds)
+        if (state.PgAny)
         {
             using ParserState.Scope scope = state.EnterContext(ParseContext.BetweenBound);
             low = ParseSubExpression(state, 0);
@@ -1210,11 +1203,10 @@ public class ExpressionParser
     {
         state.ExpectKeyword(Keyword.INTERVAL);
 
-        if (_p.SupportsPostgresIntervalLiteralSyntax
-            && (!_p.SupportsMySqlIntervalExpressionSyntax
+        if (state.PgAny
+            && (!state.My
                 || IsIntervalString(state.Peek())
-                    && (state.PeekNth(1).ToDateTimeUnit() == null
-                        || state.PeekNth(2) is Word { Keyword: Keyword.TO } or ParenOpen)
+                        && (state.PeekNth(1).ToDateTimeUnit() == null || state.PeekNth(2) is Word { Keyword: Keyword.TO } or ParenOpen)
                 || state.Peek() is ParenOpen && IsIntervalString(state.PeekNth(3))))
         {
             uint? precision = DataTypeParser.ParseIntervalPrecision(state);

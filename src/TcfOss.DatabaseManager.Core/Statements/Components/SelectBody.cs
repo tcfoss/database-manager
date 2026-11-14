@@ -81,8 +81,11 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            writer.Write("(");
+            writer.WriteSqlI("(");
+            writer.WriteLine();
+            manager.IncreaseIndent();
             Query.FormatSql(writer, manager);
+            manager.DecreaseIndent();
             writer.Write(")");
         }
 

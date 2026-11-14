@@ -22,7 +22,11 @@ public record QuantifiedBinaryOperator(Expression Left, BuiltIn.BinaryOperator O
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Left.FormatSql(writer, manager);
-        writer.WriteSql($" {Operator} {Quantifier}");
+        writer.WriteSql($" {Operator}");
+        if (Quantifier is not null)
+        {
+            writer.WriteSql($" {Quantifier} ");
+        }
         bool wrapRight = Right is not Subquery;
         if (wrapRight)
         {

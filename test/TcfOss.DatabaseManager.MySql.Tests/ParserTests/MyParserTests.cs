@@ -685,7 +685,6 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
     public void PostgresIntervalLiterals_AreRejectedBySharedMySqlMariaDbParser(string sql)
     {
-        Assert.False(new MyParser().SupportsPostgresIntervalLiteralSyntax);
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 

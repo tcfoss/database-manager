@@ -213,6 +213,13 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             : escape;
     }
 
+    private Expression NormalizePattern(Expression pattern, bool quantified, bool inSelect, bool flatten)
+    {
+        return quantified && pattern is Nested nested
+            ? new Nested(NormalizeExpression(nested.Expression, inSelect, flatten))
+            : NormalizeExpression(pattern, inSelect, flatten);
+    }
+
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
     {
         return expr switch
@@ -300,13 +307,13 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             Like like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                Pattern = NormalizePattern(like.Pattern, like.Quantifier != null, inSelect, flatten),
                 Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             ILike like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                Pattern = NormalizePattern(like.Pattern, like.Quantifier != null, inSelect, flatten),
                 Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             SimilarTo similar => similar with

@@ -331,9 +331,9 @@ public class FormatComponentsTests
     [Theory]
     [InlineData("items.left IS DISTINCT FROM items.right", "\"items\".\"left\" IS DISTINCT FROM \"items\".\"right\"")]
     [InlineData("items.left IS NOT DISTINCT FROM items.right", "\"items\".\"left\" IS NOT DISTINCT FROM \"items\".\"right\"")]
-    [InlineData("items.value = ANY(ARRAY[items.other])", "\"items\".\"value\" = ANY(ARRAY[\"items\".\"other\"])")]
-    [InlineData("items.value <> ALL(ARRAY[items.other])", "\"items\".\"value\" <> ALL(ARRAY[\"items\".\"other\"])")]
-    [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME(ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value = ANY(ARRAY[items.other])", "\"items\".\"value\" = ANY (ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value <> ALL(ARRAY[items.other])", "\"items\".\"value\" <> ALL (ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME (ARRAY[\"items\".\"other\"])")]
     public void RemainingComparisons_FormatOperandsRecursively(string sql, string expected)
     {
         var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
@@ -346,17 +346,39 @@ public class FormatComponentsTests
     }
 
     [Theory]
-    [InlineData("items.value = ANY(SELECT items.other FROM items)", "\"items\".\"value\" = ANY( SELECT \"items\".\"other\" FROM \"items\")")]
-    [InlineData("value LIKE ANY(SELECT pattern FROM items)", "\"value\" LIKE ANY( SELECT \"pattern\" FROM \"items\")")]
+    [InlineData(
+        "SELECT items.value = ANY(SELECT items.other FROM items)",
+        """
+        SELECT
+            "items"."value" = ANY (
+                SELECT
+                    "items"."other"
+                FROM "items");
+        """)]
+    [InlineData(
+        "SELECT value LIKE ANY(SELECT pattern FROM items)",
+        """
+        SELECT
+            "value" LIKE ANY (
+                SELECT
+                    "pattern"
+                FROM "items");
+        """)]
+    [InlineData(
+        "SELECT value ILIKE SOME((SELECT pattern FROM items))",
+        """
+        SELECT
+            "value" ILIKE SOME (
+                (
+                    SELECT
+                        "pattern"
+                    FROM "items"));
+        """)]
     public void QuantifiedSubqueries_FormatOperandsRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
-        var expression = new PgParser().ExpressionParser.ParseExpr(state);
-        using var writer = new SqlTextWriter(new StringBuilder());
-
-        expression.FormatSql(writer, Helpers.CreateFormatManager());
-
-        Assert.Equal(expected, writer.ToString().NormalizeWhitespace());
+        using var formatter = Helpers.CreateFormatter();
+        var actual = formatter.GetFormatted(sql);
+        Assert.Equal(expected, actual);
     }
 
     [Theory]
@@ -378,8 +400,8 @@ public class FormatComponentsTests
     [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "\"value\" NOT BETWEEN ASYMMETRIC \"lower\" AND \"upper\"")]
     [InlineData("value BETWEEN lower AND upper", "\"value\" BETWEEN \"lower\" AND \"upper\"")]
     [InlineData("items.a ^ items.b", "\"items\".\"a\" ^ \"items\".\"b\"")]
-    [InlineData("value LIKE ALL(ARRAY[pattern])", "\"value\" LIKE ALL(ARRAY[\"pattern\"])")]
-    [InlineData("value ILIKE SOME(ARRAY[pattern])", "\"value\" ILIKE SOME(ARRAY[\"pattern\"])")]
+    [InlineData("value LIKE ALL(ARRAY[pattern])", "\"value\" LIKE ALL (ARRAY[\"pattern\"])")]
+    [InlineData("value ILIKE SOME(ARRAY[pattern])", "\"value\" ILIKE SOME (ARRAY[\"pattern\"])")]
     [InlineData("value LIKE pattern ESCAPE escape_value", "\"value\" LIKE \"pattern\" ESCAPE \"escape_value\"")]
     [InlineData("value ILIKE pattern ESCAPE '!' || suffix", "\"value\" ILIKE \"pattern\" ESCAPE '!' || \"suffix\"")]
     [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "\"value\" SIMILAR TO \"pattern\" ESCAPE \"escape_value\"")]
@@ -394,21 +416,6 @@ public class FormatComponentsTests
         expression.FormatSql(writer, Helpers.CreateFormatManager());
 
         Assert.Equal(expected, writer.ToString());
-    }
-
-    [Theory]
-    [InlineData("LIKE")]
-    [InlineData("ILIKE")]
-    [InlineData("SIMILAR TO")]
-    public void KitchenSinkPatterns_FormatLegacyAnyAndCharacterEscape(string op)
-    {
-        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new Core.Lexing.GenericLexer().Tokenize($"value NOT {op} ANY(pattern) ESCAPE '!'")]);
-        var expression = new Core.Parsing.Parser().ExpressionParser.ParseExpr(state);
-        using var writer = new SqlTextWriter(new StringBuilder());
-
-        expression.FormatSql(writer, Helpers.CreateFormatManager());
-
-        Assert.Equal($"\"value\" NOT {op} ANY (\"pattern\") ESCAPE '!'", writer.ToString());
     }
 
     [Theory]

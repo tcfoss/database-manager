@@ -1443,17 +1443,20 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("value LIKE ANY(ARRAY[pattern])")]
-    [InlineData("value NOT LIKE ALL(ARRAY[pattern])")]
-    [InlineData("value NOT LIKE ANY(ARRAY[pattern])")]
-    [InlineData("value NOT LIKE SOME(ARRAY[pattern])")]
-    [InlineData("value NOT ILIKE ANY(ARRAY[pattern])")]
-    [InlineData("value NOT ILIKE ALL(ARRAY[pattern])")]
-    [InlineData("value NOT ILIKE SOME(ARRAY[pattern])")]
+    [InlineData("value LIKE ANY (ARRAY[pattern])")]
+    [InlineData("value LIKE ANY ((ARRAY[pattern]))")]
+    [InlineData("value LIKE ANY ((SELECT pattern FROM items))")]
+    [InlineData("value NOT LIKE ALL (ARRAY[pattern])")]
+    [InlineData("value NOT LIKE ANY (ARRAY[pattern])")]
+    [InlineData("value NOT LIKE SOME (ARRAY[pattern])")]
+    [InlineData("value NOT ILIKE ANY (ARRAY[pattern])")]
+    [InlineData("value NOT ILIKE ALL (ARRAY[pattern])")]
+    [InlineData("value NOT ILIKE SOME (ARRAY[pattern])")]
     [InlineData("value NOT LIKE 'pattern'")]
     [InlineData("value NOT ILIKE 'pattern'")]
-    [InlineData("value ILIKE SOME(SELECT pattern FROM items)")]
-    [InlineData("value LIKE ALL(VALUES ('a'), ('b'))")]
+    [InlineData("value ILIKE SOME (SELECT pattern FROM items)")]
+    [InlineData("value ILIKE SOME ((SELECT pattern FROM items))")]
+    [InlineData("value LIKE ALL (VALUES ('a'), ('b'))")]
     [InlineData("value LIKE pattern ESCAPE escape_value")]
     [InlineData("value ILIKE pattern ESCAPE '!' || suffix")]
     [InlineData("value SIMILAR TO pattern ESCAPE fn(escape_value)")]
@@ -1468,6 +1471,16 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("SELECT " + sql, ParseStatement("SELECT " + sql).ToSql());
         Expression[] expressions = [expression];
         Assert.Equal(expressions, Serialization.FromJson<Expression[]>(Serialization.ToJson(expressions)));
+    }
+
+    [Fact]
+    public void QuantifiedPatterns_PreserveOperandParenthesesInTheirAst()
+    {
+        var like = Assert.IsType<Like>(ParseExpression("value LIKE ANY (ARRAY[pattern])"));
+        Assert.IsType<ArrayConstructor.Elements>(Assert.IsType<Nested>(like.Pattern).Expression);
+
+        var ilike = Assert.IsType<ILike>(ParseExpression("value ILIKE SOME (SELECT pattern FROM items)"));
+        Assert.IsType<Subquery>(ilike.Pattern);
     }
 
     [Fact]

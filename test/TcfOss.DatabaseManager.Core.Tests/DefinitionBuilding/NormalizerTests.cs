@@ -640,7 +640,7 @@ public class NormalizerTests
     [InlineData("(ROW(a)).*", "(ROW(`a`)).*")]
     [InlineData("a OPERATOR(+) b", "`a` OPERATOR(+) `b`")]
     [InlineData("OPERATOR(+) a", "OPERATOR(+) `a`")]
-    [InlineData("value NOT SIMILAR TO ANY(pattern) ESCAPE '!'", "`value` NOT SIMILAR TO ANY (`pattern`) ESCAPE '!'")]
+    [InlineData("value NOT SIMILAR TO (pattern) ESCAPE '!'", "`value` NOT SIMILAR TO (`pattern`) ESCAPE '!'")]
     public void NormalizeExpression_TraversesAdditionalExpressionTypes(string sql, string expected)
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
@@ -702,8 +702,8 @@ public class NormalizerTests
     [InlineData("value LIKE pattern ESCAPE escape_value", "`value` LIKE `pattern` ESCAPE `escape_value`")]
     [InlineData("value ILIKE pattern ESCAPE escape_value", "`value` ILIKE `pattern` ESCAPE `escape_value`")]
     [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "`value` SIMILAR TO `pattern` ESCAPE `escape_value`")]
-    [InlineData("value LIKE ALL(pattern)", "`value` LIKE ALL(`pattern`)")]
-    [InlineData("value ILIKE SOME(pattern)", "`value` ILIKE SOME(`pattern`)")]
+    [InlineData("value LIKE ALL(pattern)", "`value` LIKE ALL (`pattern`)")]
+    [InlineData("value ILIKE SOME(pattern)", "`value` ILIKE SOME (`pattern`)")]
     [InlineData("value LIKE pattern ESCAPE '!'", "`value` LIKE `pattern` ESCAPE '!'")]
     [InlineData("value ILIKE pattern ESCAPE '!'", "`value` ILIKE `pattern` ESCAPE '!'")]
     [InlineData("value SIMILAR TO pattern ESCAPE '!'", "`value` SIMILAR TO `pattern` ESCAPE '!'")]
@@ -711,6 +711,17 @@ public class NormalizerTests
     {
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: true));
         Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
+    [Theory]
+    [InlineData("LIKE", "ANY")]
+    [InlineData("ILIKE", "SOME")]
+    public void NormalizeExpression_QuantifiedPattern_PreservesRequiredNesting(string op, string quantifier)
+    {
+        string sql = $"value {op} {quantifier} ((pattern))";
+
+        Assert.Equal($"`value` {op} {quantifier} (`pattern`)", GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal($"`value` {op} {quantifier} ((`pattern`))", GetNormalizedExpressionText(sql, flatten: false));
     }
 
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)

@@ -378,7 +378,6 @@ public class MsParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
     public void PostgresIntervalLiterals_AreRejected(string sql)
     {
-        Assert.False(new MsParser().SupportsPostgresIntervalLiteralSyntax);
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
