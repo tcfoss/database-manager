@@ -218,6 +218,125 @@ public class ControlFlowParser
         return new While.Ms(condition, _p.ParseStatement(state));
     }
 
+    public PgFor ParsePgFor(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.FOR);
+        Token targetStart = state.Peek();
+        SqlValueList<ObjectName> targets = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
+        state.ExpectKeyword(Keyword.IN);
+
+        PgForSource source = ParsePgForSource(state);
+        if (source is PgForSource.Range && (targets.Count != 1 || targets[0].Values.Count != 1))
+        {
+            throw ParserState.ExpectedCategoryException("single integer loop variable", targetStart);
+        }
+
+        Token loop = state.Peek();
+        state.ExpectKeyword(Keyword.LOOP);
+        SqlValueList<Statement> statements = ParseLoopStatements(state, Keyword.LOOP);
+        return new PgFor(targets, source, statements)
+        {
+            EndLabel = ParseLoopEndLabel(state),
+            LoopMeta = new() { PreNonSql = loop.PreNonSql?.Items }
+        };
+    }
+
+    private static ParserState ReadPgForQuery(ParserState state)
+    {
+        List<Token> tokens = [];
+        int depth = 0;
+        while (true)
+        {
+            Token token = state.Peek();
+            if (depth == 0 && token is Word { Keyword: Keyword.LOOP }
+                && tokens.LastOrDefault() is not Dot && state.PeekNth(1) is not Dot)
+            {
+                // Keep LOOP out of the SQL parser, where it could be consumed as an implicit alias.
+                tokens.Add(new Eof { Location = token.Location });
+                return new ParserState(state.Grammar, [.. tokens], state.SourceId);
+            }
+            if (token is Eof or Semicolon)
+            {
+                throw state.ExpectedException("LOOP");
+            }
+            if (token is ParenOpen or BracketOpen)
+            {
+                depth++;
+            }
+            else if (token is ParenClose or BracketClose)
+            {
+                depth--;
+            }
+            tokens.Add(state.Next());
+        }
+    }
+
+    private PgForSource ParsePgForSource(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.EXECUTE))
+        {
+            Expression command = _parseExpr(state);
+            SqlValueList<Expression>? parameters = state.ParseKeyword(Keyword.USING)
+                ? state.ParseCommaSeparated(_parseExpr)
+                : null;
+            return new PgForSource.Execute(command) { Using = parameters };
+        }
+
+        bool reverse = state.ParseKeyword(Keyword.REVERSE);
+
+        Expression? lower;
+        if (reverse)
+        {
+            lower = _parseExpr(state);
+            state.ExpectToken<DotDot>();
+        }
+        else
+        {
+            _ = state.TryParse(s =>
+            {
+                Expression expression = _parseExpr(s);
+                return s.ConsumeTokenIs<DotDot>() ? expression : null;
+            }, out lower);
+        }
+        if (lower != null)
+        {
+            Expression upper = _parseExpr(state);
+            Expression? step = state.ParseKeyword(Keyword.BY) ? _parseExpr(state) : null;
+            return new PgForSource.Range(lower, upper) { Reverse = reverse, Step = step };
+        }
+
+        ParserState queryState = ReadPgForQuery(state);
+        Token queryStart = queryState.Peek();
+        Statement query = _p.ParseStatement(queryState);
+        if (queryState.Peek() is not Eof)
+        {
+            throw queryState.ExpectedException("LOOP");
+        }
+        bool returnsRows = query switch
+        {
+            Select select => select.SelectInto == null && IsPgForSelectBody(select.Body),
+            Insert { Returning: not null } or Update { Returning: not null } or Delete { Returning: not null } => true,
+            _ => false
+        };
+        if (!returnsRows)
+        {
+            throw ParserState.ExpectedCategoryException("row-returning query", queryStart);
+        }
+        return new PgForSource.Query(query);
+    }
+
+    private static bool IsPgForSelectBody(SelectBody body)
+    {
+        return body switch
+        {
+            SelectBody.SimpleSelectQuery simple => simple.Query.SelectInto == null,
+            SelectBody.Nested nested => nested.Query.SelectInto == null && IsPgForSelectBody(nested.Query.Body),
+            SelectBody.SetOperation operation => IsPgForSelectBody(operation.Left) && IsPgForSelectBody(operation.Right),
+            SelectBody.ValuesQuery => true,
+            _ => false
+        };
+    }
+
     private SqlValueList<Statement> ParseLoopStatements(ParserState state, Keyword end)
     {
         string expected = $"END {end}";

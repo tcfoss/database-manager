@@ -697,6 +697,7 @@ public enum Keyword
     RETURN,
     RETURNING,
     RETURNS,
+    REVERSE,
     REVOKE,
     RIGHT,
     RLIKE,

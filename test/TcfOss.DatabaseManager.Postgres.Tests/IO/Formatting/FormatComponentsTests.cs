@@ -894,4 +894,20 @@ public class FormatComponentsTests
         Assert.Contains(" \"outer_label\";", formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("<<Outer_Label>> FOR i IN app.start_value() .. app.end_value() BY app.step() LOOP CALL app.work(i); END LOOP OUTER_LABEL", "FOR \"i\" IN \"app\".\"start_value\"() .. \"app\".\"end_value\"() BY \"app\".\"step\"()")]
+    [InlineData("<<Outer_Label>> FOR row_value IN SELECT value FROM app.items LOOP CALL app.work(); END LOOP OUTER_LABEL", "FROM \"app\".\"items\"")]
+    [InlineData("<<Outer_Label>> FOR row_value IN EXECUTE app.query_text() USING source.value LOOP CALL app.work(); END LOOP OUTER_LABEL", "EXECUTE \"app\".\"query_text\"() USING \"source\".\"value\"")]
+    public void ProceduralFor_FormatsSourceExpressionsAndLabelsRecursively(string sql, string expectedSource)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("<<\"outer_label\">>", formatted);
+        Assert.Contains(expectedSource, formatted);
+        Assert.Contains($"LOOP{Environment.NewLine}", formatted);
+        Assert.Contains("END LOOP \"outer_label\";", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

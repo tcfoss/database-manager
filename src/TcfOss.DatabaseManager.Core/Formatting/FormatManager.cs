@@ -155,12 +155,16 @@ public class FormatManager
     {
         private readonly FormatManager _manager;
         private readonly bool _previousExpectingQualifiedColumn;
+        private readonly bool _previousSelectItemsFirst;
+        private readonly bool _previousSelectItemsLast;
 
         public ContextScope(FormatManager manager, FormatContext context)
         {
             _manager = manager;
             _manager._contextStack.Push(context);
             _previousExpectingQualifiedColumn = _manager.ExpectingQualifiedColumn;
+            _previousSelectItemsFirst = _manager.SelectItemsFirst;
+            _previousSelectItemsLast = _manager.SelectItemsLast;
             // Consider inheriting ExpectingQualifiedColumn when entering contexts that
             // are neutral with respect to it. Will require a more careful implementation of
             // GetExpectingQualifiedColumn, probably returnning `bool?` for contexts
@@ -224,6 +228,8 @@ public class FormatManager
         {
             _manager._contextStack.Pop();
             _manager.ExpectingQualifiedColumn = _previousExpectingQualifiedColumn;
+            _manager.SelectItemsFirst = _previousSelectItemsFirst;
+            _manager.SelectItemsLast = _previousSelectItemsLast;
         }
     }
 }

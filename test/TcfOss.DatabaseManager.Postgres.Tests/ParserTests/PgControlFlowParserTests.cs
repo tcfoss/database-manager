@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -338,6 +339,175 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
             Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
         }
         Assert.Equal(formatted, Format(ParseStatement(formatted)));
+    }
+
+    [Theory]
+    [InlineData("FOR i IN 1..10 LOOP END LOOP")]
+    [InlineData("FOR i IN -2 .. +3 LOOP CALL app.work(i); END LOOP")]
+    [InlineData("FOR i IN REVERSE app.upper_bound() .. app.lower_bound() BY app.step() LOOP CALL app.work(i); END LOOP")]
+    [InlineData("FOR i IN (SELECT min_value FROM bounds) .. 10 BY (1 + 1) LOOP CALL app.work(i); END LOOP")]
+    [InlineData("FOR i IN loop.start_value .. bounds.loop BY app.loop() LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT * FROM app.items LOOP CALL app.work(); END LOOP")]
+    [InlineData("FOR first_value, second_value IN SELECT 1, 2 LOOP END LOOP")]
+    [InlineData("FOR row_value.field IN SELECT 1 LOOP END LOOP")]
+    [InlineData("FOR row_value IN VALUES (1), (2) LOOP END LOOP")]
+    [InlineData("FOR row_value IN (SELECT 1) LOOP END LOOP")]
+    [InlineData("FOR row_value IN WITH source AS (SELECT 1 AS value) SELECT source.value FROM source LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT 1 UNION ALL SELECT 2 LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT (SELECT 1 AS loop), ARRAY[1, 2], 'LOOP' LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT loop.value, source.loop FROM app.loop AS source LOOP END LOOP")]
+    [InlineData("FOR row_value IN INSERT INTO app.items DEFAULT VALUES RETURNING id LOOP END LOOP")]
+    [InlineData("FOR row_value IN UPDATE app.items SET id = 1 RETURNING id LOOP END LOOP")]
+    [InlineData("FOR row_value IN DELETE FROM app.items RETURNING id LOOP END LOOP")]
+    [InlineData("FOR row_value IN EXECUTE 'SELECT 1' LOOP END LOOP")]
+    [InlineData("FOR row_value IN EXECUTE app.query_text($1) USING app.value(), (SELECT 1), ARRAY[1, 2] LOOP CALL app.work(); END LOOP")]
+    [InlineData("<<outer_label>> FOR i IN 1 .. 2 LOOP FOR row_value IN SELECT 1 LOOP CALL app.work(); END LOOP; END LOOP outer_label")]
+    [InlineData("BEGIN FOR i IN 1 .. 2 LOOP WHILE FALSE LOOP NULL; END LOOP; NULL; END LOOP; NULL; END")]
+    public void ProceduralFor_RoundTripSqlFormattingAndJson(string sql)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Fact]
+    public void ProceduralFor_PreservesRangeAndTargetComponentsAndFollowingStatement()
+    {
+        const string sql = "<<outer_label>> FOR i IN REVERSE 10 .. 1 BY 2 LOOP CALL app.work(); END LOOP outer_label; SELECT 1";
+        ParserState state = GetState(sql, sourceId: 13);
+        SqlValueList<Statement> statements = ParseStatements(state);
+        var labeled = Assert.IsType<LabeledStatement.Pg>(statements[0]);
+        var loop = Assert.IsType<PgFor>(labeled.SubStatement);
+        Identifier variable = Assert.Single(Assert.Single(loop.Targets).Values);
+        Assert.Equal("i", variable.Name);
+        Assert.Equal(13, variable.Source!.Value.SourceId);
+        Assert.Equal(sql.IndexOf("i IN", StringComparison.Ordinal), variable.Source.Value.Start);
+        var range = Assert.IsType<PgForSource.Range>(loop.Source);
+        Assert.True(range.Reverse);
+        Assert.Equal("10", range.LowerBound.ToSql());
+        Assert.Equal("1", range.UpperBound.ToSql());
+        Assert.Equal("2", range.Step!.ToSql());
+        Assert.Equal("outer_label", loop.EndLabel!.Name);
+        Assert.Equal(sql.LastIndexOf("outer_label", StringComparison.Ordinal), loop.EndLabel.Source!.Value.Start);
+        Assert.IsType<Select>(statements[1]);
+        Assert.Null(state.StatementLabel);
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("FOR i IN 1 .. 2 /* header */ LOOP CALL app.work(); /* closing */ END LOOP")]
+    [InlineData("FOR row_value IN SELECT * FROM app.items /* header */ LOOP CALL app.work(); /* closing */ END LOOP")]
+    [InlineData("FOR row_value IN EXECUTE 'SELECT 1' -- header\nLOOP CALL app.work(); -- closing\nEND LOOP")]
+    public void ProceduralFor_PreservesBoundaryComments(string sql)
+    {
+        Statement statement = Assert.IsType<PgFor>(ParseStatement(sql));
+        string formatted = Format(statement);
+        Assert.Equal(1, formatted.Split("header", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, formatted.Split("closing", StringSplitOptions.None).Length - 1);
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(formatted, Format(Assert.Single(Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)))));
+    }
+
+    [Theory]
+    [InlineData("FOR i IN app.low() .. app.high() BY app.step() LOOP CALL app.work(); END LOOP", new[] { "app.low", "app.high", "app.step", "app.work" })]
+    [InlineData("FOR row_value IN SELECT * FROM app.items LOOP CALL app.work(); END LOOP", new[] { "app.items", "app.work" })]
+    [InlineData("FOR row_value IN EXECUTE app.query_text() USING app.value() LOOP CALL app.work(); END LOOP", new[] { "app.query_text", "app.value", "app.work" })]
+    [InlineData("FOR row_value IN EXECUTE 'SELECT * FROM hidden.items' LOOP END LOOP", new string[0])]
+    public void ProceduralFor_ReferencesSourceAndBodyWithoutTreatingTargetsAsObjects(string sql, string[] expected)
+    {
+        var loop = Assert.IsType<PgFor>(ParseStatement(sql));
+        string[] names = [.. loop.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(expected, names);
+        Assert.Empty(loop.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("FOR IN 1 .. 2 LOOP END LOOP")]
+    [InlineData("FOR i 1 .. 2 LOOP END LOOP")]
+    [InlineData("FOR i IN 1 .. LOOP END LOOP")]
+    [InlineData("FOR i IN .. 2 LOOP END LOOP")]
+    [InlineData("FOR i IN REVERSE 10 LOOP END LOOP")]
+    [InlineData("FOR i IN REVERSE SELECT 1 LOOP END LOOP")]
+    [InlineData("FOR i IN 1 .. 2 BY LOOP END LOOP")]
+    [InlineData("FOR i, j IN 1 .. 2 LOOP END LOOP")]
+    [InlineData("FOR row_value.field IN 1 .. 2 LOOP END LOOP")]
+    [InlineData("FOR row_value IN EXECUTE LOOP END LOOP")]
+    [InlineData("FOR row_value IN EXECUTE 'SELECT 1' USING LOOP END LOOP")]
+    [InlineData("FOR row_value IN EXECUTE 'SELECT 1' USING 1, LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT 1; LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT (1 LOOP END LOOP")]
+    [InlineData("FOR row_value IN CALL app.work() LOOP END LOOP")]
+    [InlineData("FOR row_value IN INSERT INTO app.items DEFAULT VALUES LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT 1 INTO other_value LOOP END LOOP")]
+    [InlineData("FOR row_value IN (SELECT 1 INTO other_value) LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT 1 INTO other_value UNION ALL SELECT 2 LOOP END LOOP")]
+    [InlineData("FOR row_value IN cursor_name(1) LOOP END LOOP")]
+    [InlineData("FOR i IN 1 .. 2")]
+    [InlineData("FOR i IN 1 .. 2 LOOP")]
+    [InlineData("FOR i IN 1 .. 2 LOOP CALL app.work() END LOOP")]
+    [InlineData("FOR i IN 1 .. 2 LOOP END FOR")]
+    [InlineData("<<label>> FOR i IN 1 .. 2 LOOP END LOOP other_label")]
+    [InlineData("<<\"Label\">> FOR i IN 1 .. 2 LOOP END LOOP label")]
+    [InlineData("FOR i IN 1 .. 2 LOOP END LOOP unexpected_label")]
+    public void ProceduralFor_RejectsInvalidOrDeferredSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg)]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void ProceduralFor_RequiresPlPgSqlGrammar(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("FOR i IN 1 .. 2 LOOP END LOOP"));
+        Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+    }
+
+    [Theory]
+    [InlineData(Grammar.PgPl)]
+    [InlineData(Grammar.All)]
+    public void ProceduralFor_IsSupportedByCoreKitchenSinkParser(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("FOR i IN 1 .. 2 LOOP END LOOP"));
+        var loop = Assert.IsType<PgFor>(Assert.Single(new Parser().Parse(state, null)));
+        Assert.IsType<PgForSource.Range>(loop.Source);
+    }
+
+    [Theory]
+    [InlineData("<<broken>> FOR i IN 1 .. LOOP END LOOP")]
+    [InlineData("<<broken>> FOR row_value IN SELECT (1 LOOP END LOOP")]
+    [InlineData("<<broken>> FOR i IN 1 .. 2 LOOP CALL app.work() END LOOP")]
+    public void ProceduralFor_FailureRestoresContextAndLabel(string sql)
+    {
+        ParserState state = GetState(sql);
+        Grammar grammar = state.Grammar;
+        using (state.EnterContext(ParseContext.DomainCheck))
+        {
+            Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+            Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Null(state.StatementLabel);
+            Assert.Equal(grammar, state.Grammar);
+        }
+    }
+
+    [Theory]
+    [InlineData("FOR i IN 1 .. 2 BY 1 BY 2 LOOP END LOOP", Keyword.BY)]
+    [InlineData("FOR row_value IN EXECUTE 'SELECT 1' USING 1 USING 2 LOOP END LOOP", Keyword.USING)]
+    public void ProceduralFor_ExpressionSourceFailureLeavesCallerAtUnexpectedToken(string sql, Keyword unexpected)
+    {
+        ParserState state = GetState(sql);
+
+        Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+
+        Assert.True(state.PeekKeyword(unexpected));
     }
 
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)

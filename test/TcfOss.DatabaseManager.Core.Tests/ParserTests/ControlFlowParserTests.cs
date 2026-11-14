@@ -122,6 +122,7 @@ public class ControlFlowParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("WHILE TRUE LOOP SELECT 1; END LOOP", typeof(While.Pg))]
     [InlineData("WHILE 1 = 1 DO SELECT 1; END WHILE", typeof(While.My))]
     [InlineData("WHILE 1 = 1 SELECT 1", typeof(While.Ms))]
+    [InlineData("FOR row_value IN SELECT 1 LOOP SELECT 1; END LOOP", typeof(PgFor))]
     public void Loops_DispatchUsingAvailableGrammar(string sql, Type expectedType)
     {
         Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);

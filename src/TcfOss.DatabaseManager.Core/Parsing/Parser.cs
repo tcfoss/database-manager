@@ -180,9 +180,9 @@ public class Parser : IParser
             throw state.ExpectedException(">>");
         }
         state.Next(); // Consume the closing ">>" operator token
-        if (state.Peek() is not Word { Keyword: Keyword.BEGIN or Keyword.DECLARE or Keyword.LOOP or Keyword.WHILE })
+        if (state.Peek() is not Word { Keyword: Keyword.BEGIN or Keyword.DECLARE or Keyword.LOOP or Keyword.WHILE or Keyword.FOR })
         {
-            throw state.ExpectedException("BEGIN", "DECLARE", "LOOP", "WHILE");
+            throw state.ExpectedException("BEGIN", "DECLARE", "LOOP", "WHILE", "FOR");
         }
 
         return new StatementLabel(
@@ -236,6 +236,7 @@ public class Parser : IParser
             Keyword.CASE when state.My || state.PgPl => ControlFlowParser.ParseCase(state),
             Keyword.LOOP when state.My || state.PgPl => ControlFlowParser.ParseLoop(state),
             Keyword.WHILE when state.My || state.PgPl || state.Ms => ControlFlowParser.ParseWhile(state),
+            Keyword.FOR when state.PgPl => ControlFlowParser.ParsePgFor(state),
             Keyword.DECLARE => ParseDeclare(state),
             Keyword.NULL when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
             Keyword.SET => ParseSet(state),

@@ -387,6 +387,8 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("LOOP SELECT 1; END LOOP;", Label = "Loop")]
     [InlineData("WHILE TRUE LOOP SELECT 1; END LOOP;", Label = "While loop")]
     [InlineData("FOR value IN SELECT 1 LOOP SELECT 1; END LOOP;", Label = "For loop")]
+    [InlineData("FOR value IN 1 .. 2 LOOP SELECT 1; END LOOP;", Label = "Integer for loop")]
+    [InlineData("FOR value IN EXECUTE 'SELECT 1' USING 1 LOOP SELECT 1; END LOOP;", Label = "Dynamic query for loop")]
     [InlineData("LEAVE outer_loop;", Label = "MySQL leave")]
     [InlineData("ITERATE outer_loop;", Label = "MySQL iterate")]
     [InlineData("OPEN cursor_name;", Label = "Procedural cursor open")]
