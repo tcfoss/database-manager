@@ -510,6 +510,180 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.True(state.PeekKeyword(unexpected));
     }
 
+    [Theory]
+    [InlineData("FOREACH item IN ARRAY ARRAY[1, 2] LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE 0 IN ARRAY $1 LOOP CALL app.work(item); END LOOP")]
+    [InlineData("FOREACH row_value SLICE 1 IN ARRAY ARRAY[[1, 2], [3, 4]] LOOP CONTINUE; END LOOP")]
+    [InlineData("FOREACH plane SLICE 2 IN ARRAY app.values() LOOP EXIT WHEN app.done(); END LOOP")]
+    [InlineData("FOREACH first_value, second_value IN ARRAY app.records() LOOP CALL app.work(); END LOOP")]
+    [InlineData("FOREACH row_value.field IN ARRAY ARRAY[1] LOOP EXIT; END LOOP")]
+    [InlineData("FOREACH item IN ARRAY ARRAY(SELECT value FROM app.items) LOOP EXIT; END LOOP")]
+    [InlineData("FOREACH item IN ARRAY (app.values() || ARRAY[1]) LOOP EXIT; END LOOP")]
+    [InlineData("<<outer_label>> FOREACH item IN ARRAY $1 LOOP FOR i IN 1 .. 2 LOOP CONTINUE outer_label WHEN i > 0; END LOOP; EXIT outer_label; END LOOP outer_label")]
+    [InlineData("<<\"Outer\">> FOREACH item IN ARRAY $1 LOOP EXIT \"Outer\" WHEN TRUE; END LOOP \"Outer\"")]
+    [InlineData("BEGIN FOREACH item IN ARRAY $1 LOOP WHILE FALSE LOOP NULL; END LOOP; NULL; END LOOP; NULL; END")]
+    [InlineData("<<block_label>> BEGIN EXIT block_label WHEN TRUE; END block_label")]
+    public void ProceduralForeachAndJumps_RoundTripSqlFormattingAndJson(string sql)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("EXIT", typeof(PgLoopControl.Exit), null, false)]
+    [InlineData("EXIT outer_label", typeof(PgLoopControl.Exit), "outer_label", false)]
+    [InlineData("EXIT WHEN app.done()", typeof(PgLoopControl.Exit), null, true)]
+    [InlineData("EXIT outer_label WHEN app.done()", typeof(PgLoopControl.Exit), "outer_label", true)]
+    [InlineData("CONTINUE", typeof(PgLoopControl.Continue), null, false)]
+    [InlineData("CONTINUE outer_label", typeof(PgLoopControl.Continue), "outer_label", false)]
+    [InlineData("CONTINUE WHEN app.ready()", typeof(PgLoopControl.Continue), null, true)]
+    [InlineData("CONTINUE \"when\" WHEN app.ready()", typeof(PgLoopControl.Continue), "when", true)]
+    public void ProceduralJumps_PreserveOptionalLabelAndCondition(string sql, Type type, string? expectedLabel, bool hasCondition)
+    {
+        Statement[] statements = [.. ParseStatements(sql + "; SELECT 1")];
+        var jump = Assert.IsType<PgLoopControl>(statements[0], exactMatch: false);
+
+        Assert.IsType(type, jump);
+        Assert.Equal(expectedLabel, jump.Label?.Name);
+        Assert.Equal(hasCondition, jump.Condition != null);
+        Assert.IsType<Select>(statements[1]);
+        Assert.Equal(jump, ParseStatement(jump.ToSql()));
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(" SLICE 0", 0)]
+    [InlineData(" SLICE 1", 1)]
+    public void ProceduralForeach_PreservesSliceLabelSourceAndFollowingStatement(string sliceClause, int? expectedSlice)
+    {
+        string sql = $"<<outer_label>> FOREACH item{sliceClause} IN ARRAY $1 LOOP CONTINUE outer_label; END LOOP outer_label; SELECT 1";
+        ParserState state = GetState(sql, sourceId: 17);
+        SqlValueList<Statement> statements = ParseStatements(state);
+        var labeled = Assert.IsType<LabeledStatement.Pg>(statements[0]);
+        var loop = Assert.IsType<PgForeach>(labeled.SubStatement);
+        Identifier target = Assert.Single(Assert.Single(loop.Targets).Values);
+        var jump = Assert.Single(loop.Statements.OfType<PgLoopControl.Continue>());
+
+        Assert.Equal(expectedSlice, loop.Slice);
+        Assert.Equal(17, target.Source!.Value.SourceId);
+        Assert.Equal(sql.IndexOf("item", StringComparison.Ordinal), target.Source.Value.Start);
+        Assert.Equal(17, jump.Label!.Source!.Value.SourceId);
+        Assert.Equal("outer_label", jump.Label.Name);
+        Assert.Equal(sql.LastIndexOf("outer_label", StringComparison.Ordinal), loop.EndLabel!.Source!.Value.Start);
+        Assert.IsType<Select>(statements[1]);
+        Assert.Null(state.StatementLabel);
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("<< /* first */ label /* second */ >> FOREACH item IN ARRAY $1 /* header */ LOOP /* jump */ EXIT label; /* closing */ END LOOP label")]
+    [InlineData("FOREACH item IN ARRAY $1 -- header\nLOOP -- jump\nCONTINUE; -- closing\nEND LOOP")]
+    public void ProceduralForeach_PreservesHeaderBodyAndClosingComments(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        string formatted = Format(statement);
+        foreach (string marker in new[] { "header", "jump", "closing" })
+        {
+            Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
+        }
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(formatted, Format(Assert.Single(Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)))));
+    }
+
+    [Theory]
+    [InlineData("FOREACH item IN ARRAY app.values() LOOP CONTINUE outer_label WHEN app.ready(); EXIT WHEN app.done(); CALL app.work(); END LOOP",
+        new[] { "app.values", "app.ready", "app.done", "app.work" })]
+    [InlineData("EXIT outer_label WHEN app.done()", new[] { "app.done" })]
+    [InlineData("CONTINUE outer_label WHEN app.ready()", new[] { "app.ready" })]
+    [InlineData("EXIT outer_label", new string[0])]
+    [InlineData("CONTINUE outer_label", new string[0])]
+    public void ProceduralForeachAndJumps_ReferenceExpressionsAndBodyNotTargetsOrLabels(string sql, string[] expected)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(expected, names);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("FOREACH item IN ARRAY $1 LOOP END LOOP", typeof(PgForeach))]
+    [InlineData("EXIT WHEN TRUE", typeof(PgLoopControl.Exit))]
+    [InlineData("CONTINUE label WHEN TRUE", typeof(PgLoopControl.Continue))]
+    public void ProceduralForeachAndJumps_AreSupportedByCoreKitchenSinkParser(string sql, Type type)
+    {
+        foreach (Grammar grammar in new[] { Grammar.PgPl, Grammar.All })
+        {
+            var state = new ParserState(grammar, GetTokens(sql));
+            Assert.IsType(type, Assert.Single(new Parser().Parse(state, null)));
+        }
+    }
+
+    [Theory]
+    [InlineData("FOREACH IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item IN $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE -1 IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE +1 IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE 1.5 IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE 1e0 IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE 2147483648 IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE amount IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item SLICE IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("FOREACH item IN ARRAY LOOP END LOOP")]
+    [InlineData("FOREACH item IN ARRAY $1 END LOOP")]
+    [InlineData("FOREACH item IN ARRAY $1 LOOP")]
+    [InlineData("FOREACH item IN ARRAY $1 LOOP EXIT END LOOP")]
+    [InlineData("FOREACH item IN ARRAY $1 LOOP CONTINUE END LOOP")]
+    [InlineData("FOREACH item IN ARRAY $1 LOOP END FOREACH")]
+    [InlineData("<<label>> FOREACH item IN ARRAY $1 LOOP END LOOP other_label")]
+    [InlineData("<<\"Label\">> FOREACH item IN ARRAY $1 LOOP END LOOP label")]
+    [InlineData("EXIT WHEN")]
+    [InlineData("CONTINUE WHEN")]
+    [InlineData("EXIT 'label'")]
+    [InlineData("CONTINUE 'label'")]
+    [InlineData("EXIT outer_label WHEN TRUE WHEN FALSE")]
+    [InlineData("CONTINUE outer_label, other_label")]
+    public void ProceduralForeachAndJumps_RejectInvalidSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("FOREACH item IN ARRAY $1 LOOP END LOOP")]
+    [InlineData("EXIT")]
+    [InlineData("CONTINUE WHEN TRUE")]
+    public void ProceduralForeachAndJumps_RequirePlPgSqlGrammar(string sql)
+    {
+        foreach (Grammar grammar in new[] { Grammar.Pg, Grammar.My, Grammar.Ms })
+        {
+            var state = new ParserState(grammar, GetTokens(sql));
+            Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+        }
+        var sqlState = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(sqlState, null));
+    }
+
+    [Fact]
+    public void ProceduralForeach_FailureRestoresContextAndLabel()
+    {
+        ParserState state = GetState("<<broken>> FOREACH item IN ARRAY $1 LOOP EXIT END LOOP");
+        using (state.EnterContext(ParseContext.DomainCheck))
+        {
+            Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+            Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Null(state.StatementLabel);
+        }
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)

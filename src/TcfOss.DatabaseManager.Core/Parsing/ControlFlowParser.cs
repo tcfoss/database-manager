@@ -241,6 +241,48 @@ public class ControlFlowParser
         };
     }
 
+    public PgForeach ParsePgForeach(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.FOREACH);
+        SqlValueList<ObjectName> targets = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
+        int? slice = null;
+        if (state.ParseKeyword(Keyword.SLICE))
+        {
+            if (state.Peek() is not NumericLiteral)
+            {
+                throw state.ExpectedCategoryException("literal_int");
+            }
+            slice = ValueParser.ParseLiteralInt(state);
+        }
+        state.ExpectKeywordsAll(Keyword.IN, Keyword.ARRAY);
+        Expression arrayExpression = _parseExpr(state);
+        Token loop = state.Peek();
+        state.ExpectKeyword(Keyword.LOOP);
+        SqlValueList<Statement> statements = ParseLoopStatements(state, Keyword.LOOP);
+        return new PgForeach(targets, arrayExpression, statements)
+        {
+            Slice = slice,
+            EndLabel = ParseLoopEndLabel(state),
+            LoopMeta = new() { PreNonSql = loop.PreNonSql?.Items }
+        };
+    }
+
+    public PgLoopControl ParsePgLoopContinue(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.CONTINUE);
+        Identifier? label = state.Peek() is Word { Keyword: not Keyword.WHEN } ? _parseIdentifier(state) : null;
+        Expression? condition = state.ParseKeyword(Keyword.WHEN) ? _parseExpr(state) : null;
+        return new PgLoopControl.Continue(label, condition);
+    }
+
+    public PgLoopControl ParsePgLoopExit(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.EXIT);
+        Identifier? label = state.Peek() is Word { Keyword: not Keyword.WHEN } ? _parseIdentifier(state) : null;
+        Expression? condition = state.ParseKeyword(Keyword.WHEN) ? _parseExpr(state) : null;
+        return new PgLoopControl.Exit(label, condition);
+    }
+
     private static ParserState ReadPgForQuery(ParserState state)
     {
         List<Token> tokens = [];

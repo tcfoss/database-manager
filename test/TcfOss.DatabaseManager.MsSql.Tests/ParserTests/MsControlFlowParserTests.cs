@@ -62,6 +62,14 @@ public class MsControlFlowParserTests : ParserTestsBase<MsLexer, MsParser>
         Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
     }
 
+    [Fact]
+    public void Continue_RemainsTheUnlabeledUnconditionalMsSqlVariant()
+    {
+        Assert.IsType<Continue>(ParseStatement("CONTINUE"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CONTINUE label"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CONTINUE WHEN 1 = 1"));
+    }
+
     [Theory]
     [InlineData("RETURN", Label = "Bare RETURN")]
     [InlineData("RETURN 0", Label = "RETURN literal")]

@@ -910,4 +910,19 @@ public class FormatComponentsTests
         Assert.Contains("END LOOP \"outer_label\";", formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Fact]
+    public void ProceduralForeachAndJumps_FormatExpressionsAndLabelsRecursively()
+    {
+        const string sql = "<<Outer_Label>> FOREACH item SLICE 0 IN ARRAY app.values(source.value) LOOP CONTINUE outer_label WHEN app.ready(); EXIT OUTER_LABEL WHEN app.done(); END LOOP outer_label";
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("<<\"outer_label\">>", formatted);
+        Assert.Contains("FOREACH \"item\" SLICE 0 IN ARRAY \"app\".\"values\"(\"source\".\"value\") LOOP", formatted);
+        Assert.Contains("CONTINUE \"outer_label\" WHEN \"app\".\"ready\"()", formatted);
+        Assert.Contains("EXIT \"outer_label\" WHEN \"app\".\"done\"()", formatted);
+        Assert.Contains("END LOOP \"outer_label\";", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }
