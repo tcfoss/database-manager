@@ -22,28 +22,9 @@ public class MsControlFlowParser : ControlFlowParser
         _parseIdentifier = _p.ComponentParser.ParseIdentifier;
     }
 
-    /// <summary>
-    /// Parses a T-SQL <c>IF</c> statement.
-    /// Syntax: <c>IF &lt;bool-expr&gt; &lt;stmt&gt; [ELSE &lt;stmt&gt;]</c>.
-    /// No <c>THEN</c>, no <c>ELSEIF</c>, no <c>END IF</c>; each branch is a
-    /// single un-terminated statement.
-    /// </summary>
     public override Statement ParseIf(ParserState state)
     {
-        state.ExpectKeyword(Keyword.IF);
-        Expression condition = _parseExpr(state);
-        Statement thenStmt = _p.ParseStatement(state);
-
-        Statement? elseStmt = null;
-        if (state.ParseKeyword(Keyword.ELSE))
-        {
-            elseStmt = _p.ParseStatement(state);
-        }
-
-        return new If.Ms(condition, thenStmt)
-        {
-            ElseStatement = elseStmt,
-        };
+        return ParseMsIf(state);
     }
 
     /// <summary>

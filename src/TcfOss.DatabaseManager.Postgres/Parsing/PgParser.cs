@@ -28,7 +28,7 @@ public class PgParser : Parser
         DmlParser = new PgDmlParser(this);
         DdlParser = new PgDdlParser(this);
         TableParser = new PgTableParser(this);
-        ControlFlowParser = new ControlFlowParser(this);
+        ControlFlowParser = new PgControlFlowParser(this);
     }
 
     protected override Statement ParseNormalStatement(ParserState state, Token token)

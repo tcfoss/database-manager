@@ -1,6 +1,8 @@
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -22,6 +24,9 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("BEGIN NULL; EXCEPTION WHEN division_by_zero OR SQLSTATE '22012' THEN NULL; WHEN OTHERS THEN NULL; END")]
     [InlineData("<<outer_label>> DECLARE x INT DEFAULT 1; BEGIN <<inner_label>> BEGIN NULL; END inner_label; EXCEPTION WHEN OTHERS THEN NULL; END outer_label")]
     [InlineData("<<\"Outer\">> BEGIN NULL; END \"Outer\"")]
+    [InlineData("BEGIN IF TRUE THEN NULL; ELSIF FALSE THEN NULL; ELSEIF FALSE THEN NULL; ELSE END IF; END")]
+    [InlineData("BEGIN CASE 1 WHEN 1, 2 THEN NULL; WHEN 3 THEN NULL; ELSE NULL; END CASE; END")]
+    [InlineData("BEGIN CASE WHEN TRUE THEN IF FALSE THEN NULL; END IF; ELSE END CASE; END")]
     public void ProceduralBlocks_RoundTripSqlFormattingAndJson(string sql)
     {
         var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
@@ -166,6 +171,95 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         var block = Assert.IsType<BeginEnd>(labeled.SubStatement);
         Assert.IsType<CreateType.Enumerated>(block.Statements[0]);
         Assert.Equal(grammar, state.Grammar);
+    }
+
+    [Theory]
+    [InlineData("CASE WHEN TRUE THEN NULL; END CASE", false)]
+    [InlineData("CASE WHEN TRUE THEN NULL; WHEN FALSE THEN NULL; ELSE NULL; END CASE", false)]
+    [InlineData("CASE 1 WHEN 1, 2 THEN NULL; END CASE", true)]
+    [InlineData("CASE 1 WHEN 1 THEN NULL; WHEN 2 THEN NULL; ELSE NULL; END CASE", true)]
+    [InlineData("CASE WHEN TRUE THEN CASE 1 WHEN 1 THEN NULL; END CASE; END CASE", false)]
+    public void ProceduralCase_ConsumesClosingKeywordsAndPreservesFollowingStatements(string sql, bool simple)
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement($"BEGIN {sql}; NULL; END"));
+        Statement[] statements = [.. block.Statements.NonInert()];
+
+        Assert.Equal(2, statements.Length);
+        if (simple)
+        {
+            Assert.IsType<SimpleCase>(statements[0]);
+        }
+        else
+        {
+            Assert.IsType<SearchedCase>(statements[0]);
+        }
+        Assert.IsType<PgNull>(statements[1]);
+    }
+
+    [Theory]
+    [InlineData("CASE 1 END CASE")]
+    [InlineData("CASE WHEN TRUE THEN NULL; END")]
+    [InlineData("CASE 1 WHEN 1 THEN NULL; END")]
+    [InlineData("CASE WHEN TRUE THEN NULL END CASE")]
+    [InlineData("CASE WHEN TRUE THEN NULL WHEN FALSE THEN NULL; END CASE")]
+    [InlineData("CASE WHEN TRUE THEN NULL; ELSE NULL END CASE")]
+    [InlineData("CASE 1 WHEN 1 THEN NULL END CASE")]
+    [InlineData("CASE 1 WHEN 1 THEN NULL; ELSE NULL END CASE")]
+    public void ProceduralCase_RejectsMissingBranchesClosingKeywordsAndTerminators(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
+    }
+
+    [Theory]
+    [InlineData("BEGIN IF TRUE SELECT 1; END", "THEN")]
+    [InlineData("BEGIN IF TRUE THEN NULL END IF; END", "end of statement")]
+    [InlineData("BEGIN IF TRUE THEN NULL ELSIF FALSE THEN NULL; END IF; END", "end of statement")]
+    [InlineData("BEGIN IF TRUE THEN NULL; ELSIF FALSE THEN NULL END IF; END", "end of statement")]
+    [InlineData("BEGIN IF TRUE THEN NULL; ELSE NULL END IF; END", "end of statement")]
+    public void ProceduralIf_ReportsSpecificSyntaxErrors(string sql, string expected)
+    {
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => ParseStatements(sql));
+        Assert.Contains(expected, exception.Message);
+    }
+
+    [Theory]
+    [InlineData("CASE 1 WHEN 1 THEN CALL app.work();")]
+    [InlineData("CASE WHEN TRUE THEN CALL app.work();")]
+    public void ProceduralCase_DistinguishesAbsentAndEmptyElse(string prefix)
+    {
+        Statement absent = (Statement)ParseStatement(prefix + " END CASE");
+        Statement empty = (Statement)ParseStatement(prefix + " ELSE END CASE");
+        SqlValueList<Statement>? absentElse = absent is SimpleCase simple ? simple.ElseStatements : ((SearchedCase)absent).ElseStatements;
+        SqlValueList<Statement>? emptyElse = empty is SimpleCase simpleEmpty ? simpleEmpty.ElseStatements : ((SearchedCase)empty).ElseStatements;
+
+        Assert.Null(absentElse);
+        Assert.NotNull(emptyElse);
+        Assert.Empty(emptyElse.NonInert());
+        Assert.NotEqual(absent, empty);
+        Assert.Contains(" ELSE ", empty.ToSql());
+        Assert.Equal(empty, ParseStatement(empty.ToSql()));
+        Assert.Equal(empty, ParseStatement(Format(empty)));
+        Statement[] statements = [absent, empty];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("BEGIN IF TRUE THEN NULL; /* first */ ELSIF FALSE THEN NULL; /* second */ ELSE NULL; /* third */ END IF; END")]
+    [InlineData("BEGIN CASE 1 /* first */ WHEN 1 THEN NULL; /* second */ WHEN 2 THEN NULL; /* third */ ELSE NULL; /* fourth */ END CASE; END")]
+    [InlineData("BEGIN CASE /* first */ WHEN TRUE THEN NULL; /* second */ ELSE NULL; /* third */ END CASE; END")]
+    [InlineData("BEGIN CASE -- first\nWHEN TRUE THEN NULL; -- second\nELSE NULL; -- third\nEND CASE; END")]
+    [InlineData("BEGIN IF TRUE THEN NULL; -- first\nELSEIF FALSE THEN NULL; -- second\nELSE NULL; -- third\nEND IF; END")]
+    public void ProceduralConditionals_PreserveBoundaryComments(string sql)
+    {
+        Statement statement = (Statement)ParseStatement(sql);
+        string formatted = Format(statement);
+        foreach (string marker in new[] { "first", "second", "third", "fourth" }.Where(marker => sql.Contains(marker, StringComparison.Ordinal)))
+        {
+            Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
+        }
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(formatted, Format(Assert.Single(Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)))));
     }
 
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)

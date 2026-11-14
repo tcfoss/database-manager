@@ -243,6 +243,7 @@ public enum Keyword
     ELEMENTS,
     ELSE,
     ELSEIF,
+    ELSIF,
     EMPTY,
     ENABLE,
     ENABLE_SCHEMA_EVOLUTION,

@@ -839,4 +839,18 @@ public class FormatComponentsTests
         Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("CASE value WHEN pattern, other THEN NULL; ELSE NULL; END CASE", "CASE \"value\"", "WHEN \"pattern\", \"other\" THEN")]
+    [InlineData("CASE WHEN value = pattern THEN NULL; ELSE NULL; END CASE", "CASE", "WHEN \"value\" = \"pattern\" THEN")]
+    [InlineData("IF value = pattern THEN NULL; ELSIF other = pattern THEN NULL; END IF", "IF \"value\" = \"pattern\" THEN", "ELSIF \"other\" = \"pattern\" THEN")]
+    public void ProceduralConditionals_FormatExpressionsRecursively(string conditional, string expectedHeader, string expectedBranch)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted($"BEGIN {conditional}; END");
+
+        Assert.Contains(expectedHeader, formatted);
+        Assert.Contains(expectedBranch, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

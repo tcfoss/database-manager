@@ -98,6 +98,10 @@ public class Parser : IParser
 
             if (endChecker?.GetFinished(state) ?? false)
             {
+                if (next.PreNonSql.SafeAny() && endChecker.PreserveEndTrivia(next))
+                {
+                    statements.Add(next.PreNonSql.ToInertOnly());
+                }
                 break;
             }
 
@@ -228,7 +232,8 @@ public class Parser : IParser
             Keyword.COMMENT when state.PgAny => DdlParser.ParseCommentOn(state),
             Keyword.ALTER => ParseAlter(state),
             Keyword.DROP => DdlParser.ParseDropObject(state),
-            Keyword.IF => ControlFlowParser.ParseIf(state),
+            Keyword.IF when state.My || state.PgPl || state.Ms => ControlFlowParser.ParseIf(state),
+            Keyword.CASE when state.My || state.PgPl => ControlFlowParser.ParseCase(state),
             Keyword.DECLARE => ParseDeclare(state),
             Keyword.NULL when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
             Keyword.SET => ParseSet(state),

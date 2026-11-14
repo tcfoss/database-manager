@@ -1,12 +1,14 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using NonSql = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
@@ -14,11 +16,13 @@ public class ControlFlowParser
 {
     private readonly Parser _p;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
+    private readonly Func<ParserState, Expression> _parseExpr;
 
     public ControlFlowParser(Parser parser)
     {
         _p = parser;
         _parseIdentifier = _p.ComponentParser.ParseIdentifier;
+        _parseExpr = _p.ExpressionParser.ParseExpr;
     }
 
     public BeginEnd ParseBeginEnd(ParserState state)
@@ -72,10 +76,6 @@ public class ControlFlowParser
         };
 
         SqlValueList<Statement> statements = _p.Parse(state, blockEnd);
-        if (state.Peek().PreNonSql is { } blockEndTrivia && blockEndTrivia.SafeAny())
-        {
-            statements.Add(blockEndTrivia.ToInertOnly());
-        }
 
         SqlValueList<PgExceptionHandler>? handlers = null;
         if (state.ParseKeyword(Keyword.EXCEPTION))
@@ -95,16 +95,11 @@ public class ControlFlowParser
                 var handlerEnd = new EndSubstatements
                 {
                     RequireTerminatorBeforeEnd = true,
+                    PreserveEndTrivia = token => token is Word { Keyword: Keyword.END },
                     GetFinished = s => s.PeekKeyword(Keyword.WHEN) || s.PeekKeyword(Keyword.END),
                     GetEofException = s => s.ExpectedException("WHEN", "END")
                 };
                 SqlValueList<Statement> handlerStatements = _p.Parse(state, handlerEnd);
-
-                // Consider pulling this logic into the core Parser or into a helper function
-                if (state.PeekKeyword(Keyword.END) && state.Peek().PreNonSql is { } handlerEndTrivia && handlerEndTrivia.SafeAny())
-                {
-                    handlerStatements.Add(handlerEndTrivia.ToInertOnly());
-                }
 
                 var handler = new PgExceptionHandler(conditions, handlerStatements);
                 if (when.PreNonSql is { } whenTrivia && whenTrivia.SafeAny())
@@ -190,32 +185,262 @@ public class ControlFlowParser
 
     public virtual Statement ParseIf(ParserState state)
     {
+        if (state.PgPl && state.TryParse(s => ParseMyOrPgIf(s, true), out Statement? pgStmt))
+        {
+            return pgStmt;
+        }
+        if (state.My && !state.PgPl && state.TryParse(s => ParseMyOrPgIf(s, false), out Statement? myStmt))
+        {
+            return myStmt;
+        }
+        if (state.Ms && state.TryParse(s => ParseMsIf(s), out Statement? msStmt))
+        {
+            return msStmt;
+        }
         throw new ParseException.DialectRequired("IF syntax", state.Peek().Location);
+    }
+
+    protected Statement ParseMyOrPgIf(ParserState state, bool elsIf)
+    {
+        // Keyword elseIfKeyword = elsIf ? Keyword.ELSIF : Keyword.ELSEIF;
+        // string elseIfKeywordText = elsIf ? "ELSIF" : "ELSEIF";
+        Keyword[] elseIfKeywords = elsIf
+            ? [Keyword.ELSEIF, Keyword.ELSIF]
+            : [Keyword.ELSEIF];
+
+        var ifEnder = new EndSubstatements()
+        {
+            RequireTerminatorBeforeEnd = state.PgPl,
+            PreserveEndTrivia = token => PreserveConditionalEndTrivia(token, !state.PgPl),
+            GetFinished = s =>
+            {
+                if (s.PeekKeywordsAll(Keyword.END, Keyword.IF))
+                {
+                    return true;
+                }
+                if (s.PeekKeyword(Keyword.ELSEIF))
+                {
+                    return true;
+                }
+                if (elsIf && s.PeekKeyword(Keyword.ELSIF))
+                {
+                    return true;
+                }
+                if (s.PeekKeyword(Keyword.ELSE))
+                {
+                    return true;
+                }
+                return false;
+            },
+            GetEofException = s => s.ExpectedException(elsIf
+                ? ["ELSEIF", "ELSIF", "ELSE", "END IF"]
+                : ["ELSEIF", "ELSE", "END IF"])
+        };
+
+        state.ExpectKeyword(Keyword.IF);
+
+        Expression ifExpression = _parseExpr(state);
+
+        state.ExpectKeyword(Keyword.THEN);
+
+        SqlValueList<Statement> ifStatements = _p.Parse(state, ifEnder);
+
+        if (state.ParseKeywordsAll(Keyword.END, Keyword.IF))
+        {
+            return new If.My(ifExpression, ifStatements);
+        }
+
+        SqlValueList<If.ElseIf> elseIfBlocks = [];
+
+        while (true)
+        {
+            Token start = state.Peek();
+            Keyword endingKeyword = state.ParseKeywordsAny(elseIfKeywords);
+            if (endingKeyword == Keyword.undefined)
+            {
+                break;
+            }
+            bool useElsIf = endingKeyword == Keyword.ELSIF;
+
+            Expression elseIfCondition = _parseExpr(state);
+
+            state.ExpectKeyword(Keyword.THEN);
+
+            SqlValueList<Statement> elseIfStatements = _p.Parse(state, ifEnder);
+
+            var elseIf = new If.ElseIf(elseIfCondition, elseIfStatements, useElsIf);
+            Parser.AttachStatementMetadata(elseIf, start, state);
+            elseIfBlocks.Add(elseIf);
+        }
+
+        if (state.ParseKeywordsAll(Keyword.END, Keyword.IF))
+        {
+            return new If.My(ifExpression, ifStatements)
+            {
+                ElseIfs = elseIfBlocks
+            };
+        }
+
+        state.ExpectKeyword(Keyword.ELSE);
+        SqlValueList<Statement> elseStatements = _p.Parse(state, new EndSubstatements()
+        {
+            RequireTerminatorBeforeEnd = state.PgPl,
+            PreserveEndTrivia = token => PreserveConditionalEndTrivia(token, !state.PgPl),
+            GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.IF),
+            GetEofException = s => s.ExpectedException("END IF")
+        });
+        state.ExpectKeywordsAll(Keyword.END, Keyword.IF);
+
+        return new If.My(ifExpression, ifStatements)
+        {
+            ElseIfs = elseIfBlocks,
+            ElseStatements = elseStatements
+        };
+    }
+
+    protected Statement ParseMsIf(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.IF);
+        Expression condition = _parseExpr(state);
+        Statement thenStmt = _p.ParseStatement(state);
+
+        Statement? elseStmt = null;
+        if (state.ParseKeyword(Keyword.ELSE))
+        {
+            elseStmt = _p.ParseStatement(state);
+        }
+
+        return new If.Ms(condition, thenStmt)
+        {
+            ElseStatement = elseStmt,
+        };
+    }
+
+    public Statement ParseCase(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.CASE);
+
+        if (state.PeekKeyword(Keyword.WHEN))
+        {
+            return ParseSearchedCase(state);
+        }
+        else
+        {
+            return ParseSimpleCase(state, state.PgPl);
+        }
+    }
+
+    private SearchedCase ParseSearchedCase(ParserState state)
+    {
+        SqlValueList<CaseItem> items = [];
+        do
+        {
+            items.Add(ParseCaseItem(state, false));
+        }
+        while (state.PeekKeyword(Keyword.WHEN));
+        SqlValueList<Statement>? elseStatements = null;
+
+        if (state.ParseKeyword(Keyword.ELSE))
+        {
+            elseStatements = _p.Parse(state, new EndSubstatements()
+            {
+                RequireTerminatorBeforeEnd = state.PgPl,
+                PreserveEndTrivia = token => PreserveConditionalEndTrivia(token, !state.PgPl),
+                GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.CASE),
+                GetEofException = s => s.ExpectedException("END CASE")
+            });
+        }
+        state.ExpectKeywordsAll(Keyword.END, Keyword.CASE);
+        return new SearchedCase(items, elseStatements);
+    }
+
+    private SimpleCase ParseSimpleCase(ParserState state, bool multiCondition)
+    {
+        Expression searchExpression = _parseExpr(state);
+        SqlValueList<CaseItem> items = [];
+        do
+        {
+            items.Add(ParseCaseItem(state, multiCondition));
+        }
+        while (state.PeekKeyword(Keyword.WHEN));
+
+        SqlValueList<Statement>? elseStatements = null;
+        if (state.ParseKeyword(Keyword.ELSE))
+        {
+            elseStatements = _p.Parse(state, new EndSubstatements()
+            {
+                RequireTerminatorBeforeEnd = state.PgPl,
+                PreserveEndTrivia = token => PreserveConditionalEndTrivia(token, !state.PgPl),
+                GetFinished = s => s.PeekKeywordsAll(Keyword.END, Keyword.CASE),
+                GetEofException = s => s.ExpectedException("END CASE")
+            });
+        }
+        state.ExpectKeywordsAll(Keyword.END, Keyword.CASE);
+        return new SimpleCase(searchExpression, items, elseStatements);
+    }
+
+    private CaseItem ParseCaseItem(ParserState state, bool multiCondition)
+    {
+        Token start = state.Peek();
+        state.ExpectKeyword(Keyword.WHEN);
+        SqlValueList<Expression> conditions = [];
+        if (multiCondition)
+        {
+            conditions = state.ParseCommaSeparated(_parseExpr);
+        }
+        else
+        {
+            conditions.Add(_parseExpr(state));
+        }
+
+        state.ExpectKeyword(Keyword.THEN);
+        SqlValueList<Statement> statements = _p.Parse(state, new EndSubstatements()
+        {
+            RequireTerminatorBeforeEnd = state.PgPl,
+            PreserveEndTrivia = token => PreserveConditionalEndTrivia(token, !state.PgPl),
+            GetFinished = s =>
+            {
+                if (state.PeekKeyword(Keyword.WHEN))
+                {
+                    return true;
+                }
+                if (state.PeekKeyword(Keyword.ELSE))
+                {
+                    return true;
+                }
+                if (state.PeekKeywordsAll(Keyword.END, Keyword.CASE))
+                {
+                    return true;
+                }
+
+                return false;
+            },
+            GetEofException = s => s.ExpectedException("WHEN", "ELSE", "END CASE")
+        });
+        var item = new CaseItem(conditions, statements);
+        if (start.PreNonSql is { } trivia && trivia.SafeAny())
+        {
+            item.Meta.PreNonSql = trivia.Items;
+        }
+        return item;
+    }
+
+    private static bool PreserveConditionalEndTrivia(Token token, bool preserveWhitespace)
+    {
+        return token is Word { Keyword: Keyword.ELSE or Keyword.END }
+            && (preserveWhitespace || token.PreNonSql is { } trivia && trivia.Items.Any(item => item is NonSql.Comment));
     }
 
     public virtual BeginAtomic ParseBeginAtomic(ParserState state)
     {
         state.ExpectKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC);
-        Token closing = state.Peek();
         var ender = new EndSubstatements
         {
             RequireTerminatorBeforeEnd = true,
-            GetFinished = innerState =>
-            {
-                if (!innerState.PeekKeyword(Keyword.END))
-                {
-                    return false;
-                }
-                closing = innerState.Next();
-                return true;
-            },
+            GetFinished = innerState => innerState.ParseKeyword(Keyword.END),
             GetEofException = innerState => innerState.ExpectedException("END")
         };
         SqlValueList<Statement> statements = _p.Parse(state, ender);
-        if (closing.PreNonSql.SafeAny())
-        {
-            statements.Add(closing.PreNonSql.ToInertOnly());
-        }
         return new BeginAtomic(statements);
     }
 

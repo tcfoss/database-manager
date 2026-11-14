@@ -22,77 +22,7 @@ public class MyControlFlowParser : ControlFlowParser
 
     public override Statement ParseIf(ParserState state)
     {
-        var ifEnder = new EndSubstatements()
-        {
-            GetFinished = s =>
-            {
-                if (s.PeekKeywordsAll(Keyword.END, Keyword.IF))
-                {
-                    return true;
-                }
-                if (s.PeekKeyword(Keyword.ELSEIF))
-                {
-                    return true;
-                }
-                if (s.PeekKeyword(Keyword.ELSE))
-                {
-                    return true;
-                }
-                return false;
-            },
-            GetEofException = s => s.ExpectedException("ELSEIF", "ELSE", "END IF")
-        };
-
-        state.ExpectKeyword(Keyword.IF);
-
-        Expression ifExpression = _parseExpr(state);
-
-        state.ExpectKeyword(Keyword.THEN);
-
-        SqlValueList<Statement> ifStatements = _p.Parse(state, ifEnder);
-
-        if (state.ParseKeywordsAll(Keyword.END, Keyword.IF))
-        {
-            return new If.My(ifExpression, ifStatements);
-        }
-
-        SqlValueList<If.ElseIf> elseIfBlocks = [];
-
-        while (true)
-        {
-            if (!state.ParseKeyword(Keyword.ELSEIF))
-            {
-                break;
-            }
-            Expression elseIfCondition = _parseExpr(state);
-
-            state.ExpectKeyword(Keyword.THEN);
-
-            SqlValueList<Statement> elseIfStatements = _p.Parse(state, ifEnder);
-
-            elseIfBlocks.Add(new If.ElseIf(elseIfCondition, elseIfStatements));
-        }
-
-        if (state.ParseKeywordsAll(Keyword.END, Keyword.IF))
-        {
-            return new If.My(ifExpression, ifStatements)
-            {
-                ElseIfs = elseIfBlocks
-            };
-        }
-
-        state.ExpectKeyword(Keyword.ELSE);
-        SqlValueList<Statement> elseStatements = _p.Parse(state, new EndSubstatements()
-        {
-            GetFinished = s => s.ParseKeywordsAll(Keyword.END, Keyword.IF),
-            GetEofException = s => s.ExpectedException("END IF")
-        });
-
-        return new If.My(ifExpression, ifStatements)
-        {
-            ElseIfs = elseIfBlocks,
-            ElseStatements = elseStatements
-        };
+        return ParseMyOrPgIf(state, false);
     }
 
     public override DeclareLocalVariable ParseDeclareLocalVariable(ParserState state)

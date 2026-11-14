@@ -8,18 +8,8 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-/// <summary>
-/// Base class for <c>IF</c> statements. Use <see cref="My"/> for the
-/// MySQL/standard blocked form (<c>IF … THEN … END IF</c>) and
-/// <see cref="Ms"/> for the T-SQL inline form
-/// (<c>IF &lt;cond&gt; &lt;stmt&gt; [ELSE &lt;stmt&gt;]</c>).
-/// </summary>
 public abstract record If(Expression Condition) : Statement
 {
-
-    /// <summary>
-    /// MySQL/standard <c>IF</c>: <c>IF &lt;cond&gt; THEN … [ELSEIF … THEN …]* [ELSE …] END IF</c>.
-    /// </summary>
     public record My(Expression Condition, SqlValueList<Statement> Statements) : If(Condition)
     {
         public SqlValueList<ElseIf>? ElseIfs { get; init; }
@@ -33,7 +23,7 @@ public abstract record If(Expression Condition) : Statement
             {
                 writer.WriteDelimited(ElseIfs, "");
             }
-            if (ElseStatements.SafeAny())
+            if (ElseStatements != null)
             {
                 writer.Write("ELSE ");
                 writer.WriteTerminated(ElseStatements.NonInert());
@@ -45,7 +35,9 @@ public abstract record If(Expression Condition) : Statement
         {
             Meta.FormatPreNonSql(writer, manager);
             manager.WriteBlockPart(writer, "IF");
-            writer.WriteSql($" {Condition} THEN");
+            writer.Write(" ");
+            Condition.FormatSql(writer, manager);
+            writer.Write(" THEN");
             manager.IncreaseIndent();
             foreach (Statement stmt in Statements)
             {
@@ -60,7 +52,7 @@ public abstract record If(Expression Condition) : Statement
                     elseIf.FormatSql(writer, manager);
                 }
             }
-            if (ElseStatements.SafeAny())
+            if (ElseStatements != null)
             {
                 manager.WriteBlockPart(writer, "ELSE");
                 manager.IncreaseIndent();
@@ -190,18 +182,21 @@ public abstract record If(Expression Condition) : Statement
         }
     }
 
-    public record ElseIf(Expression Condition, SqlValueList<Statement> Statements) : Statement
+    public record ElseIf(Expression Condition, SqlValueList<Statement> Statements, bool ElsIf) : Statement
     {
         public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($"ELSEIF {Condition} THEN ");
+            writer.WriteSql($"{(ElsIf ? "ELSIF" : "ELSEIF")} {Condition} THEN ");
             writer.WriteTerminated(Statements.NonInert());
         }
 
         public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            manager.WriteBlockPart(writer, "ELSEIF");
-            writer.WriteSql($" {Condition} THEN");
+            Meta.FormatPreNonSql(writer, manager);
+            manager.WriteBlockPart(writer, ElsIf ? "ELSIF" : "ELSEIF");
+            writer.Write(" ");
+            Condition.FormatSql(writer, manager);
+            writer.Write(" THEN");
             manager.IncreaseIndent();
             foreach (Statement stmt in Statements)
             {
@@ -209,6 +204,7 @@ public abstract record If(Expression Condition) : Statement
                 manager.TerminateStatement(writer, stmt);
             }
             manager.DecreaseIndent();
+            Meta.FormatPostNonSql(writer, manager);
         }
 
         public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)

@@ -339,7 +339,8 @@ public class StatementReferencedItemsTests
                     ReferencedItemsTests.ParseExpression("c > 2"),
                     [new SetVariable([new Assignment(
                         new AssignmentTarget.ObjectName(new ObjectName([new Identifier("y")])),
-                        ReferencedItemsTests.ParseExpression("d + e"))])])
+                        ReferencedItemsTests.ParseExpression("d + e"))])],
+                    false)
             ]
         };
 

@@ -149,7 +149,7 @@ public class MyParser : Parser
 
             if (endChecker?.GetFinished(state) ?? false)
             {
-                if (next.PreNonSql.SafeAny())
+                if (next.PreNonSql.SafeAny() && endChecker.PreserveEndTrivia(next))
                 {
                     statements.Add(next.PreNonSql.ToInertOnly());
                 }
