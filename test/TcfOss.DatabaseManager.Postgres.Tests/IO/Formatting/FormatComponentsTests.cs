@@ -925,4 +925,19 @@ public class FormatComponentsTests
         Assert.Contains("END LOOP \"outer_label\";", formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("PERFORM app.inspect(NEW.id, OLD.id, TG_OP)", "PERFORM", "\"app\".\"inspect\"(\"new\".\"id\", \"old\".\"id\", \"tg_op\")")]
+    [InlineData("SELECT source.value INTO STRICT row_value.field FROM app.items AS source", "INTO STRICT \"row_value\".\"field\"", "FROM \"app\".\"items\"")]
+    [InlineData("RETURN NEXT NEW.id", "RETURN NEXT", "\"new\".\"id\"")]
+    [InlineData("RETURN QUERY SELECT source.value FROM app.items AS source", "RETURN QUERY", "FROM \"app\".\"items\"")]
+    public void ProceduralQueriesAndReturns_FormatExpressionsRecursively(string sql, string expectedCommand, string expectedExpression)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedCommand, formatted);
+        Assert.Contains(expectedExpression, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

@@ -219,13 +219,28 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("SELECT a, b INTO result FROM source")]
     [InlineData("SELECT a FROM source INTO result")]
     [InlineData("SELECT a, b FROM source INTO result")]
-    public void SelectInto_SingleName_DefaultsToTableTarget(string sql)
+    public void SelectInto_SingleName_UsesTableTargetWithoutProceduralGrammar(string sql)
     {
-        var select = Assert.IsType<Select>(ParseStatement(sql));
+        var state = new ParserState(Grammar.All & ~Grammar.PgPl, GetTokens(sql));
+        var select = Assert.IsType<Select>(ParseStatement(state));
         SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
 
         var into = Assert.IsType<SelectInto.SelectIntoTable>(target);
         Assert.Equal(new ObjectName([new Identifier("result")]), into.Name);
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 INTO first_result FROM source INTO second_result")]
+    [InlineData("(SELECT 1 INTO first_result) ORDER BY 1 INTO second_result")]
+    [InlineData("SELECT 1 INTO first_result UNION SELECT 2 ORDER BY 1 INTO second_result")]
+    public void SelectInto_RejectsDuplicateClausesWithoutProceduralGrammar(string sql)
+    {
+        foreach (Grammar grammar in new[] { Grammar.My, Grammar.Ms, Grammar.Pg })
+        {
+            var state = new ParserState(grammar, GetTokens(sql));
+            Assert.Throws<ParseException.Duplicate>(() => ParseStatements(state));
+            Assert.Equal(sql.LastIndexOf("INTO", StringComparison.Ordinal), state.Peek().Location.Position);
+        }
     }
 
     [Fact]

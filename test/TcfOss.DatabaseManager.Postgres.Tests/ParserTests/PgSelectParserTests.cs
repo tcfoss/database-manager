@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -463,5 +464,130 @@ public class PgSelectParserTests : ParserTestsBase<PgLexer, PgParser>
     public void SelectTails_RejectMalformedClauses(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("PERFORM app.work()")]
+    [InlineData("PERFORM NEW.id, OLD.id, TG_OP")]
+    [InlineData("PERFORM DISTINCT source.value FROM app.items AS source WHERE source.value > 0 ORDER BY source.value LIMIT 2")]
+    [InlineData("PERFORM (WITH seed AS (SELECT 1 AS value) SELECT seed.value FROM seed)")]
+    [InlineData("PERFORM 1 UNION ALL SELECT 2")]
+    [InlineData("SELECT source.value INTO result FROM app.items AS source")]
+    [InlineData("SELECT source.first_value, source.second_value INTO STRICT row_value.first_value, other_value FROM app.items AS source")]
+    [InlineData("SELECT source.value FROM app.items AS source ORDER BY source.value LIMIT 1 INTO STRICT result")]
+    [InlineData("WITH seed AS (SELECT 1 AS value) SELECT seed.value INTO result FROM seed")]
+    [InlineData("SELECT 1 INTO \"strict\"")]
+    [InlineData("SELECT 1 INTO outfile")]
+    public void PerformAndSelectInto_RoundTripSqlFormattingAndJson(string sql)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 INTO result", false, "result")]
+    [InlineData("SELECT 1 INTO STRICT result", true, "result")]
+    [InlineData("SELECT INTO STRICT result 1", true, "result")]
+    [InlineData("SELECT 1 INTO row_value.field", false, "row_value.field")]
+    public void ProceduralSelectInto_PreservesTargetsStrictnessAndSource(string sql, bool strict, string expectedTarget)
+    {
+        var select = Assert.IsType<Select>(ParseStatement(sql, sourceId: 23));
+        SimpleSelect query = Assert.IsType<SelectBody.SimpleSelectQuery>(select.Body).Query;
+        var into = Assert.IsType<SelectInto.PgVariables>(query.SelectInto);
+        ObjectName target = Assert.Single(into.Targets);
+
+        Assert.Equal(strict, into.Strict);
+        Assert.Equal(expectedTarget, target.ToSql());
+        Assert.Equal(23, target.Values[0].Source!.Value.SourceId);
+        Assert.Equal(select, ParseStatement(select.ToSql()));
+    }
+
+    [Fact]
+    public void SelectInto_UsesVariableTargetsOnlyWithProceduralGrammar()
+    {
+        const string sql = "SELECT 1 INTO result";
+        var procedural = Assert.IsType<Select>(ParseStatement(sql));
+        var sqlState = new ParserState(Grammar.Pg, GetTokens(sql));
+        var sqlOnly = Assert.IsType<Select>(ParseStatement(sqlState));
+
+        Assert.IsType<SelectInto.PgVariables>(Assert.IsType<SelectBody.SimpleSelectQuery>(procedural.Body).Query.SelectInto);
+        Assert.IsType<SelectInto.SelectIntoTable>(Assert.IsType<SelectBody.SimpleSelectQuery>(sqlOnly.Body).Query.SelectInto);
+    }
+
+    [Fact]
+    public void Perform_PreservesItsCommandWhenNormalized()
+    {
+        var statement = Assert.IsType<Select>(ParseStatement("PERFORM app.work() AS result"));
+        var normalizer = new Normalizer(PgTestConfig.GetTestConfig(),
+            new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider()));
+
+        Select normalized = normalizer.NormalizeSelect(statement, flatten: false);
+
+        Assert.IsType<PgPerform>(Assert.IsType<SelectBody.SimpleSelectQuery>(normalized.Body).Query);
+        Assert.StartsWith("PERFORM ", normalized.ToSql(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TriggerContextValues_RemainOrdinaryIdentifierExpressions()
+    {
+        var statement = Assert.IsType<Select>(ParseStatement("PERFORM NEW, OLD.id, TG_OP"));
+        var query = Assert.IsType<PgPerform>(Assert.IsType<SelectBody.SimpleSelectQuery>(statement.Body).Query);
+        var wholeRow = Assert.IsType<SingleIdentifier>(Assert.IsType<SimpleSelectItem.UnnamedExpression>(query.Selections[0]).Expression);
+        var field = Assert.IsType<CompoundIdentifier>(Assert.IsType<SimpleSelectItem.UnnamedExpression>(query.Selections[1]).Expression);
+        var operation = Assert.IsType<SingleIdentifier>(Assert.IsType<SimpleSelectItem.UnnamedExpression>(query.Selections[2]).Expression);
+
+        Assert.Equal("NEW", wholeRow.Identifier.Name);
+        Assert.Equal(new[] { "OLD", "id" }, field.Identifiers.Select(identifier => identifier.Name));
+        Assert.Equal("TG_OP", operation.Identifier.Name);
+    }
+
+    [Theory]
+    [InlineData("PERFORM app.work()", new[] { "app.work" })]
+    [InlineData("SELECT 1 INTO destination", new string[0])]
+    [InlineData("SELECT 1 INTO STRICT row_value.field", new string[0])]
+    public void PerformAndSelectInto_ReferenceSourcesNotIntoTargets(string sql, string[] expected)
+    {
+        var statement = Assert.IsType<Select>(ParseStatement(sql));
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(expected, names);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("PERFORM")]
+    [InlineData("PERFORM SELECT 1")]
+    [InlineData("PERFORM WITH seed AS (SELECT 1) SELECT 1")]
+    [InlineData("PERFORM 1 INTO result")]
+    [InlineData("PERFORM 1 FROM app.items INTO result")]
+    [InlineData("SELECT 1 INTO STRICT")]
+    [InlineData("SELECT 1 INTO STRICT result,")]
+    public void PerformAndSelectInto_RejectInvalidSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("SELECT INTO result 1 INTO other_result")]
+    [InlineData("SELECT 1 INTO result FROM app.items INTO other_result")]
+    public void SelectInto_RejectsDuplicateClauses(string sql)
+    {
+        Assert.Throws<ParseException.Duplicate>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void Perform_RequiresPlPgSqlGrammar()
+    {
+        foreach (Grammar grammar in new[] { Grammar.Pg, Grammar.My, Grammar.Ms })
+        {
+            var state = new ParserState(grammar, GetTokens("PERFORM app.work()"));
+            Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+        }
     }
 }

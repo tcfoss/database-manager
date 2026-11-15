@@ -615,7 +615,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
         SqlValueList<SimpleSelectItem> selections = select.Selections.Select(x => NormalizeSimpleSelectItem(x, returnsValues, flatten: flatten)).ToSequence();
 
-        return new SimpleSelect(selections)
+        var normalized = new SimpleSelect(selections)
         {
             Distinct = select.Distinct,
             From = from,
@@ -630,6 +630,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Specification = NormalizeWindowSpec(window.Specification, inSelect: true, flatten: flatten)
             })]
         };
+        return select is PgPerform ? new PgPerform(normalized) : normalized;
     }
 
     private SimpleSelect NormalizeSimpleSelectWithPseudoTableIsolation(SimpleSelect select, bool returnsValues, bool flatten = false)

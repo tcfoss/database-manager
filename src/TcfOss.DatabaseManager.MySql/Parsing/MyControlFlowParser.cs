@@ -45,4 +45,10 @@ public class MyControlFlowParser : ControlFlowParser
             DefaultValue = defaultValue
         };
     }
+
+    public override Return ParseReturn(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.RETURN);
+        return new Return(_parseExpr(state));
+    }
 }

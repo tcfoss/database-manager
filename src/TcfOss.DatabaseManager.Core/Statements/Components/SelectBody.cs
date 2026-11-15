@@ -26,6 +26,8 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
 
     public abstract IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context);
 
+    public abstract bool HasSelectInto();
+
 
     public record SimpleSelectQuery(SimpleSelect Query) : SelectBody
     {
@@ -69,6 +71,11 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
                 context.PseudoTables?.LeaveSelectScope();
             }
         }
+
+        public override bool HasSelectInto()
+        {
+            return Query.SelectInto != null;
+        }
     }
 
 
@@ -107,6 +114,11 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
         public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
         {
             return Query.GetReferencedItems(context);
+        }
+
+        public override bool HasSelectInto()
+        {
+            return Query.SelectInto != null || Query.Body.HasSelectInto();
         }
     }
 
@@ -181,6 +193,11 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
                 yield return item;
             }
         }
+
+        public override bool HasSelectInto()
+        {
+            return Left.HasSelectInto() || Right.HasSelectInto();
+        }
     }
 
     public record ValuesQuery(Values Values) : SelectBody
@@ -217,6 +234,11 @@ public abstract record SelectBody() : IWriteSql, IHaveMeta, IAddTablesToContext
                     }
                 }
             }
+        }
+
+        public override bool HasSelectInto()
+        {
+            return false;
         }
     }
 }

@@ -184,7 +184,24 @@ public class SelectParser
     public Select ParseSelect(ParserState state, CommonTableExpression? cte)
     {
         SelectBody body = ParseSelectBody(state, 0);
+        return ParseSelectTail(state, body, cte);
+    }
 
+    public Select ParsePgPerform(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.PERFORM);
+        var query = new PgPerform(ParseSimpleSelectTail(state));
+        SelectBody body = ParseRemainingSetOperations(state, new SelectBody.SimpleSelectQuery(query), 0);
+        Select select = ParseSelectTail(state, body, null);
+        if (select.SelectInto != null || body.HasSelectInto())
+        {
+            throw state.ExpectedCategoryException("PERFORM query without INTO");
+        }
+        return select;
+    }
+
+    private Select ParseSelectTail(ParserState state, SelectBody body, CommonTableExpression? cte)
+    {
         SqlValueList<OrderBy>? orderBy = null;
         if (state.ParseKeywordsAll(Keyword.ORDER, Keyword.BY))
         {
@@ -198,6 +215,10 @@ public class SelectParser
         SelectInto? intoLate = null;
         if (state.PeekKeyword(Keyword.INTO))
         {
+            if (body.HasSelectInto())
+            {
+                throw new ParseException.Duplicate("INTO clause", state.Peek().Location);
+            }
             intoLate = ParseSelectInto(state);
         }
 
@@ -209,141 +230,6 @@ public class SelectParser
             RowLocks = rowLocks,
             SelectInto = intoLate
         };
-    }
-
-    /// <summary>
-    /// <code><![CDATA[
-    /// [ FOR lock_strength [ OF name [, ...] ] [ NOWAIT | SKIP LOCKED ] ] ...
-    /// ]]></code>
-    /// </summary>
-    private SqlValueList<RowLockingClause>? ParseRowLocks(ParserState state)
-    {
-        SqlValueList<RowLockingClause>? clauses = null;
-        while (_p.ComponentParser.ParseOptionalRowLock(state) is { } clause)
-        {
-            clauses ??= [];
-            clauses.Add(clause);
-        }
-        return clauses;
-    }
-
-    protected virtual SelectInto ParseSelectInto(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.INTO);
-
-        if (state.ParseKeyword(Keyword.OUTFILE))
-        {
-            string outfile = ValueParser.ParseLiteralString(state);
-            return new SelectInto.SelectIntoFile(outfile);
-        }
-
-        ObjectName name = _parseObjectName(state);
-        if (name.Values.Count == 1 && state.ConsumeTokenIs<Comma>())
-        {
-            SqlValueList<Identifier> variables = state.ParseCommaSeparated(_parseIdentifier);
-            return new SelectInto.SelectIntoVariables([name.Values[0], .. variables]);
-        }
-
-        return ResolveSingleIntoTarget(state, name);
-    }
-
-    /// <summary>
-    /// Defaults a single target name to a table. Dialects with variable targets
-    /// override this hook because an unqualified name is syntactically ambiguous.
-    /// </summary>
-    protected virtual SelectInto ResolveSingleIntoTarget(ParserState state, ObjectName name)
-    {
-        return new SelectInto.SelectIntoTable(name);
-    }
-
-    public SimpleSelect ParseSimpleSelect(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.SELECT);
-
-        DistinctFilter? distinct = _p.ComponentParser.ParseAllOrDistinct(state);
-        Top? top = ParseOptionalTop(state);
-
-        SqlValueList<SimpleSelectItem> selections = state.ParseCommaSeparated(ParseSimpleSelectItemWithMeta);
-
-        SelectInto? intoEarly = null;
-        if (state.PeekKeyword(Keyword.INTO))
-        {
-            intoEarly = ParseSelectInto(state);
-        }
-
-        SqlValueList<TableWithJoins>? from = state.ParseInit(state.ParseKeyword(Keyword.FROM), x => x.ParseCommaSeparated(ParseTableWithJoins));
-
-        Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), _expr.ParseExpr);
-
-        SqlValueList<Expression>? groupBy = null;
-        if (state.ParseKeywordsAll(Keyword.GROUP, Keyword.BY))
-        {
-            groupBy = state.ParseCommaSeparated(_expr.ParseExpr);
-        }
-
-        Expression? having = state.ParseInit(state.ParseKeyword(Keyword.HAVING), _expr.ParseExpr);
-        SqlValueList<WindowDefinition>? windows = state.ParseInit(state.ParseKeyword(Keyword.WINDOW), inner => inner.ParseCommaSeparated(ParseWindowDefinition));
-
-        return new SimpleSelect(selections)
-        {
-            Distinct = distinct,
-            Top = top,
-            From = from,
-            Where = where,
-            GroupBy = groupBy,
-            Having = having,
-            Windows = windows,
-            SelectInto = intoEarly,
-        };
-    }
-
-    /// <summary>
-    /// Parses the optional T-SQL <c>TOP (n) [PERCENT] [WITH TIES]</c> clause
-    /// that appears immediately after <c>SELECT [ALL|DISTINCT]</c>. Returns
-    /// <c>null</c> if the next token is not <c>TOP</c>. Both the parenthesized
-    /// form <c>TOP (expr)</c> and the legacy unparenthesized literal form
-    /// <c>TOP n</c> are accepted. Dialects that do not support <c>TOP</c>
-    /// override this hook to return <c>null</c> unconditionally.
-    /// </summary>
-    protected virtual Top? ParseOptionalTop(ParserState state)
-    {
-        if (!state.ParseKeyword(Keyword.TOP))
-        {
-            return null;
-        }
-
-        Expression expression;
-        if (state.ConsumeTokenIs<ParenOpen>())
-        {
-            expression = _expr.ParseExpr(state);
-            state.ExpectRightParen();
-        }
-        else
-        {
-            // Legacy TOP without parens accepts only a literal value (integer
-            // or, when used with PERCENT, a numeric constant). Use the
-            // single-value parser so we don't greedily consume the rest of
-            // the SELECT list (e.g. the '*' would otherwise be parsed as
-            // multiplication).
-            expression = ExpressionParser.ParseValueExpr(state);
-        }
-
-        bool percent = state.ParseKeyword(Keyword.PERCENT);
-        bool withTies = state.ParseKeywordsAll(Keyword.WITH, Keyword.TIES);
-
-        return new Top(expression, percent, withTies);
-    }
-
-    /// <summary>
-    /// <code><![CDATA[
-    /// window_name AS window_specification
-    /// ]]></code>
-    /// </summary>
-    private WindowDefinition ParseWindowDefinition(ParserState state)
-    {
-        Identifier name = _parseIdentifier(state);
-        state.ExpectKeyword(Keyword.AS);
-        return new WindowDefinition(name, _expr.ParseWindowSpec(state));
     }
 
     private SelectBody ParseSelectBody(ParserState state, short precedence)
@@ -372,6 +258,54 @@ public class SelectParser
         }
 
         return ParseRemainingSetOperations(state, body, precedence);
+    }
+
+    public SimpleSelect ParseSimpleSelect(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.SELECT);
+        return ParseSimpleSelectTail(state);
+    }
+
+    private SimpleSelect ParseSimpleSelectTail(ParserState state)
+    {
+        DistinctFilter? distinct = _p.ComponentParser.ParseAllOrDistinct(state);
+        Top? top = ParseOptionalTop(state);
+
+        SelectInto? intoEarly = state.PgPl && state.PeekKeyword(Keyword.INTO) ? ParseSelectInto(state) : null;
+        SqlValueList<SimpleSelectItem> selections = state.ParseCommaSeparated(ParseSimpleSelectItemWithMeta);
+        if (state.PeekKeyword(Keyword.INTO))
+        {
+            if (intoEarly != null)
+            {
+                throw new ParseException.Duplicate("INTO clause", state.Peek().Location);
+            }
+            intoEarly = ParseSelectInto(state);
+        }
+
+        SqlValueList<TableWithJoins>? from = state.ParseInit(state.ParseKeyword(Keyword.FROM), x => x.ParseCommaSeparated(ParseTableWithJoins));
+
+        Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), _expr.ParseExpr);
+
+        SqlValueList<Expression>? groupBy = null;
+        if (state.ParseKeywordsAll(Keyword.GROUP, Keyword.BY))
+        {
+            groupBy = state.ParseCommaSeparated(_expr.ParseExpr);
+        }
+
+        Expression? having = state.ParseInit(state.ParseKeyword(Keyword.HAVING), _expr.ParseExpr);
+        SqlValueList<WindowDefinition>? windows = state.ParseInit(state.ParseKeyword(Keyword.WINDOW), inner => inner.ParseCommaSeparated(ParseWindowDefinition));
+
+        return new SimpleSelect(selections)
+        {
+            Distinct = distinct,
+            Top = top,
+            From = from,
+            Where = where,
+            GroupBy = groupBy,
+            Having = having,
+            Windows = windows,
+            SelectInto = intoEarly,
+        };
     }
 
     private SelectBody ParseRemainingSetOperations(ParserState state, SelectBody body, short precedence)
@@ -406,6 +340,100 @@ public class SelectParser
         }
 
         return body;
+    }
+
+    protected virtual Top? ParseOptionalTop(ParserState state)
+    {
+        if (!state.ParseKeyword(Keyword.TOP))
+        {
+            return null;
+        }
+
+        Expression expression;
+        if (state.ConsumeTokenIs<ParenOpen>())
+        {
+            expression = _expr.ParseExpr(state);
+            state.ExpectRightParen();
+        }
+        else
+        {
+            // Legacy TOP without parens accepts only a literal value (integer
+            // or, when used with PERCENT, a numeric constant). Use the
+            // single-value parser so we don't greedily consume the rest of
+            // the SELECT list (e.g. the '*' would otherwise be parsed as
+            // multiplication).
+            expression = ExpressionParser.ParseValueExpr(state);
+        }
+
+        bool percent = state.ParseKeyword(Keyword.PERCENT);
+        bool withTies = state.ParseKeywordsAll(Keyword.WITH, Keyword.TIES);
+
+        return new Top(expression, percent, withTies);
+    }
+
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// [ FOR lock_strength [ OF name [, ...] ] [ NOWAIT | SKIP LOCKED ] ] ...
+    /// ]]></code>
+    /// </summary>
+    private SqlValueList<RowLockingClause>? ParseRowLocks(ParserState state)
+    {
+        SqlValueList<RowLockingClause>? clauses = null;
+        while (_p.ComponentParser.ParseOptionalRowLock(state) is { } clause)
+        {
+            clauses ??= [];
+            clauses.Add(clause);
+        }
+        return clauses;
+    }
+
+    protected virtual SelectInto ParseSelectInto(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.INTO);
+
+        if (state.My && state.ParseKeyword(Keyword.OUTFILE))
+        {
+            string outfile = ValueParser.ParseLiteralString(state);
+            return new SelectInto.SelectIntoFile(outfile);
+        }
+
+        if (state.PgPl)
+        {
+            bool strict = state.ParseKeyword(Keyword.STRICT);
+            SqlValueList<ObjectName> targets = state.ParseCommaSeparated(_parseObjectName);
+            return new SelectInto.PgVariables(targets) { Strict = strict };
+        }
+
+        ObjectName name = _parseObjectName(state);
+        if (name.Values.Count == 1 && state.ConsumeTokenIs<Comma>())
+        {
+            SqlValueList<Identifier> variables = state.ParseCommaSeparated(_parseIdentifier);
+            return new SelectInto.SelectIntoVariables([name.Values[0], .. variables]);
+        }
+
+        return ResolveSingleIntoTarget(state, name);
+    }
+
+    /// <summary>
+    /// Defaults a single target name to a table. Dialects with variable targets
+    /// override this hook because an unqualified name is syntactically ambiguous.
+    /// </summary>
+    protected virtual SelectInto ResolveSingleIntoTarget(ParserState state, ObjectName name)
+    {
+        return new SelectInto.SelectIntoTable(name);
+    }
+
+    /// <summary>
+    /// <code><![CDATA[
+    /// window_name AS window_specification
+    /// ]]></code>
+    /// </summary>
+    private WindowDefinition ParseWindowDefinition(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        state.ExpectKeyword(Keyword.AS);
+        return new WindowDefinition(name, _expr.ParseWindowSpec(state));
     }
 
     public SimpleSelectItem ParseSimpleSelectItem(ParserState state)

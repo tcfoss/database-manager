@@ -13,6 +13,8 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statement, IAddTablesToContext
 {
+    protected virtual string QueryKeyword => "SELECT";
+
     public DistinctFilter? Distinct { get; init; }
     public Top? Top { get; init; }
     public SelectInto? SelectInto { get; init; }
@@ -24,7 +26,7 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
 
     public override void ToSql(SqlTextWriter writer)
     {
-        writer.Write("SELECT");
+        writer.Write(QueryKeyword);
         if (Distinct != null)
         {
             writer.WriteSql($" {Distinct}");
@@ -66,7 +68,7 @@ public record SimpleSelect(SqlValueList<SimpleSelectItem> Selections) : Statemen
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
-        writer.WriteSqlI("SELECT");
+        writer.WriteSqlI($"{QueryKeyword}");
         if (Distinct != null)
         {
             writer.WriteSql($" {Distinct}");

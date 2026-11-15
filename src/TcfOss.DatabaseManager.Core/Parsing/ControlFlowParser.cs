@@ -348,15 +348,29 @@ public class ControlFlowParser
         }
 
         ParserState queryState = ReadPgForQuery(state);
-        Token queryStart = queryState.Peek();
-        Statement query = _p.ParseStatement(queryState);
+        Statement query = ParsePgRowReturningQuery(queryState);
         if (queryState.Peek() is not Eof)
         {
             throw queryState.ExpectedException("LOOP");
         }
+        return new PgForSource.Query(query);
+    }
+
+    private Statement ParsePgRowReturningQuery(ParserState state)
+    {
+        Token queryStart = state.Peek();
+        if (queryStart is not (Word
+            {
+                Keyword: Keyword.SELECT or Keyword.VALUES or Keyword.WITH
+                    or Keyword.INSERT or Keyword.UPDATE or Keyword.DELETE
+            } or ParenOpen))
+        {
+            throw state.ExpectedCategoryException("row-returning query");
+        }
+        Statement query = _p.ParseStatement(state);
         bool returnsRows = query switch
         {
-            Select select => select.SelectInto == null && IsPgForSelectBody(select.Body),
+            Select select => select.SelectInto == null && !select.Body.HasSelectInto(),
             Insert { Returning: not null } or Update { Returning: not null } or Delete { Returning: not null } => true,
             _ => false
         };
@@ -364,19 +378,7 @@ public class ControlFlowParser
         {
             throw ParserState.ExpectedCategoryException("row-returning query", queryStart);
         }
-        return new PgForSource.Query(query);
-    }
-
-    private static bool IsPgForSelectBody(SelectBody body)
-    {
-        return body switch
-        {
-            SelectBody.SimpleSelectQuery simple => simple.Query.SelectInto == null,
-            SelectBody.Nested nested => nested.Query.SelectInto == null && IsPgForSelectBody(nested.Query.Body),
-            SelectBody.SetOperation operation => IsPgForSelectBody(operation.Left) && IsPgForSelectBody(operation.Right),
-            SelectBody.ValuesQuery => true,
-            _ => false
-        };
+        return query;
     }
 
     private SqlValueList<Statement> ParseLoopStatements(ParserState state, Keyword end)
@@ -709,14 +711,6 @@ public class ControlFlowParser
 
         SqlValueList<ConditionValue> conditions = state.ParseCommaSeparated(ParseConditionValuePartial);
         Statement statement = _p.ParseStatement(state);
-        // if (state.PeekIs<Semicolon>())
-        // {
-        //     var sc = state.Next();
-        //     if (sc.PreNonSql != null)
-        //     {
-        //         statement.Meta.AddPostNonSql(sc.PreNonSql.ToStatementNonSql());
-        //     }
-        // }
         return new DeclareConditionHandler(handlerAction, conditions, statement);
     }
 
@@ -795,5 +789,39 @@ public class ControlFlowParser
         SqlValueList<Assignment> assignments = state.ParseCommaSeparated(_p.ComponentParser.ParseAssignment);
 
         return new SetVariable(assignments);
+    }
+
+    public virtual Statement ParseReturn(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.RETURN);
+
+        if (state.PgPl)
+        {
+            if (state.ParseKeyword(Keyword.NEXT))
+            {
+                if (_p.IsStatementTerminator(state.Peek(), state))
+                {
+                    return new ReturnNoTerminate.NextExpr(null);
+                }
+                return new ReturnNoTerminate.NextExpr(_parseExpr(state));
+            }
+            if (state.ParseKeyword(Keyword.QUERY))
+            {
+                Statement query = ParsePgRowReturningQuery(state);
+                query.Meta.PostNonSql = null;
+                return new ReturnNoTerminate.Query(query);
+            }
+        }
+
+        if (AllowBareReturn(state) && _p.IsStatementTerminator(state.Peek(), state))
+        {
+            return new Return(null);
+        }
+        return new Return(_parseExpr(state));
+    }
+
+    private static bool AllowBareReturn(ParserState state)
+    {
+        return state.PgPl || state.Ms;
     }
 }

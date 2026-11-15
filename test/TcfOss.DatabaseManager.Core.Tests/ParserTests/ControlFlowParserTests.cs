@@ -126,7 +126,11 @@ public class ControlFlowParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("FOREACH item IN ARRAY app.values() LOOP EXIT; END LOOP", typeof(PgForeach))]
     [InlineData("EXIT label WHEN TRUE", typeof(PgLoopControl.Exit))]
     [InlineData("CONTINUE WHEN TRUE", typeof(PgLoopControl.Continue))]
-    public void Loops_DispatchUsingAvailableGrammar(string sql, Type expectedType)
+    [InlineData("PERFORM app.work()", typeof(Select))]
+    [InlineData("RETURN", typeof(Return))]
+    [InlineData("RETURN NEXT 1", typeof(ReturnNoTerminate.NextExpr))]
+    [InlineData("RETURN QUERY SELECT 1", typeof(ReturnNoTerminate.Query))]
+    public void ProceduralStatements_DispatchUsingAvailableGrammar(string sql, Type expectedType)
     {
         Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
         Assert.IsType(expectedType, statement);

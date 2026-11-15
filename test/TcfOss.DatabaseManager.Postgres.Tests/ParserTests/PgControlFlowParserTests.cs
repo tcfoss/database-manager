@@ -684,6 +684,101 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         }
     }
 
+    [Theory]
+    [InlineData("RETURN")]
+    [InlineData("RETURN NULL")]
+    [InlineData("RETURN NEW")]
+    [InlineData("RETURN OLD.id")]
+    [InlineData("RETURN (1, 'two')")]
+    [InlineData("RETURN NEXT")]
+    [InlineData("RETURN NEXT NEW")]
+    [InlineData("RETURN NEXT (1, 'two')")]
+    [InlineData("RETURN QUERY SELECT NEW.id, TG_OP")]
+    [InlineData("RETURN QUERY VALUES (1), (2)")]
+    [InlineData("RETURN QUERY (SELECT 1 UNION ALL SELECT 2)")]
+    [InlineData("RETURN QUERY WITH seed AS (SELECT 1 AS value) SELECT seed.value FROM seed")]
+    [InlineData("RETURN QUERY INSERT INTO app.items DEFAULT VALUES RETURNING id")]
+    [InlineData("RETURN QUERY UPDATE app.items SET id = 1 RETURNING id")]
+    [InlineData("RETURN QUERY DELETE FROM app.items RETURNING id")]
+    [InlineData("BEGIN PERFORM app.work(NEW.id); SELECT TG_OP INTO operation; IF TRUE THEN RETURN NEXT NEW; ELSE RETURN; END IF; RETURN QUERY SELECT 1; END")]
+    public void ProceduralReturnsAndMixedBlocks_RoundTripSqlFormattingAndJson(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("RETURN", typeof(Return))]
+    [InlineData("RETURN NEXT", typeof(ReturnNoTerminate.NextExpr))]
+    [InlineData("RETURN QUERY SELECT 1", typeof(ReturnNoTerminate.Query))]
+    public void ProceduralReturns_PreserveVariantAndFollowingStatement(string sql, Type type)
+    {
+        SqlValueList<Statement> statements = ParseStatements(sql + "; PERFORM app.work()");
+
+        Assert.Equal(2, statements.Count);
+        Assert.IsType(type, statements[0]);
+        Assert.IsType<Select>(statements[1]);
+    }
+
+    [Theory]
+    [InlineData("BEGIN /* before */ PERFORM app.work() /* after */; END")]
+    [InlineData("BEGIN /* before */ RETURN NEXT NEW /* after */; END")]
+    [InlineData("BEGIN /* before */ RETURN QUERY SELECT 1 /* after */; END")]
+    [InlineData("BEGIN -- before\nRETURN QUERY SELECT 1; -- after\nEND")]
+    public void ProceduralStatements_PreserveBoundaryCommentsOnce(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        string formatted = Format(statement);
+        Assert.Equal(1, formatted.Split("before", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, formatted.Split("after", StringSplitOptions.None).Length - 1);
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(formatted, Format(Assert.Single(Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)))));
+    }
+
+    [Theory]
+    [InlineData("RETURN NEXT app.work()", new[] { "app.work" })]
+    [InlineData("RETURN QUERY SELECT * FROM app.items", new[] { "app.items" })]
+    public void ProceduralReturns_ReferenceSources(string sql, string[] expected)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(expected, names);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("RETURN QUERY")]
+    [InlineData("RETURN QUERY EXECUTE 'SELECT 1'")]
+    [InlineData("RETURN QUERY PERFORM app.work()")]
+    [InlineData("RETURN QUERY SELECT 1 INTO result")]
+    [InlineData("RETURN QUERY DELETE FROM app.items")]
+    [InlineData("BEGIN RETURN NEXT NEW END")]
+    [InlineData("BEGIN RETURN QUERY SELECT 1 END")]
+    public void ProceduralReturns_RejectInvalidOrDeferredSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("RETURN NEXT 1")]
+    [InlineData("RETURN QUERY SELECT 1")]
+    public void ProceduralReturns_RequirePlPgSqlGrammar(string sql)
+    {
+        foreach (Grammar grammar in new[] { Grammar.Pg, Grammar.My, Grammar.Ms })
+        {
+            var state = new ParserState(grammar, GetTokens(sql));
+            Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+        }
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)

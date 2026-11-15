@@ -224,6 +224,7 @@ public class Parser : IParser
         return first.Keyword switch
         {
             Keyword.SELECT or Keyword.VALUES => SelectParser.ParseSelect(state, null),
+            Keyword.PERFORM when state.PgPl => SelectParser.ParsePgPerform(state),
             Keyword.INSERT => DmlParser.ParseInsert(state, null),
             Keyword.UPDATE => DmlParser.ParseUpdate(state, null),
             Keyword.DELETE => DmlParser.ParseDelete(state, null),
@@ -244,7 +245,7 @@ public class Parser : IParser
             Keyword.NULL when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
             Keyword.SET => ParseSet(state),
             Keyword.BEGIN => ParseBegin(state),
-            Keyword.RETURN => ParseReturn(state),
+            Keyword.RETURN => ControlFlowParser.ParseReturn(state),
             Keyword.CALL => ParseCall(state),
             Keyword.USE => ParseUse(state),
             Keyword.LEAVE => ParseLeave(state),
@@ -560,12 +561,6 @@ public class Parser : IParser
         return new Call(new FunctionCall(name) { Arguments = ExpressionParser.ParseFunctionArgumentList(state) });
     }
 
-    protected virtual Return ParseReturn(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.RETURN);
-        return new Return(ExpressionParser.ParseExpr(state));
-    }
-
     internal static void AttachStatementMetadata(Statement statement, Token token, ParserState state)
     {
         if (token.PreNonSql.SafeAny())
@@ -630,5 +625,10 @@ public class Parser : IParser
             statement.Meta.Start = statementLabel.StartPosition;
         }
         return statement;
+    }
+
+    public virtual bool IsStatementTerminator(Token token, ParserState state)
+    {
+        return token is Semicolon or Eof;
     }
 }

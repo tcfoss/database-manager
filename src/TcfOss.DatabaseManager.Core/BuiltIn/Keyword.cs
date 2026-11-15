@@ -611,6 +611,7 @@ public enum Keyword
     PERCENT_RANK,
     PERCENTILE_CONT,
     PERCENTILE_DISC,
+    PERFORM,
     PERMISSIVE,
     PERIOD,
     PERSISTED,

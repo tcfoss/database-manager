@@ -39,6 +39,7 @@ public abstract record If(Expression Condition) : Statement
             Condition.FormatSql(writer, manager);
             writer.Write(" THEN");
             manager.IncreaseIndent();
+            manager.ExpectingNewLineBeforeStatement = true;
             foreach (Statement stmt in Statements)
             {
                 stmt.FormatSql(writer, manager);

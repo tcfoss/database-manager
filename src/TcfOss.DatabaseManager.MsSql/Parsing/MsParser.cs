@@ -456,22 +456,6 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>RETURN</c> statement. The return expression is
-    /// optional (procedures return a status code, functions may return a
-    /// value). When the next token starts a new statement or terminator,
-    /// <see cref="Return.Body"/> is left null.
-    /// </summary>
-    protected override Return ParseReturn(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.RETURN);
-        if (IsStatementTerminator(state.Peek()))
-        {
-            return new Return(null);
-        }
-        return new Return(ExpressionParser.ParseExpr(state));
-    }
-
-    /// <summary>
     /// Parses a T-SQL <c>PRINT &lt;expression&gt;</c> statement.
     /// </summary>
     private MsPrint ParsePrint(ParserState state)
@@ -489,7 +473,7 @@ public class MsParser : Parser
     private MsThrow ParseThrow(ParserState state)
     {
         state.ExpectKeyword(Keyword.THROW);
-        if (IsStatementTerminator(state.Peek()))
+        if (IsStatementTerminator(state.Peek(), state))
         {
             return new MsThrow(null);
         }
@@ -526,9 +510,9 @@ public class MsParser : Parser
         return new MsRaiseError(message, severity, stateExpr) { Arguments = arguments };
     }
 
-    private static bool IsStatementTerminator(Token next)
+    public override bool IsStatementTerminator(Token token, ParserState state)
     {
-        return next switch
+        return token switch
         {
             Semicolon or Eof or MsBatchSeparatorToken or ParenClose => true,
             Word w => w.Keyword switch
