@@ -9,12 +9,12 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class DmlParser
 {
-    private readonly Parser _p;
+    private readonly ParserBase _p;
     private readonly ExpressionParser _expr;
     private readonly ComponentParser _comp;
     private readonly Func<ParserState, ObjectName> _parseObjectName;
 
-    public DmlParser(Parser parser)
+    public DmlParser(ParserBase parser)
     {
         _p = parser;
         _expr = _p.ExpressionParser;

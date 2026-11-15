@@ -3,7 +3,6 @@ using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -96,63 +95,6 @@ public class MsParser : Parser
         };
     }
 
-    public override SqlValueList<Statement> Parse(ParserState state, EndSubstatements? endChecker)
-    {
-        SqlValueList<Statement> statements = [];
-        bool expectingTerminator = false;
-
-        while (true)
-        {
-            while (state.ConsumeTokenIs<Semicolon>())
-            {
-                expectingTerminator = false;
-            }
-
-            Token next = state.Peek();
-            if (next is Eof)
-            {
-                if (endChecker != null)
-                {
-                    throw endChecker.GetEofException(state);
-                }
-                if (next.PreNonSql.SafeAny())
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            if (endChecker?.GetFinished(state) ?? false)
-            {
-                if (next.PreNonSql.SafeAny() && endChecker.PreserveEndTrivia(next))
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            // A GO batch separator implicitly ends the previous statement;
-            // it does not need a preceding semicolon.
-            if (next is MsBatchSeparatorToken)
-            {
-                expectingTerminator = false;
-            }
-
-            if (expectingTerminator)
-            {
-                throw ParserState.ExpectedException("end of statement", next);
-            }
-
-            Statement statement = ParseStatement(state);
-            statements.Add(statement);
-
-            // GO itself does not need a terminator afterwards.
-            expectingTerminator = statement is not MsBatchSeparatorStatement;
-        }
-
-        return statements;
-    }
-
     protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
         return token switch
@@ -178,6 +120,23 @@ public class MsParser : Parser
             Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
             _ => base.ParseKeywordStatement(state, first)
         };
+    }
+
+    protected override bool ConsumeTerminators(ParserState state, ref ParserRunState runState, bool expectingTerminator)
+    {
+        expectingTerminator = base.ConsumeTerminators(state, ref runState, expectingTerminator);
+        if (state.Peek() is MsBatchSeparatorToken)
+        {
+            return false; // MsBatchSeparatorToken acts as a terminator itself
+        }
+        return expectingTerminator;
+    }
+
+    protected override bool ParseNextStatement(ParserState state, ref ParserRunState runState, SqlValueList<Statement> statements)
+    {
+        Statement statement = ParseStatement(state);
+        statements.Add(statement);
+        return statement is not MsBatchSeparatorStatement;
     }
 
     protected override Statement ParseAlter(ParserState state)

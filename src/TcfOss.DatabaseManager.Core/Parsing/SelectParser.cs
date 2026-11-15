@@ -14,12 +14,12 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class SelectParser
 {
-    private readonly Parser _p;
+    private readonly ParserBase _p;
     private readonly ExpressionParser _expr;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
     private readonly Func<ParserState, ObjectName> _parseObjectName;
 
-    public SelectParser(Parser parser)
+    public SelectParser(ParserBase parser)
     {
         _p = parser;
         _expr = _p.ExpressionParser;

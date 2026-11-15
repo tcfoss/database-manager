@@ -289,7 +289,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         var parser = new Parser();
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseWildcardOrExpr(GetState("mytable.;")));
-        Assert.Contains("identifier or .*", ex.Message);
+        Assert.Contains("Expected " + "identifier | wildcard".Italic(), ex.Message);
     }
 
     [Theory]

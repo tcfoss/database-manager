@@ -4,7 +4,6 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -19,7 +18,7 @@ using SetDelimiter = TcfOss.DatabaseManager.MySql.Lexing.Tokens.SetDelimiter;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MyParser : Parser
+public class MyParser : Parser<MyParserRunState>
 {
     public override Grammar Grammar => Grammar.My;
 
@@ -53,6 +52,70 @@ public class MyParser : Parser
         DdlParser = new MyDdlParser(this);
         TableParser = new MyTableParser(this);
         ControlFlowParser = new MyControlFlowParser(this);
+    }
+
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
+    {
+        return token switch
+        {
+            SetDelimiter => ParseSetDelimiter(state),
+            Word word => ParseKeywordStatement(state, word),
+            ParenOpen => SelectParser.ParseSelect(state, null),
+            _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
+        };
+    }
+
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
+    {
+        Statement? statement = first.Keyword switch
+        {
+            Keyword.SIGNAL => ParseSignal(state),
+            Keyword.RESIGNAL => ParseResignal(state),
+            Keyword.START => ParseStartTransaction(state),
+            Keyword.ROLLBACK => ParseRollback(state),
+            Keyword.COMMIT => ParseCommit(state),
+            Keyword.PREPARE => ParsePrepare(state),
+            Keyword.EXECUTE => ParseExecute(state),
+            Keyword.DROP => ParseDrop(state),
+            Keyword.DEALLOCATE => ParseDeallocate(state),
+            Keyword.SHOW => ParseShow(state),
+            Keyword.CALL => ParseCall(state),
+            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
+            _ => null
+        };
+
+        if (statement != null)
+        {
+            return statement;
+        }
+
+        return base.ParseKeywordStatement(state, first);
+    }
+
+    protected override bool ConsumeTerminators(ParserState state, ref MyParserRunState runState, bool expectingTerminator)
+    {
+        if (runState.Terminator != null)
+        {
+            string currentTerminator = runState.Terminator;
+            while (state.ConsumeTokenIsIf<MyTerminator>(x => x.Delimiter == currentTerminator))
+            {
+                expectingTerminator = false;
+            }
+            return expectingTerminator;
+        }
+        return base.ConsumeTerminators(state, ref runState, expectingTerminator);
+    }
+
+    protected override bool ParseNextStatement(ParserState state, ref MyParserRunState runState, SqlValueList<Statement> statements)
+    {
+        Statement statement = ParseStatement(state);
+        if (statement is Statements.SetDelimiter sd)
+        {
+            runState.Terminator = sd.Delimiter == ";" ? null : sd.Delimiter;
+            return false;
+        }
+        statements.Add(statement);
+        return true;
     }
 
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
@@ -107,116 +170,6 @@ public class MyParser : Parser
             Keyword.INDEX or Keyword.UNIQUE or Keyword.FULLTEXT or Keyword.SPATIAL or Keyword.CLUSTERED or Keyword.NONCLUSTERED => DdlParser.ParseCreateIndex(state, options.CreateOrLabel),
             _ => throw state.ExpectedException(options.AllSupportedTypes),
         };
-    }
-
-    public override SqlValueList<Statement> Parse(ParserState state, EndSubstatements? endChecker)
-    {
-        SqlValueList<Statement> statements = [];
-        bool expectingTerminator = false;
-        string? terminator = null;
-
-        while (true)
-        {
-            if (terminator != null)
-            {
-                string currentTerminator = terminator;
-                while (state.ConsumeTokenIsIf<MyTerminator>((x) => x.Delimiter == currentTerminator))
-                {
-                    expectingTerminator = false;
-                }
-            }
-            else
-            {
-                while (state.ConsumeTokenIs<Semicolon>())
-                {
-                    expectingTerminator = false;
-                }
-            }
-
-            Token next = state.Peek();
-            if (next is Eof)
-            {
-                if (endChecker != null)
-                {
-                    throw endChecker.GetEofException(state);
-                }
-                if (next.PreNonSql.SafeAny())
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            if (expectingTerminator && endChecker is { RequireTerminatorBeforeEnd: true })
-            {
-                throw ParserState.ExpectedException("end of statement", next);
-            }
-
-            if (endChecker?.GetFinished(state) ?? false)
-            {
-                if (next.PreNonSql.SafeAny() && endChecker.PreserveEndTrivia(next))
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            if (expectingTerminator)
-            {
-                throw ParserState.ExpectedException("end of statement", next);
-            }
-
-            Statement statement = ParseStatement(state);
-            if (statement is Statements.SetDelimiter sd)
-            {
-                terminator = sd.Delimiter == ";" ? null : sd.Delimiter;
-            }
-            else
-            {
-                statements.Add(statement);
-                expectingTerminator = true;
-            }
-        }
-
-        return statements;
-    }
-
-    protected override Statement ParseNormalStatement(ParserState state, Token token)
-    {
-        return token switch
-        {
-            SetDelimiter => ParseSetDelimiter(state),
-            Word word => ParseKeywordStatement(state, word),
-            ParenOpen => SelectParser.ParseSelect(state, null),
-            _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
-        };
-    }
-
-    protected override Statement ParseKeywordStatement(ParserState state, Word first)
-    {
-        Statement? statement = first.Keyword switch
-        {
-            Keyword.SIGNAL => ParseSignal(state),
-            Keyword.RESIGNAL => ParseResignal(state),
-            Keyword.START => ParseStartTransaction(state),
-            Keyword.ROLLBACK => ParseRollback(state),
-            Keyword.COMMIT => ParseCommit(state),
-            Keyword.PREPARE => ParsePrepare(state),
-            Keyword.EXECUTE => ParseExecute(state),
-            Keyword.DROP => ParseDrop(state),
-            Keyword.DEALLOCATE => ParseDeallocate(state),
-            Keyword.SHOW => ParseShow(state),
-            Keyword.CALL => ParseCall(state),
-            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
-            _ => null
-        };
-
-        if (statement != null)
-        {
-            return statement;
-        }
-
-        return base.ParseKeywordStatement(state, first);
     }
 
     protected override Statement ParseAlter(ParserState state)

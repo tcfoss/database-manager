@@ -23,11 +23,11 @@ public class DdlParser
     protected virtual bool SupportsPostgresTriggerSyntax => true;
     protected virtual bool SupportsQualifiedTriggerNames => true;
 
-    private readonly Parser _p;
+    private readonly ParserBase _p;
     private readonly Func<ParserState, ObjectName> _parseObjectName;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
 
-    public DdlParser(Parser parser)
+    public DdlParser(ParserBase parser)
     {
         _p = parser;
         _parseObjectName = _p.ComponentParser.ParseObjectName;
@@ -471,7 +471,7 @@ public class DdlParser
         ObjectName functionName = _parseObjectName(state);
         SqlValueList<PgStatementTriggerArgument> arguments = state.ParseParenthesizedCommaSeparated(ParseTriggerArgument, allowEmpty: true);
         var statement = new PgTriggerExecute(functionName, arguments, useProcedure);
-        Parser.AttachStatementMetadata(statement, token, state);
+        ParserBase.AttachStatementMetadata(statement, token, state);
         return statement;
     }
 

@@ -21,11 +21,11 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class ExpressionParser
 {
-    private readonly Parser _p;
+    private readonly ParserBase _p;
     private readonly PrecedenceManager _pm;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
 
-    public ExpressionParser(Parser parser)
+    public ExpressionParser(ParserBase parser)
     {
         _p = parser;
         _pm = _p.PrecedenceManager;
@@ -1022,38 +1022,30 @@ public class ExpressionParser
     public Expression ParseWildcardOrExpr(ParserState state)
     {
         Token next = state.Peek();
-        state.SavePosition();
-
-        if (next is Word w && state.PeekNthIs<Dot>(1))
-        {
-            var ident = w.ToIdentifier(state.SourceId);
-            state.Next();
-
-            var idParts = new SqlValueList<Identifier>() { ident };
-            while (state.ConsumeTokenIs<Dot>())
-            {
-                next = state.Next();
-                switch (next)
-                {
-                    case Word wSub:
-                        idParts.Add(wSub.ToIdentifier(state.SourceId));
-                        break;
-                    case Asterisk:
-                        state.ClearSavedPosition();
-                        return new QualifiedWildcard(new ObjectName(idParts));
-                    default:
-                        state.ClearSavedPosition();
-                        throw ParserState.ExpectedCategoryException("identifier or .*", next);
-                }
-            }
-        }
-        else if (next is Asterisk)
+        if (next is Asterisk)
         {
             state.Next();
-            state.ClearSavedPosition();
             return new Wildcard();
         }
-        state.RewindToSaved();
+
+        int offset = 0;
+        while (state.PeekNth(offset) is Word && state.PeekNthIs<Dot>(offset + 1))
+        {
+            offset += 2;
+        }
+
+        if (state.PeekNth(offset) is Asterisk)
+        {
+            SqlValueList<Identifier> idParts = new(offset / 2);
+            for (int i = 0; i < offset / 2; i++)
+            {
+                idParts.Add(((Word)state.Next()).ToIdentifier(state.SourceId));
+                state.Next();
+            }
+            state.Next(); // Consume the asterisk
+            return new QualifiedWildcard(new ObjectName(idParts));
+        }
+
         return ParseExpr(state);
     }
 

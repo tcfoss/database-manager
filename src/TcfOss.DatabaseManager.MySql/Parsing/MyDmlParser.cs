@@ -7,7 +7,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MyDmlParser(Parser parser) : DmlParser(parser)
+public class MyDmlParser(ParserBase parser) : DmlParser(parser)
 {
     protected override Identifier? ParseOptionalInsertAlias(ParserState state)
     {

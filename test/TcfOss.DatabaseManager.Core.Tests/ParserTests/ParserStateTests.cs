@@ -235,44 +235,6 @@ public static class ParserStateTests
     }
 
     [Fact]
-    public static void RewindToSaved()
-    {
-        var s = new ParserState(Grammar.All, TokenSet1);
-
-        s.Next();
-
-        s.SavePosition();
-
-        var expected = s.Peek();
-
-        s.Next();
-        s.Next();
-
-        s.RewindToSaved();
-
-        var actual = s.Peek();
-
-        Assert.Equal(expected, actual);
-    }
-
-    [Fact]
-    public static void RewindToSaved_NoSave_NoEffect()
-    {
-        var s = new ParserState(Grammar.All, TokenSet1);
-
-        s.Next();
-        s.Next();
-
-        var expected = s.Peek();
-
-        s.RewindToSaved();
-
-        var actual = s.Peek();
-
-        Assert.Equal(expected, actual);
-    }
-
-    [Fact]
     public static void ExpectKeyword_Match_Advances_Pointer()
     {
         var s = new ParserState(Grammar.All, TokenSet1);

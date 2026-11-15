@@ -9,7 +9,7 @@ using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
-public class DataTypeParser(Parser parser)
+public class DataTypeParser(ParserBase parser)
 {
     protected static int ParseBoundedInt(ParserState state, int min = 0, int max = int.MaxValue, string label = "precision")
     {

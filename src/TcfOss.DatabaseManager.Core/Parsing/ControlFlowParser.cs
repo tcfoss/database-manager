@@ -14,11 +14,11 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 
 public class ControlFlowParser
 {
-    private readonly Parser _p;
+    private readonly ParserBase _p;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
     private readonly Func<ParserState, Expression> _parseExpr;
 
-    public ControlFlowParser(Parser parser)
+    public ControlFlowParser(ParserBase parser)
     {
         _p = parser;
         _parseIdentifier = _p.ComponentParser.ParseIdentifier;
@@ -56,7 +56,7 @@ public class ControlFlowParser
                     throw state.ExpectedException("BEGIN");
                 }
                 PgBlockVariable declaration = ParsePgBlockVariable(state);
-                Parser.AttachStatementMetadata(declaration, start, state);
+                ParserBase.AttachStatementMetadata(declaration, start, state);
                 declarations.Add(declaration);
                 state.ExpectToken<Semicolon>();
             }
@@ -518,7 +518,7 @@ public class ControlFlowParser
             SqlValueList<Statement> elseIfStatements = _p.Parse(state, ifEnder);
 
             var elseIf = new If.ElseIf(elseIfCondition, elseIfStatements, useElsIf);
-            Parser.AttachStatementMetadata(elseIf, start, state);
+            ParserBase.AttachStatementMetadata(elseIf, start, state);
             elseIfBlocks.Add(elseIf);
         }
 

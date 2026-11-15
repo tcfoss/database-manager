@@ -15,7 +15,6 @@ public class ParserState
     private readonly int _tokenCount;
     private readonly Eof _finalEof;
     private int _position;
-    private int? _savedPosition;
 
     public int SourceId { get; }
 
@@ -139,25 +138,6 @@ public class ParserState
         {
             _position--;
         }
-    }
-
-    public void SavePosition()
-    {
-        _savedPosition = _position;
-    }
-
-    public void RewindToSaved()
-    {
-        if (_savedPosition.HasValue)
-        {
-            _position = _savedPosition.Value;
-            _savedPosition = null;
-        }
-    }
-
-    public void ClearSavedPosition()
-    {
-        _savedPosition = null;
     }
 
     /// <summary>

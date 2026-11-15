@@ -11,9 +11,9 @@ using DuplicateTreatment = TcfOss.DatabaseManager.Core.Expressions.Attributes.Du
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
-public class ComponentParser(Parser parser)
+public class ComponentParser(ParserBase parser)
 {
-    private readonly Parser _p = parser;
+    private readonly ParserBase _p = parser;
 
     public Identifier ParseIdentifier(ParserState state)
     {
