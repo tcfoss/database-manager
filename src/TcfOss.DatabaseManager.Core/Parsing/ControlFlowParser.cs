@@ -170,6 +170,112 @@ public class ControlFlowParser
         return new PgExceptionCondition.Named(_parseIdentifier(state));
     }
 
+    public PgRaise ParsePgRaise(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.RAISE);
+        if (state.Peek() is Semicolon)
+        {
+            return new PgRaise.Rethrow();
+        }
+
+        PgRaiseLevel? level = state.MaybeParseStringEnum<PgRaiseLevel>();
+        if (state.ParseKeyword(Keyword.USING))
+        {
+            return new PgRaise.WithOptions(level, ParsePgRaiseOptions(state));
+        }
+
+        if (state.ParseKeyword(Keyword.SQLSTATE))
+        {
+            var value = new Value.SingleQuotedString(ValueParser.ParseLiteralString(state));
+            return new PgRaise.SqlState(level, value, ParsePgRaiseOptionsOptional(state));
+        }
+        if (state.Peek() is StringLiteral or EscapeStringLiteral or UnicodeStringLiteral or DollarQuotedStringLiteral)
+        {
+            var message = new Value.SingleQuotedString(ValueParser.ParseLiteralString(state));
+            SqlValueList<Expression>? parameters = state.ParseInit(
+                state.ConsumeTokenIs<Comma>(),
+                innerState => innerState.ParseCommaSeparated(_parseExpr));
+            return new PgRaise.Message(level, message, parameters, ParsePgRaiseOptionsOptional(state));
+        }
+
+        Identifier name = _parseIdentifier(state);
+        return new PgRaise.ConditionName(level, name, ParsePgRaiseOptionsOptional(state));
+    }
+
+    private SqlValueList<PgRaiseOption>? ParsePgRaiseOptionsOptional(ParserState state)
+    {
+        return state.ParseInit(state.ParseKeyword(Keyword.USING), ParsePgRaiseOptions);
+    }
+
+    private SqlValueList<PgRaiseOption> ParsePgRaiseOptions(ParserState state)
+    {
+        return state.ParseCommaSeparated(innerState =>
+        {
+            PgRaiseOptionName name = innerState.ParseStringEnum<PgRaiseOptionName>();
+            PgAssignmentOperator op = ParsePgAssignmentOperator(innerState);
+            Expression value = _parseExpr(innerState);
+            return new PgRaiseOption(name, op, value);
+        });
+    }
+
+    public PgAssert ParsePgAssert(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ASSERT);
+        Expression condition = _parseExpr(state);
+        Expression? message = state.ParseInit(state.ConsumeTokenIs<Comma>(), _parseExpr);
+        return new PgAssert(condition, message);
+    }
+
+    public PgGetDiagnostics ParsePgGetDiagnostics(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.GET);
+        if (state.ParseKeyword(Keyword.STACKED))
+        {
+            return ParsePgGetDiagnosticsStacked(state);
+        }
+        return ParsePgGetDiagnosticsCurrent(state);
+    }
+
+    private PgGetDiagnostics.Stacked ParsePgGetDiagnosticsStacked(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.DIAGNOSTICS);
+        SqlValueList<PgDiagnosticAssignment.Stacked> assignments = state.ParseCommaSeparated(s =>
+        {
+            ObjectName target = _p.ComponentParser.ParseObjectName(s);
+            PgAssignmentOperator op = ParsePgAssignmentOperator(s);
+            PgStackedDiagnosticItem item = s.ParseStringEnum<PgStackedDiagnosticItem>();
+            return new PgDiagnosticAssignment.Stacked(target, op, item);
+        });
+        return new PgGetDiagnostics.Stacked(assignments);
+    }
+
+    private PgGetDiagnostics.Current ParsePgGetDiagnosticsCurrent(ParserState state)
+    {
+        bool printCurrent = state.ParseKeyword(Keyword.CURRENT);
+        state.ExpectKeyword(Keyword.DIAGNOSTICS);
+        SqlValueList<PgDiagnosticAssignment.Current> assignments = state.ParseCommaSeparated(s =>
+        {
+            ObjectName target = _p.ComponentParser.ParseObjectName(s);
+            PgAssignmentOperator op = ParsePgAssignmentOperator(s);
+            PgDiagnosticItem item = s.ParseStringEnum<PgDiagnosticItem>();
+            return new PgDiagnosticAssignment.Current(target, op, item);
+        });
+        return new PgGetDiagnostics.Current(assignments) { PrintCurrent = printCurrent };
+    }
+
+    public static PgAssignmentOperator ParsePgAssignmentOperator(ParserState state)
+    {
+        if (state.ConsumeTokenIs<Equal>())
+        {
+            return PgAssignmentOperator.Equal;
+        }
+        if (state.ConsumeTokenIs<Walrus>())
+        {
+            return PgAssignmentOperator.Assignment;
+        }
+        throw state.ExpectedException("=", ":=");
+    }
+
     public Loop ParseLoop(ParserState state)
     {
         state.ExpectKeyword(Keyword.LOOP);

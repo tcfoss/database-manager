@@ -40,6 +40,134 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("BEGIN RAISE; END")]
+    [InlineData("BEGIN RAISE 'hello %', value; END")]
+    [InlineData("BEGIN RAISE NOTICE 'hello %', value USING HINT = 'try again'; END")]
+    [InlineData("BEGIN RAISE USING MESSAGE := 'failed'; END")]
+    [InlineData("BEGIN RAISE division_by_zero USING MESSAGE = 'failed', DETAIL = detail; END")]
+    [InlineData("BEGIN RAISE SQLSTATE '22012'; END")]
+    [InlineData("BEGIN RAISE EXCEPTION USING ERRCODE = '22012', MESSAGE = 'failed'; END")]
+    [InlineData("BEGIN ASSERT condition; END")]
+    [InlineData("BEGIN ASSERT condition, 'failed'; END")]
+    [InlineData("BEGIN GET DIAGNOSTICS row_count = ROW_COUNT, context_text = PG_CONTEXT; END")]
+    [InlineData("BEGIN GET CURRENT DIAGNOSTICS routine_oid := PG_ROUTINE_OID; END")]
+    [InlineData("BEGIN GET STACKED DIAGNOSTICS state := RETURNED_SQLSTATE, message = MESSAGE_TEXT, detail = PG_EXCEPTION_DETAIL, hint = PG_EXCEPTION_HINT, context = PG_EXCEPTION_CONTEXT, schema_name = SCHEMA_NAME, table_name = TABLE_NAME, column_name = COLUMN_NAME, constraint_name = CONSTRAINT_NAME, datatype_name = PG_DATATYPE_NAME; END")]
+    [InlineData("BEGIN NULL; EXCEPTION WHEN OTHERS THEN RAISE; END")]
+    [InlineData("BEGIN NULL; EXCEPTION WHEN division_by_zero OR SQLSTATE '22012' THEN ASSERT condition; GET STACKED DIAGNOSTICS state = RETURNED_SQLSTATE, detail = PG_EXCEPTION_DETAIL; END")]
+    public void ProceduralRaiseAssertAndDiagnostics_RoundTripSqlFormattingAndJson(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("BEGIN RAISE NOTICE; END")]
+    [InlineData("BEGIN RAISE USING MESSAGE =; END")]
+    [InlineData("BEGIN RAISE SQLSTATE 22012; END")]
+    [InlineData("BEGIN RAISE 1; END")]
+    [InlineData("BEGIN ASSERT; END")]
+    [InlineData("BEGIN ASSERT TRUE,; END")]
+    [InlineData("BEGIN GET DIAGNOSTICS; END")]
+    [InlineData("BEGIN GET DIAGNOSTICS target ROW_COUNT; END")]
+    [InlineData("BEGIN GET DIAGNOSTICS target = UNKNOWN; END")]
+    [InlineData("BEGIN GET DIAGNOSTICS target = RESULT_OID; END")]
+    [InlineData("BEGIN GET DIAGNOSTICS target = RETURNED_SQLSTATE; END")]
+    [InlineData("BEGIN GET STACKED DIAGNOSTICS target = ROW_COUNT; END")]
+    public void ProceduralRaiseAssertAndDiagnostics_RejectInvalidSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("GET DIAGNOSTICS row_count = ROW_COUNT", false, false)]
+    [InlineData("GET CURRENT DIAGNOSTICS routine_oid := PG_ROUTINE_OID", true, true)]
+    public void ProceduralCurrentDiagnostics_PreserveCurrentAndAssignmentOperator(
+        string sql,
+        bool printCurrent,
+        bool expectedAssignment)
+    {
+        var statement = Assert.IsType<PgGetDiagnostics.Current>(ParseStatement(sql));
+        Assert.Equal(printCurrent, statement.PrintCurrent);
+        PgAssignmentOperator expectedOperator = expectedAssignment
+            ? PgAssignmentOperator.Assignment
+            : PgAssignmentOperator.Equal;
+        Assert.Equal(expectedOperator, Assert.Single(statement.Assignments).Op);
+        Assert.Equal(sql, statement.ToSql());
+
+        string formatted = Format(statement);
+        var formattedStatement = Assert.IsType<PgGetDiagnostics.Current>(ParseStatement(formatted));
+        Assert.Equal(printCurrent, formattedStatement.PrintCurrent);
+        Assert.Equal(expectedOperator, Assert.Single(formattedStatement.Assignments).Op);
+
+        Statement[] restoredStatements = Serialization.FromJson<Statement[]>(
+            Serialization.ToJson(new Statement[] { statement }));
+        var restored = Assert.IsType<PgGetDiagnostics.Current>(Assert.Single(restoredStatements));
+        Assert.Equal(printCurrent, restored.PrintCurrent);
+        Assert.Equal(expectedOperator, Assert.Single(restored.Assignments).Op);
+    }
+
+    [Fact]
+    public void ProceduralStackedDiagnostics_PreservesAssignmentOperator()
+    {
+        var statement = Assert.IsType<PgGetDiagnostics.Stacked>(
+            ParseStatement("GET STACKED DIAGNOSTICS state := RETURNED_SQLSTATE"));
+
+        Assert.Equal(PgAssignmentOperator.Assignment, Assert.Single(statement.Assignments).Op);
+        Assert.Equal("GET STACKED DIAGNOSTICS state := RETURNED_SQLSTATE", statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("BEGIN RAISE USING MESSAGE = 'failed'; END", false)]
+    [InlineData("BEGIN RAISE USING MESSAGE := 'failed'; END", true)]
+    public void ProceduralRaiseUsing_PreservesAssignmentOperator(string sql, bool expectedAssignment)
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement(sql));
+        var raise = Assert.IsType<PgRaise.WithOptions>(Assert.Single(block.Statements.NonInert()));
+        PgAssignmentOperator expectedOperator = expectedAssignment
+            ? PgAssignmentOperator.Assignment
+            : PgAssignmentOperator.Equal;
+
+        Assert.Equal(expectedOperator, Assert.Single(raise.Options!).Op);
+        Assert.Equal(sql, block.ToSql());
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg, "RAISE;")]
+    [InlineData(Grammar.My, "RAISE;")]
+    [InlineData(Grammar.Ms, "RAISE;")]
+    [InlineData(Grammar.Pg, "ASSERT TRUE;")]
+    [InlineData(Grammar.My, "ASSERT TRUE;")]
+    [InlineData(Grammar.Ms, "ASSERT TRUE;")]
+    [InlineData(Grammar.Pg, "GET DIAGNOSTICS row_count = ROW_COUNT;")]
+    [InlineData(Grammar.My, "GET DIAGNOSTICS row_count = ROW_COUNT;")]
+    [InlineData(Grammar.Ms, "GET DIAGNOSTICS row_count = ROW_COUNT;")]
+    public void ProceduralRaiseAssertAndDiagnostics_RequirePlPgSqlGrammar(Grammar grammar, string sql)
+    {
+        var state = new ParserState(grammar, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+    }
+
+    [Fact]
+    public void ProceduralRaiseAndAssert_CollectExpressionReferences()
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement(
+            "BEGIN RAISE NOTICE '%', app.message USING HINT = app.hint; ASSERT app.condition, app.failure; END"));
+
+        string[] references = [.. block.GetReferencedItems(new ReferencedItemsManager
+            {
+                Filters = ObjectNameFilters.Unknown
+            })
+            .Select(item => string.Join(".", item.Identifiers.Select(identifier => identifier.Name)))];
+
+        Assert.Equal(["app.message", "app.hint", "app.condition", "app.failure"], references);
+    }
+
+    [Theory]
     [InlineData("BEGIN NULL END")]
     [InlineData("DECLARE x INT BEGIN NULL; END")]
     [InlineData("BEGIN NULL; EXCEPTION END")]
