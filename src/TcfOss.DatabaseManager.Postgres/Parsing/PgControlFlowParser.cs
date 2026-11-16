@@ -37,6 +37,11 @@ public class PgControlFlowParser(Parser parser) : ControlFlowParser(parser)
         return null;
     }
 
+    protected override TransactionMode? ParseOptionalTransactionMode(ParserState state)
+    {
+        return ParseOptionalPgTransactionMode(state);
+    }
+
     protected override TransactionOptions ParseTransactionOptions(ParserState state)
     {
         TransactionChainOption? chain = null;

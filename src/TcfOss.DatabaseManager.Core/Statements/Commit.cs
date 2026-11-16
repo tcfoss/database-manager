@@ -9,6 +9,13 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record Commit() : Statement
 {
+    public record EndTransaction : Commit
+    {
+        protected override string Command => "END";
+    }
+
+    protected virtual string Command => "COMMIT";
+
     public TransactionNoun? Noun { get; init; }
     public TransactionChainOption? ChainOption { get; init; }
     public TransactionReleaseOption? ReleaseOption { get; init; }
@@ -16,7 +23,7 @@ public record Commit() : Statement
 
     public override void ToSql(SqlTextWriter writer)
     {
-        writer.Write("COMMIT");
+        writer.Write(Command);
         if (Noun != null)
         {
             writer.WriteSql($" {Noun}");
@@ -38,7 +45,7 @@ public record Commit() : Statement
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
-        writer.WriteSqlI("COMMIT");
+        writer.WriteSqlI(Command);
         if (Noun != null)
         {
             writer.WriteSql($" {Noun}");

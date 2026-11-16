@@ -9,6 +9,13 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record Rollback() : Statement
 {
+    public record Abort : Rollback
+    {
+        protected override string Command => "ABORT";
+    }
+
+    protected virtual string Command => "ROLLBACK";
+
     public TransactionNoun? Noun { get; init; }
     public TransactionChainOption? ChainOption { get; init; }
     public TransactionReleaseOption? ReleaseOption { get; init; }
@@ -16,7 +23,7 @@ public record Rollback() : Statement
 
     public override void ToSql(SqlTextWriter writer)
     {
-        writer.Write("ROLLBACK");
+        writer.Write(Command);
         if (Noun != null)
         {
             writer.WriteSql($" {Noun}");
@@ -38,7 +45,7 @@ public record Rollback() : Statement
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
-        writer.WriteSqlI("ROLLBACK");
+        writer.WriteSqlI(Command);
         if (Noun != null)
         {
             writer.WriteSql($" {Noun}");

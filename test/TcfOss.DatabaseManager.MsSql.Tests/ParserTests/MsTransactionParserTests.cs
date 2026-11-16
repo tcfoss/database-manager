@@ -95,4 +95,14 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
     }
+
+    [Theory]
+    [InlineData("BEGIN WORK")]
+    [InlineData("START TRANSACTION READ ONLY")]
+    [InlineData("END WORK")]
+    [InlineData("ABORT")]
+    public void TransactionLifecycle_RejectsPostgresSqlForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

@@ -215,17 +215,17 @@ public class StatementComponentTests
     }
 
     [Theory]
-    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<MySqlTransactionCharacteristic>))]
-    public void MySqlTransactionCharacteristic_FromText(string text, MySqlTransactionCharacteristic expected)
+    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<TransactionMode>))]
+    public void MySqlTransactionCharacteristic_FromText(string text, TransactionMode expected)
     {
-        var result = MySqlTransactionCharacteristic.Parse(text);
+        var result = TransactionMode.Parse(text);
         Assert.Equal(expected.ToSql(), result.ToSql());
     }
 
     [Fact]
     public void MySqlTransactionCharacteristic_FromText_Unknown_Throws()
     {
-        Assert.Throws<ArgumentException>(() => MySqlTransactionCharacteristic.Parse("UNKNOWN"));
+        Assert.Throws<ArgumentException>(() => TransactionMode.Parse("UNKNOWN"));
     }
 
     [Theory]

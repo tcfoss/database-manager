@@ -1089,6 +1089,7 @@ public class DdlParser
             throw state.ExpectedException("ENCRYPTION", "EXECUTE AS", "AS");
         }
         bool useAsBeforeBody = state.ParseKeyword(Keyword.AS);
+        using ParserState.Scope bodyScope = state.EnterContext(ParseContext.RoutineStatementBody);
         Statement body = _p.ParseStatement(state);
         return new ParsedRoutineTail(body, useAsBeforeBody)
         {

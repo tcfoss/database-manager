@@ -71,7 +71,6 @@ public class MyParser : Parser<MyParserRunState>
         {
             Keyword.SIGNAL => ParseSignal(state),
             Keyword.RESIGNAL => ParseResignal(state),
-            Keyword.START => ParseStartTransaction(state),
             Keyword.PREPARE => ParsePrepare(state),
             Keyword.EXECUTE => ParseExecute(state),
             Keyword.DROP => ParseDrop(state),
@@ -275,44 +274,6 @@ public class MyParser : Parser<MyParserRunState>
         {
             ConditionValue = conditionValue,
             InformationItems = informationItems
-        };
-    }
-
-    private static StartTransaction ParseStartTransaction(ParserState state)
-    {
-        state.ExpectKeywordsAll(Keyword.START, Keyword.TRANSACTION);
-
-        SqlValueList<MySqlTransactionCharacteristic> characteristics = [];
-        while (true)
-        {
-            if (state.ParseKeywordsAll(Keyword.WITH, Keyword.CONSISTENT, Keyword.SNAPSHOT))
-            {
-                characteristics.Add(MySqlTransactionCharacteristic.WithConsistentSnapshot);
-            }
-            else if (state.ParseKeyword(Keyword.READ))
-            {
-                if (state.ParseKeyword(Keyword.ONLY))
-                {
-                    characteristics.Add(MySqlTransactionCharacteristic.ReadOnly);
-                }
-                else if (state.ParseKeyword(Keyword.WRITE))
-                {
-                    characteristics.Add(MySqlTransactionCharacteristic.ReadWrite);
-                }
-                else
-                {
-                    throw state.ExpectedException("ONLY", "WRITE");
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return new StartTransaction
-        {
-            Characteristics = characteristics
         };
     }
 

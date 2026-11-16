@@ -68,6 +68,11 @@ public class MyControlFlowParser : ControlFlowParser
         return null;
     }
 
+    protected override TransactionMode? ParseOptionalTransactionMode(ParserState state)
+    {
+        return ParseOptionalMyTransactionMode(state);
+    }
+
     public override Statement ParseFetch(ParserState state)
     {
         if (state.ParseKeywordsAll(Keyword.FETCH, Keyword.GROUP, Keyword.NEXT, Keyword.ROW))

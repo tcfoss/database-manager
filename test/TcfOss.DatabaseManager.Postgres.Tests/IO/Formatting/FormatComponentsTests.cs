@@ -973,4 +973,19 @@ public class FormatComponentsTests
         Assert.Contains($"CURRENT OF {expectedCursor}", formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("BEGIN WORK READ ONLY", "BEGIN WORK READ ONLY;")]
+    [InlineData("START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE", "START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE;")]
+    [InlineData("END WORK AND NO CHAIN", "END WORK AND NO CHAIN;")]
+    [InlineData("ABORT TRANSACTION", "ABORT TRANSACTION;")]
+    public void SqlTransactionLifecycle_FormatsStartsAndAliases(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

@@ -56,15 +56,6 @@ public class PgParser : Parser
         };
     }
 
-    protected override Statement ParseBegin(ParserState state)
-    {
-        if (!state.PgPl && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
-        {
-            throw state.ExpectedException("BEGIN ATOMIC");
-        }
-        return base.ParseBegin(state);
-    }
-
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
     {
         CreateOrLabel? createOrLabel = ComponentParser.ParseCreateOrLabel(state);

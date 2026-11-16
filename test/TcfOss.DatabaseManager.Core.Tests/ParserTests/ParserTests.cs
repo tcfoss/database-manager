@@ -627,4 +627,48 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(block, ParseStatement(block.ToSql()));
         Assert.Equal(block, ParseStatement(Format(block)));
     }
+
+    [Theory]
+    [InlineData("BEGIN WORK READ ONLY")]
+    [InlineData("START TRANSACTION ISOLATION LEVEL SERIALIZABLE")]
+    [InlineData("END TRANSACTION AND CHAIN")]
+    [InlineData("ABORT WORK AND NO CHAIN")]
+    public void TransactionLifecycle_AllGrammarRetainsPostgresSqlForms(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
+    [InlineData("START TRANSACTION READ ONLY")]
+    [InlineData("BEGIN START TRANSACTION WITH CONSISTENT SNAPSHOT; COMMIT; END")]
+    public void StartTransaction_AllGrammarSupportsMySqlRoutineBodies(string body)
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement($"CREATE PROCEDURE p() {body}"));
+
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+    }
+
+    [Fact]
+    public void StartTransaction_RetainsModesWithMySqlGrammar()
+    {
+        const string sql = "START TRANSACTION READ ONLY";
+        var state = new ParserState(Grammar.My, GetTokens(sql));
+
+        Assert.Equal(sql, ParseStatement(state).ToSql());
+    }
+
+    [Theory]
+    [InlineData("START REPLICA")]
+    [InlineData("START GROUP_REPLICATION")]
+    [InlineData("CREATE PROCEDURE p() BEGIN ATOMIC START TRANSACTION; END")]
+    public void StartTransaction_RejectsOtherCommandsAndAtomicBodyTransactions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

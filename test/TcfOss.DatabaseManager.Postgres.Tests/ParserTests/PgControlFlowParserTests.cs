@@ -1190,6 +1190,131 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         }
     }
 
+    [Theory]
+    [InlineData("BEGIN", "BEGIN", 0)]
+    [InlineData("BEGIN WORK", "BEGIN WORK", 0)]
+    [InlineData("BEGIN TRANSACTION", "BEGIN TRANSACTION", 0)]
+    [InlineData("START TRANSACTION", "START TRANSACTION", 0)]
+    [InlineData("BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE", "BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE", 3)]
+    [InlineData("BEGIN WORK ISOLATION LEVEL REPEATABLE READ READ WRITE NOT DEFERRABLE", "BEGIN WORK ISOLATION LEVEL REPEATABLE READ, READ WRITE, NOT DEFERRABLE", 3)]
+    [InlineData("START TRANSACTION ISOLATION LEVEL READ COMMITTED", "START TRANSACTION ISOLATION LEVEL READ COMMITTED", 1)]
+    [InlineData("START TRANSACTION READ ONLY ISOLATION LEVEL READ UNCOMMITTED, NOT DEFERRABLE", "START TRANSACTION READ ONLY, ISOLATION LEVEL READ UNCOMMITTED, NOT DEFERRABLE", 3)]
+    public void SqlTransactionStart_RoundTripsSqlFormattingAndJson(string sql, string expectedSql, int expectedModes)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        var statement = Assert.IsType<StartTransaction>(ParseStatement(state), exactMatch: false);
+
+        Assert.Equal(expectedModes, statement.Modes.Count);
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void SqlTransactionStart_PreservesBeginNounAndModeOrder()
+    {
+        var statement = Assert.IsType<StartTransaction.Begin>(ParseStatement(
+            "BEGIN TRANSACTION READ ONLY, ISOLATION LEVEL SERIALIZABLE DEFERRABLE"));
+
+        Assert.Equal(TransactionNoun.Transaction, statement.Noun);
+        Assert.Equal(new[] { "READ ONLY", "ISOLATION LEVEL SERIALIZABLE", "DEFERRABLE" },
+            statement.Modes!.Select(mode => mode.ToString()));
+    }
+
+    [Theory]
+    [InlineData("END", true)]
+    [InlineData("END WORK AND CHAIN", true)]
+    [InlineData("END TRANSACTION AND NO CHAIN", true)]
+    [InlineData("ABORT", false)]
+    [InlineData("ABORT WORK AND NO CHAIN", false)]
+    [InlineData("ABORT TRANSACTION AND CHAIN", false)]
+    public void SqlTransactionAliases_RetainSpellingAndRoundTrip(string sql, bool commit)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Statement statement = Assert.Single(new PgParser().Parse(state, null));
+        if (commit)
+        {
+            Assert.IsType<Commit.EndTransaction>(statement);
+        }
+        else
+        {
+            Assert.IsType<Rollback.Abort>(statement);
+        }
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void SqlTransactions_RemainDistinctFromProceduralBlocksInMixedScripts()
+    {
+        const string sql = "BEGIN; SELECT 1; END WORK AND CHAIN; START TRANSACTION READ ONLY; ABORT TRANSACTION AND NO CHAIN; BEGIN NULL; END";
+        ParserState state = GetState(sql);
+        Statement[] statements = [.. ParseStatements(state).Where(statement => statement is not InertOnly)];
+
+        Assert.Equal(6, statements.Length);
+        Assert.IsType<StartTransaction.Begin>(statements[0]);
+        Assert.IsType<Select>(statements[1]);
+        Assert.IsType<Commit.EndTransaction>(statements[2]);
+        Assert.IsType<StartTransaction>(statements[3]);
+        Assert.IsType<Rollback.Abort>(statements[4]);
+        Assert.IsType<BeginEnd>(statements[5]);
+        Assert.Equal(ParseContext.None, state.Context);
+        Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
+    }
+
+    [Theory]
+    [InlineData("BEGIN TRAN")]
+    [InlineData("BEGIN TRANSACTION WORK")]
+    [InlineData("BEGIN ISOLATION LEVEL")]
+    [InlineData("BEGIN ISOLATION LEVEL SNAPSHOT")]
+    [InlineData("START")]
+    [InlineData("START WORK")]
+    [InlineData("START TRANSACTION READ")]
+    [InlineData("START TRANSACTION ISOLATION LEVEL REPEATABLE")]
+    [InlineData("START TRANSACTION READ ONLY,")]
+    [InlineData("START TRANSACTION READ ONLY,, DEFERRABLE")]
+    [InlineData("BEGIN , READ ONLY")]
+    [InlineData("START TRANSACTION NOT")]
+    [InlineData("BEGIN WITH CONSISTENT SNAPSHOT")]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
+    [InlineData("START TRANSACTION READ ONLY WITH CONSISTENT SNAPSHOT")]
+    [InlineData("END TRAN")]
+    [InlineData("END AND NO")]
+    [InlineData("END AND CHAIN RELEASE")]
+    [InlineData("ABORT TRANSACTION named")]
+    [InlineData("ABORT RELEASE")]
+    public void SqlTransactionLifecycle_RejectsMalformedAndOtherDialectSyntax(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("BEGIN WORK")]
+    [InlineData("BEGIN READ ONLY")]
+    [InlineData("START TRANSACTION")]
+    [InlineData("END WORK")]
+    [InlineData("END AND CHAIN")]
+    [InlineData("ABORT")]
+    public void SqlTransactionLifecycle_DoesNotIntroduceProceduralControls(string sql)
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; NULL; END"));
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)

@@ -214,7 +214,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
-    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT READ BLAH", "{ ONLY | WRITE }", "BLAH")]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ BLAH", "{ ONLY | WRITE }", "BLAH")]
     public void Transactions_Begin_Invalid_Throws(string text, string expectedText, string found)
     {
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatement(text));
@@ -1311,6 +1311,48 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("UPDATE items SET id = 1 WHERE CURRENT OF cursor_name")]
     [InlineData("DELETE FROM items WHERE CURRENT OF cursor_name")]
     public void PositionedDml_RejectsPostgresCursorPredicates(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("START TRANSACTION ISOLATION LEVEL SERIALIZABLE")]
+    [InlineData("START TRANSACTION DEFERRABLE")]
+    [InlineData("END WORK")]
+    [InlineData("ABORT")]
+    public void TransactionLifecycle_RejectsPostgresSqlForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
+    [InlineData("START TRANSACTION READ ONLY")]
+    [InlineData("BEGIN START TRANSACTION WITH CONSISTENT SNAPSHOT; COMMIT; END")]
+    public void StartTransaction_RemainsAvailableInRoutineBodies(string body)
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement($"CREATE PROCEDURE p() {body}"));
+
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+    }
+
+    [Fact]
+    public void StartTransaction_RetainsCommaSeparatedMySqlCharacteristics()
+    {
+        var statement = Assert.IsType<StartTransaction>(ParseStatement(
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY"));
+
+        Assert.Equal(new[] { "WITH CONSISTENT SNAPSHOT", "READ ONLY" },
+            statement.Modes.Select(characteristic => characteristic.ToString()));
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("START REPLICA")]
+    [InlineData("START TRANSACTION READ ONLY,")]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT,, READ ONLY")]
+    public void StartTransaction_RejectsOtherCommandsAndIncompleteCharacteristics(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

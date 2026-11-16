@@ -11,4 +11,5 @@ public enum ParseContext
     BeginAtomicBody = 1 << 4,
     BetweenBound = 1 << 5,
     PgProceduralBlock = 1 << 6,
+    RoutineStatementBody = 1 << 7,
 }
