@@ -282,6 +282,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             Nested nes when flatten => NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten),
             Nested nes => new Nested(NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten)),
             SingleIdentifier id => NormalizeIdentifier(id, inSelect),
+            CurrentOf current => current with { CursorName = ComponentNormalizer.NormalizeSingleIdentifier(current.CursorName) },
             UnaryOperator uo => new UnaryOperator(NormalizeExpression(uo.Expression, inSelect: inSelect, flatten: flatten), uo.Operator),
             FunctionCall fun => NormalizeFunctionCall(fun, inSelect: inSelect, flatten: flatten),
             Cast cast => NormalizeCast(cast, inSelect: inSelect, flatten: flatten),

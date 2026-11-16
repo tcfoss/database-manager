@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -9,6 +10,11 @@ namespace TcfOss.DatabaseManager.MySql.Parsing;
 
 public class MyDmlParser(ParserBase parser) : DmlParser(parser)
 {
+    protected override CurrentOf? ParseOptionalCurrentOf(ParserState state)
+    {
+        return null;
+    }
+
     protected override Identifier? ParseOptionalInsertAlias(ParserState state)
     {
         return null;

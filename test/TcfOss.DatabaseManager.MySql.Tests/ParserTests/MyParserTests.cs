@@ -1306,4 +1306,12 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("UPDATE items SET id = 1 WHERE CURRENT OF cursor_name")]
+    [InlineData("DELETE FROM items WHERE CURRENT OF cursor_name")]
+    public void PositionedDml_RejectsPostgresCursorPredicates(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

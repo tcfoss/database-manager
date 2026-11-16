@@ -1,7 +1,9 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
@@ -412,4 +414,106 @@ public class PgDmlParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
+    [Theory]
+    [InlineData("UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name", "cursor_name")]
+    [InlineData("DELETE FROM app.items WHERE CURRENT OF cursor_name", "cursor_name")]
+    [InlineData("UPDATE app.items AS target SET id = 1 WHERE CURRENT OF \"Cursor Name\" RETURNING target.id", "\"Cursor Name\"")]
+    [InlineData("DELETE FROM app.items AS target WHERE CURRENT OF \"ALL\" RETURNING target.*", "\"ALL\"")]
+    [InlineData("UPDATE app.items SET id = source.id FROM app.source AS source WHERE CURRENT OF cursor_name RETURNING app.render(id)", "cursor_name")]
+    [InlineData("DELETE FROM app.items USING app.source WHERE CURRENT OF cursor_name RETURNING app.render(id)", "cursor_name")]
+    public void PositionedDml_RoundTripsSqlFormattingAndJson(string sql, string cursorName)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(GetState(sql, 97)), exactMatch: false);
+        Expression? where = statement is Update update ? update.Where : Assert.IsType<Delete>(statement).Where;
+        var current = Assert.IsType<CurrentOf>(where);
+
+        Assert.Equal(cursorName, current.CursorName.ToSql());
+        Assert.Equal(97, current.CursorName.Source!.Value.SourceId);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg)]
+    [InlineData(Grammar.PgPl)]
+    [InlineData(Grammar.Pg | Grammar.PgPl)]
+    public void PositionedDml_AvailableInSqlAndProceduralGrammar(Grammar grammar)
+    {
+        string[] statements =
+        [
+            "UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name",
+            "DELETE FROM app.items WHERE CURRENT OF cursor_name"
+        ];
+        foreach (string sql in statements)
+        {
+            var state = new ParserState(grammar, GetTokens(sql));
+            Assert.Equal(sql, ParseStatement(state).ToSql());
+        }
+    }
+
+    [Theory]
+    [InlineData("UPDATE app.items SET id = app.next(id) WHERE CURRENT OF cursor_name RETURNING app.render(id)", "app.next")]
+    [InlineData("DELETE FROM app.items USING app.source WHERE CURRENT OF cursor_name RETURNING app.render(id)", "app.source")]
+    public void PositionedDml_ReportsObjectsButNotCursorNames(string sql, string dependency)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(new[] { "app.items", dependency, "app.render" }, names);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData("BEGIN UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name; DELETE FROM app.items WHERE CURRENT OF cursor_name; END")]
+    [InlineData("CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name; DELETE FROM app.items WHERE CURRENT OF cursor_name; END")]
+    [InlineData("WITH changed AS (UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name RETURNING 1) SELECT 1 FROM changed")]
+    [InlineData("WITH changed AS (DELETE FROM app.items WHERE CURRENT OF cursor_name RETURNING 1) SELECT 1 FROM changed")]
+    public void PositionedDml_RetainsRoutineAndCteBoundaries(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+    }
+
+    [Fact]
+    public void PositionedDml_NormalizesCursorNamesAsIdentifiers()
+    {
+        var statement = Assert.IsType<Update>(ParseStatement(
+            "UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name"));
+        var current = Assert.IsType<CurrentOf>(statement.Where);
+        var normalizer = new Normalizer(PgTestConfig.GetTestConfig(),
+            new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider()));
+
+        var normalized = Assert.IsType<CurrentOf>(normalizer.NormalizeExpression(current));
+
+        Assert.Equal("\"cursor_name\"", normalized.CursorName.ToSql());
+        Assert.Equal(normalized, normalizer.NormalizeExpression(normalized));
+    }
+
+    [Theory]
+    [InlineData("UPDATE app.items SET id = 1 WHERE CURRENT OF")]
+    [InlineData("DELETE FROM app.items WHERE CURRENT OF")]
+    [InlineData("UPDATE app.items SET id = 1 WHERE CURRENT OF RETURNING *")]
+    [InlineData("DELETE FROM app.items WHERE CURRENT OF app.cursor_name")]
+    [InlineData("UPDATE app.items SET id = 1 WHERE CURRENT OF cursor_name AND TRUE")]
+    [InlineData("DELETE FROM app.items WHERE CURRENT OF cursor_name OR TRUE")]
+    [InlineData("UPDATE app.items SET id = 1 WHERE (CURRENT OF cursor_name)")]
+    [InlineData("DELETE FROM app.items WHERE TRUE AND CURRENT OF cursor_name")]
+    [InlineData("SELECT CURRENT OF cursor_name")]
+    [InlineData("SELECT * FROM app.items WHERE CURRENT OF cursor_name")]
+    [InlineData("INSERT INTO app.items VALUES (CURRENT OF cursor_name)")]
+    [InlineData("INSERT INTO app.items VALUES (1) ON CONFLICT (id) DO UPDATE SET id = 1 WHERE CURRENT OF cursor_name")]
+    public void PositionedDml_RejectsMalformedOrMisplacedPredicates(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
 }

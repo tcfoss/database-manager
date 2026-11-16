@@ -122,7 +122,7 @@ public class DmlParser
         SqlValueList<SimpleSelectItem>? output = ParseOptionalOutputClause(state);
 
         SqlValueList<TableWithJoins>? from = ParseOptionalUpdateFrom(state);
-        Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), _expr.ParseExpr);
+        Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), ParseDmlWherePredicate);
         SqlValueList<SimpleSelectItem>? returning = ParseOptionalReturningClause(state);
 
         return new Update(table, assignments, where)
@@ -164,7 +164,7 @@ public class DmlParser
         SqlValueList<SimpleSelectItem>? output = ParseOptionalOutputClause(state);
 
         SqlValueList<TableWithJoins>? usingTables = ParseOptionalDeleteUsing(state);
-        Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), _expr.ParseExpr);
+        Expression? where = state.ParseInit(state.ParseKeyword(Keyword.WHERE), ParseDmlWherePredicate);
         SqlValueList<OrderBy>? orderBy = state.ParseInit(state.ParseKeywordsAll(Keyword.ORDER, Keyword.BY), (s) => s.ParseCommaSeparated(_comp.ParseOrderBy));
         Expression? limit = state.ParseInit(state.ParseKeyword(Keyword.LIMIT), _expr.ParseExpr);
         SqlValueList<SimpleSelectItem>? returning = ParseOptionalReturningClause(state);
@@ -179,6 +179,20 @@ public class DmlParser
             OrderBy = orderBy,
             Limit = limit
         };
+    }
+
+    private Expression ParseDmlWherePredicate(ParserState state)
+    {
+        return ParseOptionalCurrentOf(state) ?? _expr.ParseExpr(state);
+    }
+
+    protected virtual CurrentOf? ParseOptionalCurrentOf(ParserState state)
+    {
+        if (!state.ParseKeywordsAll(Keyword.CURRENT, Keyword.OF))
+        {
+            return null;
+        }
+        return new CurrentOf(_comp.ParseIdentifier(state));
     }
 
     /// <summary>

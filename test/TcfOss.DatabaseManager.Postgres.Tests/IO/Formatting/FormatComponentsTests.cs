@@ -960,4 +960,17 @@ public class FormatComponentsTests
         Assert.Equal(expected, formatted.Trim());
         Assert.Equal(formatted, formatter.GetFormatted(ParseSqlClose(formatted)));
     }
+
+    [Theory]
+    [InlineData("UPDATE app.items AS target SET id = 1 WHERE CURRENT OF cursor_name", "\"cursor_name\"")]
+    [InlineData("DELETE FROM app.items AS target WHERE CURRENT OF \"ALL\"", "\"ALL\"")]
+    public void PositionedDml_FormatsCursorNamesAsIdentifiers(string sql, string expectedCursor)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains($"CURRENT OF {expectedCursor}", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }
