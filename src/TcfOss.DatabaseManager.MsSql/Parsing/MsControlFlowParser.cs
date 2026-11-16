@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -95,5 +96,58 @@ public class MsControlFlowParser : ControlFlowParser
     protected override TransactionOptions ParseTransactionOptions(ParserState state)
     {
         return new TransactionOptions(Chain: null, Release: null);
+    }
+
+    protected override CursorDirection? ParseCursorDirection(ParserState state, bool allowMany)
+    {
+        CursorDirection? basic = state.Peek() switch
+        {
+            Word { Keyword: Keyword.NEXT } => new CursorDirection.Next(),
+            Word { Keyword: Keyword.PRIOR } => new CursorDirection.Prior(),
+            Word { Keyword: Keyword.FIRST } => new CursorDirection.First(),
+            Word { Keyword: Keyword.LAST } => new CursorDirection.Last(),
+            _ => null
+        };
+        if (basic is not null)
+        {
+            state.Next();
+            return basic;
+        }
+
+        Keyword direction = state.ParseKeywordsAny(Keyword.ABSOLUTE, Keyword.RELATIVE);
+        if (direction != Keyword.undefined)
+        {
+            Expression count;
+            if (state.Peek() is Word { Sigil: SigilKind.Variable })
+            {
+                count = new SingleIdentifier(_parseIdentifier(state));
+            }
+            else
+            {
+                count = new LiteralValue(ValueParser.ParseNumericValue(state));
+            }
+            return direction switch
+            {
+                Keyword.ABSOLUTE => new CursorDirection.Absolute(count),
+                Keyword.RELATIVE => new CursorDirection.Relative(count),
+                _ => throw new DefensiveGuardException("absolute/relative cursor direction", direction.ToString())
+            };
+        }
+
+        return null;
+    }
+
+    protected override CursorNameConnector? ParseCursorNameConnector(ParserState state, CursorDirection? direction)
+    {
+        if (direction is not null)
+        {
+            state.ExpectKeyword(Keyword.FROM);
+            return CursorNameConnector.From;
+        }
+        else if (state.ParseKeyword(Keyword.FROM))
+        {
+            return CursorNameConnector.From;
+        }
+        return null;
     }
 }

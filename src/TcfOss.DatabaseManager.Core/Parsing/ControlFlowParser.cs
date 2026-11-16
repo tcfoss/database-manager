@@ -19,6 +19,7 @@ public class ControlFlowParser
 {
     private readonly ParserBase _p;
     private readonly Func<ParserState, Identifier> _parseIdentifier;
+    private readonly Func<ParserState, ObjectName> _parseObjectName;
     private readonly Func<ParserState, Expression> _parseExpr;
 
     public ControlFlowParser(ParserBase parser)
@@ -26,6 +27,7 @@ public class ControlFlowParser
         _p = parser;
         _parseIdentifier = _p.ComponentParser.ParseIdentifier;
         _parseExpr = _p.ExpressionParser.ParseExpr;
+        _parseObjectName = _p.ComponentParser.ParseObjectName;
     }
 
     public BeginEnd ParseBeginEnd(ParserState state)
@@ -336,43 +338,84 @@ public class ControlFlowParser
         return arguments.Arguments ?? [];
     }
 
-    public PgFetch ParsePgFetch(ParserState state)
+    public virtual Statement ParseFetch(ParserState state)
     {
         state.ExpectKeyword(Keyword.FETCH);
-        PgCursorDirection? direction = ParsePgCursorDirection(state, allowMany: false);
-        PgCursorNameConnector? connector = direction != null
-            ? state.ParseStringEnum<PgCursorNameConnector>()
-            : null;
+        CursorDirection? direction = ParseCursorDirection(state, allowMany: !state.PgPl);
+        CursorNameConnector? connector = ParseCursorNameConnector(state, direction);
+
+        bool global = false;
+        if (state.Ms && state.ParseKeyword(Keyword.GLOBAL))
+        {
+            global = true;
+        }
+
         Identifier cursorName = _parseIdentifier(state);
-        state.ExpectKeyword(Keyword.INTO);
-        SqlValueList<ObjectName> targets = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
-        return new PgFetch(direction, connector, cursorName, targets);
+
+        SqlValueList<ObjectName>? targets = null;
+        if (state.PgPl | state.My)
+        {
+            state.ExpectKeyword(Keyword.INTO);
+            targets = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
+        }
+        else if (state.Ms && state.ParseKeyword(Keyword.INTO))
+        {
+            targets = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
+        }
+        return new Fetch(direction, connector, cursorName, targets)
+        {
+            Global = global
+        };
     }
 
     public PgMove ParsePgMove(ParserState state)
     {
         state.ExpectKeyword(Keyword.MOVE);
-        PgCursorDirection? direction = ParsePgCursorDirection(state, allowMany: true);
-        PgCursorNameConnector? connector;
+        CursorDirection? direction = ParseCursorDirection(state, allowMany: true);
+        CursorNameConnector? connector;
         if (direction != null && state.PgPl)
         {
-            connector = state.ParseStringEnum<PgCursorNameConnector>();
+            connector = state.ParseStringEnum<CursorNameConnector>();
         }
         else
         {
-            connector = state.MaybeParseStringEnum<PgCursorNameConnector>();
+            connector = state.MaybeParseStringEnum<CursorNameConnector>();
         }
         return new PgMove(direction, connector, _parseIdentifier(state));
     }
 
-    private PgCursorDirection? ParsePgCursorDirection(ParserState state, bool allowMany)
+    public Close ParseClose(ParserState state)
     {
-        PgCursorDirection? basic = state.Peek() switch
+        state.ExpectKeyword(Keyword.CLOSE);
+        if (state.Pg && !state.PgPl && state.Peek() is Word { Keyword: Keyword.ALL })
         {
-            Word { Keyword: Keyword.NEXT } => new PgCursorDirection.Next(),
-            Word { Keyword: Keyword.PRIOR } => new PgCursorDirection.Prior(),
-            Word { Keyword: Keyword.FIRST } => new PgCursorDirection.First(),
-            Word { Keyword: Keyword.LAST } => new PgCursorDirection.Last(),
+            state.Next();
+            return new Close.All();
+        }
+        if (state.PgPl && state.PeekKeyword(Keyword.ALL))
+        {
+            throw state.ExpectedException("cursor_name");
+        }
+
+        bool global = false;
+        if (state.Ms && state.Peek() is Word { Keyword: Keyword.GLOBAL })
+        {
+            global = true;
+            state.Next();
+        }
+
+        Identifier thingToClose = _parseIdentifier(state);
+        return new Close.Named(thingToClose) { Global = global };
+    }
+
+    protected virtual CursorDirection? ParseCursorDirection(ParserState state, bool allowMany)
+    {
+        CursorDirection? basic = state.Peek() switch
+        {
+            Word { Keyword: Keyword.NEXT } => new CursorDirection.Next(),
+            Word { Keyword: Keyword.PRIOR } => new CursorDirection.Prior(),
+            Word { Keyword: Keyword.FIRST } => new CursorDirection.First(),
+            Word { Keyword: Keyword.LAST } => new CursorDirection.Last(),
             _ => null
         };
         if (basic is not null)
@@ -395,8 +438,8 @@ public class ControlFlowParser
             }
             return direction switch
             {
-                Keyword.ABSOLUTE => new PgCursorDirection.Absolute(count),
-                Keyword.RELATIVE => new PgCursorDirection.Relative(count),
+                Keyword.ABSOLUTE => new CursorDirection.Absolute(count),
+                Keyword.RELATIVE => new CursorDirection.Relative(count),
                 _ => throw new DefensiveGuardException("absolute/relative cursor direction", direction.ToString())
             };
         }
@@ -435,46 +478,32 @@ public class ControlFlowParser
 
             return direction switch
             {
-                Keyword.FORWARD => new PgCursorDirection.Forward(quantifier),
-                Keyword.BACKWARD => new PgCursorDirection.Backward(quantifier),
+                Keyword.FORWARD => new CursorDirection.Forward(quantifier),
+                Keyword.BACKWARD => new CursorDirection.Backward(quantifier),
                 _ => throw new DefensiveGuardException("forward/backward cursor direction", direction.ToString())
             };
         }
 
         if (allowMany && state.ParseKeyword(Keyword.ALL))
         {
-            return new PgCursorDirection.Unnamed(new PgCursorDirectionQuantifier.All());
+            return new CursorDirection.Unnamed(new PgCursorDirectionQuantifier.All());
         }
 
         if (allowMany && state.TryParse(s => ValueParser.ParseNumericValue(s), out Value? bareNumeric))
         {
-            return new PgCursorDirection.Unnamed(new PgCursorDirectionQuantifier.Specified(new LiteralValue(bareNumeric)));
+            return new CursorDirection.Unnamed(new PgCursorDirectionQuantifier.Specified(new LiteralValue(bareNumeric)));
         }
 
         return null;
+    }
 
-        // PgCursorDirectionName? name = state.MaybeParseStringEnum<PgCursorDirectionName>();
-        // if (name == null)
-        // {
-        //     return null;
-        // }
-
-        // if (name.Kind is PgCursorDirectionName.ValueKind.Absolute or PgCursorDirectionName.ValueKind.Relative)
-        // {
-        //     return new PgCursorDirection(name, _p.ExpressionParser.ParseExpr(state, Precedence.Between), All: false);
-        // }
-        // if (name.Kind is PgCursorDirectionName.ValueKind.Forward or PgCursorDirectionName.ValueKind.Backward)
-        // {
-        //     if (allowMany && state.ParseKeyword(Keyword.ALL))
-        //     {
-        //         return new PgCursorDirection(name, Count: null, All: true);
-        //     }
-        //     if (allowMany && !state.PeekKeyword(Keyword.FROM) && !state.PeekKeyword(Keyword.IN))
-        //     {
-        //         return new PgCursorDirection(name, _p.ExpressionParser.ParseExpr(state, Precedence.Between), All: false);
-        //     }
-        // }
-        // return new PgCursorDirection(name, Count: null, All: false);
+    protected virtual CursorNameConnector? ParseCursorNameConnector(ParserState state, CursorDirection? direction)
+    {
+        if (direction != null && state.PgPl)
+        {
+            return state.ParseStringEnum<CursorNameConnector>();
+        }
+        return state.MaybeParseStringEnum<CursorNameConnector>();
     }
 
     private PgExceptionCondition ParsePgExceptionCondition(ParserState state)

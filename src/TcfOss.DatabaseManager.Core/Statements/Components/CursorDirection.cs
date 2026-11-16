@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public abstract record PgCursorDirection : IWriteSql //(PgCursorDirectionName Name, Expression? Count, bool All) : IWriteSql
+public abstract record CursorDirection : IWriteSql //(PgCursorDirectionName Name, Expression? Count, bool All) : IWriteSql
 {
     public abstract void ToSql(SqlTextWriter writer);
     public virtual void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -17,7 +17,7 @@ public abstract record PgCursorDirection : IWriteSql //(PgCursorDirectionName Na
         yield break;
     }
 
-    public record Unnamed(PgCursorDirectionQuantifier Quantifier) : PgCursorDirection
+    public record Unnamed(PgCursorDirectionQuantifier Quantifier) : CursorDirection
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -38,7 +38,7 @@ public abstract record PgCursorDirection : IWriteSql //(PgCursorDirectionName Na
         }
     }
 
-    public abstract record BareNamed(string Name) : PgCursorDirection
+    public abstract record BareNamed(string Name) : CursorDirection
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -52,7 +52,7 @@ public abstract record PgCursorDirection : IWriteSql //(PgCursorDirectionName Na
     public record First() : BareNamed("FIRST");
     public record Last() : BareNamed("LAST");
 
-    public abstract record Quantified(string Name, Expression Count) : PgCursorDirection
+    public abstract record Quantified(string Name, Expression Count) : CursorDirection
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -80,7 +80,7 @@ public abstract record PgCursorDirection : IWriteSql //(PgCursorDirectionName Na
     public record Absolute(Expression Count) : Quantified("ABSOLUTE", Count);
     public record Relative(Expression Count) : Quantified("RELATIVE", Count);
 
-    public abstract record ExtendedQuantified(string Name, PgCursorDirectionQuantifier? Quantifier) : PgCursorDirection
+    public abstract record ExtendedQuantified(string Name, PgCursorDirectionQuantifier? Quantifier) : CursorDirection
     {
         public override void ToSql(SqlTextWriter writer)
         {

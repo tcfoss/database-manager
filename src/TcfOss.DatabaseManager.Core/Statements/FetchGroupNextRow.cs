@@ -4,7 +4,7 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record FetchGroupNextRow() : Fetch
+public record FetchGroupNextRow() : Statement
 {
     public override void ToSql(SqlTextWriter writer)
     {

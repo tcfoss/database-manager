@@ -940,4 +940,24 @@ public class FormatComponentsTests
         Assert.Contains(expectedExpression, formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("CLOSE ALL", "CLOSE ALL;")]
+    [InlineData("CLOSE \"ALL\"", "CLOSE \"ALL\";")]
+    [InlineData("CLOSE cursor_name", "CLOSE \"cursor_name\";")]
+    public void Close_FormattingDistinguishesAllFromQuotedCursorNames(string sql, string expected)
+    {
+        static Close ParseSqlClose(string text)
+        {
+            var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg, [.. new PgLexer().Tokenize(text)]);
+            return Assert.IsType<Close>(Assert.Single(new PgParser().Parse(state, null)), exactMatch: false);
+        }
+
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(ParseSqlClose(sql));
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(ParseSqlClose(formatted)));
+    }
 }

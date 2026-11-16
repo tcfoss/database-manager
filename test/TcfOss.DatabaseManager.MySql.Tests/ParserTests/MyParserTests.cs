@@ -238,6 +238,48 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
+    [InlineData("FETCH cursor_name INTO first, second", false, false)]
+    [InlineData("FETCH FROM cursor_name INTO first, second", false, true)]
+    [InlineData("FETCH NEXT FROM cursor_name INTO first, second", true, true)]
+    public void Fetch_RetainsDirectionConnectorAndTargets(string sql, bool hasDirection, bool hasConnector)
+    {
+        var fetch = Assert.IsType<Fetch>(ParseStatement(sql));
+
+        if (hasDirection)
+        {
+            Assert.IsType<CursorDirection.Next>(fetch.Direction);
+        }
+        else
+        {
+            Assert.Null(fetch.Direction);
+        }
+        Assert.Equal(hasConnector ? CursorNameConnector.From : null, fetch.Connector);
+        Assert.Equal("cursor_name", fetch.CursorName.Name);
+        Assert.NotNull(fetch.Targets);
+        Assert.Equal(["first", "second"], [.. fetch.Targets.Select(target => target.ToSql())]);
+        Assert.Equal(sql, fetch.ToSql());
+        Assert.Equal(fetch, ParseStatement(fetch.ToSql()));
+        Assert.Equal(fetch, ParseStatement(Format(fetch)));
+    }
+
+    [Fact]
+    public void FetchGroupNextRow_RetainsStandaloneStatementShape()
+    {
+        var fetch = Assert.IsType<FetchGroupNextRow>(ParseStatement("FETCH GROUP NEXT ROW"));
+
+        Assert.Equal(fetch, ParseStatement(fetch.ToSql()));
+        Assert.Equal(fetch, ParseStatement(Format(fetch)));
+    }
+
+    [Theory]
+    [InlineData("FETCH cursor_name")]
+    [InlineData("FETCH NEXT FROM cursor_name")]
+    public void Fetch_RequiresIntoTargets(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("OPEN cursor1")]
     [InlineData("CLOSE cursor2")]
     public void OpenCloseCursor_TextMatch(string text)

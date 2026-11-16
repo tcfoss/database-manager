@@ -50,7 +50,7 @@ public class PgParser : Parser
         {
             Keyword.DECLARE when !ControlFlowComponentHelpers.MaybeDeclareCursor(state) =>
                 throw ParserState.ExpectedException("SQL statement", first),
-            Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.FETCH or Keyword.USE =>
+            Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.USE =>
                 throw ParserState.ExpectedException("SQL statement", first),
             _ => base.ParseKeywordStatement(state, first)
         };

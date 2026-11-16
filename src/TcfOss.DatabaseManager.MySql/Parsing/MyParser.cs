@@ -180,15 +180,6 @@ public class MyParser : Parser<MyParserRunState>
         return new Statements.SetDelimiter(next.Delimiter);
     }
 
-    protected override Fetch ParseFetch(ParserState state)
-    {
-        if (state.ParseKeywordsAll(Keyword.FETCH, Keyword.GROUP, Keyword.NEXT, Keyword.ROW))
-        {
-            return new FetchGroupNextRow();
-        }
-        return base.ParseFetch(state);
-    }
-
     private SignalInformationItem ParseSignalInformationItem(ParserState state)
     {
         Token next = state.Next();

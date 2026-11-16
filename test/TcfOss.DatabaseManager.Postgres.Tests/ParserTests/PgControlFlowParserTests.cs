@@ -476,6 +476,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("DECLARE cursor_one NO SCROLL CURSOR (p INT, q TEXT) IS SELECT id FROM app.items WHERE id = p; BEGIN OPEN cursor_one(p := 1, q => 'x'); FETCH FIRST FROM cursor_one INTO result; MOVE BACKWARD ALL IN cursor_one; CLOSE cursor_one; END")]
     [InlineData("BEGIN OPEN cursor_one SCROLL FOR SELECT 1; OPEN cursor_two NO SCROLL FOR EXECUTE 'SELECT $1' USING app.value; END")]
     [InlineData("BEGIN FETCH cursor_name INTO result; FETCH ABSOLUTE -1 IN cursor_name INTO first, second; MOVE FORWARD 2 FROM cursor_name; MOVE cursor_name; END")]
+    [InlineData("BEGIN CLOSE \"ALL\"; END")]
     [InlineData("BEGIN COMMIT WORK AND CHAIN; ROLLBACK TRANSACTION AND NO CHAIN; END")]
     [InlineData("FOR row_value IN cursor_name(app.value()) LOOP CALL app.process(row_value); END LOOP")]
     public void ProceduralExecuteAndCursors_RoundTripSqlFormattingAndJson(string sql)
@@ -496,12 +497,12 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
             "DECLARE cursor_one CURSOR FOR SELECT id FROM app.items; BEGIN EXECUTE app.command_text() INTO STRICT result USING app.value(); FETCH FORWARD FROM cursor_one INTO result; END"));
         var cursor = Assert.IsType<SubCursorDeclaration>(Assert.Single(block.PgOptions!.Declarations!.OfType<SubCursorDeclaration>()));
         var execute = Assert.IsType<PgExecute>(Assert.Single(block.Statements.OfType<PgExecute>()));
-        var fetch = Assert.IsType<PgFetch>(Assert.Single(block.Statements.OfType<PgFetch>()));
+        var fetch = Assert.IsType<Fetch>(Assert.Single(block.Statements.OfType<Fetch>()));
 
         Assert.Equal("cursor_one", cursor.Name.Name);
         Assert.True(execute.Strict);
         Assert.Equal("result", Assert.Single(execute.Into!).ToSql());
-        var fetchDirection = Assert.IsType<PgCursorDirection.Forward>(fetch.Direction);
+        var fetchDirection = Assert.IsType<CursorDirection.Forward>(fetch.Direction);
         Assert.Null(fetchDirection.Quantifier);
         Assert.Equal("FROM", fetch.Connector!.ToString());
 
@@ -531,6 +532,9 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("BEGIN FETCH NEXT cursor_name INTO result; END")]
     [InlineData("BEGIN FETCH FORWARD 2 FROM cursor_name INTO result; END")]
     [InlineData("BEGIN FETCH 2 FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN FETCH ALL FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN FETCH BACKWARD ALL FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN CLOSE ALL; END")]
     [InlineData("BEGIN MOVE FORWARD ALL cursor_name; END")]
     [InlineData("BEGIN COMMIT AND NO; END")]
     [InlineData("DECLARE cursor_name CURSOR; BEGIN NULL; END")]
@@ -571,7 +575,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         var state = new ParserState(Grammar.Pg, GetTokens("MOVE FORWARD 5 FROM cursor_name"));
         var move = Assert.IsType<PgMove>(Assert.Single(new PgParser().Parse(state, null)));
 
-        var direction = Assert.IsType<PgCursorDirection.Forward>(move.Direction);
+        var direction = Assert.IsType<CursorDirection.Forward>(move.Direction);
         var quantifier = Assert.IsType<PgCursorDirectionQuantifier.Specified>(direction.Quantifier);
         Assert.Equal("5", quantifier.Count.ToSql());
     }
@@ -616,6 +620,113 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
             .OfType<ItemRef.ObjectNameRef>()
             .Select(reference => reference.Name.ToSql())];
         Assert.Equal(["app.position"], references);
+    }
+
+    [Theory]
+    [InlineData("FETCH cursor_name")]
+    [InlineData("FETCH NEXT cursor_name")]
+    [InlineData("FETCH FROM cursor_name")]
+    [InlineData("FETCH ABSOLUTE -2 IN \"CursorName\"")]
+    [InlineData("FETCH 3 FROM cursor_name")]
+    [InlineData("FETCH FORWARD -2 FROM cursor_name")]
+    [InlineData("FETCH BACKWARD ALL cursor_name")]
+    public void SqlFetch_RoundTripsSqlFormattingAndJson(string sql)
+    {
+        static Fetch ParseSqlFetch(string text)
+        {
+            var state = new ParserState(Grammar.Pg, GetTokens(text));
+            return Assert.IsType<Fetch>(Assert.Single(new PgParser().Parse(state, null)));
+        }
+
+        Fetch fetch = ParseSqlFetch(sql);
+        Assert.Null(fetch.Targets);
+        Assert.Equal(fetch, ParseSqlFetch(fetch.ToSql()));
+        string formatted = Format(fetch);
+        Assert.Equal(fetch, ParseSqlFetch(formatted));
+        Assert.Equal(formatted, Format(ParseSqlFetch(formatted)));
+        Statement[] statements = [fetch];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("FETCH ALL FROM cursor_name")]
+    [InlineData("FETCH 3 FROM cursor_name")]
+    [InlineData("FETCH -3 FROM cursor_name")]
+    [InlineData("FETCH FORWARD -2 FROM cursor_name")]
+    [InlineData("FETCH BACKWARD ALL FROM cursor_name")]
+    public void SqlFetch_SubParserConsumesMultirowDirections(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        var fetch = Assert.IsType<Fetch>(new PgParser().ControlFlowParser.ParseFetch(state));
+
+        Assert.Null(fetch.Targets);
+        Assert.NotNull(fetch.Direction);
+        Assert.Equal("FROM", fetch.Connector!.ToString());
+        Assert.Equal("cursor_name", fetch.CursorName.Name);
+        Assert.Equal(sql, fetch.ToSql());
+        Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
+    }
+
+    [Theory]
+    [InlineData(false, "FROM", "FETCH FROM cursor_name")]
+    [InlineData(true, null, "FETCH NEXT cursor_name")]
+    [InlineData(true, "IN", "FETCH NEXT IN cursor_name")]
+    public void SqlFetch_EmissionPreservesIndependentDirectionAndConnector(
+        bool hasDirection, string? connector, string expected)
+    {
+        var fetch = new Fetch(
+            hasDirection ? new CursorDirection.Next() : null,
+            connector != null ? CursorNameConnector.Parse(connector) : null,
+            new Identifier("cursor_name"),
+            Targets: null);
+
+        Assert.Equal(expected, Format(fetch));
+        Assert.Equal(expected, fetch.ToSql());
+    }
+
+    [Theory]
+    [InlineData("CLOSE cursor_name", false)]
+    [InlineData("CLOSE \"ALL\"", false)]
+    [InlineData("CLOSE ALL", true)]
+    public void SqlClose_RetainsNamedAndAllVariants(string sql, bool closesAll)
+    {
+        static Close ParseSqlClose(string text)
+        {
+            var state = new ParserState(Grammar.Pg, GetTokens(text));
+            return Assert.IsType<Close>(Assert.Single(new PgParser().Parse(state, null)), exactMatch: false);
+        }
+
+        Close close = ParseSqlClose(sql);
+        if (closesAll)
+        {
+            Assert.IsType<Close.All>(close);
+        }
+        else
+        {
+            var named = Assert.IsType<Close.Named>(close);
+            Assert.False(named.Global);
+            Assert.Equal(sql["CLOSE ".Length..], named.Identifier.ToSql());
+        }
+        Assert.Equal(sql, close.ToSql());
+        Assert.Equal(close, ParseSqlClose(close.ToSql()));
+        string formatted = Format(close);
+        Assert.Equal(close, ParseSqlClose(formatted));
+        Assert.Equal(formatted, Format(ParseSqlClose(formatted)));
+        Statement[] statements = [close];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("FETCH")]
+    [InlineData("FETCH NEXT FROM")]
+    [InlineData("FETCH ALL FROM")]
+    [InlineData("FETCH cursor_name INTO result")]
+    [InlineData("CLOSE")]
+    [InlineData("CLOSE ALL cursor_name")]
+    public void SqlFetchAndClose_RejectInvalidSyntax(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(state, null));
     }
 
     [Theory]

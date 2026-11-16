@@ -612,4 +612,19 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.Equal(sql, Assert.IsType<Call>(ParseStatement(sql)).ToSql());
     }
+
+    [Theory]
+    [InlineData("BEGIN FETCH FIRST FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN FETCH ABSOLUTE -2 FROM cursor_name INTO result; END")]
+    public void CursorFetch_AllGrammarRetainsPostgresDirections(string sql)
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement(sql));
+        var fetch = Assert.Single(block.Statements.OfType<Fetch>());
+
+        Assert.NotNull(fetch.Direction);
+        Assert.Equal(CursorNameConnector.From, fetch.Connector);
+        Assert.Equal("result", Assert.Single(fetch.Targets!).ToSql());
+        Assert.Equal(block, ParseStatement(block.ToSql()));
+        Assert.Equal(block, ParseStatement(Format(block)));
+    }
 }

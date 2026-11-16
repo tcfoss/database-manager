@@ -7,8 +7,8 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record PgMove(
-    PgCursorDirection? Direction,
-    PgCursorNameConnector? Connector,
+    CursorDirection? Direction,
+    CursorNameConnector? Connector,
     Identifier CursorName) : Statement
 {
     public override void ToSql(SqlTextWriter writer)

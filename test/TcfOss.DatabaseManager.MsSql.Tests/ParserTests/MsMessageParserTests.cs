@@ -1,4 +1,6 @@
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -96,5 +98,46 @@ public class MsMessageParserTests : ParserTestsBase<MsLexer, MsParser>
         var text = "BEGIN TRY SELECT 1; END TRY BEGIN CATCH PRINT 'caught'; THROW; END CATCH";
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("CLOSE cursor_name", false)]
+    [InlineData("CLOSE GLOBAL cursor_name", true)]
+    public void Close_RetainsGlobalCursorScope(string sql, bool global)
+    {
+        var close = Assert.IsType<Close.Named>(ParseStatement(sql));
+
+        Assert.Equal(global, close.Global);
+        Assert.Equal(sql, close.ToSql());
+        Assert.Equal(close, ParseStatement(close.ToSql()));
+        Assert.Equal(close, ParseStatement(Format(close)));
+    }
+
+    [Theory]
+    [InlineData("FETCH NEXT FROM GLOBAL cursor_name INTO @first, @second", true, true)]
+    [InlineData("FETCH ABSOLUTE -2 FROM cursor_name INTO @first, @second", false, true)]
+    [InlineData("FETCH RELATIVE @offset FROM cursor_name INTO @first, @second", false, true)]
+    [InlineData("FETCH NEXT FROM cursor_name", false, false)]
+    public void Fetch_RetainsDirectionConnectorGlobalScopeAndOptionalTargets(
+        string sql, bool global, bool hasTargets)
+    {
+        var fetch = Assert.IsType<Fetch>(ParseStatement(sql));
+
+        Assert.NotNull(fetch.Direction);
+        Assert.Equal(CursorNameConnector.From, fetch.Connector);
+        Assert.Equal(global, fetch.Global);
+        Assert.Equal("cursor_name", fetch.CursorName.Name);
+        if (hasTargets)
+        {
+            Assert.NotNull(fetch.Targets);
+            Assert.Equal(["@first", "@second"], [.. fetch.Targets.Select(target => target.ToSql())]);
+        }
+        else
+        {
+            Assert.Null(fetch.Targets);
+        }
+        Assert.Equal(sql, fetch.ToSql());
+        Assert.Equal(fetch, ParseStatement(fetch.ToSql()));
+        Assert.Equal(fetch, ParseStatement(Format(fetch)));
     }
 }

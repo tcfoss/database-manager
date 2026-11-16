@@ -781,7 +781,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         ParserState state = GetState(sql);
         using (state.EnterGrammarContext(Grammar.Pg))
         {
-            Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
+            Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(state, null));
             Assert.Equal(Grammar.Pg, state.Grammar);
             Assert.Null(state.StatementLabel);
         }
@@ -931,7 +931,25 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         var procedure = Assert.IsType<CreateProcedure>(ParseStatement("CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC DECLARE result CURSOR FOR SELECT id FROM app.items; CLOSE result; END"));
         var body = Assert.IsType<BeginAtomic>(procedure.Body);
         Assert.IsType<DeclareCursor>(body.Statements[0]);
-        Assert.IsType<Close>(body.Statements[1]);
+        Assert.IsType<Close.Named>(body.Statements[1]);
         Assert.Equal(procedure.ToSql(), ParseStatement(procedure.ToSql()).ToSql());
+    }
+
+    [Fact]
+    public void AtomicBodies_RetainSqlFetchAndCloseAll()
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement(
+            "CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC FETCH FORWARD 2 FROM cursor_name; CLOSE ALL; END"));
+        var body = Assert.IsType<BeginAtomic>(procedure.Body);
+        var fetch = Assert.IsType<Fetch>(body.Statements[0]);
+        var direction = Assert.IsType<CursorDirection.Forward>(fetch.Direction);
+        var quantifier = Assert.IsType<PgCursorDirectionQuantifier.Specified>(direction.Quantifier);
+        Assert.Equal("2", quantifier.Count.ToSql());
+        Assert.Null(fetch.Targets);
+        Assert.IsType<Close.All>(body.Statements[1]);
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+        Statement[] statements = [procedure];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
     }
 }

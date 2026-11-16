@@ -143,11 +143,10 @@ public abstract class ParserBase : IParser
             Keyword.USE => ParseUse(state),
             Keyword.LEAVE => ParseLeave(state),
             Keyword.ITERATE => ParseIterate(state),
-            Keyword.FETCH when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgFetch(state),
-            Keyword.FETCH => ParseFetch(state),
+            Keyword.FETCH => ControlFlowParser.ParseFetch(state),
             Keyword.OPEN when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgOpen(state),
             Keyword.OPEN => ParseOpen(state),
-            Keyword.CLOSE => ParseClose(state),
+            Keyword.CLOSE => ControlFlowParser.ParseClose(state),
             Keyword.TRUNCATE => DdlParser.ParseTruncateTable(state),
             Keyword.REFRESH => DdlParser.ParseRefreshMaterializedView(state),
             _ => throw ParserState.ExpectedException("SQL statement".Italic(), first)
@@ -265,13 +264,6 @@ public abstract class ParserBase : IParser
         state.ExpectKeyword(Keyword.OPEN);
         Identifier thingToOpen = ComponentParser.ParseIdentifier(state);
         return new Open(thingToOpen);
-    }
-
-    private Close ParseClose(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.CLOSE);
-        Identifier thingToClose = ComponentParser.ParseIdentifier(state);
-        return new Close(thingToClose);
     }
 
     private Statement ParseCteQuery(ParserState state)
@@ -461,28 +453,6 @@ public abstract class ParserBase : IParser
         }
 
         return ControlFlowParser.ParseDeclareLocalVariable(state);
-    }
-
-
-    protected virtual Fetch ParseFetch(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.FETCH);
-        Fetch.FromCursorInto.FromLabelOption? labelOption = null;
-        if (state.ParseKeywordsAll(Keyword.NEXT, Keyword.FROM))
-        {
-            labelOption = Fetch.FromCursorInto.FromLabelOption.NextFrom;
-        }
-        else if (state.ParseKeyword(Keyword.FROM))
-        {
-            labelOption = Fetch.FromCursorInto.FromLabelOption.From;
-        }
-        Identifier cursorName = ComponentParser.ParseIdentifier(state);
-        state.ExpectKeyword(Keyword.INTO);
-        SqlValueList<Identifier> intoVars = state.ParseCommaSeparated(ComponentParser.ParseIdentifier);
-        return new Fetch.FromCursorInto(cursorName, intoVars)
-        {
-            FromLabel = labelOption
-        };
     }
 
     private SetVariable ParseSet(ParserState state)

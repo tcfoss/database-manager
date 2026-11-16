@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
@@ -64,6 +65,38 @@ public class MyControlFlowParser : ControlFlowParser
 
     public override Identifier? ParseTransactionName(ParserState state, TransactionNoun? noun)
     {
+        return null;
+    }
+
+    public override Statement ParseFetch(ParserState state)
+    {
+        if (state.ParseKeywordsAll(Keyword.FETCH, Keyword.GROUP, Keyword.NEXT, Keyword.ROW))
+        {
+            return new FetchGroupNextRow();
+        }
+        return base.ParseFetch(state);
+    }
+
+    protected override CursorDirection? ParseCursorDirection(ParserState state, bool allowMany)
+    {
+        if (state.ParseKeyword(Keyword.NEXT))
+        {
+            return new CursorDirection.Next();
+        }
+        return null;
+    }
+
+    protected override CursorNameConnector? ParseCursorNameConnector(ParserState state, CursorDirection? direction)
+    {
+        if (direction is not null)
+        {
+            state.ExpectKeyword(Keyword.FROM);
+            return CursorNameConnector.From;
+        }
+        else if (state.ParseKeyword(Keyword.FROM))
+        {
+            return CursorNameConnector.From;
+        }
         return null;
     }
 }
