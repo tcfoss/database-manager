@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
@@ -50,5 +51,19 @@ public class MyControlFlowParser : ControlFlowParser
     {
         state.ExpectKeyword(Keyword.RETURN);
         return new Return(_parseExpr(state));
+    }
+
+    public override TransactionNoun? ParseOptionalTransactionNoun(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.WORK))
+        {
+            return TransactionNoun.Work;
+        }
+        return null;
+    }
+
+    public override Identifier? ParseTransactionName(ParserState state, TransactionNoun? noun)
+    {
+        return null;
     }
 }

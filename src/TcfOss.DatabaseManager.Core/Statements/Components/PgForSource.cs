@@ -1,4 +1,6 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -118,6 +120,52 @@ public abstract record PgForSource : IWriteSql
                 foreach (Expression expression in Using)
                 {
                     foreach (ItemRef item in expression.GetReferencedItems(context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+    }
+
+    public record Cursor(Identifier Name, SqlValueList<FunctionArgument>? Arguments) : PgForSource
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Name.ToSql(writer);
+            if (Arguments != null)
+            {
+                writer.Write("(");
+                writer.WriteDelimited(Arguments);
+                writer.Write(")");
+            }
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Name.FormatSql(writer, manager);
+            if (Arguments != null)
+            {
+                writer.Write("(");
+                for (int i = 0; i < Arguments.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        writer.Write(", ");
+                    }
+                    Arguments[i].FormatSql(writer, manager);
+                }
+                writer.Write(")");
+            }
+        }
+
+        public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+        {
+            if (Arguments != null)
+            {
+                foreach (FunctionArgument argument in Arguments)
+                {
+                    foreach (ItemRef item in argument.GetReferencedItems(context))
                     {
                         yield return item;
                     }

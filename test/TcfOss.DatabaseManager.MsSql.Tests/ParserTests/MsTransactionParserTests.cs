@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
@@ -40,6 +41,16 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("COMMIT AND CHAIN")]
+    [InlineData("COMMIT RELEASE")]
+    [InlineData("ROLLBACK AND NO CHAIN")]
+    [InlineData("ROLLBACK NO RELEASE")]
+    public void CommitAndRollback_RejectUnsupportedOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]

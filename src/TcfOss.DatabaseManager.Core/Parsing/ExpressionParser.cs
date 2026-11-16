@@ -40,6 +40,12 @@ public class ExpressionParser
         return ParseSubExpression(state, 0);
     }
 
+    public Expression ParseExpr(ParserState state, Precedence minimumPrecedence)
+    {
+        using ParserState.Scope scope = state.EnterContext(disable: ParseContext.DefaultExpression | ParseContext.BetweenBound);
+        return ParseSubExpression(state, _pm.GetPrecedence(minimumPrecedence));
+    }
+
     public Expression ParseDefaultExpr(ParserState state)
     {
         using ParserState.Scope scope = state.EnterContext(ParseContext.DefaultExpression);

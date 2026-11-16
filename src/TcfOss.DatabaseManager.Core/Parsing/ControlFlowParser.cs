@@ -1,13 +1,16 @@
+using System.Globalization;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.PgDeclarations;
 using NonSql = TcfOss.DatabaseManager.Core.Statements.Components.NonSql;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
@@ -40,7 +43,7 @@ public class ControlFlowParser
         return new BeginEnd(statements);
     }
 
-    public BeginEnd ParsePgBeginEnd(ParserState state)
+    public BeginEnd ParsePgPlBeginEnd(ParserState state)
     {
         using ParserState.Scope scope = state.EnterContext(ParseContext.PgProceduralBlock);
         SqlValueList<Statement>? declarations = null;
@@ -55,7 +58,9 @@ public class ControlFlowParser
                 {
                     throw state.ExpectedException("BEGIN");
                 }
-                PgBlockVariable declaration = ParsePgBlockVariable(state);
+                Statement declaration = IsPgCursorDeclaration(state)
+                    ? ParsePgCursorDeclaration(state)
+                    : ParsePgBlockVariable(state);
                 ParserBase.AttachStatementMetadata(declaration, start, state);
                 declarations.Add(declaration);
                 state.ExpectToken<Semicolon>();
@@ -121,7 +126,7 @@ public class ControlFlowParser
         return new BeginEnd(statements) { PgOptions = options };
     }
 
-    private PgBlockVariable ParsePgBlockVariable(ParserState state)
+    private SubVariableDeclaration ParsePgBlockVariable(ParserState state)
     {
         Identifier name = _parseIdentifier(state);
         bool constant = state.TryGetPseudoKeyword(out string text, out _, false)
@@ -148,13 +153,328 @@ public class ControlFlowParser
         {
             def = new PgBlockVariableDefault(marker, _p.ExpressionParser.ParseExpr(state));
         }
-        return new PgBlockVariable(name, dataType)
+        return new SubVariableDeclaration(name, dataType)
         {
             Constant = constant,
             Collation = collation,
             NotNull = notNull,
             Default = def
         };
+    }
+
+    private static bool IsPgCursorDeclaration(ParserState state)
+    {
+        if (state.Peek() is not Word)
+        {
+            return false;
+        }
+        return state.PeekNth(1) is Word { Keyword: Keyword.CURSOR or Keyword.SCROLL }
+            || state.PeekNth(1) is Word { Keyword: Keyword.NO }
+                && state.PeekNth(2) is Word { Keyword: Keyword.SCROLL };
+    }
+
+    public SubCursorDeclaration ParsePgCursorDeclaration(ParserState state)
+    {
+        Identifier name = _parseIdentifier(state);
+        PgCursorScrollMode? scrollMode = ControlFlowComponentHelpers.ParsePgCursorScrollMode(state);
+        state.ExpectKeyword(Keyword.CURSOR);
+        SqlValueList<PgCursorParameter>? parameters = state.PeekIs<ParenOpen>()
+            ? state.ParseParenthesizedCommaSeparated(
+                innerState => new PgCursorParameter(
+                    _parseIdentifier(innerState),
+                    _p.DataTypeParser.ParseDataTypeReference(innerState)),
+                allowEmpty: false)
+            : null;
+        bool useIs = state.ParseKeyword(Keyword.IS);
+        if (!useIs)
+        {
+            state.ExpectKeyword(Keyword.FOR);
+        }
+        Statement query = ParsePgRowReturningQuery(state);
+        return new SubCursorDeclaration(name, scrollMode, parameters, useIs, query);
+    }
+
+    public PgExecute ParsePgExecute(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.EXECUTE);
+        Expression command = _parseExpr(state);
+        SqlValueList<ObjectName>? into = null;
+        bool strict = false;
+        if (state.ParseKeyword(Keyword.INTO))
+        {
+            strict = state.ParseKeyword(Keyword.STRICT);
+            into = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
+        }
+        SqlValueList<Expression>? parameters = state.ParseKeyword(Keyword.USING)
+            ? state.ParseCommaSeparated(_parseExpr)
+            : null;
+        return new PgExecute(command, into, strict, parameters);
+    }
+
+    public Commit ParseCommit(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.COMMIT);
+        TransactionNoun? noun = ParseOptionalTransactionNoun(state);
+        TransactionOptions opts = ParseTransactionOptions(state);
+        Identifier? name = ParseTransactionName(state, noun);
+        return new Commit
+        {
+            Noun = noun,
+            ChainOption = opts.Chain,
+            ReleaseOption = opts.Release,
+            Name = name
+        };
+    }
+
+    public Rollback ParseRollback(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.ROLLBACK);
+        TransactionNoun? noun = ParseOptionalTransactionNoun(state);
+        TransactionOptions opts = ParseTransactionOptions(state);
+        Identifier? name = ParseTransactionName(state, noun);
+        return new Rollback
+        {
+            Noun = noun,
+            ChainOption = opts.Chain,
+            ReleaseOption = opts.Release,
+            Name = name
+        };
+    }
+
+    public virtual TransactionNoun? ParseOptionalTransactionNoun(ParserState state)
+    {
+        return state.MaybeParseStringEnum<TransactionNoun>();
+    }
+
+    public virtual TransactionNoun ParseRequiredTransactionNoun(ParserState state)
+    {
+        return state.ParseStringEnum<TransactionNoun>();
+    }
+
+    protected readonly record struct TransactionOptions(TransactionChainOption? Chain, TransactionReleaseOption? Release);
+    protected virtual TransactionOptions ParseTransactionOptions(ParserState state)
+    {
+        TransactionChainOption? chain = null;
+        TransactionReleaseOption? release = null;
+
+        while (true)
+        {
+            if (chain == null && state.ParseKeyword(Keyword.AND))
+            {
+                bool negated = state.ParseKeyword(Keyword.NO);
+                state.ExpectKeyword(Keyword.CHAIN);
+                chain = new TransactionChainOption { Negated = negated };
+            }
+            else if (release == null && state.ParseKeyword(Keyword.NO))
+            {
+                state.ExpectKeyword(Keyword.RELEASE);
+                release = new TransactionReleaseOption { Negated = true };
+            }
+            else if (release == null && state.ParseKeyword(Keyword.RELEASE))
+            {
+                release = new TransactionReleaseOption { Negated = false };
+            }
+            else
+            {
+                break;
+            }
+        }
+        return new TransactionOptions(chain, release);
+    }
+
+    public virtual Identifier? ParseTransactionName(ParserState state, TransactionNoun? noun)
+    {
+        if (noun is null)
+        {
+            return null;
+        }
+        if (state.Peek() is Word { Keyword: Keyword.undefined })
+        {
+            return _parseIdentifier(state);
+        }
+        return null;
+    }
+
+    public PgOpen ParsePgOpen(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.OPEN);
+        Identifier cursorName = _parseIdentifier(state);
+        PgCursorScrollMode? scrollMode = ControlFlowComponentHelpers.ParsePgCursorScrollMode(state);
+        if (state.ParseKeyword(Keyword.FOR))
+        {
+            if (state.ParseKeyword(Keyword.EXECUTE))
+            {
+                Expression command = _parseExpr(state);
+                SqlValueList<Expression>? parameters = state.ParseKeyword(Keyword.USING)
+                    ? state.ParseCommaSeparated(_parseExpr)
+                    : null;
+                return new PgOpen.ForExecute(cursorName, scrollMode, command, parameters);
+            }
+            Statement query = ParsePgRowReturningQuery(state);
+            return new PgOpen.ForQuery(cursorName, scrollMode, query);
+        }
+        if (scrollMode != null)
+        {
+            throw state.ExpectedException("FOR");
+        }
+        SqlValueList<FunctionArgument>? arguments = state.PeekIs<ParenOpen>()
+            ? ParsePgCursorArguments(state)
+            : null;
+        return new PgOpen.Bound(cursorName, arguments);
+    }
+
+    private SqlValueList<FunctionArgument> ParsePgCursorArguments(ParserState state)
+    {
+        state.ExpectLeftParen();
+        FunctionArguments.List arguments = _p.ExpressionParser.ParseFunctionArgumentList(state);
+        if (arguments.DuplicateTreatment != null
+            || arguments.Clauses != null
+            || arguments.Arguments?.Any(argument => !ControlFlowComponentHelpers.IsPgCursorArgument(argument)) == true)
+        {
+            throw state.ExpectedException("cursor argument list");
+        }
+        return arguments.Arguments ?? [];
+    }
+
+    public PgFetch ParsePgFetch(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.FETCH);
+        PgCursorDirection? direction = ParsePgCursorDirection(state, allowMany: false);
+        PgCursorNameConnector? connector = direction != null
+            ? state.ParseStringEnum<PgCursorNameConnector>()
+            : null;
+        Identifier cursorName = _parseIdentifier(state);
+        state.ExpectKeyword(Keyword.INTO);
+        SqlValueList<ObjectName> targets = state.ParseCommaSeparated(_p.ComponentParser.ParseObjectName);
+        return new PgFetch(direction, connector, cursorName, targets);
+    }
+
+    public PgMove ParsePgMove(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.MOVE);
+        PgCursorDirection? direction = ParsePgCursorDirection(state, allowMany: true);
+        PgCursorNameConnector? connector;
+        if (direction != null && state.PgPl)
+        {
+            connector = state.ParseStringEnum<PgCursorNameConnector>();
+        }
+        else
+        {
+            connector = state.MaybeParseStringEnum<PgCursorNameConnector>();
+        }
+        return new PgMove(direction, connector, _parseIdentifier(state));
+    }
+
+    private PgCursorDirection? ParsePgCursorDirection(ParserState state, bool allowMany)
+    {
+        PgCursorDirection? basic = state.Peek() switch
+        {
+            Word { Keyword: Keyword.NEXT } => new PgCursorDirection.Next(),
+            Word { Keyword: Keyword.PRIOR } => new PgCursorDirection.Prior(),
+            Word { Keyword: Keyword.FIRST } => new PgCursorDirection.First(),
+            Word { Keyword: Keyword.LAST } => new PgCursorDirection.Last(),
+            _ => null
+        };
+        if (basic is not null)
+        {
+            state.Next();
+            return basic;
+        }
+
+        Keyword direction = state.ParseKeywordsAny(Keyword.ABSOLUTE, Keyword.RELATIVE);
+        if (direction != Keyword.undefined)
+        {
+            Expression count;
+            if (state.PgPl)
+            {
+                count = _p.ExpressionParser.ParseExpr(state, Precedence.Between);
+            }
+            else
+            {
+                count = new LiteralValue(new Value.Number(ValueParser.ParseLiteralInt(state).ToString(CultureInfo.InvariantCulture), false));
+            }
+            return direction switch
+            {
+                Keyword.ABSOLUTE => new PgCursorDirection.Absolute(count),
+                Keyword.RELATIVE => new PgCursorDirection.Relative(count),
+                _ => throw new DefensiveGuardException("absolute/relative cursor direction", direction.ToString())
+            };
+        }
+
+        direction = state.ParseKeywordsAny(Keyword.FORWARD, Keyword.BACKWARD);
+        if (direction != Keyword.undefined)
+        {
+            PgCursorDirectionQuantifier? quantifier = null;
+            if (allowMany && state.ParseKeyword(Keyword.ALL))
+            {
+                quantifier = new PgCursorDirectionQuantifier.All();
+            }
+
+            if (allowMany && quantifier is null)
+            {
+                Expression? count = null;
+
+                if (state.PeekKeyword(Keyword.FROM) || state.PeekKeyword(Keyword.IN))
+                {
+                    // Do nothing, count remains null
+                }
+                else if (state.PgPl && state.TryParse(s => _p.ExpressionParser.ParseExpr(s, Precedence.Between), out count))
+                {
+                    // count is assigned
+                }
+                else if (state.TryParse(s => ValueParser.ParseNumericValue(s), out Value? numeric))
+                {
+                    count = new LiteralValue(numeric);
+                }
+
+                if (count is not null)
+                {
+                    quantifier = new PgCursorDirectionQuantifier.Specified(count);
+                }
+            }
+
+            return direction switch
+            {
+                Keyword.FORWARD => new PgCursorDirection.Forward(quantifier),
+                Keyword.BACKWARD => new PgCursorDirection.Backward(quantifier),
+                _ => throw new DefensiveGuardException("forward/backward cursor direction", direction.ToString())
+            };
+        }
+
+        if (allowMany && state.ParseKeyword(Keyword.ALL))
+        {
+            return new PgCursorDirection.Unnamed(new PgCursorDirectionQuantifier.All());
+        }
+
+        if (allowMany && state.TryParse(s => ValueParser.ParseNumericValue(s), out Value? bareNumeric))
+        {
+            return new PgCursorDirection.Unnamed(new PgCursorDirectionQuantifier.Specified(new LiteralValue(bareNumeric)));
+        }
+
+        return null;
+
+        // PgCursorDirectionName? name = state.MaybeParseStringEnum<PgCursorDirectionName>();
+        // if (name == null)
+        // {
+        //     return null;
+        // }
+
+        // if (name.Kind is PgCursorDirectionName.ValueKind.Absolute or PgCursorDirectionName.ValueKind.Relative)
+        // {
+        //     return new PgCursorDirection(name, _p.ExpressionParser.ParseExpr(state, Precedence.Between), All: false);
+        // }
+        // if (name.Kind is PgCursorDirectionName.ValueKind.Forward or PgCursorDirectionName.ValueKind.Backward)
+        // {
+        //     if (allowMany && state.ParseKeyword(Keyword.ALL))
+        //     {
+        //         return new PgCursorDirection(name, Count: null, All: true);
+        //     }
+        //     if (allowMany && !state.PeekKeyword(Keyword.FROM) && !state.PeekKeyword(Keyword.IN))
+        //     {
+        //         return new PgCursorDirection(name, _p.ExpressionParser.ParseExpr(state, Precedence.Between), All: false);
+        //     }
+        // }
+        // return new PgCursorDirection(name, Count: null, All: false);
     }
 
     private PgExceptionCondition ParsePgExceptionCondition(ParserState state)
@@ -430,6 +750,28 @@ public class ControlFlowParser
             return new PgForSource.Execute(command) { Using = parameters };
         }
 
+        if (state.TryParse(innerState =>
+            {
+                if (innerState.Peek() is not Word
+                    {
+                        Keyword: not (Keyword.SELECT or Keyword.VALUES or Keyword.WITH
+                            or Keyword.INSERT or Keyword.UPDATE or Keyword.DELETE)
+                    })
+                {
+                    return null;
+                }
+                Identifier name = _parseIdentifier(innerState);
+                SqlValueList<FunctionArgument>? arguments = innerState.PeekIs<ParenOpen>()
+                    ? ParsePgCursorArguments(innerState)
+                    : null;
+                return innerState.PeekKeyword(Keyword.LOOP)
+                    ? new PgForSource.Cursor(name, arguments)
+                    : null;
+            }, out PgForSource.Cursor? cursorSource))
+        {
+            return cursorSource;
+        }
+
         bool reverse = state.ParseKeyword(Keyword.REVERSE);
 
         Expression? lower;
@@ -557,8 +899,6 @@ public class ControlFlowParser
 
     protected Statement ParseMyOrPgIf(ParserState state, bool elsIf)
     {
-        // Keyword elseIfKeyword = elsIf ? Keyword.ELSIF : Keyword.ELSEIF;
-        // string elseIfKeywordText = elsIf ? "ELSIF" : "ELSEIF";
         Keyword[] elseIfKeywords = elsIf
             ? [Keyword.ELSEIF, Keyword.ELSIF]
             : [Keyword.ELSEIF];
@@ -834,13 +1174,34 @@ public class ControlFlowParser
         throw new ParseException.DialectRequired("Local variable declaration", state.Peek().Location);
     }
 
-    public DeclareCursor ParseDeclareCursor(ParserState state)
+    public virtual DeclareCursor ParseDeclareCursor(ParserState state)
     {
         state.ExpectKeyword(Keyword.DECLARE);
         Identifier name = _parseIdentifier(state);
-        state.ExpectKeywordsAll(Keyword.CURSOR, Keyword.FOR);
+        bool binary = false;
+        PgCursorSensitivity? sensitivity = null;
+        PgCursorScrollMode? scrollMode = null;
+        PgCursorHoldMode? holdability;
+        if (state.Pg)
+        {
+            binary = state.ParseKeyword(Keyword.BINARY);
+            sensitivity = state.MaybeParseStringEnum<PgCursorSensitivity>();
+            scrollMode = ControlFlowComponentHelpers.ParsePgCursorScrollMode(state);
+        }
+        state.ExpectKeyword(Keyword.CURSOR);
+        holdability = state.Pg
+            ? ControlFlowComponentHelpers.ParsePgCursorHoldMode(state)
+            : null;
+        state.ExpectKeyword(Keyword.FOR);
         Select query = _p.SelectParser.ParseSelect(state, null);
-        return new DeclareCursor(name, query);
+
+        return new DeclareCursor(name, query)
+        {
+            Binary = binary,
+            Sensitivity = sensitivity,
+            ScrollMode = scrollMode,
+            Holdability = holdability
+        };
     }
 
     private static ConditionValue ParseConditionValueForDeclarePartial(ParserState state)

@@ -48,7 +48,7 @@ public class PgParser : Parser
         }
         return first.Keyword switch
         {
-            Keyword.DECLARE when state.PeekNth(2) is not Word { Keyword: Keyword.CURSOR } =>
+            Keyword.DECLARE when !ControlFlowComponentHelpers.MaybeDeclareCursor(state) =>
                 throw ParserState.ExpectedException("SQL statement", first),
             Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.FETCH or Keyword.USE =>
                 throw ParserState.ExpectedException("SQL statement", first),

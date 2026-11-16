@@ -400,6 +400,8 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("RAISE NOTICE 'message';", Label = "Raise")]
     [InlineData("PERFORM app.work();", Label = "Perform")]
     [InlineData("EXECUTE 'SELECT 1';", Label = "Dynamic execution")]
+    [InlineData("COMMIT AND CHAIN;", Label = "Procedure transaction control")]
+    [InlineData("ROLLBACK AND NO CHAIN;", Label = "Procedure transaction control")]
     [InlineData("RETURN NEXT 1;", Label = "Return next")]
     [InlineData("RETURN QUERY SELECT 1;", Label = "Return query")]
     [InlineData("EXCEPTION WHEN OTHERS THEN SELECT 1;", Label = "Exception handler")]
@@ -773,7 +775,8 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("USE app", Label = "Use")]
     public void SqlGrammar_RejectsProceduralSyntax(string sql)
     {
-        Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        ParserState coreState = new(Grammar.All, GetTokens(sql));
+        Assert.IsType<Statement>(Assert.Single(new Parser().Parse(coreState, null)), exactMatch: false);
 
         ParserState state = GetState(sql);
         using (state.EnterGrammarContext(Grammar.Pg))

@@ -67,13 +67,11 @@ public class MyParser : Parser<MyParserRunState>
 
     protected override Statement ParseKeywordStatement(ParserState state, Word first)
     {
-        Statement? statement = first.Keyword switch
+        return first.Keyword switch
         {
             Keyword.SIGNAL => ParseSignal(state),
             Keyword.RESIGNAL => ParseResignal(state),
             Keyword.START => ParseStartTransaction(state),
-            Keyword.ROLLBACK => ParseRollback(state),
-            Keyword.COMMIT => ParseCommit(state),
             Keyword.PREPARE => ParsePrepare(state),
             Keyword.EXECUTE => ParseExecute(state),
             Keyword.DROP => ParseDrop(state),
@@ -81,15 +79,8 @@ public class MyParser : Parser<MyParserRunState>
             Keyword.SHOW => ParseShow(state),
             Keyword.CALL => ParseCall(state),
             Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
-            _ => null
+            _ => base.ParseKeywordStatement(state, first)
         };
-
-        if (statement != null)
-        {
-            return statement;
-        }
-
-        return base.ParseKeywordStatement(state, first);
     }
 
     protected override bool ConsumeTerminators(ParserState state, ref MyParserRunState runState, bool expectingTerminator)
@@ -331,76 +322,6 @@ public class MyParser : Parser<MyParserRunState>
         return new StartTransaction
         {
             Characteristics = characteristics
-        };
-    }
-
-    private static (TransactionNoun? transactionNoun, TransactionChainOption? chainOption, TransactionReleaseOption? releaseOption) ParseTransactionOptions(ParserState state)
-    {
-        TransactionNoun? noun = null;
-        if (state.ParseKeyword(Keyword.WORK))
-        {
-            noun = TransactionNoun.Work;
-        }
-
-        TransactionChainOption? chainOption = null;
-        TransactionReleaseOption? releaseOption = null;
-        while (true)
-        {
-            if (state.ParseKeyword(Keyword.AND))
-            {
-                bool negated = state.ParseKeyword(Keyword.NO);
-                state.ExpectKeyword(Keyword.CHAIN);
-                chainOption = new TransactionChainOption { Negated = negated };
-            }
-            else if (state.ParseKeyword(Keyword.NO))
-            {
-                state.ExpectKeyword(Keyword.RELEASE);
-                releaseOption = new TransactionReleaseOption { Negated = true };
-            }
-            else if (state.ParseKeyword(Keyword.RELEASE))
-            {
-                releaseOption = new TransactionReleaseOption { Negated = false };
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return (noun, chainOption, releaseOption);
-    }
-
-    private static Rollback ParseRollback(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.ROLLBACK);
-
-        (
-            TransactionNoun? noun,
-            TransactionChainOption? chainOption,
-            TransactionReleaseOption? releaseOption) = ParseTransactionOptions(state);
-
-        return new Rollback
-        {
-            Noun = noun,
-            ChainOption = chainOption,
-            ReleaseOption = releaseOption
-        };
-    }
-
-    private static Commit ParseCommit(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.COMMIT);
-
-        (
-            TransactionNoun? noun,
-            TransactionChainOption? chainOption,
-            TransactionReleaseOption? releaseOption) = ParseTransactionOptions(state);
-
-        return new Commit
-        {
-            Noun = noun,
-            ChainOption = chainOption,
-            ReleaseOption = releaseOption
         };
     }
 

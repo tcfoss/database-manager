@@ -894,10 +894,10 @@ public static class ParserStateTests
     [InlineData(ParseContext.DomainCheck)]
     [InlineData(ParseContext.DefaultExpression)]
     [InlineData(ParseContext.StringLiteralAsStatement)]
-    [InlineData(ParseContext.BeginAtomic)]
+    [InlineData(ParseContext.ExpectBeginAtomic)]
     [InlineData(ParseContext.PgProceduralBlock)]
-    [InlineData(ParseContext.BeginAtomic | ParseContext.PgProceduralBlock)]
-    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.BeginAtomic)]
+    [InlineData(ParseContext.ExpectBeginAtomic | ParseContext.PgProceduralBlock)]
+    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.StringLiteralAsStatement | ParseContext.ExpectBeginAtomic)]
     public static void EnterContext_RestoresNestedEnablingAndDisabling(ParseContext context)
     {
         var state = new ParserState(Grammar.All, []);
@@ -925,10 +925,10 @@ public static class ParserStateTests
     public static void EnterContext_UpdatesOnlyRequestedFlags()
     {
         var state = new ParserState(Grammar.All, []);
-        const ParseContext outer = ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.BeginAtomic;
+        const ParseContext outer = ParseContext.DomainCheck | ParseContext.DefaultExpression | ParseContext.ExpectBeginAtomic;
         using (state.EnterContext(outer))
         {
-            using (state.EnterContext(ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression | ParseContext.BeginAtomic))
+            using (state.EnterContext(ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression | ParseContext.ExpectBeginAtomic))
             {
                 Assert.Equal(ParseContext.DomainCheck | ParseContext.StringLiteralAsStatement, state.Context);
                 using (state.EnterContext())
@@ -944,8 +944,8 @@ public static class ParserStateTests
     }
 
     [Theory]
-    [InlineData(ParseContext.None, ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
-    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression, ParseContext.DomainCheck | ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement)]
+    [InlineData(ParseContext.None, ParseContext.ExpectBeginAtomic | ParseContext.StringLiteralAsStatement)]
+    [InlineData(ParseContext.DomainCheck | ParseContext.DefaultExpression, ParseContext.DomainCheck | ParseContext.ExpectBeginAtomic | ParseContext.StringLiteralAsStatement)]
     public static void EnterContext_RestoresPreviousContextOnException(ParseContext initial, ParseContext inner)
     {
         var state = new ParserState(Grammar.All, []);
@@ -953,7 +953,7 @@ public static class ParserStateTests
         {
             Assert.Throws<InvalidOperationException>((Action)(() =>
             {
-                using (state.EnterContext(ParseContext.BeginAtomic | ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression))
+                using (state.EnterContext(ParseContext.ExpectBeginAtomic | ParseContext.StringLiteralAsStatement, disable: ParseContext.DefaultExpression))
                 {
                     Assert.Equal(inner, state.Context);
                     throw new InvalidOperationException();

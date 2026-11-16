@@ -1342,7 +1342,7 @@ public class DdlParser
         else if (state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
             using (state.EnterGrammarContext((state.Grammar & ~Grammar.PgPl) | Grammar.Pg))
-            using (state.EnterContext(ParseContext.BeginAtomic))
+            using (state.EnterContext(ParseContext.ExpectBeginAtomic))
             {
                 body = _p.ParseStatement(state);
             }

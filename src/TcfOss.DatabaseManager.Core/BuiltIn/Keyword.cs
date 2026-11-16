@@ -504,6 +504,7 @@ public enum Keyword
     MODE,
     MODIFIES,
     MODIFY,
+    MOVE,
     MODULE,
     MODULUS,
     MONEY,

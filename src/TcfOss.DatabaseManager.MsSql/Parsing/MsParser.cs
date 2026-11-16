@@ -111,8 +111,6 @@ public class MsParser : Parser
             Keyword.EXEC or Keyword.EXECUTE => ParseExecute(state, first.Keyword),
             Keyword.BREAK => ParseBreak(state),
             Keyword.CONTINUE => ParseContinue(state),
-            Keyword.COMMIT => ParseCommit(state),
-            Keyword.ROLLBACK => ParseRollback(state),
             Keyword.SAVE => ParseSaveTransaction(state),
             Keyword.PRINT => ParsePrint(state),
             Keyword.THROW => ParseThrow(state),
@@ -316,7 +314,14 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>BEGIN TRY … END TRY BEGIN CATCH … END CATCH</c> block.
+    /// <code><![CDATA[
+    /// BEGIN TRY
+    ///     statements
+    /// END TRY
+    /// BEGIN CATCH
+    ///     statements
+    /// END CATCH</c> block.
+    /// ]]></code>
     /// </summary>
     private MsTryCatch ParseTryCatch(ParserState state)
     {
@@ -340,46 +345,28 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>BEGIN { TRAN | TRANSACTION } [transaction_name]</c>.
+    /// <code><![CDATA[
+    /// BEGIN { TRAN | TRANSACTION } [ name ]
+    /// ]]></code>
     /// </summary>
-    private MsBeginTransaction ParseBeginTransaction(ParserState state)
+    public MsBeginTransaction ParseBeginTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.BEGIN);
-        TransactionNoun noun = ParseTransactionNoun(state);
-        Identifier? name = TryParseTransactionName(state);
+        TransactionNoun noun = ControlFlowParser.ParseRequiredTransactionNoun(state);
+        Identifier? name = ControlFlowParser.ParseTransactionName(state, noun);
         return new MsBeginTransaction(noun) { Name = name };
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>COMMIT [ { TRAN | TRANSACTION } [ transaction_name ] ]</c>.
+    /// <code><![CDATA[
+    /// SAVE { TRAN | TRANSACTION } savepoint_name
+    /// ]]>
     /// </summary>
-    private MsCommit ParseCommit(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.COMMIT);
-        TransactionNoun? noun = TryParseTransactionNoun(state);
-        Identifier? name = noun != null ? TryParseTransactionName(state) : null;
-        return new MsCommit { Noun = noun, Name = name };
-    }
-
-    /// <summary>
-    /// Parses a T-SQL <c>ROLLBACK [ { TRAN | TRANSACTION } [ transaction_or_savepoint_name ] ]</c>.
-    /// </summary>
-    private MsRollback ParseRollback(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.ROLLBACK);
-        TransactionNoun? noun = TryParseTransactionNoun(state);
-        Identifier? name = noun != null ? TryParseTransactionName(state) : null;
-        return new MsRollback { Noun = noun, Name = name };
-    }
-
-    /// <summary>
-    /// Parses a T-SQL <c>SAVE { TRAN | TRANSACTION } savepoint_name</c>.
-    /// </summary>
-    private MsSaveTransaction ParseSaveTransaction(ParserState state)
+    public MsSaveTransaction ParseSaveTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.SAVE);
-        TransactionNoun noun = ParseTransactionNoun(state);
-        Identifier name = ComponentParser.ParseIdentifier(state);
+        TransactionNoun noun = ControlFlowParser.ParseRequiredTransactionNoun(state);
+        Identifier name = ComponentParser.ParseIdentifier(state, "savepoint_name");
         return new MsSaveTransaction(noun, name);
     }
 
@@ -394,17 +381,6 @@ public class MsParser : Parser
             return TransactionNoun.Parse(word.Value);
         }
         throw state.ExpectedException("TRAN", "TRANSACTION");
-    }
-
-    /// <summary>
-    /// Parses an optional <c>TRAN</c> or <c>TRANSACTION</c> keyword if present and
-    /// returns the corresponding <see cref="TransactionNoun"/>, or null if
-    /// neither is next.
-    /// </summary>
-    private static TransactionNoun? TryParseTransactionNoun(ParserState state)
-    {
-        Keyword keyword = state.ParseKeywordsAny(Keyword.TRAN, Keyword.TRANSACTION);
-        return keyword == Keyword.undefined ? null : TransactionNoun.Parse(keyword.ToString());
     }
 
     private Identifier? TryParseTransactionName(ParserState state)

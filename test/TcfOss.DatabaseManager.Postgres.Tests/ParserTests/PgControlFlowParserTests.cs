@@ -9,6 +9,7 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.PgDeclarations;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
@@ -196,7 +197,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(sql.IndexOf("outer_label", StringComparison.Ordinal), labeled.Label.Source.Value.Start);
         var block = Assert.IsType<BeginEnd>(labeled.SubStatement);
         var options = Assert.IsType<PgBlockOptions>(block.PgOptions);
-        var variable = Assert.Single(options.Declarations!.OfType<PgBlockVariable>());
+        var variable = Assert.Single(options.Declarations!.OfType<SubVariableDeclaration>());
         Assert.True(variable.Constant);
         Assert.True(variable.NotNull);
         Assert.NotNull(variable.Default);
@@ -233,7 +234,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
             statement = labeled.SubStatement;
         }
         var block = Assert.IsType<BeginEnd>(statement);
-        Assert.NotEmpty(block.PgOptions!.Declarations!.OfType<PgBlockVariable>());
+        Assert.NotEmpty(block.PgOptions!.Declarations!.OfType<SubVariableDeclaration>());
     }
 
     [Fact]
@@ -470,6 +471,177 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("BEGIN EXECUTE 'SELECT 1'; END")]
+    [InlineData("BEGIN EXECUTE format('SELECT * FROM app.items WHERE id = $1') INTO STRICT result USING app.id; END")]
+    [InlineData("DECLARE cursor_one NO SCROLL CURSOR (p INT, q TEXT) IS SELECT id FROM app.items WHERE id = p; BEGIN OPEN cursor_one(p := 1, q => 'x'); FETCH FIRST FROM cursor_one INTO result; MOVE BACKWARD ALL IN cursor_one; CLOSE cursor_one; END")]
+    [InlineData("BEGIN OPEN cursor_one SCROLL FOR SELECT 1; OPEN cursor_two NO SCROLL FOR EXECUTE 'SELECT $1' USING app.value; END")]
+    [InlineData("BEGIN FETCH cursor_name INTO result; FETCH ABSOLUTE -1 IN cursor_name INTO first, second; MOVE FORWARD 2 FROM cursor_name; MOVE cursor_name; END")]
+    [InlineData("BEGIN COMMIT WORK AND CHAIN; ROLLBACK TRANSACTION AND NO CHAIN; END")]
+    [InlineData("FOR row_value IN cursor_name(app.value()) LOOP CALL app.process(row_value); END LOOP")]
+    public void ProceduralExecuteAndCursors_RoundTripSqlFormattingAndJson(string sql)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Fact]
+    public void ProceduralExecuteAndCursors_PreserveShapeAndReferences()
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement(
+            "DECLARE cursor_one CURSOR FOR SELECT id FROM app.items; BEGIN EXECUTE app.command_text() INTO STRICT result USING app.value(); FETCH FORWARD FROM cursor_one INTO result; END"));
+        var cursor = Assert.IsType<SubCursorDeclaration>(Assert.Single(block.PgOptions!.Declarations!.OfType<SubCursorDeclaration>()));
+        var execute = Assert.IsType<PgExecute>(Assert.Single(block.Statements.OfType<PgExecute>()));
+        var fetch = Assert.IsType<PgFetch>(Assert.Single(block.Statements.OfType<PgFetch>()));
+
+        Assert.Equal("cursor_one", cursor.Name.Name);
+        Assert.True(execute.Strict);
+        Assert.Equal("result", Assert.Single(execute.Into!).ToSql());
+        var fetchDirection = Assert.IsType<PgCursorDirection.Forward>(fetch.Direction);
+        Assert.Null(fetchDirection.Quantifier);
+        Assert.Equal("FROM", fetch.Connector!.ToString());
+
+        string[] references = [.. execute.GetReferencedItems(new ReferencedItemsManager
+            {
+                Filters = ObjectNameFilters.All
+            })
+            .OfType<ItemRef.ObjectNameRef>()
+            .Select(reference => reference.Name.ToSql())];
+        Assert.Equal(["app.command_text", "app.value"], references);
+
+        var cursorLoop = Assert.IsType<PgFor>(ParseStatement(
+            "FOR row_value IN cursor_name(app.cursor_value()) LOOP CALL app.process(row_value); END LOOP"));
+        string[] cursorReferences = [.. cursorLoop.GetReferencedItems(new ReferencedItemsManager
+            {
+                Filters = ObjectNameFilters.All
+            })
+            .OfType<ItemRef.ObjectNameRef>()
+            .Select(reference => reference.Name.ToSql())];
+        Assert.Equal(["app.cursor_value", "app.process"], cursorReferences);
+    }
+
+    [Theory]
+    [InlineData("BEGIN EXECUTE 'SELECT 1' INTO STRICT; END")]
+    [InlineData("BEGIN EXECUTE 'SELECT 1' USING; END")]
+    [InlineData("BEGIN OPEN cursor_name SCROLL; END")]
+    [InlineData("BEGIN FETCH NEXT cursor_name INTO result; END")]
+    [InlineData("BEGIN FETCH FORWARD 2 FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN FETCH 2 FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN MOVE FORWARD ALL cursor_name; END")]
+    [InlineData("BEGIN COMMIT AND NO; END")]
+    [InlineData("DECLARE cursor_name CURSOR; BEGIN NULL; END")]
+    public void ProceduralExecuteAndCursors_RejectInvalidSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Fact]
+    public void ProceduralExecuteAndCursors_RequirePlPgSqlGrammar()
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens("BEGIN EXECUTE 'SELECT 1'; END"));
+        Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(state, null));
+    }
+
+    [Theory]
+    [InlineData("DECLARE cursor_one SCROLL CURSOR WITH HOLD FOR SELECT 1", false, null, "SCROLL", "WITH HOLD")]
+    [InlineData("DECLARE cursor_one BINARY INSENSITIVE NO SCROLL CURSOR WITHOUT HOLD FOR SELECT 1", true, "INSENSITIVE", "NO SCROLL", "WITHOUT HOLD")]
+    public void SqlCursorDeclarations_ParsePostgresOptions(
+        string sql,
+        bool expectedBinary,
+        string? expectedSensitivity,
+        string expectedScrollMode,
+        string expectedHoldability)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        var cursor = Assert.IsType<DeclareCursor>(Assert.Single(new PgParser().Parse(state, null)));
+
+        Assert.Equal(expectedBinary, cursor.Binary);
+        Assert.Equal(expectedSensitivity, cursor.Sensitivity?.ToString());
+        Assert.Equal(expectedScrollMode, cursor.ScrollMode?.ToString());
+        Assert.Equal(expectedHoldability, cursor.Holdability?.ToString());
+    }
+
+    [Fact]
+    public void SqlMove_IsAvailableOutsideProceduralBlocks()
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens("MOVE FORWARD 5 FROM cursor_name"));
+        var move = Assert.IsType<PgMove>(Assert.Single(new PgParser().Parse(state, null)));
+
+        var direction = Assert.IsType<PgCursorDirection.Forward>(move.Direction);
+        var quantifier = Assert.IsType<PgCursorDirectionQuantifier.Specified>(direction.Quantifier);
+        Assert.Equal("5", quantifier.Count.ToSql());
+    }
+
+    [Theory]
+    [InlineData("MOVE cursor_name")]
+    [InlineData("MOVE NEXT cursor_name")]
+    [InlineData("MOVE FROM cursor_name")]
+    [InlineData("MOVE -5 FROM cursor_name")]
+    [InlineData("MOVE FORWARD +5 FROM cursor_name")]
+    [InlineData("MOVE ALL FROM cursor_name")]
+    public void SqlMove_RoundTripsOptionalDirectionConnectorAndSignedCounts(string sql)
+    {
+        static Statement ParseSqlMove(string text)
+        {
+            var state = new ParserState(Grammar.Pg, GetTokens(text));
+            return Assert.IsType<PgMove>(Assert.Single(new PgParser().Parse(state, null)));
+        }
+
+        Statement statement = ParseSqlMove(sql);
+        Assert.Equal(statement, ParseSqlMove(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseSqlMove(formatted));
+        Assert.Equal(formatted, Format(ParseSqlMove(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("ABSOLUTE")]
+    [InlineData("RELATIVE")]
+    public void ProceduralMove_TracksDirectionCountReferences(string direction)
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement(
+            $"BEGIN MOVE {direction} app.position() FROM cursor_name; END"));
+        var move = Assert.IsType<PgMove>(Assert.Single(block.Statements.OfType<PgMove>()));
+
+        string[] references = [.. move.GetReferencedItems(new ReferencedItemsManager
+            {
+                Filters = ObjectNameFilters.All
+            })
+            .OfType<ItemRef.ObjectNameRef>()
+            .Select(reference => reference.Name.ToSql())];
+        Assert.Equal(["app.position"], references);
+    }
+
+    [Theory]
+    [InlineData("COMMIT")]
+    [InlineData("COMMIT WORK AND CHAIN")]
+    [InlineData("ROLLBACK TRANSACTION AND NO CHAIN")]
+    public void SqlTransactions_ParsePostgreSqlChainOptions(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Statement statement = Assert.Single(new PgParser().Parse(state, null));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("COMMIT RELEASE")]
+    [InlineData("COMMIT AND CHAIN RELEASE")]
+    [InlineData("ROLLBACK NO RELEASE")]
+    [InlineData("ROLLBACK AND NO CHAIN NO RELEASE")]
+    public void PostgresTransactions_RejectReleaseOption(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(state, null));
+    }
+
+    [Theory]
     [InlineData("FOR i IN 1..10 LOOP END LOOP")]
     [InlineData("FOR i IN -2 .. +3 LOOP CALL app.work(i); END LOOP")]
     [InlineData("FOR i IN REVERSE app.upper_bound() .. app.lower_bound() BY app.step() LOOP CALL app.work(i); END LOOP")]
@@ -489,6 +661,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("FOR row_value IN DELETE FROM app.items RETURNING id LOOP END LOOP")]
     [InlineData("FOR row_value IN EXECUTE 'SELECT 1' LOOP END LOOP")]
     [InlineData("FOR row_value IN EXECUTE app.query_text($1) USING app.value(), (SELECT 1), ARRAY[1, 2] LOOP CALL app.work(); END LOOP")]
+    [InlineData("FOR row_value IN cursor_name(app.value()) LOOP CALL app.work(); END LOOP")]
     [InlineData("<<outer_label>> FOR i IN 1 .. 2 LOOP FOR row_value IN SELECT 1 LOOP CALL app.work(); END LOOP; END LOOP outer_label")]
     [InlineData("BEGIN FOR i IN 1 .. 2 LOOP WHILE FALSE LOOP NULL; END LOOP; NULL; END LOOP; NULL; END")]
     public void ProceduralFor_RoundTripSqlFormattingAndJson(string sql)
@@ -576,7 +749,6 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("FOR row_value IN SELECT 1 INTO other_value LOOP END LOOP")]
     [InlineData("FOR row_value IN (SELECT 1 INTO other_value) LOOP END LOOP")]
     [InlineData("FOR row_value IN SELECT 1 INTO other_value UNION ALL SELECT 2 LOOP END LOOP")]
-    [InlineData("FOR row_value IN cursor_name(1) LOOP END LOOP")]
     [InlineData("FOR i IN 1 .. 2")]
     [InlineData("FOR i IN 1 .. 2 LOOP")]
     [InlineData("FOR i IN 1 .. 2 LOOP CALL app.work() END LOOP")]

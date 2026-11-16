@@ -130,6 +130,10 @@ public abstract class ParserBase : IParser
             Keyword.RAISE when state.PgPl => ControlFlowParser.ParsePgRaise(state),
             Keyword.ASSERT when state.PgPl => ControlFlowParser.ParsePgAssert(state),
             Keyword.GET when state.PgPl => ControlFlowParser.ParsePgGetDiagnostics(state),
+            Keyword.EXECUTE when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgExecute(state),
+            Keyword.COMMIT when !state.Context.HasFlag(ParseContext.BeginAtomicBody) => ControlFlowParser.ParseCommit(state),
+            Keyword.ROLLBACK when !state.Context.HasFlag(ParseContext.BeginAtomicBody) => ControlFlowParser.ParseRollback(state),
+            Keyword.MOVE when state.Pg || (state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock)) => ControlFlowParser.ParsePgMove(state),
             Keyword.DECLARE => ParseDeclare(state),
             Keyword.NULL when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
             Keyword.SET => ParseSet(state),
@@ -139,7 +143,9 @@ public abstract class ParserBase : IParser
             Keyword.USE => ParseUse(state),
             Keyword.LEAVE => ParseLeave(state),
             Keyword.ITERATE => ParseIterate(state),
+            Keyword.FETCH when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgFetch(state),
             Keyword.FETCH => ParseFetch(state),
+            Keyword.OPEN when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgOpen(state),
             Keyword.OPEN => ParseOpen(state),
             Keyword.CLOSE => ParseClose(state),
             Keyword.TRUNCATE => DdlParser.ParseTruncateTable(state),
@@ -407,18 +413,18 @@ public abstract class ParserBase : IParser
     {
         if (state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
         {
-            if (!state.Context.HasFlag(ParseContext.BeginAtomic))
+            if (!state.Context.HasFlag(ParseContext.ExpectBeginAtomic))
             {
                 throw state.ExpectedException("SQL statement");
             }
-            using (state.EnterContext(disable: ParseContext.BeginAtomic))
+            using (state.EnterContext(ParseContext.BeginAtomicBody, ParseContext.ExpectBeginAtomic))
             {
                 return ControlFlowParser.ParseBeginAtomic(state);
             }
         }
-        if (state.PgPl)
+        if (state.PgAny)
         {
-            return ControlFlowParser.ParsePgBeginEnd(state);
+            return ControlFlowParser.ParsePgPlBeginEnd(state);
         }
         return ControlFlowParser.ParseBeginEnd(state);
     }
@@ -427,52 +433,36 @@ public abstract class ParserBase : IParser
     protected virtual Statement ParseDeclare(ParserState state)
     {
         state.ExpectKeyword(Keyword.DECLARE, false);
-        Token upcoming1 = state.PeekNth(1);
-        Token upcoming2 = state.PeekNth(2);
 
-        if (upcoming1 is Word { Keyword: Keyword.CONTINUE or Keyword.EXIT or Keyword.UNDO })
+        if (state.My && state.PeekN(4) is [Word { Keyword: Keyword.DECLARE }, Word { Keyword: Keyword.CONTINUE or Keyword.EXIT or Keyword.UNDO }, Word { Keyword: Keyword.HANDLER }, Word { Keyword: Keyword.FOR }])
         {
             return ControlFlowParser.ParseDeclareConditionHandler(state);
         }
-        if (upcoming2 is Word { Keyword: Keyword.CONDITION } && state.PeekNth(3) is Word { Keyword: Keyword.FOR })
+        if (state.My && state.PeekN(4) is [Word { Keyword: Keyword.DECLARE }, _, Word { Keyword: Keyword.CONDITION }, Word { Keyword: Keyword.FOR }])
         {
             return ControlFlowParser.ParseDeclareCondition(state);
         }
-        if (upcoming2 is Word { Keyword: Keyword.CURSOR })
-        {
-            return ControlFlowParser.ParseDeclareCursor(state);
-        }
-        if (state.PgPl)
+
+        if (state.PgPl && ControlFlowComponentHelpers.HasPgDeclareBlockOpener(state))
         {
             if (!(state.My || state.Ms) || state.StatementLabel?.Dialect == StatementLabelDialect.Pg)
             {
-                return ControlFlowParser.ParsePgBeginEnd(state);
+                return ControlFlowParser.ParsePgPlBeginEnd(state);
             }
-            if (HasPgDeclareBlockOpener(state) && state.TryParse(ControlFlowParser.ParsePgBeginEnd, out BeginEnd? block))
+            if (state.TryParse(ControlFlowParser.ParsePgPlBeginEnd, out BeginEnd? block))
             {
                 return block;
             }
         }
+
+        if (ControlFlowComponentHelpers.MaybeDeclareCursor(state))
+        {
+            return ControlFlowParser.ParseDeclareCursor(state);
+        }
+
         return ControlFlowParser.ParseDeclareLocalVariable(state);
     }
 
-    private static bool HasPgDeclareBlockOpener(ParserState state)
-    {
-        bool afterTerminator = true;
-        for (int i = 1; ; i++)
-        {
-            Token token = state.PeekNth(i);
-            if (token is Eof)
-            {
-                return false;
-            }
-            if (afterTerminator && token is Word { Keyword: Keyword.BEGIN })
-            {
-                return true;
-            }
-            afterTerminator = token is Semicolon;
-        }
-    }
 
     protected virtual Fetch ParseFetch(ParserState state)
     {

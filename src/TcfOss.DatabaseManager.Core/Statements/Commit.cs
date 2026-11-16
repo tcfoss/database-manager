@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -11,6 +12,7 @@ public record Commit() : Statement
     public TransactionNoun? Noun { get; init; }
     public TransactionChainOption? ChainOption { get; init; }
     public TransactionReleaseOption? ReleaseOption { get; init; }
+    public Identifier? Name { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
@@ -26,6 +28,10 @@ public record Commit() : Statement
         if (ReleaseOption != null)
         {
             writer.WriteSql($" {ReleaseOption}");
+        }
+        if (Name != null)
+        {
+            writer.WriteSql($" {Name}");
         }
     }
 
@@ -44,6 +50,11 @@ public record Commit() : Statement
         if (ReleaseOption != null)
         {
             writer.WriteSql($" {ReleaseOption}");
+        }
+        if (Name != null)
+        {
+            writer.Write(" ");
+            Name.FormatSql(writer, manager);
         }
         Meta.FormatPostNonSql(writer, manager);
     }

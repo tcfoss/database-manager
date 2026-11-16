@@ -1521,7 +1521,7 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Contains("      ^", new ParseException.WithText(exception, null, sql).Message);
 
         var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens("a BETWEEN NOT b AND c"));
-        using ParserState.Scope scope = state.EnterContext(ParseContext.DomainCheck | ParseContext.BeginAtomic);
+        using ParserState.Scope scope = state.EnterContext(ParseContext.DomainCheck | ParseContext.ExpectBeginAtomic);
         ParseContext expected = state.Context;
         Assert.ThrowsAny<ParseException>(() => new PgParser().ExpressionParser.ParseExpr(state));
         Assert.Equal(expected, state.Context);

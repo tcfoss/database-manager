@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
@@ -63,5 +64,36 @@ public class MsControlFlowParser : ControlFlowParser
         {
             InitialValue = initialValue,
         };
+    }
+
+    public override TransactionNoun ParseRequiredTransactionNoun(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TRANSACTION))
+        {
+            return TransactionNoun.Transaction;
+        }
+        if (state.ParseKeyword(Keyword.TRAN))
+        {
+            return TransactionNoun.Tran;
+        }
+        throw state.ExpectedException("TRAN", "TRANSACTION");
+    }
+
+    public override TransactionNoun? ParseOptionalTransactionNoun(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TRANSACTION))
+        {
+            return TransactionNoun.Transaction;
+        }
+        if (state.ParseKeyword(Keyword.TRAN))
+        {
+            return TransactionNoun.Tran;
+        }
+        return null;
+    }
+
+    protected override TransactionOptions ParseTransactionOptions(ParserState state)
+    {
+        return new TransactionOptions(Chain: null, Release: null);
     }
 }

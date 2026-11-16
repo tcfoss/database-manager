@@ -4,9 +4,10 @@ using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
-namespace TcfOss.DatabaseManager.Core.Statements;
+namespace TcfOss.DatabaseManager.Core.Statements.PgDeclarations;
 
-public record PgBlockVariable(Identifier Name, DataTypeReference DataType) : Statement
+public record SubVariableDeclaration(Identifier Name, DataTypeReference DataType)
+    : Statement
 {
     public bool Constant { get; init; }
     public ObjectName? Collation { get; init; }
