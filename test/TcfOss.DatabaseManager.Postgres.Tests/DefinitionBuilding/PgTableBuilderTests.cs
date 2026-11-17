@@ -184,7 +184,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         StatementColumnOption.Default option = asExpression
             ? new StatementColumnOption.Default.DefaultExpression(new LiteralValue(literal), constraintName)
             : new StatementColumnOption.Default.DefaultValue(literal, constraintName);
-        var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, null);
+        var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, config.AttributeDefaults, null);
         builder.AddColumn(new StatementColumn.Typed(new Identifier("value"), new DataType.Int(), [option]), null);
         var pendingDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(builder.Columns).Default);
         Assert.Same(expected, pendingDefault.Value);
@@ -838,7 +838,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres);
         return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
-            NameHandling.Postgres, normalizer, sourceRef);
+            NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults, sourceRef);
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)

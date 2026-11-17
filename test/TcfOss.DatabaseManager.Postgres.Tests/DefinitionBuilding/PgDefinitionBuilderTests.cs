@@ -3073,6 +3073,74 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(54, exception.ObjectSourceRef?.SourceId);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TargetDefaults_ApplyConfiguredDefaultsOnlyWhenAttributesAreOmitted(bool explicitAttributes)
+    {
+        PgConfig config = PgTestConfig.GetTestConfig();
+        config = config with
+        {
+            AttributeDefaults = config.AttributeDefaults with
+            {
+                FunctionSecurityContext = SecurityContext.Definer,
+                ProcedureSecurityContext = SecurityContext.Definer,
+                FunctionParameterDirection = RoutineParameterDirection.InOut,
+                ProcedureParameterDirection = RoutineParameterDirection.Out,
+                PgFunctionVolatility = PgRoutineVolatility.Immutable,
+                PgFunctionStrict = true,
+                PgFunctionParallel = PgRoutineParallel.Safe,
+                PgFunctionCost = 27,
+                PgNativeFunctionCost = 3,
+                PgFunctionRows = 13,
+                GeneratedColumnMode = GenerationMode.Stored,
+                IndexMethod = BuiltInIndexMethod.Hash
+            }
+        };
+        var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        string direction = explicitAttributes ? "IN " : "";
+        string functionOptions = explicitAttributes
+            ? "VOLATILE CALLED ON NULL INPUT SECURITY INVOKER PARALLEL UNSAFE COST 5 ROWS 9"
+            : "";
+        string procedureOptions = explicitAttributes ? "SECURITY INVOKER" : "";
+        string generationMode = explicitAttributes ? "VIRTUAL" : "";
+        string indexMethod = explicitAttributes ? "USING btree" : "";
+        builder.ProcessStatements(ParseStatements($"""
+            CREATE FUNCTION f({direction}x INT) RETURNS SETOF INT LANGUAGE sql {functionOptions} AS 'opaque';
+            CREATE FUNCTION native() RETURNS INT LANGUAGE internal AS 'symbol';
+            CREATE PROCEDURE p({direction}x INT) LANGUAGE sql {procedureOptions} AS 'opaque';
+            CREATE TABLE items (x INT, y INT GENERATED ALWAYS AS (x + 1) {generationMode});
+            CREATE INDEX ix ON items {indexMethod} (x)
+            """), GetSchema(), 55);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgStoredFunction function = definition.Functions[new ObjectHandle("catalog", "public", "f")];
+        Assert.Equal(explicitAttributes ? RoutineParameterDirection.In : RoutineParameterDirection.InOut,
+            Assert.Single(function.Parameters).Direction);
+        Assert.NotNull(function.Options);
+        Assert.Equal(explicitAttributes ? SecurityContext.Invoker : SecurityContext.Definer, function.Options.Security);
+        Assert.Equal(explicitAttributes ? PgRoutineVolatility.Volatile : PgRoutineVolatility.Immutable, function.Options.Volatility);
+        Assert.Equal(!explicitAttributes, function.Options.Strict);
+        Assert.Equal(explicitAttributes ? PgRoutineParallel.Unsafe : PgRoutineParallel.Safe, function.Options.Parallel);
+        Assert.Equal(explicitAttributes ? 5 : 27, function.Options.Cost);
+        Assert.Equal(explicitAttributes ? 9 : 13, function.Options.Rows);
+        PgStoredFunction native = definition.Functions[new ObjectHandle("catalog", "public", "native")];
+        Assert.NotNull(native.Options);
+        Assert.Equal(3, native.Options.Cost);
+        Assert.Equal(0, native.Options.Rows);
+        PgStoredProcedure procedure = Assert.Single(definition.Procedures.Values);
+        Assert.Equal(explicitAttributes ? RoutineParameterDirection.In : RoutineParameterDirection.Out,
+            Assert.Single(procedure.Parameters).Direction);
+        Assert.NotNull(procedure.Options);
+        Assert.Equal(explicitAttributes ? SecurityContext.Invoker : SecurityContext.Definer, procedure.Options.Security);
+        PgTable table = Assert.Single(definition.Tables.Values);
+        Assert.Equal(explicitAttributes ? GenerationMode.Virtual : GenerationMode.Stored,
+            Assert.IsType<ColumnOption.Generated.AsExpression>(table.Columns[1].Generated).Mode);
+        Assert.Equal(explicitAttributes ? BuiltInIndexMethod.Btree : BuiltInIndexMethod.Hash,
+            Assert.IsType<IndexMethod.BuiltIn>(Assert.Single(table.Indexes.Values).Method).Method);
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));

@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -17,7 +18,12 @@ using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
 namespace TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 
-public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, INormalizeComponents componentNormalizer, SourceRef? sourceRef)
+public class PgTableBuilder(
+    ObjectIdentifier name,
+    NameHandling nameHandling,
+    INormalizeComponents componentNormalizer,
+    AttributeDefaults attributeDefaults,
+    SourceRef? sourceRef)
     : TableBuilder<PgTable>(name, nameHandling, componentNormalizer, sourceRef)
 {
     private readonly List<PreColumn> _columns = [];
@@ -90,7 +96,8 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
                 case StatementColumnOption.Generated.AsExpression expression:
                     Expression normalized = GetNormalizedExpression(expression.Expression);
                     ValidateExpressionScope(normalized, sourceRef);
-                    generated = new ColumnOption.Generated.AsExpression(normalized, expression.Mode);
+                    generated = new ColumnOption.Generated.AsExpression(normalized,
+                        expression.ModeGiven ? expression.Mode : attributeDefaults.GeneratedColumnMode);
                     break;
                 case StatementColumnOption.Generated.PgIdentity identityOption:
                     identity = identityOption;
@@ -361,6 +368,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
     private void AddIndexDeclaration(Identifier name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
         Expression? predicate, SourceRef? sourceRef, IncludedColumns? includedColumns = null)
     {
+        method ??= new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
         name = ComponentNormalizer.NormalizeSingleIdentifier(name);
         if (_indexes.ContainsKey(name) || _uniqueConstraints.ContainsKey(name))
         {
@@ -370,7 +378,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
         }
-        if (method != null && !IndexMethod.IsBtree(method) && columns.Any(part => part switch
+        if (!IndexMethod.IsBtree(method) && columns.Any(part => part switch
             {
                 KeyPart.Column column => column.Direction != null,
                 KeyPart.IndexExpression expression => expression.Direction != null,
@@ -379,11 +387,11 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             throw new SqlSyntaxException.IndexDirectionNotSupported(name.Name, method.ToSql(), Name.ToString(), sourceRef);
         }
-        if (method != null && !IndexMethod.IsBtree(method) && unique)
+        if (!IndexMethod.IsBtree(method) && unique)
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"UNIQUE USING {method.ToSql()}", sourceRef);
         }
-        ValidateIncludedColumnMethod(method ?? IndexMethod.Default, includedColumns, sourceRef);
+        ValidateIncludedColumnMethod(method, includedColumns, sourceRef);
         SqlValueList<KeyPart> parts = NormalizeIndexParts(columns, sourceRef);
         foreach (KeyPart.IndexExpression part in parts.OfType<KeyPart.IndexExpression>())
         {
@@ -398,7 +406,7 @@ public class PgTableBuilder(ObjectIdentifier name, NameHandling nameHandling, IN
         {
             Name = name,
             Unique = unique,
-            Method = method ?? IndexMethod.Default,
+            Method = method,
             Predicate = normalizedPredicate,
             IncludedColumns = NormalizeIncludedColumns(includedColumns,
                 parts.OfType<KeyPart.Column>().Select(column => column.Name), name, sourceRef)

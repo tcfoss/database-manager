@@ -283,7 +283,7 @@ public abstract partial class ConfigLoaderBase<TConfig, TSchemaMapping>(ILogger 
 
     protected static AttributeDefaults MergeAttributeDefaults(AttributeDefaults baseDefaults, ConfigParsing.AttributeDefaults overrideDefaults)
     {
-        return new AttributeDefaults
+        return baseDefaults with
         {
             NumericAttribute = overrideDefaults.NumericAttribute switch
             {

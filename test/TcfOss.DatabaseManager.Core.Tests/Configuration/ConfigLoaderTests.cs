@@ -165,4 +165,35 @@ public class ConfigLoaderTests
 
         Assert.Equal(expectedStatus, config.AttributeDefaults.EventEnabledStatus);
     }
+
+    [Fact]
+    public void AttributeDefaults_MergingOverridesPreservesTargetOnlySettings()
+    {
+        var defaults = new AttributeDefaults
+        {
+            GeneratedColumnMode = GenerationMode.Stored,
+            PgFunctionVolatility = PgRoutineVolatility.Immutable,
+            PgFunctionStrict = true,
+            PgFunctionParallel = PgRoutineParallel.Safe,
+            PgFunctionCost = 25,
+            PgNativeFunctionCost = 2,
+            PgFunctionRows = 50
+        };
+        var overrides = new ConfigParsing.AttributeDefaults
+        {
+            ForeignKeyOnUpdate = ConfigParsing.Attributes.ReferentialAction.Cascade
+        };
+
+        AttributeDefaults merged = AttributeDefaultsMerger.Merge(defaults, overrides);
+
+        Assert.Equal(defaults with { ForeignKeyOnUpdate = ReferentialAction.Cascade }, merged);
+    }
+
+    private sealed class AttributeDefaultsMerger() : GenericConfigLoader(NullLogger.Instance)
+    {
+        public static AttributeDefaults Merge(AttributeDefaults defaults, ConfigParsing.AttributeDefaults overrides)
+        {
+            return MergeAttributeDefaults(defaults, overrides);
+        }
+    }
 }

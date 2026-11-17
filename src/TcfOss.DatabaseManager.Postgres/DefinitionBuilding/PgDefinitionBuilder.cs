@@ -63,7 +63,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                         throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL options", sourceRef);
                     }
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
-                    var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, sourceRef);
+                    var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, Config.AttributeDefaults, sourceRef);
                     tableBuilder.ApplyCreateTable(table);
                     _tableBuilders.Add(nameAndHandle.Key, tableBuilder);
                     SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);
@@ -192,11 +192,13 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             return null;
         }
         var language = new Identifier("sql", QuoteStyle.None);
-        SecurityContext security = SecurityContext.Invoker;
+        SecurityContext security = returnType == null
+            ? Config.AttributeDefaults.ProcedureSecurityContext
+            : Config.AttributeDefaults.FunctionSecurityContext;
         SqlValueList<PgRoutineSetting> settings = [];
-        PgRoutineVolatility volatility = PgRoutineVolatility.Volatile;
-        bool strict = false;
-        PgRoutineParallel parallel = PgRoutineParallel.Unsafe;
+        PgRoutineVolatility volatility = Config.AttributeDefaults.PgFunctionVolatility;
+        bool strict = Config.AttributeDefaults.PgFunctionStrict;
+        PgRoutineParallel parallel = Config.AttributeDefaults.PgFunctionParallel;
         float? cost = null;
         float? rows = null;
         foreach (PgStatementRoutineOption statement in statements)
@@ -256,8 +258,9 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "ROWS on a function that does not return a set", sourceRef);
         }
-        return new PgRoutineOptions.Function(language, cost ?? (language.Name is "c" or "internal" ? 1 : 100),
-            rows ?? (returnsSet ? 1000 : 0))
+        return new PgRoutineOptions.Function(language,
+            cost ?? (language.Name is "c" or "internal" ? Config.AttributeDefaults.PgNativeFunctionCost : Config.AttributeDefaults.PgFunctionCost),
+            rows ?? (returnsSet ? Config.AttributeDefaults.PgFunctionRows : 0))
         {
             Security = security,
             Settings = settings,
@@ -383,7 +386,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         foreach (KeyValuePair<ObjectHandle, Declaration<CreateFunction>> declaration in _functions)
         {
             Declaration<CreateFunction> item = declaration.Value;
-            SqlValueList<RoutineParameter.Postgres> parameters = ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager);
+            SqlValueList<RoutineParameter.Postgres> parameters = ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager,
+                Config.AttributeDefaults.FunctionParameterDirection);
             FunctionReturn returnType = ResolveFunctionReturn(item.Statement.ReturnType, parameters, item.Name, item.SourceRef, manager);
             functions.Add(declaration.Key, new PgStoredFunction(item.Name,
                 parameters, returnType, item.Statement.Body)
@@ -403,7 +407,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         foreach ((ObjectHandle key, Declaration<CreateProcedure> item) in _procedures)
         {
             procedures.Add(key, new PgStoredProcedure(item.Name,
-                ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager), item.Statement.Body)
+                ResolveParameters(item.Statement.Parameters, item.Name, item.SourceRef, manager, Config.AttributeDefaults.ProcedureParameterDirection), item.Statement.Body)
             {
                 Options = (PgRoutineOptions.Procedure?)NormalizeRoutineOptions(item.Statement.PgOptionsBeforeBody,
                     item.Statement.PgOptionsAfterBody, item.Statement.Body, item.Name, item.SourceRef, null),
@@ -540,7 +544,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     }
 
     private SqlValueList<RoutineParameter.Postgres> ResolveParameters(SqlValueList<StatementRoutineParameter> parameters,
-        ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager)
+        ObjectIdentifier routine, SourceRef sourceRef, PgTypeResolutionManager manager, RoutineParameterDirection? defaultDirection)
     {
         var names = new HashSet<string>();
         SqlValueList<RoutineParameter.Postgres> result = [];
@@ -566,7 +570,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 default:
                     throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"routine parameter {parameter.GetType().Name}", sourceRef);
             }
-            RoutineParameterDirection direction = parameter.Direction ?? RoutineParameterDirection.In;
+            RoutineParameterDirection direction = parameter.Direction ?? defaultDirection ?? RoutineParameterDirection.In;
             Expression? defaultExpression = ResolveRoutineParameterDefault(parameter.ParameterDefault);
 
             bool isInput = direction != RoutineParameterDirection.Out;
