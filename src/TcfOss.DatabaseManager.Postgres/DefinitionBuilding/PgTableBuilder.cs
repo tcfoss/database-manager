@@ -24,10 +24,12 @@ public class PgTableBuilder(
     NameHandling nameHandling,
     INormalizeComponents componentNormalizer,
     AttributeDefaults attributeDefaults,
+    INormalizeSql sqlNormalizer,
     SourceRef? sourceRef)
     : TableBuilder<PgTable>(name, nameHandling, componentNormalizer, sourceRef)
 {
     private readonly List<PreColumn> _columns = [];
+    private readonly PgPartitionNormalizer _partitionNormalizer = new(componentNormalizer, sqlNormalizer);
     private bool _unlogged;
     private PgPrimaryKey? _primaryKey;
     private readonly DatabaseComponentDict<PgTableConstraint.Unique> _uniqueConstraints = new(nameHandling);
@@ -37,6 +39,8 @@ public class PgTableBuilder(
     private readonly HashSet<string> _constraintNames = [];
 
     public IReadOnlyList<PreColumn> Columns => _columns;
+    public PgPartitioning? PartitionBy { get; private set; }
+    public PrePartition? PartitionOf { get; private set; }
 
     public override void ApplyCreateTable(CreateTable createTable)
     {
@@ -48,15 +52,22 @@ public class PgTableBuilder(
         {
             throw new DefinitionException.CreateTableAsSelect(createTable.Name.ToString(), SourceRef);
         }
-        if (createTable.PgOptions is { PartitionBy: not null } or { PartitionOf: not null })
-        {
-            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL options", SourceRef);
-        }
         if (createTable.PgOptions is { OnCommit: not null })
         {
             throw new SqlSyntaxException.OnCommitNonTemporary(createTable.Name.ToString(), SourceRef);
         }
         _unlogged = createTable.PgOptions?.Unlogged == true;
+        PartitionBy = createTable.PgOptions?.PartitionBy is { } partitionBy ? _partitionNormalizer.Normalize(partitionBy) : null;
+        if (createTable.PgOptions?.PartitionOf is { } partitionOf)
+        {
+            foreach (StatementTableOption option in createTable.TableOptions)
+            {
+                AddOption(option);
+            }
+            PartitionOf = new PrePartition(ComponentNormalizer.NormalizeObjectName(partitionOf.Parent),
+                _partitionNormalizer.Normalize(partitionOf.Bound, SourceRef), createTable, SourceRef);
+            return;
+        }
         base.ApplyCreateTable(createTable);
     }
 
@@ -560,6 +571,10 @@ public class PgTableBuilder(
 
     public PgTable ToTable(PgTypeResolutionManager manager)
     {
+        if (PartitionOf != null)
+        {
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL partition parent resolution", PartitionOf.SourceRef);
+        }
         SqlValueList<PgColumn> columns = [.. _columns.Select(column =>
         {
             DataType dataType = manager.Resolve(column.DataType, Name.Schema, column.SourceRef);
@@ -608,6 +623,7 @@ public class PgTableBuilder(
         var result = new PgTable(Name, columns)
         {
             Unlogged = _unlogged,
+            PartitionBy = PartitionBy,
             PrimaryKey = _primaryKey,
             Checks = new DatabaseComponentDict<PgTableConstraint.Check>(_checks),
             ForeignKeys = foreignKeys,
@@ -806,6 +822,8 @@ public class PgTableBuilder(
         public StatementColumnOption.Generated.PgIdentity? Identity { get; init; }
         public SourceRef? SourceRef { get; init; }
     }
+
+    public sealed record PrePartition(ObjectName Parent, PgPartitionBounds Bound, CreateTable Statement, SourceRef? SourceRef);
 
     private sealed record PreForeignKey(
         Identifier Name,

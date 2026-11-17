@@ -91,14 +91,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
     [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
     [InlineData("SELECT 1")]
-    [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
-    [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
-    [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
-    [InlineData("CREATE TABLE child PARTITION OF parent DEFAULT")]
-    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES IN (1)")]
-    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (2)")]
-    [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
-    [InlineData("CREATE TABLE child PARTITION OF parent (id DEFAULT 1) DEFAULT PARTITION BY HASH (id)")]
     [InlineData("CREATE VIEW visible AS SELECT 1 WITH CHECK OPTION")]
     [InlineData("CREATE TEMP VIEW visible AS SELECT 1")]
     [InlineData("CREATE TEMPORARY VIEW visible AS SELECT 1")]
@@ -3468,6 +3460,80 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.IsType(errorType, error);
         Assert.Equal(new SourceRef(65, table.Meta.Start!.Value, table.Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("RANGE (Id)")]
+    [InlineData("LIST (Label COLLATE \"C\" App.Text_Ops)")]
+    [InlineData("HASH (Id, Label)")]
+    [InlineData("RANGE ((Id + 1) App.Int_Ops)")]
+    public void Partitioning_RetainsCanonicalMetadataAndRoundTrips(string partitionBy)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE UNLOGGED TABLE items (Id INT, Label TEXT) PARTITION BY {partitionBy}"), GetSchema(), 70);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
+
+        Assert.True(table.Unlogged);
+        Assert.NotNull(table.PartitionBy);
+        CreateTable emitted = table.ToCreateStatement(true);
+        Assert.NotNull(emitted.PgOptions?.PartitionBy);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(emitted.ToSql()), GetSchema(), 71);
+        PgTable other = Assert.Single(rebuilt.ToDefinition().Tables).Value;
+        Assert.Equal(table, other);
+        Assert.Equal(table.GetHashCode(), other.GetHashCode());
+    }
+
+    [Theory]
+    [InlineData("RANGE (Id)", "RANGE (id)")]
+    [InlineData("LIST (Label COLLATE App.Locale App.Text_Ops)", "LIST (label COLLATE app.locale app.text_ops)")]
+    public void Partitioning_NormalizesStoredNames(string left, string right)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (Id INT, Label TEXT) PARTITION BY {left}"), GetSchema(), 70);
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, label TEXT) PARTITION BY {right}"), GetSchema(), 71);
+
+        PgTable firstTable = Assert.Single(first.ToDefinition().Tables).Value;
+        PgTable secondTable = Assert.Single(second.ToDefinition().Tables).Value;
+
+        Assert.Equal(firstTable, secondTable);
+        Assert.Equal(firstTable.GetHashCode(), secondTable.GetHashCode());
+    }
+
+    [Theory]
+    [InlineData("RANGE (id)", "LIST (id)")]
+    [InlineData("HASH (id, label)", "HASH (label, id)")]
+    [InlineData("RANGE (id)", "RANGE ((id + 1))")]
+    [InlineData("LIST (label COLLATE \"C\")", "LIST (label COLLATE \"POSIX\")")]
+    [InlineData("RANGE (id app.first_ops)", "RANGE (id app.second_ops)")]
+    public void Partitioning_PreservesMeaningfulDifferences(string left, string right)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, label TEXT) PARTITION BY {left}"), GetSchema(), 70);
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, label TEXT) PARTITION BY {right}"), GetSchema(), 71);
+
+        Assert.NotEqual(Assert.Single(first.ToDefinition().Tables).Value, Assert.Single(second.ToDefinition().Tables).Value);
+    }
+
+    [Theory]
+    [InlineData("DEFAULT")]
+    [InlineData("FOR VALUES IN (1)")]
+    [InlineData("FOR VALUES FROM (1) TO (2)")]
+    [InlineData("FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("(id DEFAULT 1) DEFAULT PARTITION BY HASH (id)")]
+    public void Partitioning_CollectsChildrenButRequiresParentResolutionForFinalization(string suffix)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE child PARTITION OF parent {suffix}"));
+        var builder = CreateBuilder();
+
+        builder.ProcessStatements([statement], GetSchema(), 72);
+
+        var error = Assert.Throws<DefinitionException>(builder.ToDefinition);
+        Assert.Contains("partition parent resolution", error.Message);
+        Assert.Equal(new SourceRef(72, statement.Meta.Start!.Value, statement.Meta.End!.Value), error.ObjectSourceRef);
     }
 
     private static SchemaIdentifier GetSchema()

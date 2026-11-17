@@ -51,7 +51,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             {
                 case CreateTable table:
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
-                    var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, Config.AttributeDefaults, sourceRef);
+                    var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer,
+                        Config.AttributeDefaults, new Normalizer(Config, ComponentNormalizer), sourceRef);
                     tableBuilder.ApplyCreateTable(table);
                     _tableBuilders.Add(nameAndHandle.Key, tableBuilder);
                     SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);

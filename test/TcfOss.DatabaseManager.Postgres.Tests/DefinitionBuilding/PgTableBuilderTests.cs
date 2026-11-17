@@ -12,6 +12,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
+using TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 using TcfOss.DatabaseManager.Postgres.Lexing;
@@ -184,7 +185,8 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         StatementColumnOption.Default option = asExpression
             ? new StatementColumnOption.Default.DefaultExpression(new LiteralValue(literal), constraintName)
             : new StatementColumnOption.Default.DefaultValue(literal, constraintName);
-        var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, config.AttributeDefaults, null);
+        var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, config.AttributeDefaults,
+            new Normalizer(config, normalizer), null);
         builder.AddColumn(new StatementColumn.Typed(new Identifier("value"), new DataType.Int(), [option]), null);
         var pendingDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(builder.Columns).Default);
         Assert.Same(expected, pendingDefault.Value);
@@ -862,6 +864,102 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Throws<SqlSyntaxException.IndexColumnNotFound>(() => missingBuilder.ToTable(CreateManager()));
     }
 
+    [Theory]
+    [InlineData("DEFAULT")]
+    [InlineData("FOR VALUES IN (1, 2, NULL)")]
+    [InlineData("FOR VALUES FROM (MINVALUE, 1) TO (MAXVALUE, 9)")]
+    [InlineData("FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("FOR VALUES WITH (REMAINDER 1, MODULUS 4)")]
+    public void PendingPartitions_PreserveBoundsOverridesAndSourceAndEmitCanonicalMetadata(string bound)
+    {
+        var source = new SourceRef(73, 10, 200);
+        var statement = Assert.IsType<CreateTable>(ParseStatement(
+            $"CREATE TABLE items PARTITION OF App.Parent (Id WITH OPTIONS DEFAULT 1, CONSTRAINT ck CHECK (id > 0)) {bound} PARTITION BY HASH (Id)"));
+        var builder = CreateBuilder(source);
+
+        builder.ApplyCreateTable(statement);
+
+        PgTableBuilder.PrePartition pending = Assert.IsType<PgTableBuilder.PrePartition>(builder.PartitionOf);
+        Assert.Equal("\"app\".\"parent\"", pending.Parent.ToSql());
+        Assert.Same(statement, pending.Statement);
+        Assert.IsType<StatementColumn.PgPartitionOverride>(Assert.Single(pending.Statement.Columns));
+        Assert.Single(pending.Statement.Constraints);
+        Assert.Equal(source, pending.SourceRef);
+        Assert.Equal(source, Assert.Throws<DefinitionException>(() => builder.ToTable(CreateManager())).ObjectSourceRef);
+
+        var table = new PgTable(ObjectIdentifier.FromStrings("catalog", "app", "items"), [])
+        {
+            PartitionOf = new PgTablePartition(ObjectIdentifier.FromStrings("catalog", "app", "parent"), pending.Bound),
+            PartitionBy = builder.PartitionBy
+        };
+        CreateTable emitted = table.ToCreateStatement(true);
+        Assert.Equal("app.parent", emitted.PgOptions!.PartitionOf!.Parent.ToSql());
+        Assert.Equal("parent", table.ToCreateStatement(false).PgOptions!.PartitionOf!.Parent.ToSql());
+        var rebuilt = CreateBuilder();
+        rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(emitted.ToSql())));
+        Assert.Equal(pending.Bound, rebuilt.PartitionOf!.Bound);
+        Assert.Equal(pending.Bound.GetHashCode(), rebuilt.PartitionOf.Bound.GetHashCode());
+        Assert.Equal(builder.PartitionBy, rebuilt.PartitionBy);
+    }
+
+    [Fact]
+    public void PartitionBounds_IgnoreHashOptionOrderButPreserveValues()
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")));
+        second.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items PARTITION OF parent FOR VALUES WITH (REMAINDER 1, MODULUS 4)")));
+
+        var bounds = Assert.IsType<PgPartitionBounds.Hash>(first.PartitionOf!.Bound);
+
+        Assert.Equal(bounds, second.PartitionOf!.Bound);
+        Assert.Equal(bounds.GetHashCode(), second.PartitionOf.Bound.GetHashCode());
+        Assert.NotEqual(bounds, bounds with { Modulus = 8 });
+        Assert.NotEqual(bounds, bounds with { Remainder = 2 });
+    }
+
+    [Theory]
+    [InlineData("DEFAULT", "FOR VALUES IN (1)")]
+    [InlineData("FOR VALUES IN (1)", "FOR VALUES IN (2)")]
+    [InlineData("FOR VALUES FROM (1) TO (2)", "FOR VALUES FROM (1) TO (3)")]
+    [InlineData("FOR VALUES FROM (MINVALUE) TO (2)", "FOR VALUES FROM (1) TO (2)")]
+    public void PartitionBounds_PreserveMeaningfulDifferences(string left, string right)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items PARTITION OF parent {left}")));
+        second.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items PARTITION OF parent {right}")));
+        var parent = ObjectIdentifier.FromStrings("catalog", "public", "parent");
+        var partition = new PgTablePartition(parent, first.PartitionOf!.Bound);
+
+        Assert.NotEqual(partition, new PgTablePartition(parent, second.PartitionOf!.Bound));
+        Assert.NotEqual(partition, partition with { Parent = ObjectIdentifier.FromStrings("catalog", "public", "other") });
+    }
+
+    [Fact]
+    public void PartitionEmission_UsesColumnOverridesInsteadOfTypeDeclarations()
+    {
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT DEFAULT 1 NOT NULL)")));
+        PgTable table = builder.ToTable(CreateManager()) with
+        {
+            PartitionOf = new PgTablePartition(ObjectIdentifier.FromStrings("catalog", "public", "parent"), new PgPartitionBounds.DefaultPartition())
+        };
+
+        CreateTable emitted = table.ToCreateStatement(true);
+        var reparsed = Assert.IsType<CreateTable>(ParseStatement(emitted.ToSql()));
+
+        var column = Assert.IsType<StatementColumn.PgPartitionOverride>(Assert.Single(reparsed.Columns));
+        Assert.Equal("id", column.Name.Name);
+        Assert.Equal(2, column.Options.Count);
+        Assert.Equal(emitted, reparsed);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        Assert.Contains(table.GetReferencedItems(context),
+            reference => reference is ItemRef.ObjectNameRef { Name: var name } && name.ToSql() == "public.parent");
+    }
+
     private static PgTypeResolutionManager CreateManager()
     {
         var config = PgTestConfig.GetTestConfig();
@@ -872,7 +970,8 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres);
         return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
-            NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults, sourceRef);
+            NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults,
+            new Normalizer(PgTestConfig.GetTestConfig(), normalizer), sourceRef);
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)
