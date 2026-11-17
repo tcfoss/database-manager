@@ -48,6 +48,23 @@ public abstract record SelectInto() : IWriteSql
         }
     }
 
+    public record PgVariables(SqlValueList<ObjectName> Targets) : SelectInto
+    {
+        public bool Strict { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write(Strict ? "INTO STRICT " : "INTO ");
+            writer.WriteDelimited(Targets);
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            writer.WriteSqlI(Strict ? "INTO STRICT " : "INTO ");
+            writer.FormatDelimited(Targets, manager);
+        }
+    }
+
     public record SelectIntoFile(string FilePath) : SelectInto
     {
         public override void ToSql(SqlTextWriter writer)

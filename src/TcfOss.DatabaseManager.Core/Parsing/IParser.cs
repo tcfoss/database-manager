@@ -8,6 +8,8 @@ namespace TcfOss.DatabaseManager.Core.Parsing;
 // ReSharper disable UnusedMemberInSuper.Global
 public interface IParser
 {
+    public Grammar Grammar { get; }
+
     DataTypeParser DataTypeParser { get; }
     ExpressionParser ExpressionParser { get; }
     ValueParser ValueParser { get; }

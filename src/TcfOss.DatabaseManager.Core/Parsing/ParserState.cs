@@ -15,17 +15,24 @@ public class ParserState
     private readonly int _tokenCount;
     private readonly Eof _finalEof;
     private int _position;
-    private int? _savedPosition;
 
     public int SourceId { get; }
+
+    public Grammar Grammar { get; private set; }
+    public bool My => (Grammar & Grammar.My) != 0;
+    public bool Ms => (Grammar & Grammar.Ms) != 0;
+    public bool Pg => (Grammar & Grammar.Pg) != 0;
+    public bool PgPl => (Grammar & Grammar.PgPl) != 0;
+    public bool PgAny => (Grammar & (Grammar.Pg | Grammar.PgPl)) != 0;
 
     public ParseContext Context { get; private set; }
     public StatementLabel? StatementLabel { get; private set; }
 
-    public ParserState(Token[] tokens, int sourceId = 0)
+    public ParserState(Grammar grammar, Token[] tokens, int sourceId = 0)
     {
         _tokens = tokens;
         _tokenCount = tokens.Length;
+        Grammar = grammar;
         SourceId = sourceId;
         if (tokens.Length == 0)
         {
@@ -131,25 +138,6 @@ public class ParserState
         {
             _position--;
         }
-    }
-
-    public void SavePosition()
-    {
-        _savedPosition = _position;
-    }
-
-    public void RewindToSaved()
-    {
-        if (_savedPosition.HasValue)
-        {
-            _position = _savedPosition.Value;
-            _savedPosition = null;
-        }
-    }
-
-    public void ClearSavedPosition()
-    {
-        _savedPosition = null;
     }
 
     /// <summary>
@@ -405,7 +393,7 @@ public class ParserState
 
     public T ParseStringEnum<T>() where T : class, IStringEnum<T>
     {
-        T? result = MaybeParseStringEnum<T>() ?? throw ExpectedException<T>();
+        T result = MaybeParseStringEnum<T>() ?? throw ExpectedException<T>();
         return result;
     }
 
@@ -514,6 +502,29 @@ public class ParserState
         return null;
     }
 
+    public GrammarScope EnterGrammarContext(Grammar grammar)
+    {
+        return new GrammarScope(this, grammar);
+    }
+
+    public readonly struct GrammarScope : IDisposable
+    {
+        private readonly ParserState _state;
+        private readonly Grammar _previousGrammar;
+
+        internal GrammarScope(ParserState state, Grammar grammar)
+        {
+            _state = state;
+            _previousGrammar = state.Grammar;
+            state.Grammar = grammar;
+        }
+
+        public void Dispose()
+        {
+            _state.Grammar = _previousGrammar;
+        }
+    }
+
     public Scope EnterContext(ParseContext enable = ParseContext.None, ParseContext disable = ParseContext.None)
     {
         return new Scope(this, enable, disable);
@@ -537,10 +548,9 @@ public class ParserState
         }
     }
 
-    public StatementScope EnterStatementScope(Word? labelToken)
+    public StatementScope EnterStatementScope(StatementLabel? label)
     {
-        StatementLabel? statementLabel = labelToken is not null ? new StatementLabel(labelToken, SourceId) : null;
-        return new StatementScope(this, statementLabel);
+        return new StatementScope(this, label);
     }
 
     public readonly struct StatementScope : IDisposable

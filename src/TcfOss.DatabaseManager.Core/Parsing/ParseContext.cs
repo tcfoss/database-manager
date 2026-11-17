@@ -7,7 +7,9 @@ public enum ParseContext
     DomainCheck = 1 << 0,
     DefaultExpression = 1 << 1,
     StringLiteralAsStatement = 1 << 2,
-    BeginAtomic = 1 << 3,
-    BetweenBound = 1 << 4,
-    NarrowSqlOnly = 1 << 5
+    ExpectBeginAtomic = 1 << 3,
+    BeginAtomicBody = 1 << 4,
+    BetweenBound = 1 << 5,
+    PgProceduralBlock = 1 << 6,
+    RoutineStatementBody = 1 << 7,
 }

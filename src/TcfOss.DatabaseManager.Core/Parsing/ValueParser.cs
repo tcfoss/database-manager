@@ -34,6 +34,44 @@ public class ValueParser
         };
     }
 
+    public static Value ParseNumericValue(ParserState state)
+    {
+        Token token = state.Next();
+        switch (token)
+        {
+            case NumericLiteral nLit:
+                return new Value.Number(nLit.Value, nLit.IsLong);
+            case Plus:
+                if (state.Peek() is NumericLiteral nPlus)
+                {
+                    state.Next();
+                    return new Value.Number(nPlus.Value, nPlus.IsLong);
+                }
+                break;
+            case Minus:
+                if (state.Peek() is NumericLiteral nMinus)
+                {
+                    state.Next();
+                    return new Value.Number($"-{nMinus.Value}", nMinus.IsLong);
+                }
+                break;
+        }
+        throw ParserState.ExpectedCategoryException("numeric_value", token);
+    }
+
+    public static Value.StringBasedValue ParseStringValue(ParserState state)
+    {
+        Token token = state.Peek();
+        return ParseValue(state) switch
+        {
+            Value.SingleQuotedString value => value,
+            Value.EscapeString value => value,
+            Value.UnicodeString value => value,
+            Value.DollarQuotedString value => value,
+            _ => throw ParserState.ExpectedCategoryException("literal_string", token)
+        };
+    }
+
     public static string ParseLiteralString(ParserState state)
     {
         Token token = state.Next();

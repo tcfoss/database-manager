@@ -16,7 +16,7 @@ public class StatementReferencedItemsTests
     [Fact]
     public void Commit_NoReferences()
     {
-        var stmt = new Commit();
+        var stmt = new Commit.Full();
         List<ItemRef> items = [.. stmt.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })];
         Assert.Empty(items);
     }
@@ -24,7 +24,7 @@ public class StatementReferencedItemsTests
     [Fact]
     public void Rollback_NoReferences()
     {
-        var stmt = new Rollback();
+        var stmt = new Rollback.Full();
         List<ItemRef> items = [.. stmt.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })];
         Assert.Empty(items);
     }
@@ -339,7 +339,8 @@ public class StatementReferencedItemsTests
                     ReferencedItemsTests.ParseExpression("c > 2"),
                     [new SetVariable([new Assignment(
                         new AssignmentTarget.ObjectName(new ObjectName([new Identifier("y")])),
-                        ReferencedItemsTests.ParseExpression("d + e"))])])
+                        ReferencedItemsTests.ParseExpression("d + e"))])],
+                    false)
             ]
         };
 
@@ -418,7 +419,7 @@ public class StatementReferencedItemsTests
     private static Statement ParseStatement(string sql)
     {
         var tokens = new GenericLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         return new Parser().ParseStatement(state);
     }
 }

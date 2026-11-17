@@ -278,6 +278,28 @@ public class SerializationTests
         Assert.Equal(expected, exception.Message);
     }
 
+    [Theory]
+    [InlineData("Dialect: NotADialect", typeof(ConfigParseException.RequestedValueNotFound))]
+    [InlineData("Enabled: NotABoolean", typeof(ConfigParseException.InvalidValue))]
+    [InlineData("Count: NotANumber", typeof(ConfigParseException.InvalidValue))]
+    public void FromYaml_InvalidScalarReportsFieldAndValue(string yaml, Type errorType)
+    {
+        var exception = Assert.Throws<ConfigParseException.WithText>(() =>
+            Serialization.ParseConfig<ScalarConfig>(yaml, "test.yaml"));
+
+        Assert.IsType(errorType, exception.InnerException);
+        Assert.Contains(yaml[..yaml.IndexOf(':')], exception.Message);
+        Assert.Contains(yaml[(yaml.IndexOf(':') + 2)..], exception.Message);
+        Assert.Contains("test.yaml", exception.Message);
+    }
+
+    protected class ScalarConfig
+    {
+        public Grammar Dialect { get; init; }
+        public bool Enabled { get; init; }
+        public int Count { get; init; }
+    }
+
     // ReSharper disable once ClassNeverInstantiated.Global
     // ReSharper disable UnusedAutoPropertyAccessor.Global
     // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global

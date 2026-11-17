@@ -115,4 +115,21 @@ public class FormatLoopTests
         var actual = formatter.GetFormatted(text);
         Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
+
+    [Theory]
+    [InlineData("WHILE value > 0 DO SET value = value - 1; END WHILE", "WHILE `value` > 0 DO", "END WHILE;")]
+    [InlineData("label: WHILE value > 0 DO SET value = value - 1; /* closing */ END WHILE label", "`label`: WHILE `value` > 0 DO", "END WHILE `label`;")]
+    public void While_FormatsBlockedBodyAndLabels(string sql, string expectedHeader, string expectedEnd)
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.StartsWith(expectedHeader, formatted);
+        Assert.EndsWith(expectedEnd, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+        if (sql.Contains("/* closing */", StringComparison.Ordinal))
+        {
+            Assert.Equal(1, formatted.Split("/* closing */", StringSplitOptions.None).Length - 1);
+        }
+    }
 }

@@ -7,7 +7,7 @@ using TcfOss.DatabaseManager.MySql.BuiltIn;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MyDataTypeParser(Parser parser) : DataTypeParser(parser)
+public class MyDataTypeParser(ParserBase parser) : DataTypeParser(parser)
 {
     private static MySqlNumericAttribute? ParseOptionalNumericAttribute(ParserState state)
     {

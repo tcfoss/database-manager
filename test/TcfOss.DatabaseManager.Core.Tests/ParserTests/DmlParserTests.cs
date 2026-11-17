@@ -43,6 +43,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("UPDATE mt SET mt.col1 = 'val1' FROM mytable AS mt WHERE mt.col2 IS NOT NULL")]
     [InlineData("UPDATE mytable SET (col1, col2, col3) = ('val1', 'val2', 3)")]
     [InlineData("UPDATE mytable SET col1 = other.col1 FROM other, third RETURNING mytable.*")]
+    [InlineData("UPDATE mytable SET col1 = 1 WHERE CURRENT OF cursor_name")]
     public static void Update_Statement_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -63,6 +64,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("DELETE FROM mytable AS mt WHERE mt.col1 < 10 RETURNING mt.col2, mt.col3")]
     [InlineData("DELETE FROM mytable WHERE col1 < 10 ORDER BY col2 DESC, col3 LIMIT 50 RETURNING col2, col3", Label = "DELETE ORDER BY LIMIT RETURNING")]
     [InlineData("DELETE FROM mytable USING other, third RETURNING mytable.*")]
+    [InlineData("DELETE FROM mytable WHERE CURRENT OF cursor_name")]
     public static void Delete_Statement_TextMatch(string sql)
     {
         var parser = new Parser();
@@ -87,7 +89,7 @@ public class DmlParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData(Keyword.INTERSECT)]
     public void Output_ClauseKeyword_IsNotConsumedAsAlias(Keyword keyword)
     {
-        var state = new ParserState(GetTokens($"INSERT INTO mytable OUTPUT inserted.id {keyword}"));
+        var state = new ParserState(Grammar.All, GetTokens($"INSERT INTO mytable OUTPUT inserted.id {keyword}"));
         var parser = new Parser();
 
         Assert.ThrowsAny<ParseException>(() => parser.DmlParser.ParseInsert(state, null));

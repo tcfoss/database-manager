@@ -198,7 +198,7 @@ public class ReferencedItemsTests
     public void WildcardExpression_ReturnsNothing()
     {
         var tokens = new GenericLexer().Tokenize("*");
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
 
         var items = expr.GetReferencedItems(new ReferencedItemsManager
@@ -213,7 +213,7 @@ public class ReferencedItemsTests
     public void QualifiedWildcardExpression_IncludesQualifierIfBroad()
     {
         var tokens = new GenericLexer().Tokenize("mytable.*");
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
 
         var items = expr.GetReferencedItems(new ReferencedItemsManager
@@ -229,7 +229,7 @@ public class ReferencedItemsTests
     public void QualifiedWildcardExpression_ReturnsNothingIfNarrow()
     {
         var tokens = new GenericLexer().Tokenize("mytable.*");
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         var expr = new Parser().ExpressionParser.ParseWildcardOrExpr(state);
 
         var items = expr.GetReferencedItems(new ReferencedItemsManager
@@ -1233,19 +1233,88 @@ public class ReferencedItemsTests
         );
     }
 
+    [Theory]
+    [InlineData("table1")]
+    [InlineData("myschema.table1")]
+    [InlineData("def.myschema.table1")]
+    public void RelationReferences_ResolveQualifiedPseudoTableNames(string sqlName)
+    {
+        var schema = new SchemaIdentifier("myschema", new CatalogIdentifier("def"));
+        var identifier = new ObjectIdentifier("table1", schema);
+        var manager = new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.Table,
+            ActiveSchema = schema,
+            PseudoTables = new PseudoTableSet(schema,
+                [new PseudoTable("table1", identifier, ["value"], PseudoTableType.Table)])
+        };
+        var select = ParseSelect($"SELECT 1 FROM {sqlName}");
+
+        var reference = Assert.Single(select.GetReferencedItems(manager));
+
+        Assert.Equal(ItemType.Table, reference.Type);
+        Assert.Equal(ObjectHandle.Create(identifier, NameHandling.None), reference.ObjectHandle);
+    }
+
+    [Theory]
+    [InlineData(PseudoTableType.CommonTableExpression)]
+    [InlineData(PseudoTableType.DerivedTable)]
+    public void DerivedSources_ClassifyRelationsAndColumnsWithoutPhysicalIdentifiers(PseudoTableType type)
+    {
+        var schema = new SchemaIdentifier("myschema", new CatalogIdentifier("def"));
+        var identifier = new ObjectIdentifier("derived", schema);
+        var manager = new ReferencedItemsManager
+        {
+            Filters = ObjectNameFilters.DerivedTable | ObjectNameFilters.DerivedColumn,
+            ActiveSchema = schema,
+            PseudoTables = new PseudoTableSet(schema,
+                [new PseudoTable("derived", identifier, ["value"], type)],
+                [[new PseudoTable("derived", null, ["value"], type)]])
+        };
+
+        using (manager.Enter(ReferencedItemsContext.FromClause))
+        {
+            ItemRef? reference = manager.CreateObjectRef(new ObjectName([new Identifier("derived")]));
+            Assert.NotNull(reference);
+            Assert.Equal(ItemType.DerivedTable, reference.Type);
+            Assert.Equal(ObjectHandle.Create(identifier, NameHandling.None), reference.ObjectHandle);
+        }
+        using (manager.Enter(ReferencedItemsContext.SelectItem))
+        {
+            ItemRef? reference = manager.CreateItemRef(new SingleIdentifier(new Identifier("value")));
+            Assert.NotNull(reference);
+            Assert.Equal(ItemType.DerivedColumn, reference.Type);
+            Assert.Null(reference.ObjectHandle);
+            Assert.Null(reference.ColumnIdentifier);
+        }
+    }
+
+    [Fact]
+    public void MyWhile_CollectsConditionAndBodyReferences()
+    {
+        var state = new ParserState(Grammar.My, [.. new GenericLexer().Tokenize(
+            "WHILE app.condition DO CALL app.step(); END WHILE")]);
+        var statement = Assert.IsType<While.My>(new Parser().ParseStatement(state));
+
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .Select(reference => reference.N())];
+
+        Assert.Equal(["app.condition", "app.step"], names);
+    }
+
     // ===== Parse helpers =====
 
     public static Expression ParseExpression(string sql)
     {
         var tokens = new GenericLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         return new Parser().ExpressionParser.ParseExpr(state);
     }
 
     private static Select ParseSelect(string sql)
     {
         var tokens = new GenericLexer().Tokenize(sql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
         return (Select)new Parser().ParseStatement(state);
     }
 }

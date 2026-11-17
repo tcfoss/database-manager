@@ -4,6 +4,8 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
@@ -22,77 +24,12 @@ public class MyControlFlowParser : ControlFlowParser
 
     public override Statement ParseIf(ParserState state)
     {
-        var ifEnder = new EndSubstatements()
-        {
-            GetFinished = s =>
-            {
-                if (s.PeekKeywordsAll(Keyword.END, Keyword.IF))
-                {
-                    return true;
-                }
-                if (s.PeekKeyword(Keyword.ELSEIF))
-                {
-                    return true;
-                }
-                if (s.PeekKeyword(Keyword.ELSE))
-                {
-                    return true;
-                }
-                return false;
-            },
-            GetEofException = s => s.ExpectedException("ELSEIF", "ELSE", "END IF")
-        };
+        return ParseMyOrPgIf(state, false);
+    }
 
-        state.ExpectKeyword(Keyword.IF);
-
-        Expression ifExpression = _parseExpr(state);
-
-        state.ExpectKeyword(Keyword.THEN);
-
-        SqlValueList<Statement> ifStatements = _p.Parse(state, ifEnder);
-
-        if (state.ParseKeywordsAll(Keyword.END, Keyword.IF))
-        {
-            return new If.My(ifExpression, ifStatements);
-        }
-
-        SqlValueList<If.ElseIf> elseIfBlocks = [];
-
-        while (true)
-        {
-            if (!state.ParseKeyword(Keyword.ELSEIF))
-            {
-                break;
-            }
-            Expression elseIfCondition = _parseExpr(state);
-
-            state.ExpectKeyword(Keyword.THEN);
-
-            SqlValueList<Statement> elseIfStatements = _p.Parse(state, ifEnder);
-
-            elseIfBlocks.Add(new If.ElseIf(elseIfCondition, elseIfStatements));
-        }
-
-        if (state.ParseKeywordsAll(Keyword.END, Keyword.IF))
-        {
-            return new If.My(ifExpression, ifStatements)
-            {
-                ElseIfs = elseIfBlocks
-            };
-        }
-
-        state.ExpectKeyword(Keyword.ELSE);
-        SqlValueList<Statement> elseStatements = _p.Parse(state, new EndSubstatements()
-        {
-            GetFinished = s => s.ParseKeywordsAll(Keyword.END, Keyword.IF),
-            GetEofException = s => s.ExpectedException("END IF")
-        });
-
-        return new If.My(ifExpression, ifStatements)
-        {
-            ElseIfs = elseIfBlocks,
-            ElseStatements = elseStatements
-        };
+    public override While ParseWhile(ParserState state)
+    {
+        return ParseMyOrPgWhile(state);
     }
 
     public override DeclareLocalVariable ParseDeclareLocalVariable(ParserState state)
@@ -109,5 +46,62 @@ public class MyControlFlowParser : ControlFlowParser
         {
             DefaultValue = defaultValue
         };
+    }
+
+    public override Return ParseReturn(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.RETURN);
+        return new Return(_parseExpr(state));
+    }
+
+    public override TransactionNoun? ParseOptionalTransactionNoun(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.WORK))
+        {
+            return TransactionNoun.Work;
+        }
+        return null;
+    }
+
+    public override Identifier? ParseTransactionName(ParserState state, TransactionNoun? noun)
+    {
+        return null;
+    }
+
+    protected override TransactionMode? ParseOptionalTransactionMode(ParserState state)
+    {
+        return ParseOptionalMyTransactionMode(state);
+    }
+
+    public override Statement ParseFetch(ParserState state)
+    {
+        if (state.ParseKeywordsAll(Keyword.FETCH, Keyword.GROUP, Keyword.NEXT, Keyword.ROW))
+        {
+            return new FetchGroupNextRow();
+        }
+        return base.ParseFetch(state);
+    }
+
+    protected override CursorDirection? ParseCursorDirection(ParserState state, bool allowMany)
+    {
+        if (state.ParseKeyword(Keyword.NEXT))
+        {
+            return new CursorDirection.Next();
+        }
+        return null;
+    }
+
+    protected override CursorNameConnector? ParseCursorNameConnector(ParserState state, CursorDirection? direction)
+    {
+        if (direction is not null)
+        {
+            state.ExpectKeyword(Keyword.FROM);
+            return CursorNameConnector.From;
+        }
+        else if (state.ParseKeyword(Keyword.FROM))
+        {
+            return CursorNameConnector.From;
+        }
+        return null;
     }
 }

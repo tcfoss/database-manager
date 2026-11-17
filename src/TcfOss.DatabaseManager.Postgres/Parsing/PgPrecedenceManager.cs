@@ -26,8 +26,9 @@ public class PgPrecedenceManager : PrecedenceManager
 
     public override Binding GetCompletedBinding(Expression expression, Binding binding)
     {
-        return expression is Like { Escape: not null } or ILike { Escape: not null }
-            or SimilarTo { Escape: not null } ? GetBinding(Precedence.Escape) : binding;
+        return expression is Like { Escape: not null } or ILike { Escape: not null } or SimilarTo { Escape: not null }
+            ? GetBinding(Precedence.Escape)
+            : binding;
     }
 
     protected override Precedence? GetOperatorPrecedence(ParserState state)
@@ -56,6 +57,7 @@ public class PgPrecedenceManager : PrecedenceManager
             return Precedence.PgOperator;
         }
         return state.PeekNth(1) is Word { Keyword: Keyword.REGEXP or Keyword.RLIKE }
-            ? null : base.GetNotPrecedence(state);
+            ? null
+            : base.GetNotPrecedence(state);
     }
 }

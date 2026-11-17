@@ -124,4 +124,20 @@ public class FormatIfTests
         var actual = formatter.GetFormatted(text);
         Assert.Equal(formatted, actual, ignoreLineEndingDifferences: true);
     }
+
+    [Theory]
+    [InlineData("IF 1 = 1 THEN SELECT 1; /* first */ ELSEIF 2 = 2 THEN SELECT 2; /* second */ ELSE SELECT 3; /* third */ END IF")]
+    [InlineData("CASE value /* first */ WHEN 1 THEN SELECT 1; /* second */ WHEN 2 THEN SELECT 2; /* third */ ELSE SELECT 3; /* fourth */ END CASE")]
+    [InlineData("CASE /* first */ WHEN 1 = 1 THEN SELECT 1; /* second */ WHEN 2 = 2 THEN SELECT 2; /* third */ ELSE SELECT 3; /* fourth */ END CASE")]
+    public void ConditionalBoundaryComments_AreFormattedExactlyOnce(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter(null);
+        string formatted = formatter.GetFormatted(sql);
+
+        foreach (string marker in new[] { "first", "second", "third", "fourth" }.Where(marker => sql.Contains(marker, StringComparison.Ordinal)))
+        {
+            Assert.Equal(1, formatted.Split(marker, StringSplitOptions.None).Length - 1);
+        }
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

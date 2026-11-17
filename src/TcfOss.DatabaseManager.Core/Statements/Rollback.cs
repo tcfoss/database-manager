@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -6,46 +7,122 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record Rollback() : Statement
+public abstract record Rollback() : Statement
 {
-    public TransactionNoun? Noun { get; init; }
-    public TransactionChainOption? ChainOption { get; init; }
-    public TransactionReleaseOption? ReleaseOption { get; init; }
-
-    public override void ToSql(SqlTextWriter writer)
+    public record Full : Rollback
     {
-        writer.Write("ROLLBACK");
-        if (Noun != null)
+        public TransactionNoun? Noun { get; init; }
+        public TransactionChainOption? ChainOption { get; init; }
+        public TransactionReleaseOption? ReleaseOption { get; init; }
+        public Identifier? Name { get; init; }
+
+        public bool WriteAsAbort { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($" {Noun}");
+            if (WriteAsAbort)
+            {
+                writer.Write("ABORT");
+            }
+            else
+            {
+                writer.Write("ROLLBACK");
+            }
+            if (Noun != null)
+            {
+                writer.WriteSql($" {Noun}");
+            }
+            if (ChainOption != null)
+            {
+                writer.WriteSql($" {ChainOption}");
+            }
+            if (ReleaseOption != null)
+            {
+                writer.WriteSql($" {ReleaseOption}");
+            }
+            if (Name != null)
+            {
+                writer.WriteSql($" {Name}");
+            }
         }
-        if (ChainOption != null)
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            writer.WriteSql($" {ChainOption}");
-        }
-        if (ReleaseOption != null)
-        {
-            writer.WriteSql($" {ReleaseOption}");
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI(WriteAsAbort ? "ABORT" : "ROLLBACK");
+            if (Noun != null)
+            {
+                writer.WriteSql($" {Noun}");
+            }
+            if (ChainOption != null)
+            {
+                writer.WriteSql($" {ChainOption}");
+            }
+            if (ReleaseOption != null)
+            {
+                writer.WriteSql($" {ReleaseOption}");
+            }
+            if (Name != null)
+            {
+                writer.Write(" ");
+                Name.FormatSql(writer, manager);
+            }
+            Meta.FormatPostNonSql(writer, manager);
         }
     }
 
-    public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+    public record Prepared(Value.StringBasedValue TransactionId) : Rollback
     {
-        Meta.FormatPreNonSql(writer, manager);
-        writer.WriteSqlI("ROLLBACK");
-        if (Noun != null)
+        public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($" {Noun}");
+            writer.WriteSql($"ROLLBACK PREPARED {TransactionId}");
         }
-        if (ChainOption != null)
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            writer.WriteSql($" {ChainOption}");
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI($"ROLLBACK PREPARED {TransactionId}");
+            Meta.FormatPostNonSql(writer, manager);
         }
-        if (ReleaseOption != null)
+    }
+
+    public record ToSavepoint(Identifier SavepointName) : Rollback
+    {
+        public bool UseSavepoint { get; init; }
+        public TransactionNoun? Noun { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($" {ReleaseOption}");
+            // string noun = Noun == null ? "" : $" {Noun}";
+            writer.Write("ROLLBACK");
+            if (Noun != null)
+            {
+                writer.WriteSql($" {Noun}");
+            }
+            writer.Write(" TO");
+            if (UseSavepoint)
+            {
+                writer.Write(" SAVEPOINT");
+            }
+            writer.WriteSql($" {SavepointName}");
         }
-        Meta.FormatPostNonSql(writer, manager);
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI("ROLLBACK ");
+            if (Noun != null)
+            {
+                writer.WriteSql($"{Noun} ");
+            }
+            writer.Write("TO ");
+            if (UseSavepoint)
+            {
+                writer.Write("SAVEPOINT ");
+            }
+            SavepointName.FormatSql(writer, manager);
+            Meta.FormatPostNonSql(writer, manager);
+        }
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)

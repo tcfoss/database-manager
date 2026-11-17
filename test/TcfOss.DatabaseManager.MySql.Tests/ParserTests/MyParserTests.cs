@@ -12,6 +12,14 @@ namespace TcfOss.DatabaseManager.MySql.Tests.ParserTests;
 public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 {
     [Theory]
+    [InlineData("<<label>> BEGIN SELECT 1; END label")]
+    [InlineData("BEGIN SELECT 1; EXCEPTION WHEN OTHERS THEN SELECT 2; END")]
+    public void PostgresBlocks_AreRejected(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("IF a > b THEN SELECT 1; END IF")]
     [InlineData("IF a > b THEN SELECT 1; SELECT 2; END IF")]
     [InlineData("IF a > b THEN SELECT 1; ELSE SELECT 2; END IF")]
@@ -117,6 +125,8 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
     [Theory]
     [InlineData("PREPARE stmt1 FROM 'SELECT * FROM my_table WHERE id = ?'", Label = "PREPARE select")]
+    [InlineData("PREPARE prepared FROM 'SELECT 1'", Label = "PREPARE with contextual keyword name")]
+    [InlineData("PREPARE TRANSACTION FROM 'SELECT 1'", Label = "PREPARE with transaction keyword name")]
     [InlineData("PREPARE stmt2 FROM 'INSERT INTO my_table (name, value) VALUES (?, ?)'", Label = "PREPARE insert")]
     [InlineData("PREPARE stmt3 FROM @myvar", Label = "PREPARE from variable")]
     [InlineData("PREPARE stmt4 FROM myparam", Label = "PREPARE from param")]
@@ -206,7 +216,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     }
 
     [Theory]
-    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT READ BLAH", "{ ONLY | WRITE }", "BLAH")]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ BLAH", "{ ONLY | WRITE }", "BLAH")]
     public void Transactions_Begin_Invalid_Throws(string text, string expectedText, string found)
     {
         var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => ParseStatement(text));
@@ -227,6 +237,48 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("FETCH cursor_name INTO first, second", false, false)]
+    [InlineData("FETCH FROM cursor_name INTO first, second", false, true)]
+    [InlineData("FETCH NEXT FROM cursor_name INTO first, second", true, true)]
+    public void Fetch_RetainsDirectionConnectorAndTargets(string sql, bool hasDirection, bool hasConnector)
+    {
+        var fetch = Assert.IsType<Fetch>(ParseStatement(sql));
+
+        if (hasDirection)
+        {
+            Assert.IsType<CursorDirection.Next>(fetch.Direction);
+        }
+        else
+        {
+            Assert.Null(fetch.Direction);
+        }
+        Assert.Equal(hasConnector ? CursorNameConnector.From : null, fetch.Connector);
+        Assert.Equal("cursor_name", fetch.CursorName.Name);
+        Assert.NotNull(fetch.Targets);
+        Assert.Equal(["first", "second"], [.. fetch.Targets.Select(target => target.ToSql())]);
+        Assert.Equal(sql, fetch.ToSql());
+        Assert.Equal(fetch, ParseStatement(fetch.ToSql()));
+        Assert.Equal(fetch, ParseStatement(Format(fetch)));
+    }
+
+    [Fact]
+    public void FetchGroupNextRow_RetainsStandaloneStatementShape()
+    {
+        var fetch = Assert.IsType<FetchGroupNextRow>(ParseStatement("FETCH GROUP NEXT ROW"));
+
+        Assert.Equal(fetch, ParseStatement(fetch.ToSql()));
+        Assert.Equal(fetch, ParseStatement(Format(fetch)));
+    }
+
+    [Theory]
+    [InlineData("FETCH cursor_name")]
+    [InlineData("FETCH NEXT FROM cursor_name")]
+    public void Fetch_RequiresIntoTargets(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]
@@ -479,7 +531,6 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     {
         var parser = new MyParser();
         Assert.False(parser.SupportsPostgresCastSyntax);
-        Assert.False(parser.SupportsPostgresRegexOperators);
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value::INT"));
         Assert.ThrowsAny<ParseException>(() => ParseExpression("value ~ 'pattern'"));
         Assert.Equal("a OR b", ParseExpression("a || b").ToSql());
@@ -619,9 +670,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         string sql = loopSql + "; SELECT 4";
         var state = GetState(sql);
         var statements = new MyParser().Parse(state, null);
-        var outer = Assert.IsType<LabeledStatement>(statements[0]);
+        var outer = Assert.IsType<LabeledStatement.My>(statements[0]);
         var outerLoop = Assert.IsType<Loop>(outer.SubStatement);
-        var inner = Assert.IsType<LabeledStatement>(outerLoop.Statements[0]);
+        var inner = Assert.IsType<LabeledStatement.My>(outerLoop.Statements[0]);
         var innerLoop = Assert.IsType<Loop>(inner.SubStatement);
         var unlabeledLoop = Assert.IsType<Loop>(outerLoop.Statements[1]);
 
@@ -647,7 +698,7 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
         const string loopSql = "looplabel: LOOP SELECT 1; END LOOP looplabel";
         string prefix = "DELIMITER " + delimiter + "\n";
         string sql = prefix + loopSql + delimiter;
-        var statement = Assert.IsType<LabeledStatement>(ParseStatement(sql));
+        var statement = Assert.IsType<LabeledStatement.My>(ParseStatement(sql));
 
         Assert.Equal(prefix.Length - 1, statement.Meta.Start);
         Assert.Equal(prefix.Length + loopSql.Length, statement.Meta.End);
@@ -678,7 +729,6 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("SELECT INTERVAL '1-2' YEAR TO MONTH")]
     public void PostgresIntervalLiterals_AreRejectedBySharedMySqlMariaDbParser(string sql)
     {
-        Assert.False(new MyParser().SupportsPostgresIntervalLiteralSyntax);
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
@@ -723,14 +773,34 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("ANY")]
     [InlineData("ALL")]
     [InlineData("SOME")]
-    public void QuantifiedComparisons_ParseScalarOperands(string quantifier)
+    public void QuantifiedComparisons_RejectScalarOperands(string quantifier)
     {
-        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression($"a = {quantifier}(1)"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression($"a = {quantifier}(1)"));
+        Assert.ThrowsAny<ParseException>(() => ParseExpression($"a = {quantifier}((1))"));
+    }
 
-        Assert.Equal(Core.BuiltIn.BinaryOperator.Equal, expression.Operator);
-        Assert.Equal(quantifier, expression.Quantifier.ToString());
-        Assert.IsType<Core.Expressions.LiteralValue>(expression.Right);
+    [Theory]
+    [InlineData("a = ANY((SELECT 1))")]
+    [InlineData("a = ANY(((SELECT 1)))")]
+    [InlineData("a = ANY((SELECT 1) UNION SELECT 2)")]
+    [InlineData("a = ANY(WITH c AS (SELECT 1) SELECT 1 FROM c)")]
+    [InlineData("a = ANY((WITH c AS (SELECT 1) SELECT 1 FROM c))")]
+    [InlineData("a = ANY(VALUES ROW (1), ROW (2))")]
+    public void QuantifiedComparisons_ParseNestedAndValuesQueries(string sql)
+    {
+        var expression = Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(ParseExpression(sql));
+
+        Assert.IsType<Core.Expressions.Subquery>(expression.Right);
+        Assert.Equal(sql, expression.ToSql());
         Assert.Equal(expression, ParseExpression(expression.ToSql()));
+    }
+
+    [Fact]
+    public void QuantifiedComparisons_LeaveFollowingLogicalOperatorsOutside()
+    {
+        var expression = Assert.IsType<Core.Expressions.BinaryOperator>(ParseExpression("a = ANY((SELECT 1)) AND active"));
+
+        Assert.IsType<Core.Expressions.QuantifiedBinaryOperator>(expression.Left);
     }
 
     [Fact]
@@ -1196,6 +1266,98 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("ALTER TABLE items RENAME CONSTRAINT old_name TO new_name")]
     [InlineData("ALTER TABLE items DROP CONSTRAINT IF EXISTS fk CASCADE")]
     public void Constraints_RejectsPostgresSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("WHILE value > 0 DO SET value = value - 1; END WHILE")]
+    [InlineData("while_label: WHILE value > 0 DO SET value = value - 1; END WHILE while_label")]
+    [InlineData("WHILE 1 = 1 DO LOOP SELECT 1; END LOOP; END WHILE")]
+    public void While_RoundTripsBlockedSyntaxAndJson(string sql)
+    {
+        Statement statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("Outer_Label: LOOP SELECT 1; END LOOP outer_label")]
+    [InlineData("Outer_Label: WHILE 1 = 1 DO SELECT 1; END WHILE outer_label")]
+    public void LoopEndLabels_MatchCaseInsensitively(string sql)
+    {
+        var statement = Assert.IsType<LabeledStatement.My>(ParseStatement(sql));
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(Format(statement), Format(ParseStatement(Format(statement))));
+    }
+
+    [Theory]
+    [InlineData("WHILE 1 = 1 LOOP SELECT 1; END LOOP")]
+    [InlineData("WHILE 1 = 1 SELECT 1")]
+    [InlineData("WHILE 1 = 1 DO END WHILE")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1 END WHILE")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END LOOP")]
+    [InlineData("label: WHILE 1 = 1 DO SELECT 1; END WHILE other")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END WHILE label")]
+    public void While_RejectsInvalidAndOtherDialectSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("UPDATE items SET id = 1 WHERE CURRENT OF cursor_name")]
+    [InlineData("DELETE FROM items WHERE CURRENT OF cursor_name")]
+    public void PositionedDml_RejectsPostgresCursorPredicates(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("START TRANSACTION ISOLATION LEVEL SERIALIZABLE")]
+    [InlineData("START TRANSACTION DEFERRABLE")]
+    [InlineData("END WORK")]
+    [InlineData("ABORT")]
+    [InlineData("PREPARE TRANSACTION 'transaction_id'")]
+    [InlineData("COMMIT PREPARED 'transaction_id'")]
+    [InlineData("ROLLBACK PREPARED 'transaction_id'")]
+    public void TransactionLifecycle_RejectsPostgresSqlForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
+    [InlineData("START TRANSACTION READ ONLY")]
+    [InlineData("BEGIN START TRANSACTION WITH CONSISTENT SNAPSHOT; COMMIT; END")]
+    public void StartTransaction_RemainsAvailableInRoutineBodies(string body)
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement($"CREATE PROCEDURE p() {body}"));
+
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+    }
+
+    [Fact]
+    public void StartTransaction_RetainsCommaSeparatedMySqlCharacteristics()
+    {
+        var statement = Assert.IsType<StartTransaction>(ParseStatement(
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY"));
+
+        Assert.Equal(new[] { "WITH CONSISTENT SNAPSHOT", "READ ONLY" },
+            statement.Modes.Select(characteristic => characteristic.ToString()));
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("START REPLICA")]
+    [InlineData("START TRANSACTION READ ONLY,")]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT,, READ ONLY")]
+    public void StartTransaction_RejectsOtherCommandsAndIncompleteCharacteristics(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }

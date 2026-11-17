@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
@@ -6,46 +7,76 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record Commit() : Statement
+public abstract record Commit : Statement
 {
-    public TransactionNoun? Noun { get; init; }
-    public TransactionChainOption? ChainOption { get; init; }
-    public TransactionReleaseOption? ReleaseOption { get; init; }
-
-    public override void ToSql(SqlTextWriter writer)
+    public record Full : Commit
     {
-        writer.Write("COMMIT");
-        if (Noun != null)
+        public TransactionNoun? Noun { get; init; }
+        public TransactionChainOption? ChainOption { get; init; }
+        public TransactionReleaseOption? ReleaseOption { get; init; }
+        public Identifier? Name { get; init; }
+
+        public bool WriteAsEnd { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($" {Noun}");
+            writer.Write(WriteAsEnd ? "END" : "COMMIT");
+            if (Noun != null)
+            {
+                writer.WriteSql($" {Noun}");
+            }
+            if (ChainOption != null)
+            {
+                writer.WriteSql($" {ChainOption}");
+            }
+            if (ReleaseOption != null)
+            {
+                writer.WriteSql($" {ReleaseOption}");
+            }
+            if (Name != null)
+            {
+                writer.WriteSql($" {Name}");
+            }
         }
-        if (ChainOption != null)
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            writer.WriteSql($" {ChainOption}");
-        }
-        if (ReleaseOption != null)
-        {
-            writer.WriteSql($" {ReleaseOption}");
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI(WriteAsEnd ? "END" : "COMMIT");
+            if (Noun != null)
+            {
+                writer.WriteSql($" {Noun}");
+            }
+            if (ChainOption != null)
+            {
+                writer.WriteSql($" {ChainOption}");
+            }
+            if (ReleaseOption != null)
+            {
+                writer.WriteSql($" {ReleaseOption}");
+            }
+            if (Name != null)
+            {
+                writer.Write(" ");
+                Name.FormatSql(writer, manager);
+            }
+            Meta.FormatPostNonSql(writer, manager);
         }
     }
 
-    public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+    public record Prepared(Value.StringBasedValue TransactionId) : Commit
     {
-        Meta.FormatPreNonSql(writer, manager);
-        writer.WriteSqlI("COMMIT");
-        if (Noun != null)
+        public override void ToSql(SqlTextWriter writer)
         {
-            writer.WriteSql($" {Noun}");
+            writer.WriteSql($"COMMIT PREPARED {TransactionId}");
         }
-        if (ChainOption != null)
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
         {
-            writer.WriteSql($" {ChainOption}");
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI($"COMMIT PREPARED {TransactionId}");
+            Meta.FormatPostNonSql(writer, manager);
         }
-        if (ReleaseOption != null)
-        {
-            writer.WriteSql($" {ReleaseOption}");
-        }
-        Meta.FormatPostNonSql(writer, manager);
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)

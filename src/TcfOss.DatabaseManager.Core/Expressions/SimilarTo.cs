@@ -5,19 +5,18 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Expressions;
 
-public record SimilarTo(Expression Expression, bool Negated, Expression Pattern, PatternEscape? Escape = null, bool Any = false) : Expression, INegated
+public record SimilarTo(Expression Expression, bool Negated, Expression Pattern, PatternEscape? Escape = null) : Expression, INegated
 {
     public override void ToSql(SqlTextWriter writer)
     {
-        string any = Any ? "ANY " : string.Empty;
-        writer.WriteSql($"{Expression} {AsNegated.NegatedText}SIMILAR TO {any}{Pattern}");
+        writer.WriteSql($"{Expression} {AsNegated.NegatedText}SIMILAR TO {Pattern}");
         Escape?.ToSql(writer);
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Expression.FormatSql(writer, manager);
-        writer.WriteSql($" {AsNegated.NegatedText}SIMILAR TO {(Any ? "ANY " : string.Empty)}");
+        writer.WriteSql($" {AsNegated.NegatedText}SIMILAR TO ");
         Pattern.FormatSql(writer, manager);
         Escape?.FormatSql(writer, manager);
     }

@@ -4,12 +4,13 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 namespace TcfOss.DatabaseManager.Core.Parsing;
 
-public class DataTypeParser(Parser parser)
+public class DataTypeParser(ParserBase parser)
 {
     protected static int ParseBoundedInt(ParserState state, int min = 0, int max = int.MaxValue, string label = "precision")
     {
@@ -263,13 +264,32 @@ public class DataTypeParser(Parser parser)
         return ParseArraySuffix(state, reference);
     }
 
+    public virtual DataTypeReference ParseDeclarationDataTypeReference(ParserState state)
+    {
+        if (state.PgPl)
+        {
+            if (state.Peek() is PositionalParameterToken && state.PeekNth(1) is Modulo)
+            {
+                PositionalParameter parameter = ExpressionParser.ParsePositionalParameterValue(state);
+                state.ExpectToken<Modulo>();
+                state.ExpectKeyword(Keyword.TYPE);
+                return ParseArraySuffix(state, new DataTypeReference.PgParameterTypeOf(parameter));
+            }
+            if (IsPgAnchoredTypeReferenceAhead(state))
+            {
+                return ParseArraySuffix(state, ParsePgAnchoredTypeReference(state, allowRowType: true));
+            }
+        }
+        return ParseDataTypeReference(state);
+    }
+
     public virtual DataTypeReference ParseRoutineDataTypeReference(ParserState state, bool allowPgTypeOf = true)
     {
-        if (parser.Grammar.HasFlag(Grammar.Pg))
+        if (state.PgAny)
         {
-            if (allowPgTypeOf && IsPgTypeOfReferenceAhead(state))
+            if (allowPgTypeOf && IsPgAnchoredTypeReferenceAhead(state))
             {
-                return ParseArraySuffix(state, ParsePgTypeOfReference(state));
+                return ParseArraySuffix(state, ParsePgAnchoredTypeReference(state, allowRowType: false));
             }
             if (state.TryGetPseudoKeyword(out string text, out Keyword _, false)
                 && PgPseudoType.TryParse(text, out PgPseudoType? pseudoType))
@@ -281,7 +301,7 @@ public class DataTypeParser(Parser parser)
         return ParseDataTypeReference(state);
     }
 
-    private static bool IsPgTypeOfReferenceAhead(ParserState state)
+    private static bool IsPgAnchoredTypeReferenceAhead(ParserState state)
     {
         if (state.Peek() is not (Word or StringLiteral))
         {
@@ -300,10 +320,14 @@ public class DataTypeParser(Parser parser)
         return state.PeekNth(tokenIndex) is Modulo;
     }
 
-    private DataTypeReference.PgTypeOf ParsePgTypeOfReference(ParserState state)
+    private DataTypeReference ParsePgAnchoredTypeReference(ParserState state, bool allowRowType)
     {
         ObjectName name = parser.ComponentParser.ParseObjectName(state, "data_type");
         state.ExpectToken<Modulo>();
+        if (allowRowType && state.ParseKeyword(Keyword.ROWTYPE))
+        {
+            return new DataTypeReference.PgRowTypeOf(name);
+        }
         state.ExpectKeyword(Keyword.TYPE);
         return new DataTypeReference.PgTypeOf(name);
     }

@@ -216,8 +216,8 @@ public class ValueParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         var token = new NumericLiteral(text) { Location = default };
 
-        Assert.Equal(expected, ValueParser.ParseLiteralInt(new ParserState([token])));
-        Assert.Equal(expected, ValueParser.ParseLiteralLong(new ParserState([token])));
+        Assert.Equal(expected, ValueParser.ParseLiteralInt(new ParserState(Grammar.All, [token])));
+        Assert.Equal(expected, ValueParser.ParseLiteralLong(new ParserState(Grammar.All, [token])));
     }
 
     [Theory]

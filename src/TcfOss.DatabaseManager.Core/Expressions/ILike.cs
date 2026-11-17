@@ -6,49 +6,30 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Expressions;
 
-public record ILike(Expression Expression, bool Negated, Expression Pattern, PatternEscape? Escape = null, bool Any = false) : Expression, INegated
+public record ILike(Expression Expression, bool Negated, Expression Pattern, PatternEscape? Escape = null) : Expression, INegated
 {
     public AggregateQuantifier? Quantifier { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {
-        string any = Any ? "ANY " : string.Empty;
-        writer.WriteSql($"{Expression} {AsNegated.NegatedText}ILIKE {any}");
+        writer.WriteSql($"{Expression} {AsNegated.NegatedText}ILIKE ");
         if (Quantifier != null)
         {
-            writer.WriteSql($"{Quantifier}");
-        }
-        bool wrapPattern = Quantifier != null && Pattern is not Subquery;
-        if (wrapPattern)
-        {
-            writer.Write("(");
+            writer.WriteSql($"{Quantifier} ");
         }
         Pattern.ToSql(writer);
-        if (wrapPattern)
-        {
-            writer.Write(")");
-        }
         Escape?.ToSql(writer);
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Expression.FormatSql(writer, manager);
-        writer.WriteSql($" {AsNegated.NegatedText}ILIKE {(Any ? "ANY " : string.Empty)}");
+        writer.WriteSql($" {AsNegated.NegatedText}ILIKE ");
         if (Quantifier != null)
         {
-            writer.WriteSql($"{Quantifier}");
-        }
-        bool wrapPattern = Quantifier != null && Pattern is not Subquery;
-        if (wrapPattern)
-        {
-            writer.Write("(");
+            writer.WriteSql($"{Quantifier} ");
         }
         Pattern.FormatSql(writer, manager);
-        if (wrapPattern)
-        {
-            writer.Write(")");
-        }
         Escape?.FormatSql(writer, manager);
     }
 

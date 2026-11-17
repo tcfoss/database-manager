@@ -95,7 +95,7 @@ public class DatabaseObjectReferencedItemsTests
         var trigger = new TestTrigger(
             new ObjectIdentifier("mytrigger", s_schema),
             new ObjectIdentifier("mytable", s_schema),
-            new Commit());
+            new Commit.Full());
 
         List<ItemRef> items = [.. trigger.GetReferencedItems(CreateManager())];
 

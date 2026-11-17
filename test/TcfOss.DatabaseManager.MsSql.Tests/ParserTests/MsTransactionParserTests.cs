@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
@@ -12,6 +13,7 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("BEGIN TRAN", Label = "BEGIN TRAN")]
     [InlineData("BEGIN TRANSACTION my_tx", Label = "BEGIN TRANSACTION named")]
     [InlineData("BEGIN TRAN my_tx", Label = "BEGIN TRAN named")]
+    [InlineData("BEGIN TRANSACTION PREPARED", Label = "BEGIN TRANSACTION with contextual keyword name")]
     public void BeginTransaction_TextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
@@ -24,6 +26,7 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("COMMIT TRAN", Label = "COMMIT TRAN")]
     [InlineData("COMMIT TRANSACTION my_tx", Label = "COMMIT TRANSACTION named")]
     [InlineData("COMMIT TRAN my_tx", Label = "COMMIT TRAN named")]
+    [InlineData("COMMIT TRANSACTION PREPARED", Label = "COMMIT TRANSACTION with contextual keyword name")]
     public void Commit_TextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
@@ -36,10 +39,21 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
     [InlineData("ROLLBACK TRAN", Label = "ROLLBACK TRAN")]
     [InlineData("ROLLBACK TRANSACTION my_tx", Label = "ROLLBACK TRANSACTION named")]
     [InlineData("ROLLBACK TRAN my_savepoint", Label = "ROLLBACK TRAN to savepoint")]
+    [InlineData("ROLLBACK TRANSACTION PREPARED", Label = "ROLLBACK TRANSACTION with contextual keyword name")]
     public void Rollback_TextMatch(string text)
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("COMMIT AND CHAIN")]
+    [InlineData("COMMIT RELEASE")]
+    [InlineData("ROLLBACK AND NO CHAIN")]
+    [InlineData("ROLLBACK NO RELEASE")]
+    public void CommitAndRollback_RejectUnsupportedOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]
@@ -83,5 +97,18 @@ public class MsTransactionParserTests : ParserTestsBase<MsLexer, MsParser>
         var text = "BEGIN TRY BEGIN TRY SELECT 1; END TRY BEGIN CATCH SELECT 2; END CATCH; END TRY BEGIN CATCH SELECT 3; END CATCH";
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("BEGIN WORK")]
+    [InlineData("START TRANSACTION READ ONLY")]
+    [InlineData("END WORK")]
+    [InlineData("ABORT")]
+    [InlineData("PREPARE TRANSACTION 'transaction_id'")]
+    [InlineData("COMMIT PREPARED 'transaction_id'")]
+    [InlineData("ROLLBACK PREPARED 'transaction_id'")]
+    public void TransactionLifecycle_RejectsPostgresSqlForms(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

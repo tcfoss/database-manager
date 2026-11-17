@@ -23,7 +23,7 @@ public class Formatter : IDisposable, IFormatSql
         {
             Formatting = config.Formatting,
             FunctionNameProvider = functionNameProvider,
-            ComponentNormalizer = new ComponentNormalizer(config.QuoteStyle, functionNameProvider),
+            ComponentNormalizer = new ComponentNormalizer(config.QuoteStyle, functionNameProvider, config.NameHandling),
             Indenter = indenter,
             PseudoTables = pseudoTables
         };

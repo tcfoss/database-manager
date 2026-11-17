@@ -4,7 +4,6 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -19,12 +18,16 @@ using SetDelimiter = TcfOss.DatabaseManager.MySql.Lexing.Tokens.SetDelimiter;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MyParser : Parser
+public class MyParser : Parser<MyParserRunState>
 {
     public override Grammar Grammar => Grammar.My;
 
+    protected override StatementLabel? MaybeParseStatementLabel(ParserState state)
+    {
+        return MaybeParseMyStatementLabel(state);
+    }
+
     public override bool SupportsPostgresCastSyntax => false;
-    public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
     public override bool SupportsPostgresColumnAlterSyntax => false;
@@ -35,8 +38,6 @@ public class MyParser : Parser
     public override bool SupportsPostgresExpressionCollationSyntax => false;
     public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
     public override bool SupportsPostgresOperatorSyntax => false;
-    public override bool SupportsPostgresIntervalLiteralSyntax => false;
-    protected override bool SupportsCommentOn => false;
 
     public MyParser()
     {
@@ -51,6 +52,59 @@ public class MyParser : Parser
         DdlParser = new MyDdlParser(this);
         TableParser = new MyTableParser(this);
         ControlFlowParser = new MyControlFlowParser(this);
+    }
+
+    protected override Statement ParseNormalStatement(ParserState state, Token token)
+    {
+        return token switch
+        {
+            SetDelimiter => ParseSetDelimiter(state),
+            Word word => ParseKeywordStatement(state, word),
+            ParenOpen => SelectParser.ParseSelect(state, null),
+            _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
+        };
+    }
+
+    protected override Statement ParseKeywordStatement(ParserState state, Word first)
+    {
+        return first.Keyword switch
+        {
+            Keyword.SIGNAL => ParseSignal(state),
+            Keyword.RESIGNAL => ParseResignal(state),
+            Keyword.EXECUTE => ParseExecute(state),
+            Keyword.DROP => ParseDrop(state),
+            Keyword.DEALLOCATE => ParseDeallocate(state),
+            Keyword.SHOW => ParseShow(state),
+            Keyword.CALL => ParseCall(state),
+            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
+            _ => base.ParseKeywordStatement(state, first)
+        };
+    }
+
+    protected override bool ConsumeTerminators(ParserState state, ref MyParserRunState runState, bool expectingTerminator)
+    {
+        if (runState.Terminator != null)
+        {
+            string currentTerminator = runState.Terminator;
+            while (state.ConsumeTokenIsIf<MyTerminator>(x => x.Delimiter == currentTerminator))
+            {
+                expectingTerminator = false;
+            }
+            return expectingTerminator;
+        }
+        return base.ConsumeTerminators(state, ref runState, expectingTerminator);
+    }
+
+    protected override bool ParseNextStatement(ParserState state, ref MyParserRunState runState, SqlValueList<Statement> statements)
+    {
+        Statement statement = ParseStatement(state);
+        if (statement is Statements.SetDelimiter sd)
+        {
+            runState.Terminator = sd.Delimiter == ";" ? null : sd.Delimiter;
+            return false;
+        }
+        statements.Add(statement);
+        return true;
     }
 
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)
@@ -107,112 +161,6 @@ public class MyParser : Parser
         };
     }
 
-    public override SqlValueList<Statement> Parse(ParserState state, EndSubstatements? endChecker)
-    {
-        SqlValueList<Statement> statements = [];
-        bool expectingTerminator = false;
-        string? terminator = null;
-
-        while (true)
-        {
-            if (terminator != null)
-            {
-                string currentTerminator = terminator;
-                while (state.ConsumeTokenIsIf<MyTerminator>((x) => x.Delimiter == currentTerminator))
-                {
-                    expectingTerminator = false;
-                }
-            }
-            else
-            {
-                while (state.ConsumeTokenIs<Semicolon>())
-                {
-                    expectingTerminator = false;
-                }
-            }
-
-            Token next = state.Peek();
-            if (next is Eof)
-            {
-                if (endChecker != null)
-                {
-                    throw endChecker.GetEofException(state);
-                }
-                if (next.PreNonSql.SafeAny())
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            if (endChecker?.GetFinished(state) ?? false)
-            {
-                if (next.PreNonSql.SafeAny())
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            if (expectingTerminator)
-            {
-                throw ParserState.ExpectedException("end of statement", next);
-            }
-
-            Statement statement = ParseStatement(state);
-            if (statement is Statements.SetDelimiter sd)
-            {
-                terminator = sd.Delimiter == ";" ? null : sd.Delimiter;
-            }
-            else
-            {
-                statements.Add(statement);
-                expectingTerminator = true;
-            }
-        }
-
-        return statements;
-    }
-
-    protected override Statement ParseNormalStatement(ParserState state, Token token)
-    {
-        return token switch
-        {
-            SetDelimiter => ParseSetDelimiter(state),
-            Word word => ParseKeywordStatement(state, word),
-            ParenOpen => SelectParser.ParseSelect(state, null),
-            _ => throw ParserState.ExpectedException("SQL statement".Italic(), token)
-        };
-    }
-
-    protected override Statement ParseKeywordStatement(ParserState state, Word first)
-    {
-        Statement? statement = first.Keyword switch
-        {
-            Keyword.LOOP => ParseLoop(state),
-            Keyword.SIGNAL => ParseSignal(state),
-            Keyword.RESIGNAL => ParseResignal(state),
-            Keyword.START => ParseStartTransaction(state),
-            Keyword.ROLLBACK => ParseRollback(state),
-            Keyword.COMMIT => ParseCommit(state),
-            Keyword.PREPARE => ParsePrepare(state),
-            Keyword.EXECUTE => ParseExecute(state),
-            Keyword.DROP => ParseDrop(state),
-            Keyword.DEALLOCATE => ParseDeallocate(state),
-            Keyword.SHOW => ParseShow(state),
-            Keyword.CALL => ParseCall(state),
-            Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
-            _ => null
-        };
-
-        if (statement != null)
-        {
-            return statement;
-        }
-
-        return base.ParseKeywordStatement(state, first);
-    }
-
     protected override Statement ParseAlter(ParserState state)
     {
         state.ExpectKeyword(Keyword.ALTER);
@@ -228,38 +176,6 @@ public class MyParser : Parser
     {
         var next = (SetDelimiter)state.Next();
         return new Statements.SetDelimiter(next.Delimiter);
-    }
-
-    protected override Fetch ParseFetch(ParserState state)
-    {
-        if (state.ParseKeywordsAll(Keyword.FETCH, Keyword.GROUP, Keyword.NEXT, Keyword.ROW))
-        {
-            return new FetchGroupNextRow();
-        }
-        return base.ParseFetch(state);
-    }
-
-    private Loop ParseLoop(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.LOOP);
-
-        var ender = new EndSubstatements
-        {
-            GetFinished = s => s.ParseKeywordsAll(Keyword.END, Keyword.LOOP),
-            GetEofException = s => s.ExpectedException("END LOOP")
-        };
-
-        SqlValueList<Statement> subStatements = Parse(state, ender);
-
-        Identifier? endLabel = null;
-        Identifier? label = state.StatementLabel?.Label;
-        if (label != null && state.Peek() is Word w && w.Value == label.Name)
-        {
-            state.Next();
-            endLabel = label;
-        }
-
-        return new Loop(subStatements) { EndLabel = endLabel };
     }
 
     private SignalInformationItem ParseSignalInformationItem(ParserState state)
@@ -358,132 +274,6 @@ public class MyParser : Parser
             ConditionValue = conditionValue,
             InformationItems = informationItems
         };
-    }
-
-    private static StartTransaction ParseStartTransaction(ParserState state)
-    {
-        state.ExpectKeywordsAll(Keyword.START, Keyword.TRANSACTION);
-
-        SqlValueList<MySqlTransactionCharacteristic> characteristics = [];
-        while (true)
-        {
-            if (state.ParseKeywordsAll(Keyword.WITH, Keyword.CONSISTENT, Keyword.SNAPSHOT))
-            {
-                characteristics.Add(MySqlTransactionCharacteristic.WithConsistentSnapshot);
-            }
-            else if (state.ParseKeyword(Keyword.READ))
-            {
-                if (state.ParseKeyword(Keyword.ONLY))
-                {
-                    characteristics.Add(MySqlTransactionCharacteristic.ReadOnly);
-                }
-                else if (state.ParseKeyword(Keyword.WRITE))
-                {
-                    characteristics.Add(MySqlTransactionCharacteristic.ReadWrite);
-                }
-                else
-                {
-                    throw state.ExpectedException("ONLY", "WRITE");
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return new StartTransaction
-        {
-            Characteristics = characteristics
-        };
-    }
-
-    private static (TransactionNoun? transactionNoun, TransactionChainOption? chainOption, TransactionReleaseOption? releaseOption) ParseTransactionOptions(ParserState state)
-    {
-        TransactionNoun? noun = null;
-        if (state.ParseKeyword(Keyword.WORK))
-        {
-            noun = TransactionNoun.Work;
-        }
-
-        TransactionChainOption? chainOption = null;
-        TransactionReleaseOption? releaseOption = null;
-        while (true)
-        {
-            if (state.ParseKeyword(Keyword.AND))
-            {
-                bool negated = state.ParseKeyword(Keyword.NO);
-                state.ExpectKeyword(Keyword.CHAIN);
-                chainOption = new TransactionChainOption { Negated = negated };
-            }
-            else if (state.ParseKeyword(Keyword.NO))
-            {
-                state.ExpectKeyword(Keyword.RELEASE);
-                releaseOption = new TransactionReleaseOption { Negated = true };
-            }
-            else if (state.ParseKeyword(Keyword.RELEASE))
-            {
-                releaseOption = new TransactionReleaseOption { Negated = false };
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return (noun, chainOption, releaseOption);
-    }
-
-    private static Rollback ParseRollback(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.ROLLBACK);
-
-        (
-            TransactionNoun? noun,
-            TransactionChainOption? chainOption,
-            TransactionReleaseOption? releaseOption) = ParseTransactionOptions(state);
-
-        return new Rollback
-        {
-            Noun = noun,
-            ChainOption = chainOption,
-            ReleaseOption = releaseOption
-        };
-    }
-
-    private static Commit ParseCommit(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.COMMIT);
-
-        (
-            TransactionNoun? noun,
-            TransactionChainOption? chainOption,
-            TransactionReleaseOption? releaseOption) = ParseTransactionOptions(state);
-
-        return new Commit
-        {
-            Noun = noun,
-            ChainOption = chainOption,
-            ReleaseOption = releaseOption
-        };
-    }
-
-    private Prepare ParsePrepare(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.PREPARE);
-
-        Identifier statementName = ComponentParser.ParseIdentifier(state);
-
-        state.ExpectKeyword(Keyword.FROM);
-
-        if (state.PeekIs<StringLiteral>())
-        {
-            return new Prepare.FromString(statementName, new Value.SingleQuotedString(((StringLiteral)state.Next()).Value));
-        }
-
-        Identifier statementSource = ComponentParser.ParseIdentifier(state);
-
-        return new Prepare.FromVariable(statementName, statementSource);
     }
 
     private MyExecute ParseExecute(ParserState state)

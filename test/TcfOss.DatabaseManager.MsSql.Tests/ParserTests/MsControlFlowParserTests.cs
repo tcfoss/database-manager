@@ -1,4 +1,7 @@
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.MsSql.Lexing;
 using TcfOss.DatabaseManager.MsSql.Parsing;
@@ -55,6 +58,32 @@ public class MsControlFlowParserTests : ParserTestsBase<MsLexer, MsParser>
     {
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+        var statement = Assert.IsType<While.Ms>(ParseStatement(text));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("WHILE @condition < 10 SET @target = @source")]
+    [InlineData("WHILE @condition < 10 BEGIN SET @target = @source; END")]
+    public void While_ReferencesIncludeConditionAndBody(string text)
+    {
+        var statement = Assert.IsType<While.Ms>(ParseStatement(text));
+
+        var references = statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.Variable })
+            .SelectMany(item => item.Identifiers)
+            .Select(identifier => identifier.Name)
+            .ToArray();
+
+        Assert.Equal(["condition", "source"], references);
+    }
+
+    [Fact]
+    public void Continue_RemainsTheUnlabeledUnconditionalMsSqlVariant()
+    {
+        Assert.IsType<Continue>(ParseStatement("CONTINUE"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CONTINUE label"));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements("CONTINUE WHEN 1 = 1"));
     }
 
     [Theory]
@@ -91,5 +120,53 @@ public class MsControlFlowParserTests : ParserTestsBase<MsLexer, MsParser>
         """;
         var (expected, actual) = GetExpectedActual(text, expectedSql: text, normalizeExpectedWhitespace: true, normalizeActualWhitespace: true);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("WHILE 1 = 1 PRINT 1")]
+    [InlineData("WHILE 1 = 1 BEGIN PRINT 1; BREAK; END")]
+    public void While_InlineVariantRoundTripsJson(string sql)
+    {
+        var statement = Assert.IsType<While.Ms>(ParseStatement(sql));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("WHILE 1 = 1 LOOP SELECT 1; END LOOP")]
+    [InlineData("WHILE 1 = 1 DO SELECT 1; END WHILE")]
+    public void While_RejectsBlockedDialectSyntax(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("FETCH cursor_one")]
+    [InlineData("FETCH FROM cursor_one INTO @target")]
+    [InlineData("FETCH NEXT FROM cursor_one INTO @target")]
+    [InlineData("FETCH PRIOR FROM cursor_one")]
+    [InlineData("FETCH FIRST FROM cursor_one")]
+    [InlineData("FETCH LAST FROM cursor_one")]
+    [InlineData("FETCH ABSOLUTE @offset FROM cursor_one INTO @target")]
+    [InlineData("FETCH RELATIVE -2 FROM GLOBAL cursor_one")]
+    [InlineData("CLOSE GLOBAL cursor_one")]
+    public void CursorStatements_PreserveDirectionScopeAndOptionalTargets(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+    }
+
+    [Theory]
+    [InlineData("FETCH NEXT cursor_one")]
+    [InlineData("FETCH ABSOLUTE FROM cursor_one")]
+    [InlineData("FETCH FORWARD 2 FROM cursor_one")]
+    [InlineData("CLOSE 1")]
+    public void CursorStatements_RejectUnsupportedDirectionsAndMissingCountsOrConnectors(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 }

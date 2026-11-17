@@ -5,19 +5,42 @@ using TcfOss.DatabaseManager.Core.StatementAnalysis;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public record Close(Identifier Identifier) : Statement
+public abstract record Close : Statement
 {
-    public override void ToSql(SqlTextWriter writer)
+    // public abstract void ToSql(SqlTextWriter writer);
+    // public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);
+
+    public record Named(Identifier Identifier) : Close
     {
-        writer.WriteSql($"CLOSE {Identifier}");
+        public bool Global { get; init; }
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"CLOSE {(Global ? "GLOBAL " : "")}{Identifier}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI($"CLOSE {(Global ? "GLOBAL " : "")}");
+            Identifier.FormatSql(writer, manager);
+            Meta.FormatPostNonSql(writer, manager);
+        }
     }
 
-    public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+    public record All : Close
     {
-        Meta.FormatPreNonSql(writer, manager);
-        writer.WriteSqlI("CLOSE ");
-        Identifier.FormatSql(writer, manager);
-        Meta.FormatPostNonSql(writer, manager);
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.Write("CLOSE ALL");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI("CLOSE ALL");
+            Meta.FormatPostNonSql(writer, manager);
+        }
     }
 
     public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)

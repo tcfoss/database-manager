@@ -1,10 +1,12 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
+using TcfOss.DatabaseManager.Core.Statements.Attributes;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MsSql.Parsing;
@@ -22,28 +24,14 @@ public class MsControlFlowParser : ControlFlowParser
         _parseIdentifier = _p.ComponentParser.ParseIdentifier;
     }
 
-    /// <summary>
-    /// Parses a T-SQL <c>IF</c> statement.
-    /// Syntax: <c>IF &lt;bool-expr&gt; &lt;stmt&gt; [ELSE &lt;stmt&gt;]</c>.
-    /// No <c>THEN</c>, no <c>ELSEIF</c>, no <c>END IF</c>; each branch is a
-    /// single un-terminated statement.
-    /// </summary>
     public override Statement ParseIf(ParserState state)
     {
-        state.ExpectKeyword(Keyword.IF);
-        Expression condition = _parseExpr(state);
-        Statement thenStmt = _p.ParseStatement(state);
+        return ParseMsIf(state);
+    }
 
-        Statement? elseStmt = null;
-        if (state.ParseKeyword(Keyword.ELSE))
-        {
-            elseStmt = _p.ParseStatement(state);
-        }
-
-        return new If.Ms(condition, thenStmt)
-        {
-            ElseStatement = elseStmt,
-        };
+    public override While ParseWhile(ParserState state)
+    {
+        return ParseMsWhile(state);
     }
 
     /// <summary>
@@ -77,5 +65,89 @@ public class MsControlFlowParser : ControlFlowParser
         {
             InitialValue = initialValue,
         };
+    }
+
+    public override TransactionNoun ParseRequiredTransactionNoun(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TRANSACTION))
+        {
+            return TransactionNoun.Transaction;
+        }
+        if (state.ParseKeyword(Keyword.TRAN))
+        {
+            return TransactionNoun.Tran;
+        }
+        throw state.ExpectedException("TRAN", "TRANSACTION");
+    }
+
+    public override TransactionNoun? ParseOptionalTransactionNoun(ParserState state)
+    {
+        if (state.ParseKeyword(Keyword.TRANSACTION))
+        {
+            return TransactionNoun.Transaction;
+        }
+        if (state.ParseKeyword(Keyword.TRAN))
+        {
+            return TransactionNoun.Tran;
+        }
+        return null;
+    }
+
+    protected override TransactionOptions ParseTransactionOptions(ParserState state)
+    {
+        return new TransactionOptions(Chain: null, Release: null);
+    }
+
+    protected override CursorDirection? ParseCursorDirection(ParserState state, bool allowMany)
+    {
+        CursorDirection? basic = state.Peek() switch
+        {
+            Word { Keyword: Keyword.NEXT } => new CursorDirection.Next(),
+            Word { Keyword: Keyword.PRIOR } => new CursorDirection.Prior(),
+            Word { Keyword: Keyword.FIRST } => new CursorDirection.First(),
+            Word { Keyword: Keyword.LAST } => new CursorDirection.Last(),
+            _ => null
+        };
+        if (basic is not null)
+        {
+            state.Next();
+            return basic;
+        }
+
+        Keyword direction = state.ParseKeywordsAny(Keyword.ABSOLUTE, Keyword.RELATIVE);
+        if (direction != Keyword.undefined)
+        {
+            Expression count;
+            if (state.Peek() is Word { Sigil: SigilKind.Variable })
+            {
+                count = new SingleIdentifier(_parseIdentifier(state));
+            }
+            else
+            {
+                count = new LiteralValue(ValueParser.ParseNumericValue(state));
+            }
+            return direction switch
+            {
+                Keyword.ABSOLUTE => new CursorDirection.Absolute(count),
+                Keyword.RELATIVE => new CursorDirection.Relative(count),
+                _ => throw new DefensiveGuardException("absolute/relative cursor direction", direction.ToString())
+            };
+        }
+
+        return null;
+    }
+
+    protected override CursorNameConnector? ParseCursorNameConnector(ParserState state, CursorDirection? direction)
+    {
+        if (direction is not null)
+        {
+            state.ExpectKeyword(Keyword.FROM);
+            return CursorNameConnector.From;
+        }
+        else if (state.ParseKeyword(Keyword.FROM))
+        {
+            return CursorNameConnector.From;
+        }
+        return null;
     }
 }

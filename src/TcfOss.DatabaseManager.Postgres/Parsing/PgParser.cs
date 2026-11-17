@@ -11,9 +11,12 @@ namespace TcfOss.DatabaseManager.Postgres.Parsing;
 
 public class PgParser : Parser
 {
-    public override Grammar Grammar => Grammar.Pg;
+    public override Grammar Grammar => Grammar.Pg | Grammar.PgPl;
 
-    public override bool SupportsMySqlIntervalExpressionSyntax => false;
+    protected override StatementLabel? MaybeParseStatementLabel(ParserState state)
+    {
+        return MaybeParsePgStatementLabel(state);
+    }
 
     public PgParser()
     {
@@ -25,12 +28,12 @@ public class PgParser : Parser
         DmlParser = new PgDmlParser(this);
         DdlParser = new PgDdlParser(this);
         TableParser = new PgTableParser(this);
-        ControlFlowParser = new ControlFlowParser(this);
+        ControlFlowParser = new PgControlFlowParser(this);
     }
 
     protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
-        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && state.StatementLabel != null)
+        if (!state.PgPl && state.StatementLabel != null)
         {
             throw ParserState.ExpectedException("SQL statement", token);
         }
@@ -39,27 +42,18 @@ public class PgParser : Parser
 
     protected override Statement ParseKeywordStatement(ParserState state, Word first)
     {
-        if (!state.Context.HasFlag(ParseContext.NarrowSqlOnly))
+        if (state.PgPl)
         {
             return base.ParseKeywordStatement(state, first);
         }
         return first.Keyword switch
         {
-            Keyword.DECLARE when state.PeekNth(2) is not Word { Keyword: Keyword.CURSOR } =>
+            Keyword.DECLARE when !ControlFlowComponentHelpers.MaybeDeclareCursor(state) =>
                 throw ParserState.ExpectedException("SQL statement", first),
-            Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.FETCH or Keyword.USE =>
+            Keyword.LEAVE or Keyword.ITERATE or Keyword.OPEN or Keyword.USE =>
                 throw ParserState.ExpectedException("SQL statement", first),
             _ => base.ParseKeywordStatement(state, first)
         };
-    }
-
-    protected override Statement ParseBegin(ParserState state)
-    {
-        if (state.Context.HasFlag(ParseContext.NarrowSqlOnly) && !state.PeekKeywordsAll(Keyword.BEGIN, Keyword.ATOMIC))
-        {
-            throw state.ExpectedException("BEGIN ATOMIC");
-        }
-        return base.ParseBegin(state);
     }
 
     protected override CreateObjectOptions ParseCreateObjectOptions(ParserState state)

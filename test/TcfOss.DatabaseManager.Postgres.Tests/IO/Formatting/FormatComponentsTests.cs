@@ -21,7 +21,7 @@ public class FormatComponentsTests
     [InlineData("SELECT result.value FROM LATERAL (SELECT $1 AS original) AS result (value)", "result")]
     public void FromRelations_FormatAliasColumnsAndRetainFunctionStructure(string sql, string expectedAlias)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         Select statement = Assert.IsType<Select>(new PgParser().ParseStatement(state));
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -35,7 +35,7 @@ public class FormatComponentsTests
             Assert.Contains("WITH ORDINALITY", formatted);
         }
         Assert.Contains("\"result\".\"value\"", formatted);
-        var formattedState = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var formattedState = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Select>(new PgParser().ParseStatement(formattedState));
         Assert.True(formattedState.PeekIs<Core.Lexing.Tokens.Eof>());
     }
@@ -282,7 +282,7 @@ public class FormatComponentsTests
     [InlineData("ROW(items.*, (item).*)", "ROW(items.*, (\"item\").*)")]
     public void ArrayRowAndCompositeExpressions_FormatRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -301,7 +301,7 @@ public class FormatComponentsTests
     [InlineData("OPERATOR(app.@) value", "OPERATOR(\"app\".@) \"value\"")]
     public void PostgresOperators_FormatOperandsAndSchemaNames(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -319,7 +319,7 @@ public class FormatComponentsTests
     [InlineData("INTERVAL $duration$1 day$duration$")]
     public void IntervalLiterals_FormatWithoutLosingModifiersOrLiteralSpelling(string sql)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -331,12 +331,12 @@ public class FormatComponentsTests
     [Theory]
     [InlineData("items.left IS DISTINCT FROM items.right", "\"items\".\"left\" IS DISTINCT FROM \"items\".\"right\"")]
     [InlineData("items.left IS NOT DISTINCT FROM items.right", "\"items\".\"left\" IS NOT DISTINCT FROM \"items\".\"right\"")]
-    [InlineData("items.value = ANY(ARRAY[items.other])", "\"items\".\"value\" = ANY(ARRAY[\"items\".\"other\"])")]
-    [InlineData("items.value <> ALL(ARRAY[items.other])", "\"items\".\"value\" <> ALL(ARRAY[\"items\".\"other\"])")]
-    [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME(ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value = ANY(ARRAY[items.other])", "\"items\".\"value\" = ANY (ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value <> ALL(ARRAY[items.other])", "\"items\".\"value\" <> ALL (ARRAY[\"items\".\"other\"])")]
+    [InlineData("items.value > SOME(ARRAY[items.other])", "\"items\".\"value\" > SOME (ARRAY[\"items\".\"other\"])")]
     public void RemainingComparisons_FormatOperandsRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
@@ -346,17 +346,39 @@ public class FormatComponentsTests
     }
 
     [Theory]
-    [InlineData("items.value = ANY(SELECT items.other FROM items)", "\"items\".\"value\" = ANY( SELECT \"items\".\"other\" FROM \"items\")")]
-    [InlineData("value LIKE ANY(SELECT pattern FROM items)", "\"value\" LIKE ANY( SELECT \"pattern\" FROM \"items\")")]
+    [InlineData(
+        "SELECT items.value = ANY(SELECT items.other FROM items)",
+        """
+        SELECT
+            "items"."value" = ANY (
+                SELECT
+                    "items"."other"
+                FROM "items");
+        """)]
+    [InlineData(
+        "SELECT value LIKE ANY(SELECT pattern FROM items)",
+        """
+        SELECT
+            "value" LIKE ANY (
+                SELECT
+                    "pattern"
+                FROM "items");
+        """)]
+    [InlineData(
+        "SELECT value ILIKE SOME((SELECT pattern FROM items))",
+        """
+        SELECT
+            "value" ILIKE SOME (
+                (
+                    SELECT
+                        "pattern"
+                    FROM "items"));
+        """)]
     public void QuantifiedSubqueries_FormatOperandsRecursively(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
-        var expression = new PgParser().ExpressionParser.ParseExpr(state);
-        using var writer = new SqlTextWriter(new StringBuilder());
-
-        expression.FormatSql(writer, Helpers.CreateFormatManager());
-
-        Assert.Equal(expected, writer.ToString().NormalizeWhitespace());
+        using var formatter = Helpers.CreateFormatter();
+        var actual = formatter.GetFormatted(sql);
+        Assert.Equal(expected, actual);
     }
 
     [Theory]
@@ -378,8 +400,8 @@ public class FormatComponentsTests
     [InlineData("value NOT BETWEEN ASYMMETRIC lower AND upper", "\"value\" NOT BETWEEN ASYMMETRIC \"lower\" AND \"upper\"")]
     [InlineData("value BETWEEN lower AND upper", "\"value\" BETWEEN \"lower\" AND \"upper\"")]
     [InlineData("items.a ^ items.b", "\"items\".\"a\" ^ \"items\".\"b\"")]
-    [InlineData("value LIKE ALL(ARRAY[pattern])", "\"value\" LIKE ALL(ARRAY[\"pattern\"])")]
-    [InlineData("value ILIKE SOME(ARRAY[pattern])", "\"value\" ILIKE SOME(ARRAY[\"pattern\"])")]
+    [InlineData("value LIKE ALL(ARRAY[pattern])", "\"value\" LIKE ALL (ARRAY[\"pattern\"])")]
+    [InlineData("value ILIKE SOME(ARRAY[pattern])", "\"value\" ILIKE SOME (ARRAY[\"pattern\"])")]
     [InlineData("value LIKE pattern ESCAPE escape_value", "\"value\" LIKE \"pattern\" ESCAPE \"escape_value\"")]
     [InlineData("value ILIKE pattern ESCAPE '!' || suffix", "\"value\" ILIKE \"pattern\" ESCAPE '!' || \"suffix\"")]
     [InlineData("value SIMILAR TO pattern ESCAPE escape_value", "\"value\" SIMILAR TO \"pattern\" ESCAPE \"escape_value\"")]
@@ -387,28 +409,13 @@ public class FormatComponentsTests
     [InlineData("value NOT SIMILAR TO pattern", "\"value\" NOT SIMILAR TO \"pattern\"")]
     public void Predicates_FormatOperandsAndModifiers(string sql, string expected)
     {
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(sql)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(sql)]);
         var expression = new PgParser().ExpressionParser.ParseExpr(state);
         using var writer = new SqlTextWriter(new StringBuilder());
 
         expression.FormatSql(writer, Helpers.CreateFormatManager());
 
         Assert.Equal(expected, writer.ToString());
-    }
-
-    [Theory]
-    [InlineData("LIKE")]
-    [InlineData("ILIKE")]
-    [InlineData("SIMILAR TO")]
-    public void KitchenSinkPatterns_FormatLegacyAnyAndCharacterEscape(string op)
-    {
-        var state = new Core.Parsing.ParserState([.. new Core.Lexing.GenericLexer().Tokenize($"value NOT {op} ANY(pattern) ESCAPE '!'")]);
-        var expression = new Core.Parsing.Parser().ExpressionParser.ParseExpr(state);
-        using var writer = new SqlTextWriter(new StringBuilder());
-
-        expression.FormatSql(writer, Helpers.CreateFormatManager());
-
-        Assert.Equal($"\"value\" NOT {op} ANY (\"pattern\") ESCAPE '!'", writer.ToString());
     }
 
     [Theory]
@@ -428,7 +435,7 @@ public class FormatComponentsTests
 
         Assert.Contains("\"app\".\"items\"", formatted);
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -451,7 +458,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -472,7 +479,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Select>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -493,7 +500,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Select>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -513,7 +520,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         Assert.IsType<Statement>(new PgParser().ParseStatement(state), exactMatch: false);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
@@ -533,7 +540,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedPrefix, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
         Assert.Equal(recursive, statement.Recursive);
         Assert.Equal(temporary, statement.TemporaryLabel?.ToSql());
@@ -596,7 +603,7 @@ public class FormatComponentsTests
 
         Assert.Contains("WITH CHECK OPTION", formatted.NormalizeWhitespace());
         Assert.DoesNotContain("WITH CASCADED CHECK OPTION", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
         Assert.IsType<Core.Statements.Components.ViewCheckOption.Unspecified>(statement.ViewCheckOption);
         Assert.Equal("WITH CHECK OPTION", statement.ViewCheckOption.ToSql());
@@ -618,7 +625,7 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateView>(new PgParser().ParseStatement(state));
         Assert.NotEmpty(statement.PgOptions!);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -641,11 +648,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<CreateMaterializedView>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
+        Assert.Equal(statement.ToSql(), new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])).ToSql());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -664,11 +671,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<RefreshMaterializedView>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -683,7 +690,7 @@ public class FormatComponentsTests
         Assert.Contains("REFRESH MATERIALIZED VIEW \"app\".\"summary\" WITH NO DATA", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<RefreshMaterializedView>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -704,12 +711,12 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<DropObject>(new PgParser().ParseStatement(state));
         Assert.Equal(DroppableObject.MaterializedView, statement.ObjectType);
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -724,7 +731,7 @@ public class FormatComponentsTests
         Assert.Contains("DROP MATERIALIZED VIEW \"app\".\"summary\", \"app\".\"other\" CASCADE", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<DropObject>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -776,11 +783,11 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<AlterMaterializedView>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 
@@ -807,7 +814,7 @@ public class FormatComponentsTests
         Assert.Contains($"ALTER MATERIALIZED VIEW \"app\".\"summary\" {expectedClause}", formatted);
         Assert.Contains("/* lead */", formatted);
         Assert.Contains("/* tail */", formatted);
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         Assert.Single(Assert.IsType<BeginAtomic>(procedure.Body).Statements.OfType<AlterMaterializedView>());
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
@@ -825,11 +832,232 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedClause, formatted.NormalizeWhitespace());
-        var state = new Core.Parsing.ParserState([.. new PgLexer().Tokenize(formatted)]);
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(formatted)]);
         var statement = Assert.IsType<AlterMaterializedViewsInTablespace>(new PgParser().ParseStatement(state));
         Assert.True(state.ConsumeTokenIs<Core.Lexing.Tokens.Semicolon>());
         Assert.IsType<Core.Lexing.Tokens.Eof>(state.Peek());
-        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState([.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(statement, new PgParser().ParseStatement(new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg | Core.Parsing.Grammar.PgPl, [.. new PgLexer().Tokenize(statement.ToSql())])));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CASE value WHEN pattern, other THEN NULL; ELSE NULL; END CASE", "CASE \"value\"", "WHEN \"pattern\", \"other\" THEN")]
+    [InlineData("CASE WHEN value = pattern THEN NULL; ELSE NULL; END CASE", "CASE", "WHEN \"value\" = \"pattern\" THEN")]
+    [InlineData("IF value = pattern THEN NULL; ELSIF other = pattern THEN NULL; END IF", "IF \"value\" = \"pattern\" THEN", "ELSIF \"other\" = \"pattern\" THEN")]
+    public void ProceduralConditionals_FormatExpressionsRecursively(string conditional, string expectedHeader, string expectedBranch)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted($"BEGIN {conditional}; END");
+
+        Assert.Contains(expectedHeader, formatted);
+        Assert.Contains(expectedBranch, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("<<label>> WHILE source.value > 0 LOOP CALL app.work(); /* closing */ END LOOP label", "label")]
+    [InlineData("<<Outer_Label>> WHILE source.value > 0 LOOP CALL app.work(); /* closing */ END LOOP outer_label", "outer_label")]
+    public void ProceduralWhile_FormatsConditionAndLoopLabelsRecursively(string sql, string expectedLabel)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains($"<<\"{expectedLabel}\">>", formatted);
+        Assert.Contains("WHILE \"source\".\"value\" > 0 LOOP", formatted);
+        Assert.Contains($"END LOOP \"{expectedLabel}\";", formatted);
+        Assert.Equal(1, formatted.Split("/* closing */", StringSplitOptions.None).Length - 1);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SELECT MixedCase FROM App.Items", "\"mixedcase\"", "FROM \"app\".\"items\"")]
+    [InlineData("SELECT \"MixedCase\" FROM \"App\".\"Items\"", "\"MixedCase\"", "FROM \"App\".\"Items\"")]
+    public void Identifiers_PreserveCaseSemanticsWhenQuoted(string sql, string expectedColumn, string expectedFrom)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedColumn, formatted);
+        Assert.Contains(expectedFrom, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("<<Outer_Label>> LOOP CALL app.work(); END LOOP OUTER_LABEL")]
+    [InlineData("<<Outer_Label>> BEGIN NULL; END OUTER_LABEL")]
+    public void ProceduralLabels_PreserveCaseFoldingWhenQuoted(string sql)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("<<\"outer_label\">>", formatted);
+        Assert.Contains(" \"outer_label\";", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("<<Outer_Label>> FOR i IN app.start_value() .. app.end_value() BY app.step() LOOP CALL app.work(i); END LOOP OUTER_LABEL", "FOR \"i\" IN \"app\".\"start_value\"() .. \"app\".\"end_value\"() BY \"app\".\"step\"()")]
+    [InlineData("<<Outer_Label>> FOR row_value IN SELECT value FROM app.items LOOP CALL app.work(); END LOOP OUTER_LABEL", "FROM \"app\".\"items\"")]
+    [InlineData("<<Outer_Label>> FOR row_value IN EXECUTE app.query_text() USING source.value LOOP CALL app.work(); END LOOP OUTER_LABEL", "EXECUTE \"app\".\"query_text\"() USING \"source\".\"value\"")]
+    public void ProceduralFor_FormatsSourceExpressionsAndLabelsRecursively(string sql, string expectedSource)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("<<\"outer_label\">>", formatted);
+        Assert.Contains(expectedSource, formatted);
+        Assert.Contains($"LOOP{Environment.NewLine}", formatted);
+        Assert.Contains("END LOOP \"outer_label\";", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Fact]
+    public void ProceduralForeachAndJumps_FormatExpressionsAndLabelsRecursively()
+    {
+        const string sql = "<<Outer_Label>> FOREACH item SLICE 0 IN ARRAY app.values(source.value) LOOP CONTINUE outer_label WHEN app.ready(); EXIT OUTER_LABEL WHEN app.done(); END LOOP outer_label";
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains("<<\"outer_label\">>", formatted);
+        Assert.Contains("FOREACH \"item\" SLICE 0 IN ARRAY \"app\".\"values\"(\"source\".\"value\") LOOP", formatted);
+        Assert.Contains("CONTINUE \"outer_label\" WHEN \"app\".\"ready\"()", formatted);
+        Assert.Contains("EXIT \"outer_label\" WHEN \"app\".\"done\"()", formatted);
+        Assert.Contains("END LOOP \"outer_label\";", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("PERFORM app.inspect(NEW.id, OLD.id, TG_OP)", "PERFORM", "\"app\".\"inspect\"(\"new\".\"id\", \"old\".\"id\", \"tg_op\")")]
+    [InlineData("SELECT source.value INTO STRICT row_value.field FROM app.items AS source", "INTO STRICT \"row_value\".\"field\"", "FROM \"app\".\"items\"")]
+    [InlineData("RETURN NEXT NEW.id", "RETURN NEXT", "\"new\".\"id\"")]
+    [InlineData("RETURN QUERY SELECT source.value FROM app.items AS source", "RETURN QUERY", "FROM \"app\".\"items\"")]
+    public void ProceduralQueriesAndReturns_FormatExpressionsRecursively(string sql, string expectedCommand, string expectedExpression)
+    {
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedCommand, formatted);
+        Assert.Contains(expectedExpression, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CLOSE ALL", "CLOSE ALL;")]
+    [InlineData("CLOSE \"ALL\"", "CLOSE \"ALL\";")]
+    [InlineData("CLOSE cursor_name", "CLOSE \"cursor_name\";")]
+    public void Close_FormattingDistinguishesAllFromQuotedCursorNames(string sql, string expected)
+    {
+        static Close ParseSqlClose(string text)
+        {
+            var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg, [.. new PgLexer().Tokenize(text)]);
+            return Assert.IsType<Close>(Assert.Single(new PgParser().Parse(state, null)), exactMatch: false);
+        }
+
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(ParseSqlClose(sql));
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(ParseSqlClose(formatted)));
+    }
+
+    [Theory]
+    [InlineData("UPDATE app.items AS target SET id = 1 WHERE CURRENT OF cursor_name", "\"cursor_name\"")]
+    [InlineData("DELETE FROM app.items AS target WHERE CURRENT OF \"ALL\"", "\"ALL\"")]
+    public void PositionedDml_FormatsCursorNamesAsIdentifiers(string sql, string expectedCursor)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains($"CURRENT OF {expectedCursor}", formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("BEGIN WORK READ ONLY", "BEGIN WORK READ ONLY;")]
+    [InlineData("START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE", "START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE;")]
+    [InlineData("END WORK AND NO CHAIN", "END WORK AND NO CHAIN;")]
+    [InlineData("ABORT TRANSACTION", "ABORT TRANSACTION;")]
+    public void SqlTransactionLifecycle_FormatsStartsAndAliases(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SAVEPOINT checkpoint", "SAVEPOINT \"checkpoint\";")]
+    [InlineData("RELEASE checkpoint", "RELEASE \"checkpoint\";")]
+    [InlineData("RELEASE SAVEPOINT \"Checkpoint\"", "RELEASE SAVEPOINT \"Checkpoint\";")]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT checkpoint", "ROLLBACK WORK TO SAVEPOINT \"checkpoint\";")]
+    [InlineData("ROLLBACK TO \"SAVEPOINT\"", "ROLLBACK TO \"SAVEPOINT\";")]
+    public void SqlSavepoints_FormatNamesAsIdentifiers(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE", "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE;")]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE NOT DEFERRABLE", "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE, NOT DEFERRABLE;")]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot''id'", "SET TRANSACTION SNAPSHOT 'snapshot''id';")]
+    public void SqlTransactionCharacteristics_FormatModesAndSnapshotLiterals(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED", "SET CONSTRAINTS ALL DEFERRED;")]
+    [InlineData("SET CONSTRAINTS \"ALL\" IMMEDIATE", "SET CONSTRAINTS \"ALL\" IMMEDIATE;")]
+    [InlineData("SET CONSTRAINTS app.fk_orders, fk_items DEFERRED", "SET CONSTRAINTS \"app\".\"fk_orders\", \"fk_items\" DEFERRED;")]
+    public void SqlConstraintTiming_FormatsNamesWithoutTreatingAllAsAnIdentifier(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("PREPARE TRANSACTION 'Work.Tx'", "PREPARE TRANSACTION 'Work.Tx';")]
+    [InlineData("COMMIT PREPARED 'transaction''id'", "COMMIT PREPARED 'transaction''id';")]
+    [InlineData("ROLLBACK PREPARED $id$transaction'id$id$", "ROLLBACK PREPARED $id$transaction'id$id$;")]
+    public void SqlTwoPhaseTransactions_FormatIdsAsStringLiterals(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("DECLARE copied app.items.id%TYPE; BEGIN NULL; END", "\"app\".\"items\".\"id\"%TYPE")]
+    [InlineData("DECLARE rows app.items%rowtype[]; BEGIN NULL; END", "\"app\".\"items\"%ROWTYPE[]")]
+    [InlineData("DECLARE copied $1%TYPE; BEGIN NULL; END", "$1%TYPE")]
+    public void ProceduralAnchoredDeclarations_FormatNamesButNotParameterPlaceholders(string sql, string expectedType)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedType, formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 }

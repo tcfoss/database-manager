@@ -19,7 +19,7 @@ public readonly record struct IndexInfo()
 
     public (BuiltInIndexMethod? Method, Comment? Comment) GetIndexTypeAndComment(ILexer lexer, IParser parser)
     {
-        var indexMethodState = new ParserState([.. lexer.Tokenize(IndexType)]);
+        var indexMethodState = new ParserState(parser.Grammar, [.. lexer.Tokenize(IndexType)]);
         BuiltInIndexMethod indexMethod = parser.TableParser.ParseIndexMethod(indexMethodState);
 
         Comment? comment = null;

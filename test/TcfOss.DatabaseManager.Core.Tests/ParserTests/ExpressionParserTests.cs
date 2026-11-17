@@ -125,7 +125,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     [Theory]
     [InlineData("x LIKE y ESCAPE '_'", Label = "like escape")]
     [InlineData("x NOT LIKE 'pattern'", Label = "not like")]
-    [InlineData("x NOT LIKE ANY ('pat1', 'pat2', 'pat3')", Label = "not like any")]
+    [InlineData("x NOT LIKE ANY (SELECT pattern FROM patterns)", Label = "not like any")]
     [InlineData("x REGEXP 'pattern'", Label = "regexp")]
     [InlineData("x NOT REGEXP 'pattern'", Label = "not regexp")]
     [InlineData("x RLIKE 'pattern'", Label = "rlike")]
@@ -289,7 +289,7 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         var parser = new Parser();
         var ex = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ExpressionParser.ParseWildcardOrExpr(GetState("mytable.;")));
-        Assert.Contains("identifier or .*", ex.Message);
+        Assert.Contains("Expected " + "identifier | wildcard".Italic(), ex.Message);
     }
 
     [Theory]
@@ -355,29 +355,40 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
-    [InlineData("x ILIKE 'pattern'", false, false, null)]
-    [InlineData("x NOT ILIKE 'pattern' ESCAPE '!'", true, false, "!")]
-    [InlineData("x ILIKE ANY ('one', 'two')", false, true, null)]
-    public void ParseExpr_ILike(string sql, bool negated, bool any, string? escapeChar)
+    [InlineData("x ILIKE 'pattern'", false, null)]
+    [InlineData("x NOT ILIKE 'pattern' ESCAPE '!'", true, "!")]
+    public void ParseExpr_ILike(string sql, bool negated, string? escapeChar)
     {
         ILike expression = Assert.IsType<ILike>(ParseExpression(sql));
 
         Assert.Equal(negated, expression.Negated);
-        Assert.Equal(any, expression.Any);
         Assert.Equal<PatternEscape?>(escapeChar == null ? null : new PatternEscape.Character(escapeChar), expression.Escape);
         Assert.Equal(sql, expression.ToSql());
     }
 
     [Theory]
-    [InlineData("x SIMILAR TO 'pattern'", false, false, null)]
-    [InlineData("x NOT SIMILAR TO 'pattern' ESCAPE '!'", true, false, "!")]
-    [InlineData("x SIMILAR TO ANY ('one', 'two')", false, true, null)]
-    public void ParseExpr_SimilarTo(string sql, bool negated, bool any, string? escapeChar)
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void PatternEscape_NonPostgresGrammarRetainsLiteralOnlyEscapes(Grammar grammar)
+    {
+        const string sql = "value LIKE 'pattern' ESCAPE '!'";
+        var state = new ParserState(grammar, GetTokens(sql));
+        var expression = Assert.IsType<Like>(ParseExpression(state));
+
+        Assert.Equal(new PatternEscape.Character("!"), expression.Escape);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.ThrowsAny<Core.Errors.ParseException>(() =>
+            ParseExpression(new ParserState(grammar, GetTokens("value LIKE 'pattern' ESCAPE escape_value"))));
+    }
+
+    [Theory]
+    [InlineData("x SIMILAR TO 'pattern'", false, null)]
+    [InlineData("x NOT SIMILAR TO 'pattern' ESCAPE '!'", true, "!")]
+    public void ParseExpr_SimilarTo(string sql, bool negated, string? escapeChar)
     {
         SimilarTo expression = Assert.IsType<SimilarTo>(ParseExpression(sql));
 
         Assert.Equal(negated, expression.Negated);
-        Assert.Equal(any, expression.Any);
         Assert.Equal<PatternEscape?>(escapeChar == null ? null : new PatternEscape.Character(escapeChar), expression.Escape);
         Assert.Equal(sql, expression.ToSql());
     }
@@ -387,7 +398,6 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         var parser = new Parser();
         Assert.True(parser.SupportsPostgresCastSyntax);
-        Assert.True(parser.SupportsPostgresRegexOperators);
     }
 
     [Theory]

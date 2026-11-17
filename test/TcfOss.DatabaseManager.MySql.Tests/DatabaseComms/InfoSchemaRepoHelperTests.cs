@@ -18,6 +18,18 @@ public class InfoSchemaRepoHelperTests
     private readonly MyLexer _lexer = new();
     private readonly MyParser _parser = new();
 
+    [Fact]
+    public void ExpressionParsing_RejectsTrailingTokens()
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        Assert.Throws<InvalidOperationException>(() => repoHelper.ParseExpr("value unexpected"));
+        Assert.Throws<InvalidOperationException>(() => repoHelper.ParseColumnDefault("1 unexpected", false));
+        Assert.Throws<ParseException.ExpectedButFound>(() => repoHelper.ParseOnUpdate("ON UPDATE value unexpected"));
+        var expression = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(repoHelper.ParseColumnDefault("1 + 2", false));
+        Assert.Equal("1 + 2", expression.Expression.ToSql());
+    }
+
     [Theory]
     [InlineData("'myname'@'myhost'", QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks, "myname", "myhost")]
     [InlineData("'myname'", QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks, "myname", null)]
@@ -311,4 +323,112 @@ public class InfoSchemaRepoHelperTests
 
         Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.HexString(expectedHex)), actual);
     }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("VIRTUAL GENERATED", false)]
+    [InlineData("stored generated", true)]
+    public void GeneratedColumn_ParsesExpressionAndStorageMode(string extra, bool stored)
+    {
+        var helper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        var actual = helper.ParseGenerated("CONCAT(\\'prefix\\', value)", extra, true);
+
+        Assert.Equal(new ColumnOption.Generated.AsExpression(helper.ParseExpr("CONCAT('prefix', value)"),
+            stored ? GenerationMode.Stored : GenerationMode.Virtual), actual);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t")]
+    public void OptionalColumnExpressions_AbsentTextProducesNoClause(string? text)
+    {
+        var helper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        Assert.Null(helper.ParseGenerated(text, "", false));
+        Assert.Null(helper.ParseColumnCheck(text));
+    }
+
+    [Fact]
+    public void ColumnCheck_ParsesExpression()
+    {
+        var helper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        Assert.Equal(new ColumnOption.CheckConstraint(helper.ParseExpr("amount > 0")), helper.ParseColumnCheck("amount > 0"));
+    }
+
+    [Theory]
+    [InlineData(false, "VALUES ({0}),({1})")]
+    [InlineData(true, "VALUES ROW({0}),ROW({1})")]
+    public void UnappliedEntriesSql_EscapesSchemasAndPreservesParameterSlots(bool includeRowKeyword, string firstLine)
+    {
+        var catalog = new CatalogIdentifier("def");
+        SchemaIdentifier[] schemas = [new("first`{schema}", catalog), new("second", catalog)];
+
+        string sql = InfoSchemaRepoHelper.GetUnappliedEntriesSql(schemas, 2, "R", includeRowKeyword);
+
+        Assert.StartsWith(firstLine + Environment.NewLine, sql);
+        Assert.Contains("`first``{{schema}}`.", sql);
+        Assert.Contains("UNION ALL" + Environment.NewLine, sql);
+        Assert.Contains("FROM `second`.", sql);
+        Assert.Equal(2, sql.Split(" = 'R'").Length - 1);
+    }
+
+    [Fact]
+    public void TriggerMetadata_PreservesGroupingOrderAndParsedBody()
+    {
+        var helper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+        var table = new ObjectIdentifier("items", new SchemaIdentifier("app", new CatalogIdentifier("def")));
+        TriggerDto first = new()
+        {
+            EventObjectTable = "items",
+            TriggerName = "first",
+            EventManipulation = "INSERT",
+            ActionTiming = "BEFORE",
+            ActionStatement = "SET NEW.value = 1",
+            ActionOrder = 1,
+            Definer = "owner@localhost"
+        };
+        TriggerDto[] rows =
+        [
+            first,
+            first with { TriggerName = "second", ActionOrder = 2 },
+            first with { TriggerName = "after_insert", ActionTiming = "AFTER", ActionOrder = 1 }
+        ];
+
+        var triggers = helper.TriggersOnTableToDictionary(rows, table);
+
+        Assert.Equal(3, triggers.Count);
+        foreach (TriggerDto row in rows)
+        {
+            var trigger = triggers[new ObjectIdentifier(row.TriggerName, table.Schema, QuoteStyle.Backticks)];
+            Assert.Equal((uint)row.ActionOrder, trigger.Order);
+            Assert.Equal(TriggerTime.Parse(row.ActionTiming), trigger.TriggerTime);
+            Assert.Equal(TriggerEvent.Parse(row.EventManipulation), trigger.TriggerEvent);
+            Assert.Equal(row.ActionStatement, trigger.RawBodyText);
+            Assert.Equal(helper.ParseStatement(row.ActionStatement), trigger.Body);
+        }
+    }
+
+    [Theory]
+    [InlineData("BTREE", "")]
+    [InlineData("HASH", "owner's index")]
+    public void IndexMetadata_ParsesMethodAndPreservesOptionalComment(string indexType, string comment)
+    {
+        var row = new IndexInfo
+        {
+            ColumnName = new Identifier("value"),
+            IndexType = indexType,
+            IndexComment = comment,
+            IndexName = "index_value",
+            SeqInIndex = 1
+        };
+
+        var (method, actualComment) = row.GetIndexTypeAndComment(_lexer, _parser);
+
+        Assert.Equal(BuiltInIndexMethod.Parse(indexType), method);
+        Assert.Equal(comment.Length == 0 ? null : new Comment(comment), actualComment);
+    }
+
 }

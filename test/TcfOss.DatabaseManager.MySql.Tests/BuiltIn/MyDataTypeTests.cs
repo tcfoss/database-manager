@@ -61,7 +61,7 @@ public class MyDataTypeTests
     [Fact]
     public void UnknownDataType_RewindsAndFallsThroughToExpectedTypeError()
     {
-        var state = new ParserState([.. new MyLexer().Tokenize("unknown_type")]);
+        var state = new ParserState(Grammar.My, [.. new MyLexer().Tokenize("unknown_type")]);
 
         Assert.Throws<ParseException.ExpectedButFound>(() => new MyParser().DataTypeParser.ParseDataType(state));
     }
@@ -285,15 +285,15 @@ public class MyDataTypeTests
     {
         var parser = new MyParser();
 
-        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(new ParserState([.. new MyLexer().Tokenize(sql)])));
-        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState([.. new MyLexer().Tokenize(sql)])));
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReference(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)])));
+        Assert.ThrowsAny<ParseException>(() => parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)])));
     }
 
     [Fact]
     public void ConversionReferences_PreserveMySqlTypeGrammar()
     {
         var parser = new MyParser();
-        var reference = Assert.IsType<DataTypeReference.BuiltIn>(parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState([.. new MyLexer().Tokenize("CHAR")])));
+        var reference = Assert.IsType<DataTypeReference.BuiltIn>(parser.DataTypeParser.ParseDataTypeReferenceForConvert(new ParserState(Grammar.My, [.. new MyLexer().Tokenize("CHAR")])));
 
         Assert.IsType<MyDataType.MyCharOptionalLength>(reference.DataType);
     }
@@ -303,7 +303,7 @@ public class MyDataTypeTests
     [InlineData("NATIONAL")]
     public void ConvertTypeFallback_HandlesNonWordAndIncompleteNationalType(string sql)
     {
-        var state = new ParserState([.. new MyLexer().Tokenize(sql)]);
+        var state = new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)]);
 
         Assert.ThrowsAny<ParseException>(() => new MyParser().DataTypeParser.ParseDataTypeForConvert(state));
     }
@@ -313,7 +313,7 @@ public class MyDataTypeTests
     {
         var lexer = new MyLexer();
         var parser = new MyParser();
-        var state = new ParserState([.. lexer.Tokenize(text)]);
+        var state = new ParserState(Grammar.My, [.. lexer.Tokenize(text)]);
         return parser.DataTypeParser.ParseDataType(state);
     }
 

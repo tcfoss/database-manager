@@ -1,15 +1,11 @@
-using System.Text;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.Configuration;
-using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
-using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -269,7 +265,10 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("COMMENT ON FUNCTION f(app.users.id%TYPE) IS 'function'")]
     [InlineData("ALTER FUNCTION f(app.users.id%TYPE) IMMUTABLE")]
     [InlineData("DROP FUNCTION f(app.users.id%TYPE)")]
-    public void PgTypeOfReferences_AreRestrictedToRoutineDefinitions(string sql)
+    [InlineData("CREATE TABLE sample (value app.users%ROWTYPE)")]
+    [InlineData("SELECT CAST(NULL AS app.users.id%TYPE)")]
+    [InlineData("SELECT CAST(NULL AS app.users%ROWTYPE)")]
+    public void PgAnchoredTypeReferences_RejectNonDeclarationContexts(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
@@ -281,6 +280,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("app.users.%TYPE")]
     [InlineData("app.users.id%")]
     [InlineData("app.users.id%ROWTYPE")]
+    [InlineData("app.users%ROWTYPE[]")]
     public void RoutineReturnTypes_RejectMalformedAnchoredReferences(string returnType)
     {
         Assert.ThrowsAny<ParseException>(() =>
@@ -391,6 +391,11 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("LOOP SELECT 1; END LOOP;", Label = "Loop")]
     [InlineData("WHILE TRUE LOOP SELECT 1; END LOOP;", Label = "While loop")]
     [InlineData("FOR value IN SELECT 1 LOOP SELECT 1; END LOOP;", Label = "For loop")]
+    [InlineData("FOR value IN 1 .. 2 LOOP SELECT 1; END LOOP;", Label = "Integer for loop")]
+    [InlineData("FOR value IN EXECUTE 'SELECT 1' USING 1 LOOP SELECT 1; END LOOP;", Label = "Dynamic query for loop")]
+    [InlineData("FOREACH value IN ARRAY $1 LOOP SELECT 1; END LOOP;", Label = "Foreach loop")]
+    [InlineData("EXIT label WHEN TRUE;", Label = "PostgreSQL exit")]
+    [InlineData("CONTINUE WHEN TRUE;", Label = "PostgreSQL continue")]
     [InlineData("LEAVE outer_loop;", Label = "MySQL leave")]
     [InlineData("ITERATE outer_loop;", Label = "MySQL iterate")]
     [InlineData("OPEN cursor_name;", Label = "Procedural cursor open")]
@@ -399,6 +404,25 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("RAISE NOTICE 'message';", Label = "Raise")]
     [InlineData("PERFORM app.work();", Label = "Perform")]
     [InlineData("EXECUTE 'SELECT 1';", Label = "Dynamic execution")]
+    [InlineData("COMMIT AND CHAIN;", Label = "Procedure transaction control")]
+    [InlineData("ROLLBACK AND NO CHAIN;", Label = "Procedure transaction control")]
+    [InlineData("BEGIN WORK;", Label = "SQL transaction begin")]
+    [InlineData("START TRANSACTION READ ONLY;", Label = "SQL transaction start")]
+    [InlineData("END WORK AND CHAIN;", Label = "SQL commit alias")]
+    [InlineData("ABORT AND NO CHAIN;", Label = "SQL rollback alias")]
+    [InlineData("SAVEPOINT checkpoint;", Label = "SQL savepoint declaration")]
+    [InlineData("RELEASE SAVEPOINT checkpoint;", Label = "SQL savepoint release")]
+    [InlineData("ROLLBACK TO SAVEPOINT checkpoint;", Label = "SQL savepoint rollback")]
+    [InlineData("SET TRANSACTION READ ONLY;", Label = "SQL transaction characteristics")]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id';", Label = "SQL transaction snapshot")]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;", Label = "SQL session transaction characteristics")]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED;", Label = "SQL constraint timing for all constraints")]
+    [InlineData("SET CONSTRAINTS app.fk_orders IMMEDIATE;", Label = "SQL constraint timing for named constraints")]
+    [InlineData("PREPARE TRANSACTION 'transaction_id';", Label = "SQL transaction preparation")]
+    [InlineData("COMMIT PREPARED 'transaction_id';", Label = "SQL prepared transaction commit")]
+    [InlineData("ROLLBACK PREPARED 'transaction_id';", Label = "SQL prepared transaction rollback")]
+    [InlineData("DECLARE copied app.items.id%TYPE; BEGIN NULL; END;", Label = "Procedural copied-type declaration")]
+    [InlineData("DECLARE rowvar app.items%ROWTYPE; BEGIN NULL; END;", Label = "Procedural row-type declaration")]
     [InlineData("RETURN NEXT 1;", Label = "Return next")]
     [InlineData("RETURN QUERY SELECT 1;", Label = "Return query")]
     [InlineData("EXCEPTION WHEN OTHERS THEN SELECT 1;", Label = "Exception handler")]
@@ -762,7 +786,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
 
     [Theory]
     [InlineData("BEGIN SELECT 1; END", Label = "Plain block")]
-    [InlineData("label: SELECT 1", Label = "Statement label")]
+    [InlineData("<<label>> BEGIN NULL; END label", Label = "Statement label")]
     [InlineData("DECLARE failed CONDITION FOR SQLSTATE '45000'", Label = "Condition declaration")]
     [InlineData("DECLARE CONTINUE HANDLER FOR SQLSTATE '45000' SELECT 1", Label = "Handler declaration")]
     [InlineData("OPEN cursor_name", Label = "Cursor open")]
@@ -770,17 +794,19 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("LEAVE outer_loop", Label = "Leave")]
     [InlineData("ITERATE outer_loop", Label = "Iterate")]
     [InlineData("USE app", Label = "Use")]
-    public void SqlOnlyContext_NarrowsOnlyWhenEnabled(string sql)
+    public void SqlGrammar_RejectsProceduralSyntax(string sql)
     {
-        Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+        ParserState coreState = new(Grammar.All, GetTokens(sql));
+        Assert.IsType<Statement>(Assert.Single(new Parser().Parse(coreState, null)), exactMatch: false);
 
         ParserState state = GetState(sql);
-        using (state.EnterContext(ParseContext.NarrowSqlOnly))
+        using (state.EnterGrammarContext(Grammar.Pg))
         {
-            Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
-            Assert.Equal(ParseContext.NarrowSqlOnly, state.Context);
+            Assert.ThrowsAny<ParseException>(() => new PgParser().Parse(state, null));
+            Assert.Equal(Grammar.Pg, state.Grammar);
             Assert.Null(state.StatementLabel);
         }
+        Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
         Assert.Equal(ParseContext.None, state.Context);
     }
 
@@ -790,15 +816,16 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("AS $$BEGIN SELECT 1; END$$", Label = "Opaque body")]
     public void SqlOnlyContext_RoutineScopeRestoresPreviousFlags(string body)
     {
-        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL {body}; BEGIN SELECT 2; END; label: SELECT 3");
+        ParserState state = GetState($"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL {body}; BEGIN SELECT 2; END; <<label>> BEGIN NULL; END label");
         using (state.EnterContext(ParseContext.DomainCheck))
         {
             var statements = new PgParser().Parse(state, null);
             Assert.Equal(3, statements.Count);
             Assert.IsType<CreateFunction>(statements[0]);
             Assert.IsType<BeginEnd>(statements[1]);
-            Assert.IsType<LabeledStatement>(statements[2]);
+            Assert.IsType<LabeledStatement.Pg>(statements[2]);
             Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
             Assert.Null(state.StatementLabel);
             Assert.IsType<Eof>(state.Peek());
         }
@@ -808,6 +835,9 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("BEGIN ATOMIC BEGIN SELECT 1; END; END", Label = "Rejected procedural block")]
     [InlineData("BEGIN ATOMIC label: SELECT 1; END", Label = "Rejected label")]
+    [InlineData("BEGIN ATOMIC <<label>> BEGIN NULL; END label; END", Label = "Rejected PostgreSQL label")]
+    [InlineData("BEGIN ATOMIC DECLARE value INT; BEGIN NULL; END; END", Label = "Rejected PostgreSQL declarations")]
+    [InlineData("BEGIN ATOMIC NULL; END", Label = "Rejected procedural NULL")]
     [InlineData("BEGIN ATOMIC SELECT 1 END", Label = "Missing terminator")]
     [InlineData("RETURN", Label = "Missing return expression")]
     public void SqlOnlyContext_RoutineScopeRestoresPreviousFlagsAfterFailure(string body)
@@ -817,6 +847,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         {
             Assert.ThrowsAny<ParseException>(() => new PgParser().ParseStatement(state));
             Assert.Equal(ParseContext.DomainCheck, state.Context);
+            Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
             Assert.Null(state.StatementLabel);
         }
         Assert.Equal(ParseContext.None, state.Context);
@@ -921,22 +952,25 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
         var procedure = Assert.IsType<CreateProcedure>(ParseStatement("CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC DECLARE result CURSOR FOR SELECT id FROM app.items; CLOSE result; END"));
         var body = Assert.IsType<BeginAtomic>(procedure.Body);
         Assert.IsType<DeclareCursor>(body.Statements[0]);
-        Assert.IsType<Close>(body.Statements[1]);
+        Assert.IsType<Close.Named>(body.Statements[1]);
         Assert.Equal(procedure.ToSql(), ParseStatement(procedure.ToSql()).ToSql());
     }
 
-    private static string Format(IWriteSql statement)
+    [Fact]
+    public void AtomicBodies_RetainSqlFetchAndCloseAll()
     {
-        var names = new FunctionNameProvider();
-        var manager = new FormatManager
-        {
-            Formatting = new FormattingSettings { Quoting = IdentifierQuotationHandling.LeaveOriginal },
-            FunctionNameProvider = names,
-            ComponentNormalizer = new ComponentNormalizer(QuoteStyle.Ansi, names),
-            Indenter = new Indenter()
-        };
-        using var writer = new SqlTextWriter(new StringBuilder());
-        statement.FormatSql(writer, manager);
-        return writer.ToString();
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement(
+            "CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC FETCH FORWARD 2 FROM cursor_name; CLOSE ALL; END"));
+        var body = Assert.IsType<BeginAtomic>(procedure.Body);
+        var fetch = Assert.IsType<Fetch>(body.Statements[0]);
+        var direction = Assert.IsType<CursorDirection.Forward>(fetch.Direction);
+        var quantifier = Assert.IsType<PgCursorDirectionQuantifier.Specified>(direction.Quantifier);
+        Assert.Equal("2", quantifier.Count.ToSql());
+        Assert.Null(fetch.Targets);
+        Assert.IsType<Close.All>(body.Statements[1]);
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+        Statement[] statements = [procedure];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
     }
 }

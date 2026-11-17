@@ -90,7 +90,7 @@ public class PgSimpleStatementParserTests : ParserTestsBase<PgLexer, PgParser>
     public void SelectTails_PreserveLockTargetSourcesAndAtomicBodyBoundaries()
     {
         const string sql = "CREATE PROCEDURE app.run() LANGUAGE SQL BEGIN ATOMIC SELECT 1 FROM app.items AS i ORDER BY app.sort_value() LIMIT app.count_rows() OFFSET app.skip_rows() FOR NO KEY UPDATE OF i NOWAIT; SELECT 2 AS value FETCH NEXT ROW ONLY; END";
-        var state = new ParserState(GetTokens(sql), 73);
+        var state = new ParserState(Grammar.Pg | Grammar.PgPl, GetTokens(sql), 73);
         var procedure = Assert.IsType<CreateProcedure>(new PgParser().ParseStatement(state));
         var body = Assert.IsType<BeginAtomic>(procedure.Body);
         Select[] selects = [.. body.Statements.OfType<Select>()];

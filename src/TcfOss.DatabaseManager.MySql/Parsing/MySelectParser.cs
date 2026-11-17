@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MySql.Parsing;
 
-public class MySelectParser(Parser parser) : SelectParser(parser)
+public class MySelectParser(ParserBase parser) : SelectParser(parser)
 {
     /// <inheritdoc/>
     protected override Statement ParseCteBodyQuery(ParserState state)

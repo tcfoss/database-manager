@@ -57,7 +57,7 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         var actualTokens = new GenericLexer().Tokenize("'dog'");
-        var state = new ParserState([.. actualTokens]);
+        var state = new ParserState(Grammar.All, [.. actualTokens]);
         var actual = parser.ComponentParser.ParseIdentifier(state);
         var expected = new Identifier("dog", parser.DefaultQuoteStyle);
 
@@ -75,7 +75,7 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         var tokens = new GenericLexer().Tokenize(badSql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
 
         Assert.Throws<ParseException.ExpectedButFound>(() => parser.ComponentParser.ParseIdentifier(state));
     }
@@ -118,7 +118,7 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
         var parser = new Parser();
 
         var tokens = new GenericLexer().Tokenize(badSql);
-        var state = new ParserState([.. tokens]);
+        var state = new ParserState(Grammar.All, [.. tokens]);
 
         var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ComponentParser.ParseObjectName(state));
         var expectedTemplate = "Expected {0}. Found {1}.";

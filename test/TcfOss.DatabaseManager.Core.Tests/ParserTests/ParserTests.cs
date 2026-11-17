@@ -219,13 +219,28 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("SELECT a, b INTO result FROM source")]
     [InlineData("SELECT a FROM source INTO result")]
     [InlineData("SELECT a, b FROM source INTO result")]
-    public void SelectInto_SingleName_DefaultsToTableTarget(string sql)
+    public void SelectInto_SingleName_UsesTableTargetWithoutProceduralGrammar(string sql)
     {
-        var select = Assert.IsType<Select>(ParseStatement(sql));
+        var state = new ParserState(Grammar.All & ~Grammar.PgPl, GetTokens(sql));
+        var select = Assert.IsType<Select>(ParseStatement(state));
         SelectInto? target = select.SelectInto ?? (select.Body as SelectBody.SimpleSelectQuery)?.Query.SelectInto;
 
         var into = Assert.IsType<SelectInto.SelectIntoTable>(target);
         Assert.Equal(new ObjectName([new Identifier("result")]), into.Name);
+    }
+
+    [Theory]
+    [InlineData("SELECT 1 INTO first_result FROM source INTO second_result")]
+    [InlineData("(SELECT 1 INTO first_result) ORDER BY 1 INTO second_result")]
+    [InlineData("SELECT 1 INTO first_result UNION SELECT 2 ORDER BY 1 INTO second_result")]
+    public void SelectInto_RejectsDuplicateClausesWithoutProceduralGrammar(string sql)
+    {
+        foreach (Grammar grammar in new[] { Grammar.My, Grammar.Ms, Grammar.Pg })
+        {
+            var state = new ParserState(grammar, GetTokens(sql));
+            Assert.Throws<ParseException.Duplicate>(() => ParseStatements(state));
+            Assert.Equal(sql.LastIndexOf("INTO", StringComparison.Ordinal), state.Peek().Location.Position);
+        }
     }
 
     [Fact]
@@ -288,7 +303,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     public void StatementLabels_PreserveNamesAndSource(string labelSql)
     {
         string sql = labelSql + " /* gap */ : SELECT 1";
-        var statement = Assert.IsType<LabeledStatement>(Assert.Single(new Parser().Parse(GetTokens(sql), sourceId: 7)));
+        var statement = Assert.IsType<LabeledStatement.My>(Assert.Single(new Parser().Parse(GetTokens(sql), sourceId: 7)));
 
         Assert.IsType<Select>(statement.SubStatement);
         Assert.Equal(labelSql, statement.Label.ToSql());
@@ -303,7 +318,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [Fact]
     public void StatementLabels_PreserveLeadingTrivia()
     {
-        var statement = Assert.IsType<LabeledStatement>(ParseStatement("/* leading */ label: SELECT 1"));
+        var statement = Assert.IsType<LabeledStatement.My>(ParseStatement("/* leading */ label: SELECT 1"));
 
         Assert.Equal(0, statement.Meta.Start);
         Assert.NotEmpty(statement.Meta.PreNonSql!);
@@ -315,7 +330,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("/* leading */ label: SELECT 1 /* trailing */;", "/* leading */ label: SELECT 1 /* trailing */", true)]
     public void StatementLabels_PreserveCompleteSourceSpans(string sql, string expectedSource, bool hasTerminator)
     {
-        var statement = Assert.IsType<LabeledStatement>(new Parser().Parse(GetTokens(sql))[0]);
+        var statement = Assert.IsType<LabeledStatement.My>(new Parser().Parse(GetTokens(sql))[0]);
 
         Assert.Equal(0, statement.Meta.Start);
         Assert.Equal(expectedSource.Length, statement.Meta.End);
@@ -493,7 +508,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var lexer = new GenericLexer();
         var parser = new Parser();
         var tokens = lexer.Tokenize("");
-        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState(Grammar.All, [.. tokens])));
 
         Assert.Contains("SQL statement", exception.Message);
     }
@@ -504,7 +519,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var lexer = new GenericLexer();
         var parser = new Parser();
         var tokens = lexer.Tokenize("ASC");
-        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+        var exception = Assert.Throws<ParseException.ExpectedButFound>(() => parser.ParseStatement(new ParserState(Grammar.All, [.. tokens])));
 
         Assert.Contains("SQL statement", exception.Message);
     }
@@ -537,7 +552,7 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         var lexer = new GenericLexer();
         var parser = new Parser();
         var tokens = lexer.Tokenize("WITH cte AS (SELECT 1) ASC");
-        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState([.. tokens])));
+        var exception = Assert.Throws<ParseException.ExpectedOneOfButFound>(() => parser.ParseStatement(new ParserState(Grammar.All, [.. tokens])));
 
         Assert.Contains("{ SELECT | VALUES | INSERT | UPDATE | DELETE }", exception.Message);
     }
@@ -596,5 +611,287 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     public void Statement_Call_TextMatch(string sql)
     {
         Assert.Equal(sql, Assert.IsType<Call>(ParseStatement(sql)).ToSql());
+    }
+
+    [Theory]
+    [InlineData("BEGIN FETCH FIRST FROM cursor_name INTO result; END")]
+    [InlineData("BEGIN FETCH ABSOLUTE -2 FROM cursor_name INTO result; END")]
+    public void CursorFetch_AllGrammarRetainsPostgresDirections(string sql)
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement(sql));
+        var fetch = Assert.Single(block.Statements.OfType<Fetch>());
+
+        Assert.NotNull(fetch.Direction);
+        Assert.Equal(CursorNameConnector.From, fetch.Connector);
+        Assert.Equal("result", Assert.Single(fetch.Targets!).ToSql());
+        Assert.Equal(block, ParseStatement(block.ToSql()));
+        Assert.Equal(block, ParseStatement(Format(block)));
+    }
+
+    [Theory]
+    [InlineData("BEGIN WORK READ ONLY")]
+    [InlineData("START TRANSACTION ISOLATION LEVEL SERIALIZABLE")]
+    [InlineData("END TRANSACTION AND CHAIN")]
+    [InlineData("ABORT WORK AND NO CHAIN")]
+    public void TransactionLifecycle_AllGrammarRetainsPostgresSqlForms(string sql)
+    {
+        var statement = Assert.IsType<Statement>(ParseStatement(sql), exactMatch: false);
+
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("START TRANSACTION WITH CONSISTENT SNAPSHOT")]
+    [InlineData("START TRANSACTION READ ONLY")]
+    [InlineData("BEGIN START TRANSACTION WITH CONSISTENT SNAPSHOT; COMMIT; END")]
+    public void StartTransaction_AllGrammarSupportsMySqlRoutineBodies(string body)
+    {
+        var procedure = Assert.IsType<CreateProcedure>(ParseStatement($"CREATE PROCEDURE p() {body}"));
+
+        Assert.Equal(procedure, ParseStatement(procedure.ToSql()));
+        Assert.Equal(procedure, ParseStatement(Format(procedure)));
+    }
+
+    [Fact]
+    public void StartTransaction_RetainsModesWithMySqlGrammar()
+    {
+        const string sql = "START TRANSACTION READ ONLY";
+        var state = new ParserState(Grammar.My, GetTokens(sql));
+
+        Assert.Equal(sql, ParseStatement(state).ToSql());
+    }
+
+    [Theory]
+    [InlineData("START REPLICA")]
+    [InlineData("START GROUP_REPLICATION")]
+    [InlineData("CREATE PROCEDURE p() BEGIN ATOMIC START TRANSACTION; END")]
+    public void StartTransaction_RejectsOtherCommandsAndAtomicBodyTransactions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("SAVEPOINT checkpoint", typeof(Savepoint))]
+    [InlineData("RELEASE SAVEPOINT checkpoint", typeof(Release))]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT checkpoint", typeof(Rollback.ToSavepoint))]
+    public void Savepoints_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("SET TRANSACTION READ ONLY, DEFERRABLE", typeof(SetTransaction.Characteristics))]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE", typeof(SetTransaction.Characteristics))]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id'", typeof(SetTransaction.Snapshot))]
+    public void TransactionCharacteristics_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("SET transaction = 1")]
+    [InlineData("SET transaction.mode = 1")]
+    [InlineData("SET session = 1")]
+    public void TransactionCharacteristics_AllGrammarPreservesSetAssignments(string sql)
+    {
+        var statement = Assert.IsType<SetVariable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED", typeof(SetConstraints.All))]
+    [InlineData("SET CONSTRAINTS \"ALL\" IMMEDIATE", typeof(SetConstraints.Named))]
+    [InlineData("SET CONSTRAINTS app.fk_orders, fk_items DEFERRED", typeof(SetConstraints.Named))]
+    public void ConstraintTiming_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("SET constraints = 1")]
+    [InlineData("SET constraints.mode = 1")]
+    public void ConstraintTiming_AllGrammarPreservesSetAssignments(string sql)
+    {
+        var statement = Assert.IsType<SetVariable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void ConstraintTiming_DoesNotExpandOtherDialectGrammars(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("SET CONSTRAINTS ALL DEFERRED"));
+
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("PREPARE TRANSACTION 'transaction_id'", typeof(PrepareTransaction))]
+    [InlineData("COMMIT PREPARED 'transaction_id'", typeof(Commit.Prepared))]
+    [InlineData("ROLLBACK PREPARED 'transaction_id'", typeof(Rollback.Prepared))]
+    public void TwoPhaseTransactions_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void TwoPhaseTransactions_DoNotExpandOtherDialectGrammars(Grammar grammar)
+    {
+        string[] commands = ["PREPARE TRANSACTION", "COMMIT PREPARED", "ROLLBACK PREPARED"];
+        foreach (string command in commands)
+        {
+            var state = new ParserState(grammar, GetTokens($"{command} 'transaction_id'"));
+            Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        }
+    }
+
+    [Theory]
+    [InlineData("PREPARE stmt FROM 'SELECT 1'", typeof(Prepare.FromString))]
+    [InlineData("PREPARE stmt FROM @query", typeof(Prepare.FromVariable))]
+    [InlineData("PREPARE TRANSACTION FROM 'SELECT 1'", typeof(Prepare.FromString))]
+    [InlineData("PREPARE TRANSACTION FROM @query", typeof(Prepare.FromVariable))]
+    public void Prepare_AllGrammarFallsBackToMySqlStatements(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg)]
+    [InlineData(Grammar.PgPl)]
+    [InlineData(Grammar.Ms)]
+    public void Prepare_StatementFallbackDoesNotExpandOtherDialectGrammars(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("PREPARE stmt FROM 'SELECT 1'"));
+
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("DECLARE copied app.items.id%TYPE; BEGIN NULL; END")]
+    [InlineData("DECLARE rowvar app.items%ROWTYPE; BEGIN NULL; END")]
+    [InlineData("DECLARE copies original%TYPE ARRAY; BEGIN NULL; END")]
+    public void AnchoredDeclarations_AllGrammarRetainsPlPgSqlReferences(string sql)
+    {
+        var statement = Assert.IsType<BeginEnd>(ParseStatement(sql));
+
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData(Grammar.My, "IF 1 = 1 THEN SELECT 1; END IF")]
+    [InlineData(Grammar.PgPl, "IF TRUE THEN SELECT 1; END IF")]
+    [InlineData(Grammar.Ms, "IF 1 = 1 SELECT 1")]
+    [InlineData(Grammar.My, "WHILE 1 = 1 DO SELECT 1; END WHILE")]
+    [InlineData(Grammar.PgPl, "WHILE TRUE LOOP SELECT 1; END LOOP")]
+    [InlineData(Grammar.Ms, "WHILE 1 = 1 SELECT 1")]
+    [InlineData(Grammar.Pg, "FETCH ABSOLUTE -1 FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH RELATIVE 2 FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH PRIOR FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH LAST FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH FORWARD cursor_one")]
+    [InlineData(Grammar.Pg, "SET SESSION = 1")]
+    [InlineData(Grammar.Ms | Grammar.PgPl, "DECLARE value INT; BEGIN NULL; END")]
+    public void ControlFlow_ExplicitGrammarSelectsTheSharedDialectSyntax(Grammar grammar, string sql)
+    {
+        var state = new ParserState(grammar, GetTokens(sql));
+        IWriteSql statement = ParseStatement(state);
+
+        Assert.Equal(statement, ParseStatement(new ParserState(grammar, GetTokens(statement.ToSql()))));
+        Assert.Equal(statement, ParseStatement(new ParserState(grammar, GetTokens(Format(statement)))));
+        Assert.Equal(grammar, state.Grammar);
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg, "IF TRUE THEN SELECT 1; END IF")]
+    [InlineData(Grammar.My, "IF TRUE THEN SELECT 1")]
+    [InlineData(Grammar.My, "IF TRUE THEN SELECT 1;")]
+    [InlineData(Grammar.My, "WHILE TRUE LOOP SELECT 1; END LOOP")]
+    [InlineData(Grammar.Ms, "WHILE 1 = 1")]
+    [InlineData(Grammar.Ms, "IF 1 = 1")]
+    [InlineData(Grammar.None, "DECLARE cursor_one CURSOR FOR SELECT 1")]
+    [InlineData(Grammar.All, "DECLARE value; BEGIN SELECT 1; END")]
+    [InlineData(Grammar.All, "<<label>>DECLARE value; BEGIN SELECT 1; END")]
+    [InlineData(Grammar.All, "BEGIN OPEN cursor_one(named = 1); END")]
+    [InlineData(Grammar.PgPl, "MOVE cursor_one")]
+    [InlineData(Grammar.My, "IF TRUE THEN")]
+    [InlineData(Grammar.PgPl, "BEGIN IF TRUE THEN")]
+    [InlineData(Grammar.PgPl, "DECLARE cursor_one NO 1; BEGIN NULL; END")]
+    [InlineData(Grammar.PgPl, "DECLARE cursor_one NO OTHER; BEGIN NULL; END")]
+    [InlineData(Grammar.Pg, "SET SESSION UNEXPECTED")]
+    [InlineData(Grammar.All, "BEGIN RETURN QUERY SELECT 1 INTO result; END")]
+    public void ControlFlow_RejectsUnsupportedGrammarAndIncompleteBodies(Grammar grammar, string sql)
+    {
+        var state = new ParserState(grammar, GetTokens(sql));
+
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.Equal(grammar, state.Grammar);
+    }
+
+    [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    [InlineData(Grammar.Pg)]
+    public void DeclarationTypeReference_OutsidePlPgSqlAcceptsOrdinaryTypes(Grammar grammar)
+    {
+        var parser = new Parser();
+        var state = new ParserState(grammar, GetTokens("VARCHAR(10)"));
+
+        var reference = parser.DataTypeParser.ParseDeclarationDataTypeReference(state);
+
+        Assert.Equal("VARCHAR(10)", reference.ToSql());
+    }
+
+    [Fact]
+    public void ProceduralBodyEntryPoint_RejectsTruncatedDeclare()
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens("DECLARE"));
+
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() =>
+            new Parser().ControlFlowParser.ParsePgPlBeginEnd(state));
+
+        Assert.Contains("BEGIN", error.Message);
+    }
+
+    [Theory]
+    [InlineData("SELECT TOP 5 value FROM items")]
+    [InlineData("SELECT TOP (5) PERCENT WITH TIES value FROM items ORDER BY value")]
+    public void SelectTop_FormattingPreservesLimitAndModifiers(string sql)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(statement.ToSql(), ParseStatement(Format(statement)).ToSql());
     }
 }

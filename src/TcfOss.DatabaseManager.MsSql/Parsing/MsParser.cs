@@ -3,7 +3,6 @@ using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
-using TcfOss.DatabaseManager.Core.Extensions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -24,7 +23,6 @@ public class MsParser : Parser
 
     public override QuoteStyle DefaultQuoteStyle => QuoteStyle.Brackets;
     public override bool SupportsPostgresCastSyntax => false;
-    public override bool SupportsPostgresRegexOperators => false;
     public override bool SupportsPostgresIdentitySyntax => false;
     public override bool SupportsPostgresColumnCollationSyntax => false;
     public override bool SupportsPostgresColumnAlterSyntax => false;
@@ -34,8 +32,6 @@ public class MsParser : Parser
     public override bool SupportsPostgresExpressionCollationSyntax => false;
     public override bool SupportsPostgresArrayAndRowExpressionSyntax => false;
     public override bool SupportsPostgresOperatorSyntax => false;
-    public override bool SupportsPostgresIntervalLiteralSyntax => false;
-    protected override bool SupportsCommentOn => false;
 
     public MsParser()
     {
@@ -99,63 +95,6 @@ public class MsParser : Parser
         };
     }
 
-    public override SqlValueList<Statement> Parse(ParserState state, EndSubstatements? endChecker)
-    {
-        SqlValueList<Statement> statements = [];
-        bool expectingTerminator = false;
-
-        while (true)
-        {
-            while (state.ConsumeTokenIs<Semicolon>())
-            {
-                expectingTerminator = false;
-            }
-
-            Token next = state.Peek();
-            if (next is Eof)
-            {
-                if (endChecker != null)
-                {
-                    throw endChecker.GetEofException(state);
-                }
-                if (next.PreNonSql.SafeAny())
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            if (endChecker?.GetFinished(state) ?? false)
-            {
-                if (next.PreNonSql.SafeAny())
-                {
-                    statements.Add(next.PreNonSql.ToInertOnly());
-                }
-                break;
-            }
-
-            // A GO batch separator implicitly ends the previous statement;
-            // it does not need a preceding semicolon.
-            if (next is MsBatchSeparatorToken)
-            {
-                expectingTerminator = false;
-            }
-
-            if (expectingTerminator)
-            {
-                throw ParserState.ExpectedException("end of statement", next);
-            }
-
-            Statement statement = ParseStatement(state);
-            statements.Add(statement);
-
-            // GO itself does not need a terminator afterwards.
-            expectingTerminator = statement is not MsBatchSeparatorStatement;
-        }
-
-        return statements;
-    }
-
     protected override Statement ParseNormalStatement(ParserState state, Token token)
     {
         return token switch
@@ -170,11 +109,8 @@ public class MsParser : Parser
         return first.Keyword switch
         {
             Keyword.EXEC or Keyword.EXECUTE => ParseExecute(state, first.Keyword),
-            Keyword.WHILE => ParseWhile(state),
             Keyword.BREAK => ParseBreak(state),
             Keyword.CONTINUE => ParseContinue(state),
-            Keyword.COMMIT => ParseCommit(state),
-            Keyword.ROLLBACK => ParseRollback(state),
             Keyword.SAVE => ParseSaveTransaction(state),
             Keyword.PRINT => ParsePrint(state),
             Keyword.THROW => ParseThrow(state),
@@ -182,6 +118,23 @@ public class MsParser : Parser
             Keyword.REFRESH => throw ParserState.ExpectedException("SQL statement".Italic(), first),
             _ => base.ParseKeywordStatement(state, first)
         };
+    }
+
+    protected override bool ConsumeTerminators(ParserState state, ref ParserRunState runState, bool expectingTerminator)
+    {
+        expectingTerminator = base.ConsumeTerminators(state, ref runState, expectingTerminator);
+        if (state.Peek() is MsBatchSeparatorToken)
+        {
+            return false; // MsBatchSeparatorToken acts as a terminator itself
+        }
+        return expectingTerminator;
+    }
+
+    protected override bool ParseNextStatement(ParserState state, ref ParserRunState runState, SqlValueList<Statement> statements)
+    {
+        Statement statement = ParseStatement(state);
+        statements.Add(statement);
+        return statement is not MsBatchSeparatorStatement;
     }
 
     protected override Statement ParseAlter(ParserState state)
@@ -324,18 +277,6 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>WHILE</c> loop:
-    /// <c>WHILE &lt;bool-expr&gt; &lt;stmt&gt;</c>.
-    /// </summary>
-    private While ParseWhile(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.WHILE);
-        Expression condition = ExpressionParser.ParseExpr(state);
-        Statement body = ParseStatement(state);
-        return new While(condition, body);
-    }
-
-    /// <summary>
     /// Parses a T-SQL <c>BREAK</c> statement.
     /// </summary>
     private static Break ParseBreak(ParserState state)
@@ -373,7 +314,14 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>BEGIN TRY … END TRY BEGIN CATCH … END CATCH</c> block.
+    /// <code><![CDATA[
+    /// BEGIN TRY
+    ///     statements
+    /// END TRY
+    /// BEGIN CATCH
+    ///     statements
+    /// END CATCH</c> block.
+    /// ]]></code>
     /// </summary>
     private MsTryCatch ParseTryCatch(ParserState state)
     {
@@ -397,94 +345,29 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>BEGIN { TRAN | TRANSACTION } [transaction_name]</c>.
+    /// <code><![CDATA[
+    /// BEGIN { TRAN | TRANSACTION } [ name ]
+    /// ]]></code>
     /// </summary>
-    private MsBeginTransaction ParseBeginTransaction(ParserState state)
+    public MsBeginTransaction ParseBeginTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.BEGIN);
-        TransactionNoun noun = ParseTransactionNoun(state);
-        Identifier? name = TryParseTransactionName(state);
+        TransactionNoun noun = ControlFlowParser.ParseRequiredTransactionNoun(state);
+        Identifier? name = ControlFlowParser.ParseTransactionName(state, noun);
         return new MsBeginTransaction(noun) { Name = name };
     }
 
     /// <summary>
-    /// Parses a T-SQL <c>COMMIT [ { TRAN | TRANSACTION } [ transaction_name ] ]</c>.
+    /// <code><![CDATA[
+    /// SAVE { TRAN | TRANSACTION } savepoint_name
+    /// ]]>
     /// </summary>
-    private MsCommit ParseCommit(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.COMMIT);
-        TransactionNoun? noun = TryParseTransactionNoun(state);
-        Identifier? name = noun != null ? TryParseTransactionName(state) : null;
-        return new MsCommit { Noun = noun, Name = name };
-    }
-
-    /// <summary>
-    /// Parses a T-SQL <c>ROLLBACK [ { TRAN | TRANSACTION } [ transaction_or_savepoint_name ] ]</c>.
-    /// </summary>
-    private MsRollback ParseRollback(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.ROLLBACK);
-        TransactionNoun? noun = TryParseTransactionNoun(state);
-        Identifier? name = noun != null ? TryParseTransactionName(state) : null;
-        return new MsRollback { Noun = noun, Name = name };
-    }
-
-    /// <summary>
-    /// Parses a T-SQL <c>SAVE { TRAN | TRANSACTION } savepoint_name</c>.
-    /// </summary>
-    private MsSaveTransaction ParseSaveTransaction(ParserState state)
+    public MsSaveTransaction ParseSaveTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.SAVE);
-        TransactionNoun noun = ParseTransactionNoun(state);
-        Identifier name = ComponentParser.ParseIdentifier(state);
+        TransactionNoun noun = ControlFlowParser.ParseRequiredTransactionNoun(state);
+        Identifier name = ComponentParser.ParseIdentifier(state, "savepoint_name");
         return new MsSaveTransaction(noun, name);
-    }
-
-    /// <summary>
-    /// Parses a required T-SQL <c>TRAN</c> or <c>TRANSACTION</c> keyword.
-    /// </summary>
-    private static TransactionNoun ParseTransactionNoun(ParserState state)
-    {
-        if (state.Peek() is Word { Keyword: Keyword.TRAN or Keyword.TRANSACTION } word)
-        {
-            state.Next();
-            return TransactionNoun.Parse(word.Value);
-        }
-        throw state.ExpectedException("TRAN", "TRANSACTION");
-    }
-
-    /// <summary>
-    /// Parses an optional <c>TRAN</c> or <c>TRANSACTION</c> keyword if present and
-    /// returns the corresponding <see cref="TransactionNoun"/>, or null if
-    /// neither is next.
-    /// </summary>
-    private static TransactionNoun? TryParseTransactionNoun(ParserState state)
-    {
-        Keyword keyword = state.ParseKeywordsAny(Keyword.TRAN, Keyword.TRANSACTION);
-        return keyword == Keyword.undefined ? null : TransactionNoun.Parse(keyword.ToString());
-    }
-
-    private Identifier? TryParseTransactionName(ParserState state)
-    {
-        return state.Peek() is Word { Keyword: Keyword.undefined }
-            ? ComponentParser.ParseIdentifier(state)
-            : null;
-    }
-
-    /// <summary>
-    /// Parses a T-SQL <c>RETURN</c> statement. The return expression is
-    /// optional (procedures return a status code, functions may return a
-    /// value). When the next token starts a new statement or terminator,
-    /// <see cref="Return.Body"/> is left null.
-    /// </summary>
-    protected override Return ParseReturn(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.RETURN);
-        if (IsStatementTerminator(state.Peek()))
-        {
-            return new Return(null);
-        }
-        return new Return(ExpressionParser.ParseExpr(state));
     }
 
     /// <summary>
@@ -505,7 +388,7 @@ public class MsParser : Parser
     private MsThrow ParseThrow(ParserState state)
     {
         state.ExpectKeyword(Keyword.THROW);
-        if (IsStatementTerminator(state.Peek()))
+        if (IsStatementTerminator(state.Peek(), state))
         {
             return new MsThrow(null);
         }
@@ -542,9 +425,9 @@ public class MsParser : Parser
         return new MsRaiseError(message, severity, stateExpr) { Arguments = arguments };
     }
 
-    private static bool IsStatementTerminator(Token next)
+    public override bool IsStatementTerminator(Token token, ParserState state)
     {
-        return next switch
+        return token switch
         {
             Semicolon or Eof or MsBatchSeparatorToken or ParenClose => true,
             Word w => w.Keyword switch

@@ -128,14 +128,7 @@ public class ReferencedItemsManager
 
                 if (matches.Length > 0)
                 {
-                    if (matches[0].Identifier != null)
-                    {
-                        objectHandle = ObjectHandle.Create(matches[0].Identifier!, NameHandling);
-                    }
-                    else if (ActiveSchema != null)
-                    {
-                        objectHandle = ObjectHandle.Create(identifiers, ActiveSchema, NameHandling);
-                    }
+                    objectHandle = ObjectHandle.Create(matches[0].Identifier!, NameHandling);
                     return PseudoTableTypeToItemRefType(matches[0].Type);
                 }
             }

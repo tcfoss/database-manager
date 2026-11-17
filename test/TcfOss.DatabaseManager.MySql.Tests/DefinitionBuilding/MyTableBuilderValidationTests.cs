@@ -245,7 +245,7 @@ public class MyTableBuilderValidationTests
             .Select(sql =>
             {
                 var tokens = lexer.Tokenize(sql);
-                var state = new ParserState([.. tokens]);
+                var state = new ParserState(Grammar.My, [.. tokens]);
                 return parser.TableParser.ParseOptionalTableConstraint(state)!;
             }).ToList();
 
@@ -261,7 +261,7 @@ public class MyTableBuilderValidationTests
             .Select(sql =>
             {
                 var tokens = lexer.Tokenize(sql);
-                var state = new ParserState([.. tokens]);
+                var state = new ParserState(Grammar.My, [.. tokens]);
                 return ParseSingleColumn(state, parser);
             }).ToList();
 

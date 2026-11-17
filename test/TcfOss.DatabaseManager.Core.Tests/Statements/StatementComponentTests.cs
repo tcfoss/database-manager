@@ -215,17 +215,17 @@ public class StatementComponentTests
     }
 
     [Theory]
-    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<MySqlTransactionCharacteristic>))]
-    public void MySqlTransactionCharacteristic_FromText(string text, MySqlTransactionCharacteristic expected)
+    [ClassData(typeof(StringEnumTestHelpers.StringEnumTestData<TransactionMode>))]
+    public void MySqlTransactionCharacteristic_FromText(string text, TransactionMode expected)
     {
-        var result = MySqlTransactionCharacteristic.Parse(text);
+        var result = TransactionMode.Parse(text);
         Assert.Equal(expected.ToSql(), result.ToSql());
     }
 
     [Fact]
     public void MySqlTransactionCharacteristic_FromText_Unknown_Throws()
     {
-        Assert.Throws<ArgumentException>(() => MySqlTransactionCharacteristic.Parse("UNKNOWN"));
+        Assert.Throws<ArgumentException>(() => TransactionMode.Parse("UNKNOWN"));
     }
 
     [Theory]
@@ -470,12 +470,12 @@ public class StatementComponentTests
     [InlineData("CREATE DOMAIN app.label AS app.base_type COLLATE app.collation DEFAULT 'a' CONSTRAINT required NOT NULL CONSTRAINT valid CHECK (VALUE <> '')", "CREATE DOMAIN \"app\".\"label\" AS \"app\".\"base_type\" COLLATE \"app\".\"collation\" DEFAULT 'a' CONSTRAINT \"required\" NOT NULL CONSTRAINT \"valid\" CHECK (VALUE <> '')")]
     public void CreateDomain_FormatsNamesDefaultsAndConstraints(string sql, string expected)
     {
-        var parser = new Parsing.Parser();
-        var lexer = new Lexing.GenericLexer();
-        Statement statement = Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize(sql)]), null));
+        var parser = new Parser();
+        var lexer = new GenericLexer();
+        Statement statement = Assert.Single(parser.Parse([.. lexer.Tokenize(sql)]));
 
         Assert.Equal(expected, FormatComponent(statement));
-        Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize(expected)]), null)));
+        Assert.IsType<CreateDomain>(Assert.Single(parser.Parse(new ParserState(parser.Grammar, [.. lexer.Tokenize(expected)]), null)));
     }
 
     [Fact]
@@ -499,9 +499,9 @@ public class StatementComponentTests
     [Fact]
     public void CoreParser_AcceptsStandardArrayTypeSyntax()
     {
-        var parser = new Parsing.Parser();
-        var lexer = new Lexing.GenericLexer();
-        Statement statement = Assert.Single(parser.Parse(new Parsing.ParserState([.. lexer.Tokenize("CREATE TYPE wrapper AS (values TEXT ARRAY)")]), null));
+        var parser = new Parser();
+        var lexer = new GenericLexer();
+        Statement statement = Assert.Single(parser.Parse([.. lexer.Tokenize("CREATE TYPE wrapper AS (values TEXT ARRAY)")]));
 
         var composite = Assert.IsType<CreateType.Composite>(statement);
         Assert.IsType<DataTypeReference.Array>(Assert.Single(composite.Attributes).DataType);
@@ -883,7 +883,7 @@ public class StatementComponentTests
     [InlineData("\"CURRENT_USER\"", "\"CURRENT_USER\"")]
     public void Account_FormattingPreservesSpecialRolesAndHostAccounts(string sql, string expected)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(sql)]);
         Account account = ComponentParser.ParseAccount(state);
 
         Assert.Equal(sql, account.ToSql());
@@ -901,13 +901,13 @@ public class StatementComponentTests
     [InlineData("CREATE NONCLUSTERED INDEX ix USING BTREE ON items (id) INCLUDE (payload) WHERE id > 0 WITH (FILLFACTOR = 80) ON [PRIMARY] COMMENT 'standard'", "COMMENT 'standard'")]
     public void CreateIndex_FormattingPreservesVariantPayloads(string sql, string expected)
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize(sql)]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(sql)]);
         var statement = Assert.IsType<CreateIndex>(new Parser().ParseStatement(state), exactMatch: false);
 
         string formatted = FormatComponent(statement);
 
         Assert.Contains(expected, formatted);
-        var formattedState = new ParserState([.. new GenericLexer().Tokenize(formatted)]);
+        var formattedState = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(formatted)]);
         var reparsed = Assert.IsType<CreateIndex>(new Parser().ParseStatement(formattedState), exactMatch: false);
         Assert.IsType(statement.GetType(), reparsed);
         Assert.IsType<Core.Lexing.Tokens.Eof>(formattedState.Peek());
@@ -926,20 +926,20 @@ public class StatementComponentTests
     [Fact]
     public void CreateView_FormatsIfNotExists()
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize("CREATE TEMP VIEW IF NOT EXISTS summary AS SELECT 1")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("CREATE TEMP VIEW IF NOT EXISTS summary AS SELECT 1")]);
         var statement = Assert.IsType<CreateView>(new Parser().ParseStatement(state));
 
         string formatted = FormatComponent(statement);
 
         Assert.Contains("VIEW IF NOT EXISTS \"summary\"", formatted);
-        var formattedState = new ParserState([.. new GenericLexer().Tokenize(formatted)]);
+        var formattedState = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize(formatted)]);
         Assert.Equal(formatted, FormatComponent(new Parser().ParseStatement(formattedState)));
     }
 
     [Fact]
     public void PgAddConstraint_FormatsAnOrdinaryConstraint()
     {
-        var state = new ParserState([.. new GenericLexer().Tokenize("CREATE TABLE items (id INT, CHECK (id > 0))")]);
+        var state = new ParserState(Grammar.All, [.. new GenericLexer().Tokenize("CREATE TABLE items (id INT, CHECK (id > 0))")]);
         var statement = Assert.IsType<CreateTable>(new Parser().ParseStatement(state));
         var operation = new AlterTableOperation.PgAddConstraint(Assert.Single(statement.Constraints));
 

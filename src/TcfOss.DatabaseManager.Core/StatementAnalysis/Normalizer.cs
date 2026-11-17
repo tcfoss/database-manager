@@ -213,6 +213,13 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             : escape;
     }
 
+    private Expression NormalizePattern(Expression pattern, bool quantified, bool inSelect, bool flatten)
+    {
+        return quantified && pattern is Nested nested
+            ? new Nested(NormalizeExpression(nested.Expression, inSelect, flatten))
+            : NormalizeExpression(pattern, inSelect, flatten);
+    }
+
     protected Expression NormalizeExpression(Expression expr, bool inSelect, bool flatten)
     {
         return expr switch
@@ -275,6 +282,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             Nested nes when flatten => NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten),
             Nested nes => new Nested(NormalizeExpression(nes.Expression, inSelect: inSelect, flatten: flatten)),
             SingleIdentifier id => NormalizeIdentifier(id, inSelect),
+            CurrentOf current => current with { CursorName = ComponentNormalizer.NormalizeSingleIdentifier(current.CursorName) },
             UnaryOperator uo => new UnaryOperator(NormalizeExpression(uo.Expression, inSelect: inSelect, flatten: flatten), uo.Operator),
             FunctionCall fun => NormalizeFunctionCall(fun, inSelect: inSelect, flatten: flatten),
             Cast cast => NormalizeCast(cast, inSelect: inSelect, flatten: flatten),
@@ -300,13 +308,13 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             Like like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                Pattern = NormalizePattern(like.Pattern, like.Quantifier != null, inSelect, flatten),
                 Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             ILike like => like with
             {
                 Expression = NormalizeExpression(like.Expression, inSelect, flatten),
-                Pattern = NormalizeExpression(like.Pattern, inSelect, flatten),
+                Pattern = NormalizePattern(like.Pattern, like.Quantifier != null, inSelect, flatten),
                 Escape = NormalizePatternEscape(like.Escape, inSelect, flatten)
             },
             SimilarTo similar => similar with
@@ -608,7 +616,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
 
         SqlValueList<SimpleSelectItem> selections = select.Selections.Select(x => NormalizeSimpleSelectItem(x, returnsValues, flatten: flatten)).ToSequence();
 
-        return new SimpleSelect(selections)
+        var normalized = new SimpleSelect(selections)
         {
             Distinct = select.Distinct,
             From = from,
@@ -623,6 +631,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
                 Specification = NormalizeWindowSpec(window.Specification, inSelect: true, flatten: flatten)
             })]
         };
+        return select is PgPerform ? new PgPerform(normalized) : normalized;
     }
 
     private SimpleSelect NormalizeSimpleSelectWithPseudoTableIsolation(SimpleSelect select, bool returnsValues, bool flatten = false)

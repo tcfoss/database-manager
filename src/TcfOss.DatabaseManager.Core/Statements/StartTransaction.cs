@@ -7,25 +7,34 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 
 public record StartTransaction() : Statement
 {
-    public SqlValueList<MySqlTransactionCharacteristic> Characteristics { get; init; } = [];
+    public record Begin(TransactionNoun? Noun) : StartTransaction
+    {
+        protected override string Command => Noun == null ? "BEGIN" : $"BEGIN {Noun}";
+    }
+
+    protected virtual string Command => "START TRANSACTION";
+
+    public SqlValueList<TransactionMode> Modes { get; init; } = [];
 
     public override void ToSql(SqlTextWriter writer)
     {
-        writer.Write("START TRANSACTION");
-        foreach (MySqlTransactionCharacteristic characteristic in Characteristics)
+        writer.Write(Command);
+        WriteCharacteristics(writer);
+    }
+
+    private void WriteCharacteristics(SqlTextWriter writer)
+    {
+        if (Modes.Count > 0)
         {
-            writer.WriteSql($" {characteristic}");
+            writer.WriteSql($" {Modes}");
         }
     }
 
     public override void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         Meta.FormatPreNonSql(writer, manager);
-        writer.WriteSqlI("START TRANSACTION");
-        foreach (MySqlTransactionCharacteristic characteristic in Characteristics)
-        {
-            writer.WriteSql($" {characteristic}");
-        }
+        writer.WriteSqlI(Command);
+        WriteCharacteristics(writer);
         Meta.FormatPostNonSql(writer, manager);
     }
 
