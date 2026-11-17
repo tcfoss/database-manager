@@ -4,8 +4,10 @@ using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
 using TcfOss.DatabaseManager.Core.Errors;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -685,5 +687,50 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
         Assert.Equal(2, uniqueConstraints.Count);
         Assert.Contains(uniqueConstraints, u => u.Name!.Name == "uc_constraint");
         Assert.Contains(uniqueConstraints, u => u.Name!.Name == "uidx_name");
+    }
+
+    [Fact]
+    public void FunctionalUniqueKey_PreservesExpressionWrapperDuringDefinitionBuilding()
+    {
+        var statements = TextParser.ParseText("""
+            CREATE TABLE schema1.people (
+                id INT NOT NULL PRIMARY KEY,
+                name VARCHAR(100),
+                UNIQUE KEY unique_name ((LOWER(name)))
+            )
+            """);
+
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        MyDefinition definition = DefinitionBuilder.ToDefinition();
+
+        var table = Assert.Single(definition.Tables.Values);
+        var key = Assert.Single(table.UniqueKeys.Values);
+        var part = Assert.IsType<KeyPart.IndexExpression>(Assert.Single(key.Columns));
+        Assert.Equal("unique_name", key.Name!.Name);
+        Assert.Equal("(LOWER(`name`))", part.Expression.ToSql());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SpatialKey_CanonicalEmissionPreservesItsAttributes(bool omitDefaults)
+    {
+        var statements = TextParser.ParseText("""
+            CREATE TABLE schema1.places (
+                id INT NOT NULL PRIMARY KEY,
+                location POINT NOT NULL,
+                SPATIAL KEY spatial_location (location) COMMENT 'location index'
+            )
+            """);
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+        MyDefinition definition = DefinitionBuilder.ToDefinition();
+        var table = Assert.Single(definition.Tables.Values);
+        var key = Assert.IsType<MyKey.Spatial>(Assert.Single(table.Keys.Values));
+        DifferFormatManager manager = GetDifferFormatManager();
+        manager = manager with { Formatting = manager.Formatting with { OmitModifiersIfDefault = omitDefaults } };
+
+        string sql = key.ToStatementConstraint(manager).ToSql();
+
+        Assert.Equal("SPATIAL KEY `spatial_location` (`location`) COMMENT 'location index'", sql);
     }
 }

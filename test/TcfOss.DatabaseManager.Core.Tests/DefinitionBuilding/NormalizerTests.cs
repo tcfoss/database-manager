@@ -4,6 +4,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.IO;
@@ -12,6 +13,7 @@ using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.Configuration;
 
 namespace TcfOss.DatabaseManager.Core.Tests.DefinitionBuilding;
@@ -78,7 +80,8 @@ public class NormalizerTests
         Select statement,
         IdentifierQuotationHandling? identifierQuotationHandling = null,
         IdentifierQuotationHandling? cteDeclarationNameQuotationHandling = null,
-        bool usePseudoTables = true)
+        bool usePseudoTables = true,
+        SourceRef? sourceRef = null)
     {
         var normalizationSettings = new Core.Configuration.Parsing.NormalizationSettings
         {
@@ -91,7 +94,7 @@ public class NormalizerTests
         var componentNormalizer = new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider());
         var normalizer = new Normalizer(config, componentNormalizer);
 
-        var normalizedSelect = normalizer.NormalizeSelect(statement, config.Schemas.Keys.First(), usePseudoTables ? _selectableSources : null, name);
+        var normalizedSelect = normalizer.NormalizeSelect(statement, config.Schemas.Keys.First(), usePseudoTables ? _selectableSources : null, name, sourceRef);
 
         return normalizedSelect;
     }
@@ -724,6 +727,18 @@ public class NormalizerTests
         Assert.Equal($"`value` {op} {quantifier} ((`pattern`))", GetNormalizedExpressionText(sql, flatten: false));
     }
 
+    [Theory]
+    [InlineData("LIKE")]
+    [InlineData("ILIKE")]
+    public void NormalizeExpression_QuantifiedSubquery_NormalizesItsSelectWithoutAddingExpressionNesting(string op)
+    {
+        string sql = $"value {op} ANY (SELECT pattern AS result)";
+        string expected = $"`value` {op} ANY (SELECT `pattern` AS `result`)";
+
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal(expected, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
     private static string GetNormalizedExpressionText(string sqlText, bool flatten)
     {
         var config = new GenericConfigLoader(new LoggerFactory().CreateLogger<GenericConfigLoader>()).LoadConfig("database", TestDataRawConfig.GetMyTestRawConfigLibrarySchemas(new Core.Configuration.Parsing.NormalizationSettings()), []);
@@ -1275,6 +1290,45 @@ public class NormalizerTests
         Assert.Equal(expected, normalized.Limit.ToSql());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MySqlLimit_WithoutOffsetNormalizesCount(bool commaSeparated)
+    {
+        Select select = GetNormalizedSelect("SELECT 1 AS result", usePseudoTables: false);
+        var count = new Nested(new SingleIdentifier(new Identifier("row_count")));
+        Limit limit = commaSeparated ? new Limit.MyCommaSeparated(count, null) : new Limit.MyLimitOffset(count, null);
+
+        Select normalized = GetNormalizedSelect(select with { Limit = limit }, usePseudoTables: false);
+
+        Assert.Equal("LIMIT `row_count`", normalized.Limit!.ToSql());
+    }
+
+    [Theory]
+    [InlineData("base")]
+    [InlineData("`base`")]
+    public void WindowFollowingBound_NormalizesItsOffset(string windowName)
+    {
+        string sql = GetActualSelectText($"""
+            SELECT SUM(book_id) OVER ({windowName} ROWS BETWEEN (1) PRECEDING AND (2) FOLLOWING) AS total
+            FROM book
+            WINDOW {windowName} AS (ORDER BY publication_year)
+            """);
+
+        Assert.Contains("OVER (`base` ROWS BETWEEN 1 PRECEDING AND 2 FOLLOWING)", sql);
+        Assert.Contains("WINDOW `base` AS (ORDER BY `library_catalog`.`book`.`publication_year`)", sql);
+    }
+
+    [Theory]
+    [InlineData("GROUPS CURRENT ROW")]
+    [InlineData("ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING")]
+    public void WindowFrames_PreserveCurrentAndUnboundedBounds(string frame)
+    {
+        string sql = GetActualSelectText($"SELECT COUNT(*) OVER ({frame}) AS total", usePseudoTables: false);
+
+        Assert.Contains($"OVER ({frame})", sql);
+    }
+
     [Fact]
     public void UnknownLimit_HasNoKnownReferencesAndCannotBeNormalized()
     {
@@ -1295,6 +1349,45 @@ public class NormalizerTests
         statement.CommonTableExpression.Tables[0] = body with { Query = call };
 
         Assert.Throws<NotSupportedException>(() => GetNormalizedSelect(statement, usePseudoTables: false));
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    [InlineData(true, 0)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
+    public void ExpressionWildcards_ReportOnlyCompleteSourceSpans(bool qualified, int missingPosition)
+    {
+        var parser = new TextParser(new GenericLexer(), new Parser());
+        var statement = Assert.IsType<Select>(Assert.Single(parser.ParseText("SELECT * FROM book")));
+        var query = Assert.IsType<SelectBody.SimpleSelectQuery>(statement.Body).Query;
+        SimpleSelectItem original = Assert.Single(query.Selections);
+        Expression wildcard = qualified
+            ? new QualifiedWildcard(new ObjectName([new Identifier("book")]))
+            : new Wildcard();
+        var item = new SimpleSelectItem.UnnamedExpression(wildcard)
+        {
+            Meta = new MetaData
+            {
+                Start = missingPosition == 1 ? null : original.Meta.Start,
+                End = missingPosition == 2 ? null : original.Meta.End
+            }
+        };
+        query.Selections[0] = item;
+        var source = new SourceRef(42, 0, 100);
+        SourceRef? expected = missingPosition == 0
+            ? new SourceRef(source.SourceId, original.Meta.Start!.Value, original.Meta.End!.Value)
+            : null;
+
+        var normalizationError = Assert.Throws<DefinitionException.ViewSelectWildcard>(() =>
+            GetNormalizedSelect(statement, sourceRef: source));
+        var inferenceError = Assert.Throws<DefinitionException.ViewSelectWildcard>(() =>
+            query.ToPseudoTable("view", null, source, PseudoTableType.View));
+
+        Assert.Equal(expected, normalizationError.ObjectSourceRef);
+        Assert.Equal(expected, inferenceError.ObjectSourceRef);
     }
 
     private sealed record UnknownLimit : Limit

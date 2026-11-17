@@ -12,6 +12,7 @@ public class PgLexerTests : LexerTestBase<PgLexer>
 {
     [Theory]
     [InlineData("caf\u00e9")]
+    [InlineData("caf\u00e9$tail")]
     [InlineData("\u00e9clair")]
     [InlineData("\u540d\u524d")]
     [InlineData("a$b")]

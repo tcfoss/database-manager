@@ -371,26 +371,6 @@ public class MsParser : Parser
     }
 
     /// <summary>
-    /// Parses a required T-SQL <c>TRAN</c> or <c>TRANSACTION</c> keyword.
-    /// </summary>
-    private static TransactionNoun ParseTransactionNoun(ParserState state)
-    {
-        if (state.Peek() is Word { Keyword: Keyword.TRAN or Keyword.TRANSACTION } word)
-        {
-            state.Next();
-            return TransactionNoun.Parse(word.Value);
-        }
-        throw state.ExpectedException("TRAN", "TRANSACTION");
-    }
-
-    private Identifier? TryParseTransactionName(ParserState state)
-    {
-        return state.Peek() is Word { Keyword: Keyword.undefined }
-            ? ComponentParser.ParseIdentifier(state)
-            : null;
-    }
-
-    /// <summary>
     /// Parses a T-SQL <c>PRINT &lt;expression&gt;</c> statement.
     /// </summary>
     private MsPrint ParsePrint(ParserState state)

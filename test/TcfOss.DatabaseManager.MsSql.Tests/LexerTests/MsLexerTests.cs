@@ -23,6 +23,9 @@ public class MsLexerTests : LexerTestBase<MsLexer>
     [InlineData("GO#tail")]
     [InlineData("GO@tail")]
     [InlineData("GO\u00e9")]
+    [InlineData("garden")]
+    [InlineData("Goose")]
+    [InlineData("goose")]
     public void Unquoted_Identifiers_Preserve_Dialect_Characters(string identifier)
     {
         List<Token> tokens = GetTokens(identifier + ";");
@@ -90,6 +93,18 @@ public class MsLexerTests : LexerTestBase<MsLexer>
         };
 
         Compare(expected, tokens);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("2147483648")]
+    public void Go_InvalidCountIsNotConsumed(string count)
+    {
+        var tokens = GetTokens($"GO {count}");
+
+        Assert.Collection(tokens,
+            token => Assert.Equal(1, Assert.IsType<MsBatchSeparator>(token).Count),
+            token => Assert.Equal(count, Assert.IsType<NumericLiteral>(token).Value));
     }
 
     [Fact]

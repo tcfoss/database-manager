@@ -551,14 +551,16 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("DECLARE cursor_one CURSOR FOR SELECT 1", false, null, null, null)]
+    [InlineData("DECLARE cursor_one INSENSITIVE CURSOR FOR SELECT 1", false, "INSENSITIVE", null, null)]
     [InlineData("DECLARE cursor_one SCROLL CURSOR WITH HOLD FOR SELECT 1", false, null, "SCROLL", "WITH HOLD")]
     [InlineData("DECLARE cursor_one BINARY INSENSITIVE NO SCROLL CURSOR WITHOUT HOLD FOR SELECT 1", true, "INSENSITIVE", "NO SCROLL", "WITHOUT HOLD")]
     public void SqlCursorDeclarations_ParsePostgresOptions(
         string sql,
         bool expectedBinary,
         string? expectedSensitivity,
-        string expectedScrollMode,
-        string expectedHoldability)
+        string? expectedScrollMode,
+        string? expectedHoldability)
     {
         var state = new ParserState(Grammar.Pg, GetTokens(sql));
         var cursor = Assert.IsType<DeclareCursor>(Assert.Single(new PgParser().Parse(state, null)));
@@ -567,6 +569,11 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(expectedSensitivity, cursor.Sensitivity?.ToString());
         Assert.Equal(expectedScrollMode, cursor.ScrollMode?.ToString());
         Assert.Equal(expectedHoldability, cursor.Holdability?.ToString());
+        Assert.Equal(cursor, ParseStatement(new ParserState(Grammar.Pg, GetTokens(cursor.ToSql()))));
+        string formatted = Format(cursor);
+        IWriteSql reparsed = ParseStatement(new ParserState(Grammar.Pg, GetTokens(formatted)));
+        Assert.Equal(cursor, reparsed);
+        Assert.Equal(formatted, Format(reparsed));
     }
 
     [Fact]
@@ -857,9 +864,12 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("FOR row_value IN SELECT (1 LOOP END LOOP")]
     [InlineData("FOR row_value IN CALL app.work() LOOP END LOOP")]
     [InlineData("FOR row_value IN INSERT INTO app.items DEFAULT VALUES LOOP END LOOP")]
+    [InlineData("FOR row_value IN UPDATE app.items SET id = 1 LOOP END LOOP")]
+    [InlineData("FOR row_value IN DELETE FROM app.items LOOP END LOOP")]
     [InlineData("FOR row_value IN SELECT 1 INTO other_value LOOP END LOOP")]
     [InlineData("FOR row_value IN (SELECT 1 INTO other_value) LOOP END LOOP")]
     [InlineData("FOR row_value IN SELECT 1 INTO other_value UNION ALL SELECT 2 LOOP END LOOP")]
+    [InlineData("FOR row_value IN SELECT 1 UNION ALL SELECT 2 INTO other_value LOOP END LOOP")]
     [InlineData("FOR i IN 1 .. 2")]
     [InlineData("FOR i IN 1 .. 2 LOOP")]
     [InlineData("FOR i IN 1 .. 2 LOOP CALL app.work() END LOOP")]
@@ -1923,6 +1933,94 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         var state = new ParserState(grammar, GetTokens("DECLARE copied app.items.id%TYPE; BEGIN NULL; END"));
 
         Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+    }
+
+    [Theory]
+    [InlineData("CASE app.selector() WHEN app.first(), app.second() THEN CALL app.then_branch(); WHEN 1 THEN NULL; END CASE", "app.selector,app.first,app.second,app.then_branch")]
+    [InlineData("CASE 1 WHEN 1 THEN NULL; ELSE CALL app.otherwise(); END CASE", "app.otherwise")]
+    [InlineData("CASE WHEN app.condition() THEN CALL app.then_branch(); WHEN FALSE THEN NULL; END CASE", "app.condition,app.then_branch")]
+    [InlineData("CASE WHEN FALSE THEN NULL; ELSE CALL app.otherwise(); END CASE", "app.otherwise")]
+    [InlineData("BEGIN CALL app.body(); EXCEPTION WHEN OTHERS THEN CALL app.first_handler(); CALL app.second_handler(); WHEN SQLSTATE '22000' THEN NULL; END", "app.body,app.first_handler,app.second_handler")]
+    [InlineData("WHILE app.condition() LOOP CALL app.body(); NULL; END LOOP", "app.condition,app.body")]
+    [InlineData("WHILE FALSE LOOP NULL; END LOOP", "")]
+    [InlineData("OPEN cursor_one", "")]
+    [InlineData("OPEN cursor_one()", "")]
+    [InlineData("OPEN cursor_one(app.first(), named => app.second(), 1)", "app.first,app.second")]
+    [InlineData("OPEN cursor_one FOR SELECT * FROM app.items", "app.items")]
+    [InlineData("OPEN cursor_one FOR EXECUTE app.command()", "app.command")]
+    [InlineData("OPEN cursor_one SCROLL FOR EXECUTE 'SELECT $1' USING app.first(), app.second(), 1", "app.first,app.second")]
+    [InlineData("FETCH cursor_one INTO result", "")]
+    [InlineData("FETCH FIRST FROM cursor_one INTO result", "")]
+    [InlineData("FETCH ABSOLUTE app.distance() FROM cursor_one INTO result", "app.distance")]
+    [InlineData("MOVE 2 FROM cursor_one", "")]
+    [InlineData("MOVE FORWARD app.distance() FROM cursor_one", "app.distance")]
+    [InlineData("MOVE FORWARD ALL FROM cursor_one", "")]
+    [InlineData("MOVE FORWARD FROM cursor_one", "")]
+    [InlineData("FOR row_value IN cursor_one LOOP NULL; END LOOP", "")]
+    [InlineData("BEGIN EXECUTE app.command() USING app.first(), 1; END", "app.command,app.first")]
+    [InlineData("BEGIN EXECUTE app.command() INTO first, second; END", "app.command")]
+    [InlineData("DECLARE cursor_one CURSOR (first INT, second TEXT) FOR SELECT 1; BEGIN NULL; END", "")]
+    [InlineData("DECLARE cursor_one SCROLL CURSOR FOR SELECT 1; BEGIN NULL; END", "")]
+    [InlineData("DECLARE value INT DEFAULT app.initializer(); BEGIN NULL; END", "app.initializer")]
+    [InlineData("FOR row_value IN cursor_one(1, named => app.value()) LOOP NULL; END LOOP", "app.value")]
+    [InlineData("BEGIN RETURN NEXT; END", "")]
+    [InlineData("BEGIN RAISE 'message'; END", "")]
+    [InlineData("BEGIN GET DIAGNOSTICS count_value = ROW_COUNT; GET STACKED DIAGNOSTICS message_value = MESSAGE_TEXT; END", "")]
+    [InlineData("BEGIN RAISE NOTICE '% %', app.first(), app.second() USING DETAIL = app.detail(); END", "app.first,app.second,app.detail")]
+    public void ProceduralStatements_TraverseStaticExpressionsWithoutTreatingCursorNamesOrDynamicTextAsObjects(
+        string sql, string expectedNames)
+    {
+        var statement = Assert.IsType<BeginEnd>(ParseStatement($"BEGIN {sql}; END"));
+        string[] names = [.. statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })
+            .OfType<ItemRef.ObjectNameRef>()
+            .Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(expectedNames.Split(',', StringSplitOptions.RemoveEmptyEntries), names);
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+    }
+
+    [Theory]
+    [InlineData("DECLARE 1 INT; BEGIN NULL; END")]
+    [InlineData("DECLARE cursor_one NO INT; BEGIN NULL; END")]
+    [InlineData("BEGIN OPEN cursor_one(DISTINCT 1); END")]
+    [InlineData("BEGIN OPEN cursor_one(1 ORDER BY 2); END")]
+    [InlineData("BEGIN OPEN cursor_one(*); END")]
+    [InlineData("BEGIN OPEN cursor_one(VARIADIC ARRAY[1]); END")]
+    [InlineData("BEGIN FOREACH target SLICE value IN ARRAY source LOOP NULL; END LOOP; END")]
+    [InlineData("BEGIN FOR row_value IN SELECT 1; SELECT 2 LOOP NULL; END LOOP; END")]
+    [InlineData("BEGIN OPEN cursor_one FOR (SELECT 1 INTO target); END")]
+    [InlineData("BEGIN CASE 1 WHEN 1 THEN NULL;")]
+    [InlineData("BEGIN CASE WHEN TRUE THEN NULL;")]
+    [InlineData("BEGIN NULL; EXCEPTION WHEN OTHERS THEN NULL;")]
+    [InlineData("BEGIN FOR row_value IN SELECT 1 SELECT 2 LOOP NULL; END LOOP; END")]
+    [InlineData("<<label><BEGIN NULL; END")]
+    [InlineData("<<label BEGIN NULL; END")]
+    public void ProceduralStatements_RejectMalformedDeclarationsCursorArgumentsAndTruncatedBodies(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
+    [InlineData("<<label>>BEGIN NULL; END label")]
+    [InlineData("DECLARE value INT;\n/* declarations end */ BEGIN NULL; END")]
+    [InlineData("BEGIN NULL; EXCEPTION /* handler */ WHEN OTHERS THEN NULL; END")]
+    [InlineData("DECLARE value INT;BEGIN NULL; END")]
+    [InlineData("BEGIN NULL; EXCEPTION WHEN OTHERS THEN NULL;WHEN SQLSTATE '22000' THEN NULL; END")]
+    [InlineData("BEGIN CASE(1)WHEN(1)THEN NULL; END CASE; END")]
+    [InlineData("FOR i IN 1..(2)LOOP END LOOP")]
+    [InlineData("FOREACH value IN ARRAY app.values()LOOP END LOOP")]
+    public void ProceduralBoundaries_PreserveCompactLabelsAndBoundaryComments(string sql)
+    {
+        IWriteSql statement = ParseStatement(sql);
+        string formatted = Format(statement);
+
+        Assert.Equal(statement.ToSql(), ParseStatement(statement.ToSql()).ToSql());
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Assert.Equal(sql.Contains("/*", StringComparison.Ordinal), formatted.Contains("/*", StringComparison.Ordinal));
     }
 
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)

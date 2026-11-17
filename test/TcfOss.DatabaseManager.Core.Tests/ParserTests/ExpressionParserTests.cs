@@ -367,6 +367,21 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
     }
 
     [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void PatternEscape_NonPostgresGrammarRetainsLiteralOnlyEscapes(Grammar grammar)
+    {
+        const string sql = "value LIKE 'pattern' ESCAPE '!'";
+        var state = new ParserState(grammar, GetTokens(sql));
+        var expression = Assert.IsType<Like>(ParseExpression(state));
+
+        Assert.Equal(new PatternEscape.Character("!"), expression.Escape);
+        Assert.Equal(sql, expression.ToSql());
+        Assert.ThrowsAny<Core.Errors.ParseException>(() =>
+            ParseExpression(new ParserState(grammar, GetTokens("value LIKE 'pattern' ESCAPE escape_value"))));
+    }
+
+    [Theory]
     [InlineData("x SIMILAR TO 'pattern'", false, null)]
     [InlineData("x NOT SIMILAR TO 'pattern' ESCAPE '!'", true, "!")]
     public void ParseExpr_SimilarTo(string sql, bool negated, string? escapeChar)

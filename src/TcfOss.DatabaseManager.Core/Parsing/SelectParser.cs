@@ -33,7 +33,7 @@ public class SelectParser
         state.ExpectKeyword(Keyword.WITH);
         bool recursive = state.ParseKeyword(Keyword.RECURSIVE);
 
-        SqlValueList<CommonTableExpressionBody> tables = state.ParseCommaSeparated(ParseCommonTableExpressionBody) ?? throw state.ExpectedCategoryException("CTE definition");
+        SqlValueList<CommonTableExpressionBody> tables = state.ParseCommaSeparated(ParseCommonTableExpressionBody);
         return new CommonTableExpression(tables, recursive);
     }
 
@@ -476,7 +476,7 @@ public class SelectParser
         if (upcoming is Comma or Eof)
         {
             item.Meta.PostNonSql = upcoming.PreNonSql?.Items;
-            item.Meta.End += upcoming.Length;
+            item.Meta.End = upcoming.Location.Position + upcoming.Length;
         }
         return item;
     }

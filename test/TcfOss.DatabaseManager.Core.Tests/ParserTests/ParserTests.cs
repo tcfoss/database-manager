@@ -809,4 +809,89 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
         Assert.Equal(statement, ParseStatement(Format(statement)));
     }
+
+    [Theory]
+    [InlineData(Grammar.My, "IF 1 = 1 THEN SELECT 1; END IF")]
+    [InlineData(Grammar.PgPl, "IF TRUE THEN SELECT 1; END IF")]
+    [InlineData(Grammar.Ms, "IF 1 = 1 SELECT 1")]
+    [InlineData(Grammar.My, "WHILE 1 = 1 DO SELECT 1; END WHILE")]
+    [InlineData(Grammar.PgPl, "WHILE TRUE LOOP SELECT 1; END LOOP")]
+    [InlineData(Grammar.Ms, "WHILE 1 = 1 SELECT 1")]
+    [InlineData(Grammar.Pg, "FETCH ABSOLUTE -1 FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH RELATIVE 2 FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH PRIOR FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH LAST FROM cursor_one")]
+    [InlineData(Grammar.Pg, "FETCH FORWARD cursor_one")]
+    [InlineData(Grammar.Pg, "SET SESSION = 1")]
+    [InlineData(Grammar.Ms | Grammar.PgPl, "DECLARE value INT; BEGIN NULL; END")]
+    public void ControlFlow_ExplicitGrammarSelectsTheSharedDialectSyntax(Grammar grammar, string sql)
+    {
+        var state = new ParserState(grammar, GetTokens(sql));
+        IWriteSql statement = ParseStatement(state);
+
+        Assert.Equal(statement, ParseStatement(new ParserState(grammar, GetTokens(statement.ToSql()))));
+        Assert.Equal(statement, ParseStatement(new ParserState(grammar, GetTokens(Format(statement)))));
+        Assert.Equal(grammar, state.Grammar);
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg, "IF TRUE THEN SELECT 1; END IF")]
+    [InlineData(Grammar.My, "IF TRUE THEN SELECT 1")]
+    [InlineData(Grammar.My, "IF TRUE THEN SELECT 1;")]
+    [InlineData(Grammar.My, "WHILE TRUE LOOP SELECT 1; END LOOP")]
+    [InlineData(Grammar.Ms, "WHILE 1 = 1")]
+    [InlineData(Grammar.Ms, "IF 1 = 1")]
+    [InlineData(Grammar.None, "DECLARE cursor_one CURSOR FOR SELECT 1")]
+    [InlineData(Grammar.All, "DECLARE value; BEGIN SELECT 1; END")]
+    [InlineData(Grammar.All, "<<label>>DECLARE value; BEGIN SELECT 1; END")]
+    [InlineData(Grammar.All, "BEGIN OPEN cursor_one(named = 1); END")]
+    [InlineData(Grammar.PgPl, "MOVE cursor_one")]
+    [InlineData(Grammar.My, "IF TRUE THEN")]
+    [InlineData(Grammar.PgPl, "BEGIN IF TRUE THEN")]
+    [InlineData(Grammar.PgPl, "DECLARE cursor_one NO 1; BEGIN NULL; END")]
+    [InlineData(Grammar.PgPl, "DECLARE cursor_one NO OTHER; BEGIN NULL; END")]
+    [InlineData(Grammar.Pg, "SET SESSION UNEXPECTED")]
+    [InlineData(Grammar.All, "BEGIN RETURN QUERY SELECT 1 INTO result; END")]
+    public void ControlFlow_RejectsUnsupportedGrammarAndIncompleteBodies(Grammar grammar, string sql)
+    {
+        var state = new ParserState(grammar, GetTokens(sql));
+
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.Equal(grammar, state.Grammar);
+    }
+
+    [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    [InlineData(Grammar.Pg)]
+    public void DeclarationTypeReference_OutsidePlPgSqlAcceptsOrdinaryTypes(Grammar grammar)
+    {
+        var parser = new Parser();
+        var state = new ParserState(grammar, GetTokens("VARCHAR(10)"));
+
+        var reference = parser.DataTypeParser.ParseDeclarationDataTypeReference(state);
+
+        Assert.Equal("VARCHAR(10)", reference.ToSql());
+    }
+
+    [Fact]
+    public void ProceduralBodyEntryPoint_RejectsTruncatedDeclare()
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens("DECLARE"));
+
+        var error = Assert.Throws<ParseException.ExpectedButFound>(() =>
+            new Parser().ControlFlowParser.ParsePgPlBeginEnd(state));
+
+        Assert.Contains("BEGIN", error.Message);
+    }
+
+    [Theory]
+    [InlineData("SELECT TOP 5 value FROM items")]
+    [InlineData("SELECT TOP (5) PERCENT WITH TIES value FROM items ORDER BY value")]
+    public void SelectTop_FormattingPreservesLimitAndModifiers(string sql)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.Equal(statement.ToSql(), ParseStatement(Format(statement)).ToSql());
+    }
 }
