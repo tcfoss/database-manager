@@ -86,28 +86,28 @@ public partial class CommandLineInterface
         {
             await Error.WriteLineAsync(ex.Message);
             s_criticalAppError(logger, "Parse exception.", ex);
-            return 1;
+            return ExitCodes.ParseError;
         }
         catch (LexException.WithText ex)
         {
             await Error.WriteLineAsync(ex.Message);
             s_criticalAppError(logger, "Lexical exception.", ex);
-            return 1;
+            return ExitCodes.ParseError;
         }
         catch (CommandException ex)
         {
             await Error.WriteLineAsync(ex.Message);
-            return 1;
+            return ExitCodes.OtherError;
         }
         catch (ConfigParseException ex)
         {
             await Error.WriteLineAsync(ex.Message);
-            return 1;
+            return ExitCodes.ConfigurationError;
         }
         catch (ConfigurationException ex)
         {
             await Error.WriteLineAsync(ex.Message);
-            return 1;
+            return ExitCodes.ConfigurationError;
         }
         catch (SourcedException ex)
         {
@@ -121,19 +121,26 @@ public partial class CommandLineInterface
                 }
             }
             s_criticalAppError(logger, "Definition exception.", ex);
-            return 1;
+            return ex switch
+            {
+                DefinitionException => ExitCodes.DefinitionError,
+                SqlSyntaxException => ExitCodes.SqlSyntaxError,
+                ValidationExceptionSet ves when ves.Exceptions.All(e => e is DefinitionException) => ExitCodes.DefinitionError,
+                ValidationExceptionSet => ExitCodes.SqlSyntaxError,
+                _ => ExitCodes.OtherError
+            };
         }
         catch (FileNotFoundException ex)
         {
             await Error.WriteLineAsync($"File not found: {ex.Message}");
             s_criticalAppError(logger, "File not found exception.", ex);
-            return 1;
+            return ExitCodes.NotFoundError;
         }
         catch (DirectoryNotFoundException ex)
         {
             await Error.WriteLineAsync($"Directory not found: {ex.Message}");
             s_criticalAppError(logger, "Directory not found exception.", ex);
-            return 1;
+            return ExitCodes.NotFoundError;
         }
         catch (Exception ex)
         {
@@ -154,7 +161,7 @@ public partial class CommandLineInterface
 #endif
             Error.WriteLine("An unexpected error occurred. Check the logs for details.");
             s_criticalAppError(logger, "Unknown exception.", ex);
-            return 1;
+            return ExitCodes.OtherError;
         }
     }
 

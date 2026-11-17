@@ -4,10 +4,20 @@
 
 ## About the Project
 
-DatabaseManager is an open source tool for syncing a database definition, in the form of `CREATE TABLE`, `CREATE VIEW`, etc., statements in (presumably version-controlled) flat files, with the structure of a live database server.
+DatabaseManager is an open-source **state-based schema comparison tool**. It is used for syncing
+a database definition—in the form of `CREATE TABLE`, `CREATE VIEW`, etc., statements
+in (presumably version-controlled) flat files—with the structure of a live database server.
 
 > [!NOTE]
-> Support for MySQL and MariaDB is mostly complete—any parsing failures at this stage should be reported as bugs. SQL Server support is *currently* limited to parsing and formatting, and even that is not entirely complete. I hope to eventually add support for PostgreSQL as well.
+> Support for MySQL and MariaDB is mostly complete—any parsing failures at this stage should be
+> reported as bugs.
+>
+> PostgreSQL is under active development.
+>
+> Microsoft SQL Server support is currently limited to parsing and formatting, and even that is
+> not entirely complete. Whether DatabaseManager will eventually support full SQL Server schema
+> comparison remains to be decided; SQL Server already has established tooling such as SqlPackage
+> and DACPAC (which in fact were the inspiration for this project).
 
 Documentation: [App usage](https://tcfoss.github.io/database-manager/app/),
 [for developers](https://tcfoss.github.io/database-manager/libraries/), and
@@ -59,7 +69,8 @@ directly as a dependency, but the MySQL/MariaDB DDL-specific features
 required for this project were beyond its current scope. Hence, I
 adapted and incorporated much of the essential parser logic into
 this project, as well as a few of the design details that I
-particularly liked (the InterpolatedStringHandler for efficiently printing SQL and nested classes as pseudo-namespaces, in particular).
+particularly liked (the InterpolatedStringHandler for efficiently
+printing SQL and nested classes as pseudo-namespaces, in particular).
 
 SqlParser-cs remains a much broader SQL parser than this project aims
 to be. If you are looking for a general-purpose SQL parsing library,

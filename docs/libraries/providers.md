@@ -47,7 +47,7 @@ Console.WriteLine($"Loaded {definition.Tables.Count} table(s).");
 
 Unlike the parser's statement AST, `MyDefinition` groups tables, views, procedures,
 functions, triggers, and events into a complete database definition. Loading applies
-definition-building checks; see [limitations](../app/limitations.md).
+definition-building checks; see [limitations](../app/limitations/index.md).
 
 For MariaDB, use `MariaDbStartApp` and its namespace. The loader's generic type
 remains `MyDefinition`, from the MySQL package, because MariaDB reuses that model.
