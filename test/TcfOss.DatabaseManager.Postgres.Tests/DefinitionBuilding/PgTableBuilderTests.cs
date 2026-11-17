@@ -826,6 +826,42 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(source, exception.ObjectSourceRef);
     }
 
+    [Theory]
+    [InlineData("missing NOT NULL NO INHERIT", typeof(SqlSyntaxException.TypeNotFound))]
+    [InlineData("SMALLINT GENERATED ALWAYS AS IDENTITY (MAXVALUE 999999)", typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    [InlineData("INT GENERATED ALWAYS AS (missing + 1)", typeof(SqlSyntaxException.SelectIdentifierNotFound))]
+    public void PendingColumns_RetainTheirSourceForFinalizationFailures(string definition, Type errorType)
+    {
+        var builder = CreateBuilder(new SourceRef(63, 0, 10));
+        var source = new SourceRef(64, 20, 40);
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (value {definition})"));
+
+        builder.AddColumn(Assert.Single(statement.Columns), source);
+
+        PgTableBuilder.PreColumn pending = Assert.Single(builder.Columns);
+        Assert.Equal(source, pending.SourceRef);
+        var error = Assert.ThrowsAny<SourcedException>(() => builder.ToTable(CreateManager()));
+        Assert.IsType(errorType, error);
+        SourceRef expectedSource = pending.DataType is DataTypeReference.Named { Name.Source: { } location }
+            ? location with { SourceId = source.SourceId }
+            : source;
+        Assert.Equal(expectedSource, error.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void PrimaryKeyIncludes_RejectDuplicateAndMissingColumns()
+    {
+        var duplicateBuilder = CreateBuilder();
+        var duplicate = Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id) INCLUDE (id))"));
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => duplicateBuilder.ApplyCreateTable(duplicate));
+        var missingBuilder = CreateBuilder();
+        missingBuilder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id) INCLUDE (missing))")));
+
+        Assert.Throws<SqlSyntaxException.IndexColumnNotFound>(() => missingBuilder.ToTable(CreateManager()));
+    }
+
     private static PgTypeResolutionManager CreateManager()
     {
         var config = PgTestConfig.GetTestConfig();
@@ -863,7 +899,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private record TestSequenceOption : PgStatementSequenceOption
     {
-        public override string UniqueName => "TEST";
+        public override string DuplicateCheckKey => "TEST";
 
         public override void ToSql(SqlTextWriter writer)
         {

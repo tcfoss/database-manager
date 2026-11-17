@@ -78,25 +78,19 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TABLE items (id INT UNIQUE NULLS NOT DISTINCT)")]
     [InlineData("CREATE TABLE items (id INT UNIQUE WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT PRIMARY KEY WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) USING INDEX TABLESPACE fast)")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) USING INDEX TABLESPACE fast)")]
-    [InlineData("CREATE TABLE items (id INT PRIMARY KEY DEFERRABLE)")]
     [InlineData("CREATE TABLE items (id INT REFERENCES app.parents (id))")]
-    [InlineData("CREATE TABLE items (id INT CHECK (id > 0) NO INHERIT)")]
-    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE NULLS DISTINCT (id))")]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) INCLUDE (id))")]
     [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
     [InlineData("ALTER TABLE items ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES app.parents (id) NOT VALID")]
     [InlineData("ALTER TABLE items ADD UNIQUE USING INDEX items_idx")]
     [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
     [InlineData("ALTER TABLE items VALIDATE CONSTRAINT fk")]
     [InlineData("SELECT 1")]
-    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
     [InlineData("CREATE TABLE items (id INT) PARTITION BY RANGE (id)")]
     [InlineData("CREATE TABLE items (id INT) PARTITION BY LIST (id)")]
     [InlineData("CREATE TABLE items (id INT) PARTITION BY HASH (id)")]
@@ -105,8 +99,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES FROM (1) TO (2)")]
     [InlineData("CREATE TABLE child PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
     [InlineData("CREATE TABLE child PARTITION OF parent (id DEFAULT 1) DEFAULT PARTITION BY HASH (id)")]
-    [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
-    [InlineData("CREATE UNLOGGED TABLE items (id INT) ON COMMIT DELETE ROWS")]
     [InlineData("CREATE VIEW visible AS SELECT 1 WITH CHECK OPTION")]
     [InlineData("CREATE TEMP VIEW visible AS SELECT 1")]
     [InlineData("CREATE TEMPORARY VIEW visible AS SELECT 1")]
@@ -240,6 +232,21 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var exception = Assert.ThrowsAny<DefinitionException>(() => builder.ProcessStatements([statement], GetSchema(), 23));
 
         Assert.IsType(expectedType, exception);
+        Assert.Equal(new SourceRef(23, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void ProcessStatements_RejectsOnCommitForConstructedNonTemporaryTableWithSource()
+    {
+        var builder = CreateBuilder();
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TEMP TABLE items (id INT) ON COMMIT DROP")) with
+        {
+            Temporary = null
+        };
+
+        var exception = Assert.Throws<SqlSyntaxException.OnCommitNonTemporary>(() => builder.ProcessStatements([statement], GetSchema(), 23));
+
+        Assert.Contains(nameof(CreateTable), exception.Message);
         Assert.Equal(new SourceRef(23, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
@@ -1351,6 +1358,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE TABLE items (id INT CONSTRAINT pk_items PRIMARY KEY, CONSTRAINT pk_second PRIMARY KEY (id))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT key_name UNIQUE (id), CONSTRAINT Key_Name CHECK (id > 0))")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT same CHECK (id > 0) CONSTRAINT Same CHECK (id < 100))")]
     public void TableConstraints_RejectDuplicateKeysAndConstraintNames(string sql)
     {
         var builder = CreateBuilder();
@@ -3241,6 +3249,225 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Contains("domain", error.Message);
         Assert.Contains("label", error.Message);
         Assert.Contains("must be named", error.Message);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TableProperties_PreserveAttributesAcrossForwardTypeResolutionAndRoundTrip(bool reverseDeclarations)
+    {
+        const string tableSql = """
+            CREATE UNLOGGED TABLE items (
+                id INT CONSTRAINT items_nn NOT NULL NO INHERIT,
+                parent_id INT,
+                payload label,
+                amount INT CONSTRAINT amount_positive CHECK (amount > 0) NO INHERIT,
+                CONSTRAINT items_pk PRIMARY KEY (id) INCLUDE (payload) DEFERRABLE INITIALLY IMMEDIATE,
+                CONSTRAINT payload_uq UNIQUE NULLS NOT DISTINCT (payload) DEFERRABLE INITIALLY DEFERRED,
+                CONSTRAINT parent_fk FOREIGN KEY (parent_id) REFERENCES parent (id) DEFERRABLE INITIALLY DEFERRED,
+                CONSTRAINT id_positive CHECK (id > 0) NO INHERIT
+            )
+            """;
+        const string dependencies = "CREATE DOMAIN label AS TEXT; CREATE TABLE parent (id INT CONSTRAINT parent_pk PRIMARY KEY)";
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(reverseDeclarations ? dependencies : tableSql), GetSchema(), 60);
+        builder.ProcessStatements(ParseStatements(reverseDeclarations ? tableSql : dependencies), GetSchema(), 61);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        PgTable table = definition.Tables[new ObjectHandle("catalog", "public", "items")];
+        Assert.True(table.Unlogged);
+        Assert.True(table.Columns[0].NullabilityOptions.NoInherit);
+        Assert.IsType<PgDataType.Custom>(table.Columns[2].DataType);
+        Assert.Null(table.Columns[2].Nullability);
+        Assert.NotNull(table.PrimaryKey);
+        Assert.True(table.PrimaryKey.Options.Deferrable);
+        Assert.False(table.PrimaryKey.Options.InitiallyDeferred);
+        Assert.Equal("payload", Assert.Single(table.PrimaryKey.IncludedColumns!.Columns).Name);
+        PgTableConstraint.Unique unique = Assert.Single(table.UniqueConstraints.Values);
+        Assert.False(unique.NullsDistinct);
+        Assert.True(unique.Options.Deferrable);
+        Assert.True(unique.Options.InitiallyDeferred);
+        PgTableConstraint.ForeignKey foreignKey = Assert.Single(table.ForeignKeys.Values);
+        Assert.True(foreignKey.Options.Deferrable);
+        Assert.True(foreignKey.Options.InitiallyDeferred);
+        Assert.All(table.Checks.Values, check => Assert.True(check.Options.NoInherit));
+        var rebuilt = CreateBuilder();
+        IEnumerable<Statement> statements = definition.CustomTypes.Values.Select(type => type.ToCreateStatement(true))
+            .Concat(definition.Tables.Values.Select(item => item.ToCreateStatement(true)));
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 62);
+        PgDefinition roundTrip = rebuilt.ToDefinition();
+        Assert.Equal(definition.Tables, roundTrip.Tables);
+        Assert.Equal(definition.CustomTypes, roundTrip.CustomTypes);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" NULLS DISTINCT")]
+    [InlineData(" NULLS NOT DISTINCT")]
+    public void TableProperties_ColumnAndTableConstraintFormsHaveTheSameCanonicalAttributes(string nulls)
+    {
+        var columnBuilder = CreateBuilder();
+        columnBuilder.ProcessStatements(ParseStatements($"""
+            CREATE TABLE items (
+                id INT CONSTRAINT pk PRIMARY KEY DEFERRABLE INITIALLY DEFERRED,
+                value INT CONSTRAINT uq UNIQUE{nulls} DEFERRABLE,
+                amount INT CONSTRAINT ck CHECK (amount > 0) NO INHERIT
+            )
+            """), GetSchema(), 60);
+        var tableBuilder = CreateBuilder();
+        tableBuilder.ProcessStatements(ParseStatements($"""
+            CREATE TABLE items (
+                id INT, value INT, amount INT,
+                CONSTRAINT pk PRIMARY KEY (id) INITIALLY DEFERRED,
+                CONSTRAINT uq UNIQUE{nulls} (value) DEFERRABLE INITIALLY IMMEDIATE,
+                CONSTRAINT ck CHECK (amount > 0) NO INHERIT
+            )
+            """), GetSchema(), 61);
+
+        Assert.Equal(columnBuilder.ToDefinition().Tables, tableBuilder.ToDefinition().Tables);
+    }
+
+    [Fact]
+    public void TableProperties_OmittedConstraintAttributesEqualExplicitDefaults()
+    {
+        var implicitBuilder = CreateBuilder();
+        implicitBuilder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (
+                id INT CONSTRAINT pk PRIMARY KEY,
+                value INT CONSTRAINT uq UNIQUE,
+                CONSTRAINT ck CHECK (value > 0),
+                CONSTRAINT fk FOREIGN KEY (id) REFERENCES items (id)
+            )
+            """), GetSchema(), 60);
+        var explicitBuilder = CreateBuilder();
+        explicitBuilder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (
+                id INT CONSTRAINT pk PRIMARY KEY NOT DEFERRABLE INITIALLY IMMEDIATE,
+                value INT CONSTRAINT uq UNIQUE NULLS DISTINCT NOT DEFERRABLE INITIALLY IMMEDIATE,
+                CONSTRAINT ck CHECK (value > 0) NOT DEFERRABLE INITIALLY IMMEDIATE,
+                CONSTRAINT fk FOREIGN KEY (id) REFERENCES items (id) NOT DEFERRABLE INITIALLY IMMEDIATE
+            )
+            """), GetSchema(), 61);
+
+        Assert.Equal(implicitBuilder.ToDefinition().Tables, explicitBuilder.ToDefinition().Tables);
+    }
+
+    [Theory]
+    [InlineData("CREATE UNLOGGED TABLE items (id INT)")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT pk PRIMARY KEY DEFERRABLE)")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT pk PRIMARY KEY INITIALLY DEFERRED)")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT uq UNIQUE NULLS NOT DISTINCT)")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT ck CHECK (id > 0) NO INHERIT)")]
+    [InlineData("CREATE TABLE items (id INT NOT NULL NO INHERIT)")]
+    public void TableProperties_ComparisonRetainsMeaningfulAttributeDifferences(string sql)
+    {
+        string plain = sql.Replace("UNLOGGED ", "", StringComparison.Ordinal)
+            .Replace(" DEFERRABLE", "", StringComparison.Ordinal)
+            .Replace(" INITIALLY DEFERRED", "", StringComparison.Ordinal)
+            .Replace(" NULLS NOT DISTINCT", "", StringComparison.Ordinal)
+            .Replace(" NO INHERIT", "", StringComparison.Ordinal);
+        var changedBuilder = CreateBuilder();
+        changedBuilder.ProcessStatements(ParseStatements(sql), GetSchema(), 60);
+        var plainBuilder = CreateBuilder();
+        plainBuilder.ProcessStatements(ParseStatements(plain), GetSchema(), 61);
+
+        Assert.NotEqual(Assert.Single(plainBuilder.ToDefinition().Tables.Values),
+            Assert.Single(changedBuilder.ToDefinition().Tables.Values));
+    }
+
+    [Fact]
+    public void TableProperties_PreserveMultipleNamedChecksOnOneColumn()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (
+                amount INT CONSTRAINT positive CHECK (amount > 0)
+                    CONSTRAINT bounded CHECK (amount < 100) NO INHERIT
+            )
+            """), GetSchema(), 60);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+
+        Assert.Equal(2, table.Checks.Count);
+        Assert.False(table.Checks[new Identifier("positive")].Options.NoInherit);
+        Assert.True(table.Checks[new Identifier("bounded")].Options.NoInherit);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 61);
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
+    }
+
+    [Theory]
+    [InlineData("CONSTRAINT pk PRIMARY KEY (id)")]
+    [InlineData("CONSTRAINT uq UNIQUE (id)")]
+    [InlineData("CONSTRAINT fk FOREIGN KEY (id) REFERENCES items (id)")]
+    public void TableProperties_RejectConflictingConstraintTimingWithSource(string constraint)
+    {
+        var statements = ParseStatements($"CREATE TABLE items (id INT, {constraint} NOT DEFERRABLE INITIALLY DEFERRED)");
+        var builder = CreateBuilder();
+
+        var error = Assert.Throws<SqlSyntaxException.MutuallyExclusive>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 60));
+
+        Assert.Equal(new SourceRef(60, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY", false)]
+    [InlineData("UNIQUE", false)]
+    [InlineData("PRIMARY KEY", true)]
+    public void TableProperties_ForeignKeysRequireANondeferrableBackingKey(string kind, bool alternativeKey)
+    {
+        var builder = CreateBuilder();
+        string alternative = alternativeKey ? ", CONSTRAINT usable UNIQUE (id)" : "";
+        builder.ProcessStatements(ParseStatements($"""
+            CREATE TABLE parent (id INT, CONSTRAINT delayed {kind} (id) DEFERRABLE {alternative});
+            CREATE TABLE child (id INT, CONSTRAINT fk FOREIGN KEY (id) REFERENCES parent (id))
+            """), GetSchema(), 60);
+
+        if (alternativeKey)
+        {
+            Assert.Single(builder.ToDefinition().Tables[new ObjectHandle("catalog", "public", "child")].ForeignKeys);
+        }
+        else
+        {
+            var error = Assert.Throws<ValidationExceptionSet>(builder.ToDefinition);
+            Assert.Contains(error.Exceptions, exception => exception is DefinitionException.ForeignKeyNoReferencedBackingIndex);
+        }
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT NOT NULL DEFERRABLE)")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT ck CHECK (id > 0) INITIALLY DEFERRED)")]
+    public void TableProperties_RejectDeferredNondeferrableConstraintKinds(string sql)
+    {
+        var statements = ParseStatements(sql);
+        var builder = CreateBuilder();
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 65));
+
+        Assert.Equal(new SourceRef(65, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData(false, typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
+    [InlineData(true, typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    public void TableProperties_RejectDuplicateOrUnsupportedOptionsInConstructedAst(bool unsupported, Type errorType)
+    {
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT CONSTRAINT pk PRIMARY KEY)"));
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(table.Columns));
+        var key = Assert.IsType<StatementColumnOption.PrimaryKey>(Assert.Single(column.Options));
+        SqlValueList<PgConstraintOption> options = unsupported
+            ? [new PgConstraintOption.NotValid()]
+            : [new PgConstraintOption.Deferrable(true), new PgConstraintOption.Deferrable(false)];
+        table = table with { Columns = [column with { Options = [key with { PgOptions = options }] }] };
+        var builder = CreateBuilder();
+
+        var error = Assert.ThrowsAny<SourcedException>(() => builder.ProcessStatements([table], GetSchema(), 65));
+
+        Assert.IsType(errorType, error);
+        Assert.Equal(new SourceRef(65, table.Meta.Start!.Value, table.Meta.End!.Value), error.ObjectSourceRef);
     }
 
     private static SchemaIdentifier GetSchema()

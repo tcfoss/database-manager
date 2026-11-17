@@ -19,7 +19,7 @@ public abstract class TableBuilder<TTable>(ObjectIdentifier name, NameHandling n
     protected SourceRef? SourceRef { get; } = sourceRef;
     protected HashSet<string> ColumnNames { get; } = [];
 
-    public void ApplyCreateTable(CreateTable createTable)
+    public virtual void ApplyCreateTable(CreateTable createTable)
     {
         foreach (StatementTableOption opt in createTable.TableOptions)
         {

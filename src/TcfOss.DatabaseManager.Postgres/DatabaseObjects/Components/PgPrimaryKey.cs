@@ -7,8 +7,15 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
 public record PgPrimaryKey(SqlValueList<Identifier> Columns, Identifier Name)
 {
+    public PgConstraintOptions Options { get; init; } = new();
+    public IncludedColumns? IncludedColumns { get; init; }
+
     public StatementTableConstraint.PrimaryKey ToStatementConstraint()
     {
-        return new StatementTableConstraint.PrimaryKey([.. Columns.Select(column => new KeyPart.Column(column))], Name);
+        return new StatementTableConstraint.PrimaryKey([.. Columns.Select(column => new KeyPart.Column(column))], Name)
+        {
+            IncludedColumns = IncludedColumns,
+            PgOptions = Options.ToStatementOptions()
+        };
     }
 }

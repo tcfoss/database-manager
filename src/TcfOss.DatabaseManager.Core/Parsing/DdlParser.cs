@@ -1451,9 +1451,9 @@ public class DdlParser
             {
                 return options;
             }
-            if (!used.Add(option.UniqueName))
+            if (!used.Add(option.DuplicateCheckKey))
             {
-                throw new ParseException.Duplicate(option.UniqueName, location);
+                throw new ParseException.Duplicate(option.DuplicateCheckKey, location);
             }
             options.Add(option);
         }

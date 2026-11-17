@@ -207,6 +207,9 @@
     <data name="Err_Syntax_ForeignKeyTypeMismatch" xml:space="preserve">
         <value>The foreign key '{0}' on table '{1}' includes a column '{2}' whose type ({3}) does not match the type ({4}) of the referenced column '{5}' in table '{6}'.</value>
     </data>
+    <data name="Err_Syntax_OnCommitNonTemporary" xml:space="preserve">
+        <value>The table '{0}' has an ON COMMIT clause but is not TEMPORARY.</value>
+    </data>
     <data name="Err_Syntax_UnaliasedSubquery" xml:space="preserve">
         <value>A subquery in a FROM clause must have an alias.</value>
     </data>

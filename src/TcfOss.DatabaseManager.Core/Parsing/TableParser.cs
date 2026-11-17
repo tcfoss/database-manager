@@ -52,7 +52,7 @@ public class TableParser
         PgPartitionBy? partitionBy = ParsePartitionBy(state);
 
         SqlValueList<StatementTableOption> options = ParseTableOptions(state);
-        PgOnCommit? onCommit = ParseOnCommit(state);
+        PgOnCommit? onCommit = temporary != null ? ParseOnCommit(state) : null;
 
         if (!SupportsPartitionAsSelect && (partitionOf != null || partitionBy != null)
             && state.Peek() is Word { Keyword: Keyword.AS or Keyword.SELECT })
@@ -163,7 +163,7 @@ public class TableParser
     protected SqlValueList<StatementColumnOption> ParseColumnOptions(ParserState state)
     {
         SqlValueList<StatementColumnOption> options = [];
-        HashSet<string> usedKeys = [];
+        DuplicateGuard usedKeys = new();
 
         while (true)
         {
@@ -174,10 +174,7 @@ public class TableParser
                 break;
             }
 
-            if (!usedKeys.Add(curr.DuplicateCheckKey))
-            {
-                throw new ParseException.Duplicate(curr.DuplicateCheckKey, currentLocation);
-            }
+            usedKeys.AddGuarded(curr, currentLocation);
 
             options.Add(curr);
         }
@@ -424,21 +421,22 @@ public class TableParser
             return null;
         }
         SqlValueList<PgStatementSequenceOption> options = [];
-        var used = new HashSet<string>(StringComparer.Ordinal);
+
+        DuplicateGuard used = new();
+
         while (!state.PeekIs<ParenClose>())
         {
             Location location = state.Peek().Location;
             PgStatementSequenceOption option = ParseNextPostgresIdentityOption(state);
-            if (!used.Add(option.UniqueName))
-            {
-                throw new ParseException.Duplicate(option.UniqueName, location);
-            }
+            used.AddGuarded(option, location);
             options.Add(option);
         }
+
         if (options.Count == 0)
         {
             throw state.ExpectedException("identity sequence option");
         }
+
         state.ExpectRightParen();
         return options;
     }
@@ -666,12 +664,15 @@ public class TableParser
         {
             return null;
         }
+
         SqlValueList<PgConstraintOption> options = [];
-        var used = new HashSet<string>(StringComparer.Ordinal);
+        DuplicateGuard used = new();
+
         if (allowNoInherit && state.ParseKeywordsAll(Keyword.NO, Keyword.INHERIT))
         {
             options.Add(new PgConstraintOption.NoInherit());
         }
+
         while (true)
         {
             Location location = state.Peek().Location;
@@ -701,10 +702,8 @@ public class TableParser
             {
                 break;
             }
-            if (!used.Add(option.UniqueName))
-            {
-                throw new ParseException.Duplicate(option.UniqueName, location);
-            }
+
+            used.AddGuarded(option, location);
             options.Add(option);
         }
         return options.Count == 0 ? null : options;
@@ -1281,7 +1280,8 @@ public class TableParser
     private SqlValueList<StatementTableOption> ParseTableOptions(ParserState state)
     {
         var options = new SqlValueList<StatementTableOption>();
-        var usedKeys = new HashSet<string>();
+        // var usedKeys = new HashSet<string>();
+        var usedKeys = new DuplicateGuard();
 
         while (true)
         {
@@ -1291,11 +1291,7 @@ public class TableParser
             {
                 break;
             }
-
-            if (!usedKeys.Add(curr.DuplicateCheckKey))
-            {
-                throw new ParseException.Duplicate(curr.DuplicateCheckKey, currentLocation);
-            }
+            usedKeys.AddGuarded(curr, currentLocation);
             options.Add(curr);
         }
         return options;
@@ -1779,7 +1775,8 @@ public class TableParser
         }
         else
         {
-            var used = new HashSet<string>(StringComparer.Ordinal);
+            var used = new DuplicateGuard();
+
             while (state.Peek() is Word { Keyword: Keyword.SET or Keyword.RESTART })
             {
                 Location location = state.Peek().Location;
@@ -1801,12 +1798,9 @@ public class TableParser
                     PgStatementSequenceOption option = _p.ComponentParser.ParseSequenceOption(state, allowRestart: !set)
                         ?? throw state.ExpectedException("identity sequence option");
                     operation = new PgAlterIdentityOperation.SequenceOption(option);
-                    key = option.UniqueName;
+                    key = option.DuplicateCheckKey;
                 }
-                if (!used.Add(key))
-                {
-                    throw new ParseException.Duplicate(key, location);
-                }
+                used.AddGuarded(key, location);
                 operations.Add(operation);
             }
             if (operations.Count == 0)

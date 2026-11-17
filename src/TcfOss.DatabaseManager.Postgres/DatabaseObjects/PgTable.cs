@@ -12,6 +12,7 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 
 public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : IDatabaseObject<CreateTable>
 {
+    public bool Unlogged { get; init; }
     public PgPrimaryKey? PrimaryKey { get; init; }
     public DatabaseComponentDict<PgTableConstraint.Unique> UniqueConstraints { get; init; } = [];
     public DatabaseComponentDict<PgTableConstraint.ForeignKey> ForeignKeys { get; init; } = [];
@@ -35,7 +36,10 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
         constraints.AddRange(Checks.Values.Select(constraint => constraint.ToStatementConstraint()));
         constraints.AddRange(ForeignKeys.Values.Select(foreignKey => foreignKey.ToStatementConstraint()));
         constraints.AddRange(UniqueConstraints.Values.Select(unique => unique.ToStatementConstraint()));
-        return new CreateTable(Name.ToObjectName(includeSchema ? 2 : 1), [.. Columns.Select(column => column.ToStatementColumn(manager))], constraints);
+        return new CreateTable(Name.ToObjectName(includeSchema ? 2 : 1), [.. Columns.Select(column => column.ToStatementColumn(manager))], constraints)
+        {
+            PgOptions = Unlogged ? new PgCreateTableOptions(true, null) : null
+        };
     }
 
     public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)

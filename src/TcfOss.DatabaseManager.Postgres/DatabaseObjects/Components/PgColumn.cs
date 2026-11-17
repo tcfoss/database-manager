@@ -11,6 +11,7 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
 {
     public ObjectName? Collation { get; init; }
     public ColumnOption.Nullability? Nullability { get; init; }
+    public PgConstraintOptions NullabilityOptions { get; init; } = new();
     public ColumnOption.ColumnDefault? Default { get; init; }
     public ColumnOption.Generated? Generated { get; init; }
 
@@ -27,7 +28,10 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
         }
         else if (Nullability is ColumnOption.Nullability.NotNull notNull)
         {
-            options.Add(new StatementColumnOption.Nullability.NotNull(notNull.Name));
+            options.Add(new StatementColumnOption.Nullability.NotNull(notNull.Name)
+            {
+                PgOptions = NullabilityOptions.ToStatementOptions()
+            });
         }
 
         if (Default is ColumnOption.ColumnDefault.DefaultValue value)

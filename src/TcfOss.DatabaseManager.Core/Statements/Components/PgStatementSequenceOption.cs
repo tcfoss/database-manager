@@ -3,12 +3,13 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Attributes;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public abstract record PgStatementSequenceOption : IWriteSql
+public abstract record PgStatementSequenceOption : IWriteSql, IHaveDuplicateCheckKey
 {
-    public abstract string UniqueName { get; }
+    public abstract string DuplicateCheckKey { get; }
     public abstract void ToSql(SqlTextWriter writer);
 
     public virtual void FormatSql(SqlTextWriter writer, FormatManager manager)
@@ -19,7 +20,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
     public record Start(long Value) : PgStatementSequenceOption
     {
         public bool UseWith { get; init; }
-        public override string UniqueName => "START";
+        public override string DuplicateCheckKey => "START";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -30,7 +31,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
     public record Increment(long Value) : PgStatementSequenceOption
     {
         public bool UseBy { get; init; }
-        public override string UniqueName => "INCREMENT";
+        public override string DuplicateCheckKey => "INCREMENT";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -40,7 +41,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
 
     public record MinValue(long? Value) : PgStatementSequenceOption
     {
-        public override string UniqueName => "MINVALUE";
+        public override string DuplicateCheckKey => "MINVALUE";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -57,7 +58,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
 
     public record MaxValue(long? Value) : PgStatementSequenceOption
     {
-        public override string UniqueName => "MAXVALUE";
+        public override string DuplicateCheckKey => "MAXVALUE";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -75,7 +76,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
 
     public record DataType(PgSequenceDataType Type) : PgStatementSequenceOption
     {
-        public override string UniqueName => "AS";
+        public override string DuplicateCheckKey => "AS";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -85,7 +86,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
 
     public record OwnedBy(ObjectName? Column) : PgStatementSequenceOption
     {
-        public override string UniqueName => "OWNED BY";
+        public override string DuplicateCheckKey => "OWNED BY";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -131,7 +132,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
     public record Restart(long? Value) : PgStatementSequenceOption
     {
         public bool UseWith { get; init; }
-        public override string UniqueName => "RESTART";
+        public override string DuplicateCheckKey => "RESTART";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -145,7 +146,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
 
     public record Cache(long Value) : PgStatementSequenceOption
     {
-        public override string UniqueName => "CACHE";
+        public override string DuplicateCheckKey => "CACHE";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -155,7 +156,7 @@ public abstract record PgStatementSequenceOption : IWriteSql
 
     public record Cycle(bool Enabled) : PgStatementSequenceOption
     {
-        public override string UniqueName => "CYCLE";
+        public override string DuplicateCheckKey => "CYCLE";
 
         public override void ToSql(SqlTextWriter writer)
         {

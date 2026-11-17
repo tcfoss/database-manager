@@ -50,18 +50,6 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             switch (statement)
             {
                 case CreateTable table:
-                    if (table.Temporary != null)
-                    {
-                        throw new DefinitionException.TempTable(table.Name.ToString(), sourceRef);
-                    }
-                    if (table.AsSelect != null)
-                    {
-                        throw new DefinitionException.CreateTableAsSelect(table.Name.ToString(), sourceRef);
-                    }
-                    if (table.PgOptions != null)
-                    {
-                        throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL options", sourceRef);
-                    }
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
                     var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer, Config.AttributeDefaults, sourceRef);
                     tableBuilder.ApplyCreateTable(table);
@@ -664,9 +652,12 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 }
                 var referencedColumns = foreignKey.ReferencedColumns.Select(column => column.Name).ToHashSet();
                 bool backed = referencedTable.PrimaryKey is { } primaryKey
+                    && !primaryKey.Options.Deferrable
                     && primaryKey.Columns.Count == foreignKey.ReferencedColumns.Count
                     && referencedColumns.SetEquals(primaryKey.Columns.Select(column => column.Name));
-                backed |= referencedTable.UniqueConstraints.Values.Any(unique => unique.Columns.Count == foreignKey.ReferencedColumns.Count
+                backed |= referencedTable.UniqueConstraints.Values.Any(unique =>
+                    !unique.Options.Deferrable
+                    && unique.Columns.Count == foreignKey.ReferencedColumns.Count
                     && referencedColumns.SetEquals(unique.Columns.Select(column => column.Name)));
                 backed |= referencedTable.Indexes.Values.Any(index => index is { Unique: true, Predicate: null }
                                                                       && index.Columns.Count == foreignKey.ReferencedColumns.Count

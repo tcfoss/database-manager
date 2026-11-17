@@ -149,13 +149,9 @@ public class PgCreateTableParserTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData("CREATE TABLE items (id INT) ON COMMIT DROP")]
     [InlineData("CREATE UNLOGGED TABLE items (id INT) ON COMMIT DELETE ROWS")]
-    public void TablePersistence_LeavesTemporaryEligibilityToSemanticValidation(string sql)
+    public void TablePersistence_RejectsOnCommitForNonTemporaryTables(string sql)
     {
-        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
-
-        Assert.Null(statement.Temporary);
-        Assert.NotNull(statement.PgOptions!.OnCommit);
-        Assert.Equal(sql, statement.ToSql());
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
 
     [Theory]

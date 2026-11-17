@@ -9,17 +9,22 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
 public abstract record PgTableConstraint(Identifier? Name = null)
 {
+    public PgConstraintOptions Options { get; init; } = new();
+
     public abstract StatementTableConstraint ToStatementConstraint();
 
     public record Unique(SqlValueList<Identifier> Columns, Identifier Name) : PgTableConstraint(Name)
     {
         public IncludedColumns? IncludedColumns { get; init; }
+        public bool NullsDistinct { get; init; } = true;
 
         public override StatementTableConstraint.UniqueConstraint ToStatementConstraint()
         {
             return new StatementTableConstraint.UniqueConstraint([.. Columns.Select(column => new KeyPart.Column(column))], Name)
             {
-                IncludedColumns = IncludedColumns
+                IncludedColumns = IncludedColumns,
+                NullsDistinct = NullsDistinct ? null : false,
+                PgOptions = Options.ToStatementOptions()
             };
         }
     }
@@ -35,7 +40,8 @@ public abstract record PgTableConstraint(Identifier? Name = null)
             return new StatementTableConstraint.ForeignKey([.. Columns], ReferencedTable.ToObjectName(2), [.. ReferencedColumns], Name)
             {
                 OnDelete = OnDelete,
-                OnUpdate = OnUpdate
+                OnUpdate = OnUpdate,
+                PgOptions = Options.ToStatementOptions()
             };
         }
     }
@@ -44,7 +50,10 @@ public abstract record PgTableConstraint(Identifier? Name = null)
     {
         public override StatementTableConstraint.Check ToStatementConstraint()
         {
-            return new StatementTableConstraint.Check(Expression, Name);
+            return new StatementTableConstraint.Check(Expression, Name)
+            {
+                PgOptions = Options.ToStatementOptions()
+            };
         }
     }
 }

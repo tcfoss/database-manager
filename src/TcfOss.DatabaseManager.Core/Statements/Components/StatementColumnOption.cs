@@ -4,16 +4,18 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using GenerationMode = TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes.GenerationMode;
 
 #pragma warning disable CA1716 // Identifiers should not match keywords
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public abstract record StatementColumnOption() : IWriteSql
+public abstract record StatementColumnOption() : IWriteSql, IHaveDuplicateCheckKey
 {
     public abstract void ToSql(SqlTextWriter writer);
-    public abstract string DuplicateCheckKey { get; }
+    public abstract string? DuplicateCheckKey { get; }
+
     public virtual void FormatSql(SqlTextWriter writer, FormatManager manager)
     {
         ToSql(writer);
@@ -110,7 +112,7 @@ public abstract record StatementColumnOption() : IWriteSql
 
     public record CheckConstraint(Expression Expression, Identifier? Name = null) : WithConstraint(Name)
     {
-        public override string DuplicateCheckKey => "CHECK";
+        public override string? DuplicateCheckKey => null;
 
         public override void ToSql(SqlTextWriter writer)
         {
