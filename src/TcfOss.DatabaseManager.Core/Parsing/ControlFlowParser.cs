@@ -310,6 +310,29 @@ public class ControlFlowParser
         };
     }
 
+    public SetConstraints ParseSetConstraints(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.SET, Keyword.CONSTRAINTS);
+        SqlValueList<ObjectName>? names = state.ParseKeyword(Keyword.ALL)
+            ? null : state.ParseCommaSeparated(ParseConstraintName);
+        bool deferred = state.ParseKeywordsAny(Keyword.DEFERRED, Keyword.IMMEDIATE) switch
+        {
+            Keyword.DEFERRED => true,
+            Keyword.IMMEDIATE => false,
+            _ => throw state.ExpectedException("DEFERRED", "IMMEDIATE")
+        };
+        return names == null ? new SetConstraints.All(deferred) : new SetConstraints.Named(names, deferred);
+    }
+
+    private ObjectName ParseConstraintName(ParserState state)
+    {
+        if (state.PeekKeyword(Keyword.ALL))
+        {
+            throw state.ExpectedException("constraint name");
+        }
+        return _parseObjectName(state);
+    }
+
     public SetTransaction ParseSetTransaction(ParserState state)
     {
         state.ExpectKeyword(Keyword.SET);

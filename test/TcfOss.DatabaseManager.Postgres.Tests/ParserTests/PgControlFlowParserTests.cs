@@ -1554,6 +1554,121 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
     }
 
+    [Theory]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED", true, 0)]
+    [InlineData("SET CONSTRAINTS ALL IMMEDIATE", false, 0)]
+    [InlineData("SET CONSTRAINTS fk_orders DEFERRED", true, 1)]
+    [InlineData("SET CONSTRAINTS app.fk_orders IMMEDIATE", false, 1)]
+    [InlineData("SET CONSTRAINTS \"ALL\" DEFERRED", true, 1)]
+    [InlineData("SET CONSTRAINTS app.\"ALL\" IMMEDIATE", false, 1)]
+    [InlineData("SET CONSTRAINTS \"app.ALL\" DEFERRED", true, 1)]
+    [InlineData("SET CONSTRAINTS \"ALL\", fk_orders IMMEDIATE", false, 2)]
+    [InlineData("SET CONSTRAINTS app.fk_orders, fk_items, \"Audit\".\"FK_Log\" DEFERRED", true, 3)]
+    [InlineData("SET CONSTRAINTS \"fk\"\"; SELECT 1; --\" IMMEDIATE", false, 1)]
+    public void SqlConstraintTiming_RoundTripsTargetsTimingFormattingAndJson(string sql, bool deferred, int namedTargets)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql), 113);
+        var statement = Assert.IsType<SetConstraints>(ParseStatement(state), exactMatch: false);
+
+        Assert.Equal(deferred, statement.Deferred);
+        if (namedTargets == 0)
+        {
+            Assert.IsType<SetConstraints.All>(statement);
+        }
+        else
+        {
+            var named = Assert.IsType<SetConstraints.Named>(statement);
+            Assert.Equal(namedTargets, named.Names.Count);
+            Assert.All(named.Names.SelectMany(name => name.Values),
+                identifier => Assert.Equal(113, identifier.Source!.Value.SourceId));
+        }
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void SqlConstraintTiming_DistinguishesAllAndPreservesOrderedNamesInMixedScripts()
+    {
+        const string sql = """
+            BEGIN;
+            SET CONSTRAINTS ALL DEFERRED;
+            SET CONSTRAINTS "ALL" IMMEDIATE;
+            SET CONSTRAINTS app.fk_orders, fk_items, "Audit"."FK_Log" DEFERRED;
+            SET constraints = 1;
+            COMMIT
+            """;
+        ParserState state = GetState(sql);
+        Statement[] statements = [.. ParseStatements(state).Where(statement => statement is not InertOnly)];
+
+        Assert.Equal(6, statements.Length);
+        Assert.IsType<StartTransaction.Begin>(statements[0]);
+        Assert.IsType<SetConstraints.All>(statements[1]);
+        var quotedAll = Assert.IsType<SetConstraints.Named>(statements[2]);
+        Identifier identifier = Assert.Single(Assert.Single(quotedAll.Names).Values);
+        Assert.Equal("ALL", identifier.Name);
+        Assert.Equal(QuoteStyle.Ansi, identifier.QuoteStyle);
+        var named = Assert.IsType<SetConstraints.Named>(statements[3]);
+        Assert.Equal(new[] { "app.fk_orders", "fk_items", "\"Audit\".\"FK_Log\"" },
+            named.Names.Select(name => name.ToSql()));
+        Assert.IsType<SetVariable>(statements[4]);
+        Assert.IsType<Commit>(statements[5]);
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("SET constraints = 1")]
+    [InlineData("SET constraints.mode = 1")]
+    [InlineData("SET \"constraints\" = 1")]
+    public void SqlConstraintTiming_DoesNotCaptureVariableAssignments(string sql)
+    {
+        var statement = Assert.IsType<SetVariable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("SET CONSTRAINTS")]
+    [InlineData("SET CONSTRAINTS ALL")]
+    [InlineData("SET CONSTRAINTS DEFERRED")]
+    [InlineData("SET CONSTRAINTS fk_orders")]
+    [InlineData("SET CONSTRAINTS ALL INITIALLY DEFERRED")]
+    [InlineData("SET CONSTRAINTS ALL, fk_orders DEFERRED")]
+    [InlineData("SET CONSTRAINTS fk_orders, ALL IMMEDIATE")]
+    [InlineData("SET CONSTRAINTS ALL ALL DEFERRED")]
+    [InlineData("SET CONSTRAINTS ALL.* IMMEDIATE")]
+    [InlineData("SET CONSTRAINTS fk_orders fk_items DEFERRED")]
+    [InlineData("SET CONSTRAINTS fk_orders, IMMEDIATE")]
+    [InlineData("SET CONSTRAINTS fk_orders,, fk_items DEFERRED")]
+    [InlineData("SET CONSTRAINTS .fk_orders DEFERRED")]
+    [InlineData("SET CONSTRAINTS fk_orders. DEFERRED")]
+    [InlineData("SET CONSTRAINTS (fk_orders) DEFERRED")]
+    [InlineData("SET CONSTRAINTS 1 DEFERRED")]
+    [InlineData("SET CONSTRAINTS 'fk_orders' DEFERRED")]
+    [InlineData("SET CONSTRAINTS fk_orders LATER")]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED IMMEDIATE")]
+    [InlineData("SET CONSTRAINTS fk_orders DEFERRED, fk_items DEFERRED")]
+    public void SqlConstraintTiming_RejectsMalformedTargetsListsAndTiming(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED")]
+    [InlineData("SET CONSTRAINTS app.fk_orders IMMEDIATE")]
+    public void SqlConstraintTiming_DoesNotIntroduceProceduralControls(string sql)
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)

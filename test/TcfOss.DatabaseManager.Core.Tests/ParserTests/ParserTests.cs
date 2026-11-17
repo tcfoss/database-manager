@@ -710,4 +710,38 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.Equal(sql, statement.ToSql());
     }
+
+    [Theory]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED", typeof(SetConstraints.All))]
+    [InlineData("SET CONSTRAINTS \"ALL\" IMMEDIATE", typeof(SetConstraints.Named))]
+    [InlineData("SET CONSTRAINTS app.fk_orders, fk_items DEFERRED", typeof(SetConstraints.Named))]
+    public void ConstraintTiming_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("SET constraints = 1")]
+    [InlineData("SET constraints.mode = 1")]
+    public void ConstraintTiming_AllGrammarPreservesSetAssignments(string sql)
+    {
+        var statement = Assert.IsType<SetVariable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void ConstraintTiming_DoesNotExpandOtherDialectGrammars(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("SET CONSTRAINTS ALL DEFERRED"));
+
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
 }

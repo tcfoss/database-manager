@@ -58,6 +58,6 @@ public partial class IdentifierConverter : JsonConverter<Identifier>
         return (given, quoteStyle);
     }
 
-    [GeneratedRegex(@"^@?((?:`[^`]+`)|(?:\[[^\[\]]+\])|(?:""[^""]+"")|(?:[A-Za-z_]\w*))$")]
+    [GeneratedRegex(@"^@?((?:`[^`]+`)|(?:\[[^\[\]]+\])|(?:""(?:[^""]|"""")+"")|(?:[A-Za-z_]\w*))$")]
     private static partial Regex GenerateIdentifierRegex();
 }

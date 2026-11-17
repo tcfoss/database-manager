@@ -474,11 +474,17 @@ public abstract class ParserBase : IParser
     private Statement ParseSet(ParserState state)
     {
         if (ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
-            && ((state.PeekKeywordsAll(Keyword.SET, Keyword.TRANSACTION)
-                    && state.PeekNth(2) is not (Equal or Dot))
-                || state.PeekKeywordsAll(Keyword.SET, Keyword.SESSION, Keyword.CHARACTERISTICS)))
+            && state.PeekNth(2) is not (Equal or Dot))
         {
-            return ControlFlowParser.ParseSetTransaction(state);
+            if (state.PeekKeywordsAll(Keyword.SET, Keyword.CONSTRAINTS))
+            {
+                return ControlFlowParser.ParseSetConstraints(state);
+            }
+            if (state.PeekKeywordsAll(Keyword.SET, Keyword.TRANSACTION)
+                || state.PeekKeywordsAll(Keyword.SET, Keyword.SESSION, Keyword.CHARACTERISTICS))
+            {
+                return ControlFlowParser.ParseSetTransaction(state);
+            }
         }
         return ControlFlowParser.ParseSetVariable(state);
     }

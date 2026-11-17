@@ -412,6 +412,8 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("SET TRANSACTION READ ONLY;", Label = "SQL transaction characteristics")]
     [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id';", Label = "SQL transaction snapshot")]
     [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;", Label = "SQL session transaction characteristics")]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED;", Label = "SQL constraint timing for all constraints")]
+    [InlineData("SET CONSTRAINTS app.fk_orders IMMEDIATE;", Label = "SQL constraint timing for named constraints")]
     [InlineData("RETURN NEXT 1;", Label = "Return next")]
     [InlineData("RETURN QUERY SELECT 1;", Label = "Return query")]
     [InlineData("EXCEPTION WHEN OTHERS THEN SELECT 1;", Label = "Exception handler")]

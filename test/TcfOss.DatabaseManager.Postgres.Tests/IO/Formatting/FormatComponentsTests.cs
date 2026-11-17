@@ -1018,4 +1018,18 @@ public class FormatComponentsTests
         Assert.Equal(expected, formatted.Trim());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("SET CONSTRAINTS ALL DEFERRED", "SET CONSTRAINTS ALL DEFERRED;")]
+    [InlineData("SET CONSTRAINTS \"ALL\" IMMEDIATE", "SET CONSTRAINTS \"ALL\" IMMEDIATE;")]
+    [InlineData("SET CONSTRAINTS app.fk_orders, fk_items DEFERRED", "SET CONSTRAINTS \"app\".\"fk_orders\", \"fk_items\" DEFERRED;")]
+    public void SqlConstraintTiming_FormatsNamesWithoutTreatingAllAsAnIdentifier(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

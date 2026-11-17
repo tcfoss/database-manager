@@ -17,6 +17,7 @@ public class JsonConverterTests
     [InlineData("counter value", QuoteStyle.Ansi, SigilKind.Variable)]
     [InlineData("counter value", QuoteStyle.Backticks, SigilKind.Variable)]
     [InlineData("@counter", QuoteStyle.Ansi, SigilKind.None)]
+    [InlineData("counter\"\"value", QuoteStyle.Ansi, SigilKind.None)]
     public void IdentifierConverter_RoundTrip_PreservesVariableSigilAndQuoting(string name, QuoteStyle quoteStyle, SigilKind sigil)
     {
         var identifier = new Identifier(name, quoteStyle, sigil);
@@ -52,6 +53,7 @@ public class JsonConverterTests
     [InlineData(typeof(Identifier), "@")]
     [InlineData(typeof(Identifier), "@@counter")]
     [InlineData(typeof(Identifier), "@counter.extra")]
+    [InlineData(typeof(Identifier), "\"counter\"value\"")]
     [InlineData(typeof(SchemaIdentifier), "catalog")]
     [InlineData(typeof(SchemaIdentifier), "catalog.schema.extra")]
     [InlineData(typeof(ObjectIdentifier), "catalog.schema")]
