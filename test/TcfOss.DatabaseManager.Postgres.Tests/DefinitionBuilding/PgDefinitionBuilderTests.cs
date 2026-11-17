@@ -131,7 +131,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("DROP TRIGGER IF EXISTS audit ON app.items CASCADE")]
     [InlineData("ALTER TABLE items ALTER id ADD GENERATED ALWAYS AS IDENTITY")]
     [InlineData("CREATE INDEX CONCURRENTLY ON ONLY items (id)")]
-    [InlineData("CREATE INDEX ON items (id)")]
     [InlineData("CREATE INDEX items_idx ON items (id NULLS LAST)")]
     [InlineData("CREATE INDEX items_idx ON items USING bloom (id app.int_ops (bits = 4) DESC NULLS FIRST)")]
     [InlineData("CREATE UNIQUE INDEX items_idx ON items (id) INCLUDE (label) NULLS NOT DISTINCT WITH (fillfactor = 80) TABLESPACE fast WHERE id > 0")]
@@ -1281,7 +1280,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void TableConstraints_ConstructNamedAndColumnLevelForms()
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE items (Id INT PRIMARY KEY, label TEXT CONSTRAINT uq_label UNIQUE, amount INT CONSTRAINT ck_positive CHECK (amount > 0), CONSTRAINT uq_pair UNIQUE (label, amount), CONSTRAINT ck_amount CHECK (amount < 100))"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (Id INT CONSTRAINT pk_items PRIMARY KEY, label TEXT CONSTRAINT uq_label UNIQUE, amount INT CONSTRAINT ck_positive CHECK (amount > 0), CONSTRAINT uq_pair UNIQUE (label, amount), CONSTRAINT ck_amount CHECK (amount < 100))"), GetSchema(), 0);
 
         PgDefinition definition = builder.ToDefinition();
 
@@ -1298,7 +1297,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (missing))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT pk_items PRIMARY KEY (missing))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq_missing UNIQUE (missing))")]
     public void TableConstraints_RejectUnknownColumns(string sql)
     {
@@ -1312,7 +1311,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void ForeignKeys_ResolveForwardTablesAndPreserveReferentialActions()
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE child (id INT, parent_id INT, CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id) ON DELETE CASCADE ON UPDATE RESTRICT); CREATE TABLE parent (id INT PRIMARY KEY)"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements("CREATE TABLE child (id INT, parent_id INT, CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id) ON DELETE CASCADE ON UPDATE RESTRICT); CREATE TABLE parent (id INT CONSTRAINT pk_parent PRIMARY KEY)"), GetSchema(), 0);
 
         PgDefinition definition = builder.ToDefinition();
 
@@ -1350,7 +1349,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TABLE items (id INT PRIMARY KEY, PRIMARY KEY (id))")]
+    [InlineData("CREATE TABLE items (id INT CONSTRAINT pk_items PRIMARY KEY, CONSTRAINT pk_second PRIMARY KEY (id))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT key_name UNIQUE (id), CONSTRAINT Key_Name CHECK (id > 0))")]
     public void TableConstraints_RejectDuplicateKeysAndConstraintNames(string sql)
     {
@@ -1360,15 +1359,24 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("CREATE TABLE items (id INT PRIMARY KEY)")]
+    [InlineData("CREATE TABLE items (id INT UNIQUE)")]
+    [InlineData("CREATE TABLE items (id INT CHECK (id > 0))")]
+    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id))")]
     [InlineData("CREATE TABLE items (id INT, UNIQUE (id))")]
     [InlineData("CREATE TABLE items (id INT, FOREIGN KEY (id) REFERENCES items(id))")]
     [InlineData("CREATE TABLE items (id INT, CHECK (id > 0))")]
-    public void TableConstraints_RequireNamesExceptPrimaryKey(string sql)
+    public void TableConstraints_RequireExplicitNames(string sql)
     {
         var builder = CreateBuilder();
+        var statements = ParseStatements(sql);
 
-        Assert.Throws<DefinitionException.TableConstraintNameRequired>(() =>
-            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0));
+        var error = Assert.Throws<DefinitionException.TableConstraintNameRequired>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 56));
+
+        Assert.Equal(new SourceRef(56, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+        Assert.Contains("items", error.Message);
+        Assert.Contains("must be named", error.Message);
     }
 
     [Theory]
@@ -1398,8 +1406,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("CREATE TABLE parent (id INT PRIMARY KEY); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(missing))", typeof(SqlSyntaxException.ForeignKeyReferencedColumnNotFound))]
-    [InlineData("CREATE TABLE parent (id INT PRIMARY KEY); CREATE TABLE child (first INT, second INT, CONSTRAINT fk_parent FOREIGN KEY (first, second) REFERENCES parent(id))", typeof(SqlSyntaxException.ForeignKeyColumnCountMismatch))]
+    [InlineData("CREATE TABLE parent (id INT CONSTRAINT pk_parent PRIMARY KEY); CREATE TABLE child (id INT, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(missing))", typeof(SqlSyntaxException.ForeignKeyReferencedColumnNotFound))]
+    [InlineData("CREATE TABLE parent (id INT CONSTRAINT pk_parent PRIMARY KEY); CREATE TABLE child (first INT, second INT, CONSTRAINT fk_parent FOREIGN KEY (first, second) REFERENCES parent(id))", typeof(SqlSyntaxException.ForeignKeyColumnCountMismatch))]
     public void ForeignKeys_ValidateReferencedColumnsAndCounts(string sql, Type expected)
     {
         var builder = CreateBuilder();
@@ -1438,7 +1446,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(
-            "CREATE TABLE parent (id INT PRIMARY KEY, label TEXT, CONSTRAINT uq_label UNIQUE (label)); "
+            "CREATE TABLE parent (id INT CONSTRAINT pk_parent PRIMARY KEY, label TEXT, CONSTRAINT uq_label UNIQUE (label)); "
             + "CREATE TABLE child (label TEXT, CONSTRAINT fk_parent FOREIGN KEY (label) REFERENCES parent(label))"), GetSchema(), 0);
 
         PgDefinition definition = builder.ToDefinition();
@@ -1526,7 +1534,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void ForeignKeys_AreStoredSeparatelyFromChecksAndRoundTrip()
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT PRIMARY KEY, CONSTRAINT ck_id CHECK (id > 0), CONSTRAINT fk_self FOREIGN KEY (id) REFERENCES items(id))"), GetSchema(), 0);
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT CONSTRAINT pk_items PRIMARY KEY, CONSTRAINT ck_id CHECK (id > 0), CONSTRAINT fk_self FOREIGN KEY (id) REFERENCES items(id))"), GetSchema(), 0);
 
         PgDefinition definition = builder.ToDefinition();
         PgTable table = Assert.Single(definition.Tables).Value;
@@ -1545,7 +1553,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
 
         Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ProcessStatements(
-            ParseStatements($"CREATE TABLE items (id INT PRIMARY KEY, {constraints})"), GetSchema(), 0));
+            ParseStatements($"CREATE TABLE items (id INT CONSTRAINT pk_items PRIMARY KEY, {constraints})"), GetSchema(), 0));
     }
 
     [Theory]
@@ -3139,6 +3147,100 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             Assert.IsType<ColumnOption.Generated.AsExpression>(table.Columns[1].Generated).Mode);
         Assert.Equal(explicitAttributes ? BuiltInIndexMethod.Btree : BuiltInIndexMethod.Hash,
             Assert.IsType<IndexMethod.BuiltIn>(Assert.Single(table.Indexes.Values).Method).Method);
+    }
+
+    [Theory]
+    [InlineData("id INT CONSTRAINT Items_PK PRIMARY KEY", "items_pk")]
+    [InlineData("id INT CONSTRAINT \"Items PK\" PRIMARY KEY", "Items PK")]
+    [InlineData("id INT, CONSTRAINT Items_PK PRIMARY KEY (id)", "items_pk")]
+    [InlineData("id INT, CONSTRAINT \"Items PK\" PRIMARY KEY (id)", "Items PK")]
+    public void ExplicitNames_PrimaryKeysNormalizeAndRoundTrip(string columns, string expectedName)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items ({columns})"), GetSchema(), 57);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+
+        Assert.NotNull(table.PrimaryKey);
+        Assert.Equal(expectedName, table.PrimaryKey.Name.Name);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 58);
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
+    }
+
+    [Theory]
+    [InlineData("Valid_Label", "valid_label")]
+    [InlineData("\"Valid Label\"", "Valid Label")]
+    public void ExplicitNames_DomainChecksNormalizeAndRoundTrip(string constraintName, string expectedName)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            $"CREATE DOMAIN label AS TEXT CONSTRAINT {constraintName} CHECK (VALUE <> '')"), GetSchema(), 57);
+
+        var domain = Assert.IsType<PgCustomType.Domain>(Assert.Single(builder.ToDefinition().CustomTypes.Values));
+
+        Assert.Equal(expectedName, Assert.IsType<PgDomainConstraint.Check>(Assert.Single(domain.Constraints)).Name!.Name);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(domain.ToCreateStatement(true).ToSql()), GetSchema(), 58);
+        Assert.Equal(domain, Assert.Single(rebuilt.ToDefinition().CustomTypes.Values));
+    }
+
+    [Fact]
+    public void ExplicitNames_AllowUnnamedNullabilityParametersAndIdentitySequences()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE DOMAIN label AS TEXT NOT NULL;
+            CREATE FUNCTION f(INT) RETURNS INT RETURN 1;
+            CREATE PROCEDURE p(INT) LANGUAGE sql AS 'opaque';
+            CREATE TABLE items (
+                id INT GENERATED ALWAYS AS IDENTITY CONSTRAINT items_pk PRIMARY KEY,
+                label TEXT NOT NULL
+            )
+            """), GetSchema(), 57);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        var domain = Assert.IsType<PgCustomType.Domain>(Assert.Single(definition.CustomTypes.Values));
+        Assert.Null(Assert.IsType<PgDomainConstraint.Nullability>(Assert.Single(domain.Constraints)).Name);
+        Assert.Null(Assert.Single(Assert.Single(definition.Functions.Values).Parameters).Name);
+        Assert.Null(Assert.Single(Assert.Single(definition.Procedures.Values).Parameters).Name);
+        PgTable table = Assert.Single(definition.Tables.Values);
+        Assert.IsType<ColumnOption.Generated.PgIdentity>(table.Columns[0].Generated);
+        Assert.All(table.Columns, column => Assert.Null(Assert.IsType<ColumnOption.Nullability.NotNull>(column.Nullability).Name));
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX ON items (id)")]
+    [InlineData("CREATE UNIQUE INDEX ON items (id)")]
+    public void ExplicitNames_UnnamedIndexesReportTheirOwnSource(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT)"), GetSchema(), 57);
+        var statements = ParseStatements(sql);
+
+        var error = Assert.Throws<DefinitionException.TableConstraintNameRequired>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 58));
+
+        Assert.Equal(new SourceRef(58, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+        Assert.Contains("INDEX", error.Message);
+        Assert.Contains("items", error.Message);
+    }
+
+    [Fact]
+    public void ExplicitNames_UnnamedDomainChecksReportTheirDeclarationSource()
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements("CREATE DOMAIN app.label AS TEXT CHECK (VALUE <> '')");
+        builder.ProcessStatements(statements, GetSchema(), 59);
+
+        var error = Assert.Throws<DefinitionException.DomainConstraintNameRequired>(builder.ToDefinition);
+
+        Assert.Equal(new SourceRef(59, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+        Assert.Contains("CHECK constraint", error.Message);
+        Assert.Contains("domain", error.Message);
+        Assert.Contains("label", error.Message);
+        Assert.Contains("must be named", error.Message);
     }
 
     private static SchemaIdentifier GetSchema()

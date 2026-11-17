@@ -25,6 +25,12 @@ public class DefinitionException(string message, SourceRef? sourceRef = null) : 
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Def_Table_UnnamedConstraint);
     }
 
+    public class DomainConstraintNameRequired(string constraintType, string domainName, SourceRef? sourceRef = null)
+        : DefinitionException(s_compositeFormat.Apply(constraintType, domainName), sourceRef)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Def_Domain_UnnamedConstraint);
+    }
+
     public class TableUniqueConflictingNames(string tableName, string constraintName, string indexName, SourceRef? sourceRef = null)
         : DefinitionException(s_compositeFormat.Apply(tableName, constraintName, indexName), sourceRef)
     {

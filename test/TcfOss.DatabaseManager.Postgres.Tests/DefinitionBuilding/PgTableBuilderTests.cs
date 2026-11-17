@@ -245,7 +245,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void PrimaryKeys_SetPendingColumnNotNullInEitherDeclarationOrder(bool keyFirst)
     {
         var builder = CreateBuilder();
-        var primaryKey = new StatementTableConstraint.PrimaryKey([new KeyPart.Column(new Identifier("ID"))]);
+        var primaryKey = new StatementTableConstraint.PrimaryKey([new KeyPart.Column(new Identifier("ID"))], new Identifier("pk"));
         var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(
             Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (Id INT NULL)")).Columns));
         if (keyFirst)
@@ -329,7 +329,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void AddPrimaryKey_RejectsEmptyColumnListWithSourcedSyntaxError()
     {
-        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, PRIMARY KEY (id))"));
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id))"));
         var constraint = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints)) with
         {
             Columns = []
@@ -349,7 +349,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void AddPrimaryKey_RejectsNonColumnKeyPartsWithSourcedSyntaxError(string sql)
     {
         var index = Assert.IsType<CreateIndex.Standard>(ParseStatement(sql));
-        var constraint = new StatementTableConstraint.PrimaryKey(index.Columns);
+        var constraint = new StatementTableConstraint.PrimaryKey(index.Columns, new Identifier("pk"));
         var sourceRef = new SourceRef(4, 10, 20);
         var builder = CreateBuilder();
 
@@ -609,7 +609,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("CONSTRAINT \"Pk\" PRIMARY KEY (id)")]
     [InlineData("CONSTRAINT pk PRIMARY KEY (id)")]
     public void PrimaryKeys_AllowIndexesWithDistinctNames(string constraint)
     {
@@ -754,13 +754,11 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(source, error.ObjectSourceRef);
     }
 
-    [Theory]
-    [InlineData("PRIMARY KEY (id, id)")]
-    [InlineData("CONSTRAINT pk PRIMARY KEY (id, id)")]
-    public void PrimaryKeys_RejectDuplicateColumnsWithOrWithoutConstraintName(string constraint)
+    [Fact]
+    public void PrimaryKeys_RejectDuplicateColumns()
     {
         var builder = CreateBuilder();
-        var table = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, {constraint})"));
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id, id))"));
 
         Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ApplyCreateTable(table));
     }

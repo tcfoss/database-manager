@@ -5,7 +5,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
-public record PgPrimaryKey(SqlValueList<Identifier> Columns, Identifier? Name = null)
+public record PgPrimaryKey(SqlValueList<Identifier> Columns, Identifier Name)
 {
     public StatementTableConstraint.PrimaryKey ToStatementConstraint()
     {

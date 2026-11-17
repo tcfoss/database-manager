@@ -194,12 +194,11 @@ public class PgTableBuilder(
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("PRIMARY KEY", "table", Name, sourceRef);
         }
-        Identifier? keyName = ComponentNormalizer.NormalizeSingleIdentifierNullable(primaryKey.Name);
-        if (keyName != null && _indexes.ContainsKey(keyName))
+        Identifier keyName = AddConstraintName(primaryKey.Name, "PRIMARY KEY", sourceRef);
+        if (_indexes.ContainsKey(keyName))
         {
             throw new SqlSyntaxException.DuplicateObject(keyName, sourceRef);
         }
-        AddConstraintName(primaryKey.Name, "PRIMARY KEY", sourceRef, required: false);
         _primaryKey = new PgPrimaryKey(NormalizeConstraintColumns(primaryKey.Columns, keyName, sourceRef), keyName);
         for (int index = 0; index < _columns.Count; index++)
         {
@@ -224,14 +223,11 @@ public class PgTableBuilder(
     private void AddTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef? sourceRef)
     {
         ValidateTableUnique(unique, sourceRef);
-        Identifier constraintName = unique.Name
-            ?? throw new DefinitionException.TableConstraintNameRequired("UNIQUE constraint", Name, sourceRef);
-        Identifier normalizedName = ComponentNormalizer.NormalizeSingleIdentifier(constraintName);
+        Identifier normalizedName = AddConstraintName(unique.Name, "UNIQUE constraint", sourceRef);
         if (_indexes.ContainsKey(normalizedName))
         {
-            throw new SqlSyntaxException.DuplicateObject(constraintName, sourceRef);
+            throw new SqlSyntaxException.DuplicateObject(normalizedName, sourceRef);
         }
-        AddConstraintName(constraintName, "UNIQUE", sourceRef, required: true);
         SqlValueList<Identifier> columns = NormalizeConstraintColumns(unique.Columns, normalizedName, sourceRef);
         _uniqueConstraints.Add(normalizedName, new PgTableConstraint.Unique(columns, normalizedName)
         {
@@ -242,8 +238,7 @@ public class PgTableBuilder(
     private void AddTableForeignKey(StatementTableConstraint.ForeignKey foreignKey, SourceRef? sourceRef)
     {
         ValidateConstraintIndexOptions(foreignKey.Comment, sourceRef);
-        AddConstraintName(foreignKey.Name, "FOREIGN KEY", sourceRef, required: true);
-        Identifier constraintName = ComponentNormalizer.NormalizeSingleIdentifier(foreignKey.Name!);
+        Identifier constraintName = AddConstraintName(foreignKey.Name, "FOREIGN KEY", sourceRef);
         _foreignKeys.Add(constraintName, new PreForeignKey(constraintName,
             NormalizeConstraintColumns([.. foreignKey.Columns.Select(column => new KeyPart.Column(column))], constraintName, sourceRef),
             foreignKey.ForeignTable, [.. foreignKey.ForeignColumns.Select(ComponentNormalizer.NormalizeSingleIdentifier)],
@@ -253,8 +248,7 @@ public class PgTableBuilder(
     private void AddTableCheck(StatementTableConstraint.Check check, SourceRef? sourceRef)
     {
         ValidateConstraintIndexOptions(check.Comment, sourceRef);
-        AddConstraintName(check.Name, "CHECK", sourceRef, required: true);
-        Identifier constraintName = ComponentNormalizer.NormalizeSingleIdentifier(check.Name!);
+        Identifier constraintName = AddConstraintName(check.Name, "CHECK", sourceRef);
         Expression expression = GetNormalizedExpression(check.Expression);
         ValidateExpressionScope(expression, sourceRef);
         _checks.Add(constraintName, new PgTableConstraint.Check(expression, constraintName));
@@ -349,20 +343,17 @@ public class PgTableBuilder(
         }
     }
 
-    private void AddConstraintName(Identifier? name, string constraintType, SourceRef? sourceRef, bool required)
+    private Identifier AddConstraintName(Identifier? name, string constraintType, SourceRef? sourceRef)
     {
         if (name == null)
         {
-            if (required)
-            {
-                throw new DefinitionException.TableConstraintNameRequired(constraintType, Name, sourceRef);
-            }
-            return;
+            throw new DefinitionException.TableConstraintNameRequired(constraintType, Name, sourceRef);
         }
         if (!_constraintNames.Add(Handle.GetNamePart(name, NameHandling)))
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce(name.Name, "table", Name, sourceRef);
         }
+        return ComponentNormalizer.NormalizeSingleIdentifier(name);
     }
 
     private void AddIndexDeclaration(Identifier name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,

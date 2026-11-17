@@ -84,10 +84,14 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
                     break;
                 case CreateIndex index:
-                    if (index.PgOptions != null || index.Name == null || index.Columns.Any(key => key.PgOptions != null)
+                    if (index.PgOptions != null || index.Columns.Any(key => key.PgOptions != null)
                         || index is CreateIndex.Standard { Options: not null } or CreateIndex.Unique { Options: not null })
                     {
                         throw new DefinitionException($"{index.GetType().Name} PostgreSQL index options", sourceRef);
+                    }
+                    if (index.Name == null)
+                    {
+                        throw new DefinitionException.TableConstraintNameRequired("INDEX", index.TableName.ToString(), sourceRef);
                     }
                     _pendingIndexes.Add((index, activeSchemaId, sourceRef));
                     break;
@@ -168,7 +172,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 StatementDomainConstraint.Nullability nullability => new PgDomainConstraint.Nullability(nullability.NotNull,
                     ComponentNormalizer.NormalizeSingleIdentifierNullable(nullability.Name)),
                 StatementDomainConstraint.Check check => new PgDomainConstraint.Check(check.Expression,
-                    ComponentNormalizer.NormalizeSingleIdentifierNullable(check.Name)),
+                    ComponentNormalizer.NormalizeSingleIdentifier(check.Name
+                        ?? throw new DefinitionException.DomainConstraintNameRequired("CHECK constraint", declaration.Name, declaration.SourceRef))),
                 _ => throw new NotImplementedException()
             });
             types.Add(handle, new PgCustomType.Domain(manager.GetName(handle), manager.Resolve(declaration.Statement.DataType, declaration.Name.Schema, declaration.SourceRef))

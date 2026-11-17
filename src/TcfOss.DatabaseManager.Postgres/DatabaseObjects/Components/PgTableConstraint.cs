@@ -25,7 +25,7 @@ public abstract record PgTableConstraint(Identifier? Name = null)
     }
 
     public record ForeignKey(SqlValueList<Identifier> Columns, ObjectIdentifier ReferencedTable,
-        SqlValueList<Identifier> ReferencedColumns, Identifier? Name = null) : PgTableConstraint(Name)
+        SqlValueList<Identifier> ReferencedColumns, Identifier Name) : PgTableConstraint(Name)
     {
         public ReferentialAction? OnDelete { get; init; }
         public ReferentialAction? OnUpdate { get; init; }
@@ -40,7 +40,7 @@ public abstract record PgTableConstraint(Identifier? Name = null)
         }
     }
 
-    public record Check(Expression Expression, Identifier? Name = null) : PgTableConstraint(Name)
+    public record Check(Expression Expression, Identifier Name) : PgTableConstraint(Name)
     {
         public override StatementTableConstraint.Check ToStatementConstraint()
         {
