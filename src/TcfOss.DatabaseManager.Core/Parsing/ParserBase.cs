@@ -471,8 +471,15 @@ public abstract class ParserBase : IParser
         return ControlFlowParser.ParseDeclareLocalVariable(state);
     }
 
-    private SetVariable ParseSet(ParserState state)
+    private Statement ParseSet(ParserState state)
     {
+        if (ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
+            && ((state.PeekKeywordsAll(Keyword.SET, Keyword.TRANSACTION)
+                    && state.PeekNth(2) is not (Equal or Dot))
+                || state.PeekKeywordsAll(Keyword.SET, Keyword.SESSION, Keyword.CHARACTERISTICS)))
+        {
+            return ControlFlowParser.ParseSetTransaction(state);
+        }
         return ControlFlowParser.ParseSetVariable(state);
     }
 

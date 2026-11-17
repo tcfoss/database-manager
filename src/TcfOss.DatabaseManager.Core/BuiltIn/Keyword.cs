@@ -106,6 +106,7 @@ public enum Keyword
     CHAR_LENGTH,
     CHARACTER,
     CHARACTER_LENGTH,
+    CHARACTERISTICS,
     CHARACTERS,
     CHARSET,
     CHECK,

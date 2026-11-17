@@ -685,4 +685,29 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(statement, ParseStatement(statement.ToSql()));
         Assert.Equal(statement, ParseStatement(Format(statement)));
     }
+
+    [Theory]
+    [InlineData("SET TRANSACTION READ ONLY, DEFERRABLE", typeof(SetTransaction.Characteristics))]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE", typeof(SetTransaction.Characteristics))]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id'", typeof(SetTransaction.Snapshot))]
+    public void TransactionCharacteristics_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData("SET transaction = 1")]
+    [InlineData("SET transaction.mode = 1")]
+    [InlineData("SET session = 1")]
+    public void TransactionCharacteristics_AllGrammarPreservesSetAssignments(string sql)
+    {
+        var statement = Assert.IsType<SetVariable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
 }

@@ -310,6 +310,40 @@ public class ControlFlowParser
         };
     }
 
+    public SetTransaction ParseSetTransaction(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.SET);
+        bool session = state.ParseKeyword(Keyword.SESSION);
+        if (session)
+        {
+            state.ExpectKeywordsAll(Keyword.CHARACTERISTICS, Keyword.AS);
+        }
+        state.ExpectKeyword(Keyword.TRANSACTION);
+        if (!session && state.ParseKeyword(Keyword.SNAPSHOT))
+        {
+            Token token = state.Peek();
+            Value.StringBasedValue snapshotId = ValueParser.ParseValue(state) switch
+            {
+                Value.SingleQuotedString value => value,
+                Value.EscapeString value => value,
+                Value.UnicodeString value => value,
+                Value.DollarQuotedString value => value,
+                _ => throw ParserState.ExpectedCategoryException("literal_string", token)
+            };
+            return new SetTransaction.Snapshot(snapshotId);
+        }
+
+        SqlValueList<TransactionMode> modes = ParseTransactionModes(state, requireComma: false);
+        if (modes.Count == 0)
+        {
+            throw state.ExpectedException("transaction mode");
+        }
+        return new SetTransaction.Characteristics(modes)
+        {
+            Session = session
+        };
+    }
+
     protected SqlValueList<TransactionMode> ParseTransactionModes(ParserState state, bool requireComma)
     {
         SqlValueList<TransactionMode> modes = [];

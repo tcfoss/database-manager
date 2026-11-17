@@ -1004,4 +1004,18 @@ public class FormatComponentsTests
         Assert.Equal(expected, formatted.Trim());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE", "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE;")]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE NOT DEFERRABLE", "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE, NOT DEFERRABLE;")]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot''id'", "SET TRANSACTION SNAPSHOT 'snapshot''id';")]
+    public void SqlTransactionCharacteristics_FormatModesAndSnapshotLiterals(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

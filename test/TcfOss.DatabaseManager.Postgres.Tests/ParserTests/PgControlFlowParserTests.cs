@@ -1421,6 +1421,139 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
     }
 
+    [Theory]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", false)]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ", "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ", false)]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL READ COMMITTED", "SET TRANSACTION ISOLATION LEVEL READ COMMITTED", false)]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED", "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED", false)]
+    [InlineData("SET TRANSACTION READ WRITE", "SET TRANSACTION READ WRITE", false)]
+    [InlineData("SET TRANSACTION READ ONLY", "SET TRANSACTION READ ONLY", false)]
+    [InlineData("SET TRANSACTION DEFERRABLE", "SET TRANSACTION DEFERRABLE", false)]
+    [InlineData("SET TRANSACTION NOT DEFERRABLE", "SET TRANSACTION NOT DEFERRABLE", false)]
+    [InlineData("SET TRANSACTION READ ONLY, ISOLATION LEVEL SERIALIZABLE DEFERRABLE", "SET TRANSACTION READ ONLY, ISOLATION LEVEL SERIALIZABLE, DEFERRABLE", false)]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED", "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED", true)]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE, NOT DEFERRABLE", "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE, NOT DEFERRABLE", true)]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE", "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE", true)]
+    public void SqlTransactionCharacteristics_RoundTripModesAndSessionScope(string sql, string expectedSql, bool session)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        var statement = Assert.IsType<SetTransaction.Characteristics>(ParseStatement(state));
+
+        Assert.Equal(session, statement.Session);
+        Assert.Equal(expectedSql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Theory]
+    [InlineData("'00000003-0000001B-1'")]
+    [InlineData("''")]
+    [InlineData("'snapshot''; SELECT 1; --'")]
+    [InlineData("'snapshot''''id'")]
+    [InlineData(@"'snapshot\''id'")]
+    [InlineData("$id$snapshot'id$id$")]
+    [InlineData(@"E'snapshot\x27id'")]
+    [InlineData(@"U&'snapshot\0027id'")]
+    public void SqlTransactionSnapshot_RoundTripsAsAnEscapedStringLiteral(string literal)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens($"SET TRANSACTION SNAPSHOT {literal}"));
+        var statement = Assert.IsType<SetTransaction.Snapshot>(ParseStatement(state));
+
+        Assert.Equal(literal, statement.SnapshotId.ToSql());
+        Assert.Equal($"SET TRANSACTION SNAPSHOT {literal}", statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void SqlTransactionCharacteristics_KeepSetFormsDistinctInMixedScripts()
+    {
+        const string sql = """
+            BEGIN;
+            SET TRANSACTION READ ONLY, ISOLATION LEVEL SERIALIZABLE, DEFERRABLE;
+            SET TRANSACTION SNAPSHOT '00000003-0000001B-1';
+            SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;
+            SET transaction = 1;
+            COMMIT
+            """;
+        ParserState state = GetState(sql);
+        Statement[] statements = [.. ParseStatements(state).Where(statement => statement is not InertOnly)];
+
+        Assert.Equal(6, statements.Length);
+        Assert.IsType<StartTransaction.Begin>(statements[0]);
+        var current = Assert.IsType<SetTransaction.Characteristics>(statements[1]);
+        Assert.False(current.Session);
+        Assert.Equal(new[] { "READ ONLY", "ISOLATION LEVEL SERIALIZABLE", "DEFERRABLE" },
+            current.Modes.Select(mode => mode.ToString()));
+        Assert.IsType<SetTransaction.Snapshot>(statements[2]);
+        Assert.True(Assert.IsType<SetTransaction.Characteristics>(statements[3]).Session);
+        Assert.IsType<SetVariable>(statements[4]);
+        Assert.IsType<Commit>(statements[5]);
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("SET transaction = 1")]
+    [InlineData("SET transaction.mode = 1")]
+    [InlineData("SET \"transaction\" = 'READ ONLY'")]
+    [InlineData("SET session = 1")]
+    [InlineData("SET characteristics = 1")]
+    public void SqlTransactionCharacteristics_DoNotCaptureVariableAssignments(string sql)
+    {
+        var statement = Assert.IsType<SetVariable>(ParseStatement(sql));
+
+        Assert.Equal(sql, statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("SET TRANSACTION")]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION")]
+    [InlineData("SET SESSION CHARACTERISTICS TRANSACTION READ ONLY")]
+    [InlineData("SET SESSION CHARACTERISTICS AS READ ONLY")]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL")]
+    [InlineData("SET TRANSACTION ISOLATION LEVEL SNAPSHOT")]
+    [InlineData("SET TRANSACTION READ ONLY,")]
+    [InlineData("SET TRANSACTION , READ ONLY")]
+    [InlineData("SET TRANSACTION READ ONLY,, DEFERRABLE")]
+    [InlineData("SET TRANSACTION WITH CONSISTENT SNAPSHOT")]
+    [InlineData("SET TRANSACTION READ ONLY WITH CONSISTENT SNAPSHOT")]
+    [InlineData("SET TRANSACTION SNAPSHOT")]
+    [InlineData("SET TRANSACTION SNAPSHOT snapshot_id")]
+    [InlineData("SET TRANSACTION SNAPSHOT \"snapshot_id\"")]
+    [InlineData("SET TRANSACTION SNAPSHOT 1")]
+    [InlineData("SET TRANSACTION SNAPSHOT NULL")]
+    [InlineData("SET TRANSACTION SNAPSHOT ('snapshot_id')")]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id', READ ONLY")]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id' READ ONLY")]
+    [InlineData("SET TRANSACTION READ ONLY, SNAPSHOT 'snapshot_id'")]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION SNAPSHOT 'snapshot_id'")]
+    public void SqlTransactionCharacteristics_RejectMalformedAndUnsupportedForms(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("SET TRANSACTION READ ONLY")]
+    [InlineData("SET TRANSACTION SNAPSHOT 'snapshot_id'")]
+    [InlineData("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")]
+    public void SqlTransactionCharacteristics_DoNotIntroduceProceduralControls(string sql)
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)
