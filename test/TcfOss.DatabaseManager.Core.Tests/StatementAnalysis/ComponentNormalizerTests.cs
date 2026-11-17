@@ -279,7 +279,7 @@ public class ComponentNormalizerTests
                     {
                         NameHandling.Lowercase => "mixed",
                         NameHandling.Uppercase => "MIXED",
-                        NameHandling.LowercaseUnlessQuoted when input == QuoteStyle.None => "mixed",
+                        NameHandling.LowercaseUnlessQuoted or NameHandling.Postgres when input == QuoteStyle.None => "mixed",
                         NameHandling.UppercaseUnlessQuoted when input == QuoteStyle.None => "MIXED",
                         _ => "MiXeD"
                     };

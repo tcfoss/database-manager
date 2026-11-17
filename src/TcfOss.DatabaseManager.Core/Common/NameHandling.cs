@@ -7,4 +7,5 @@ public enum NameHandling
     LowercaseUnlessQuoted,
     Uppercase,
     UppercaseUnlessQuoted,
+    Postgres,
 }

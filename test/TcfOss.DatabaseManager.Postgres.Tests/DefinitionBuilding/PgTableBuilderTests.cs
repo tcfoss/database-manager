@@ -836,13 +836,13 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null)
     {
-        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted);
+        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres);
         return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
-            NameHandling.LowercaseUnlessQuoted, normalizer, sourceRef);
+            NameHandling.Postgres, normalizer, sourceRef);
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)
-        : ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted)
+        : ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres)
     {
         public override Value NormalizeValue(Value value)
         {

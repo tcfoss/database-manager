@@ -12,13 +12,13 @@ public static class PgTestConfig
         var config = new PgConfig
         {
             ProjectDirectory = ".",
+            NameHandling = NameHandling.Postgres,
             QuoteStyle = QuoteStyle.Ansi,
             Catalog = new CatalogIdentifier("catalog"),
             DatabaseAvailable = false,
             ValidationSettings = new ValidationSettings(),
             SearchPath = searchPath ?? [new Identifier("public", QuoteStyle.None)],
-            Formatting = formatSettings ?? new FormattingSettings(),
-            NameHandling = NameHandling.LowercaseUnlessQuoted
+            Formatting = formatSettings ?? new FormattingSettings()
         };
         return config;
     }

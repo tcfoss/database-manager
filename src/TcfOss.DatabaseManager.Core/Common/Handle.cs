@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Newtonsoft.Json;
 
 namespace TcfOss.DatabaseManager.Core.Common;
@@ -74,8 +75,31 @@ public readonly record struct Handle
             NameHandling.LowercaseUnlessQuoted => quoteStyle != QuoteStyle.None ? name : name.ToLowerInvariant(),
             NameHandling.Uppercase => name.ToUpperInvariant(),
             NameHandling.UppercaseUnlessQuoted => quoteStyle != QuoteStyle.None ? name : name.ToUpperInvariant(),
+            NameHandling.Postgres => GetPostgresNamePart(name, quoteStyle),
             _ => throw new ArgumentOutOfRangeException(nameof(nameHandling), nameHandling, null)
         };
+    }
+
+    private static string GetPostgresNamePart(string name, QuoteStyle quoteStyle)
+    {
+        const int maxBytes = 63;
+        Span<char> buffer = stackalloc char[Math.Min(name.Length, maxBytes)];
+        int byteCount = 0;
+        int charCount = 0;
+        foreach (Rune rune in name.EnumerateRunes())
+        {
+            if (byteCount + rune.Utf8SequenceLength > maxBytes)
+            {
+                break;
+            }
+            Rune stored = quoteStyle == QuoteStyle.None && rune.Value is >= 'A' and <= 'Z'
+                ? new Rune(rune.Value + ('a' - 'A'))
+                : rune;
+            charCount += stored.EncodeToUtf16(buffer[charCount..]);
+            byteCount += rune.Utf8SequenceLength;
+        }
+        ReadOnlySpan<char> result = buffer[..charCount];
+        return result.SequenceEqual(name.AsSpan()) ? name : new string(result);
     }
 
 #pragma warning disable CA1862 // Use the 'StringComparison' method overloads to perform case-insensitive string comparisons
@@ -88,6 +112,7 @@ public readonly record struct Handle
             NameHandling.LowercaseUnlessQuoted => part.Name != part.Name.ToLowerInvariant(),
             NameHandling.Uppercase => false,
             NameHandling.UppercaseUnlessQuoted => part.Name != part.Name.ToUpperInvariant(),
+            NameHandling.Postgres => part.Name.AsSpan().ContainsAnyInRange('A', 'Z'),
             _ => throw new ArgumentOutOfRangeException(nameof(nameHandling), nameHandling, null)
         };
     }

@@ -1,3 +1,4 @@
+using System.Text;
 using TcfOss.DatabaseManager.Core.Common;
 
 namespace TcfOss.DatabaseManager.Core.Tests.Common;
@@ -34,6 +35,47 @@ public class HandleTests
 
         Assert.Equal(expected, result);
         Assert.Equal(expected, Handle.GetNamePart(identifier.Name, identifier.QuoteStyle, handling));
+    }
+
+    [Theory]
+    [InlineData(QuoteStyle.None, "A\u00c9\u0130\u03a9Z", "a\u00c9\u0130\u03a9z")]
+    [InlineData(QuoteStyle.Ansi, "A\u00c9\u0130\u03a9Z", "A\u00c9\u0130\u03a9Z")]
+    [InlineData(QuoteStyle.None, "E\u0301", "e\u0301")]
+    public void GetNamePart_PostgresFoldsOnlyUnquotedAsciiLetters(QuoteStyle quoteStyle, string input, string expected)
+    {
+        Assert.Equal(expected, Handle.GetNamePart(input, quoteStyle, NameHandling.Postgres));
+    }
+
+    [Theory]
+    [InlineData("x", 1)]
+    [InlineData("\u00e9", 2)]
+    [InlineData("\u4e2d", 3)]
+    [InlineData("\U0001f600", 4)]
+    public void GetNamePart_PostgresClipsAtUtf8CharacterBoundaries(string character, int utf8Length)
+    {
+        foreach (QuoteStyle quoteStyle in new[] { QuoteStyle.None, QuoteStyle.Ansi })
+        {
+            string prefix = new('A', 63 - utf8Length);
+            string expectedPrefix = quoteStyle == QuoteStyle.None ? prefix.ToLowerInvariant() : prefix;
+            string exact = Handle.GetNamePart(prefix + character, quoteStyle, NameHandling.Postgres);
+            string longer = Handle.GetNamePart(prefix + character + "tail", quoteStyle, NameHandling.Postgres);
+            string split = Handle.GetNamePart(prefix + "A" + character, quoteStyle, NameHandling.Postgres);
+
+            Assert.Equal(expectedPrefix + character, exact);
+            Assert.Equal(63, Encoding.UTF8.GetByteCount(exact));
+            Assert.Equal(exact, longer);
+            Assert.Equal(expectedPrefix + (quoteStyle == QuoteStyle.None ? "a" : "A"), split);
+            Assert.True(Encoding.UTF8.GetByteCount(split) <= 63);
+        }
+    }
+
+    [Theory]
+    [InlineData("Mixed", true)]
+    [InlineData("\u00c9cho", false)]
+    [InlineData("mixed", false)]
+    public void RequiresQuotingForCase_PostgresPreservesNonAsciiCase(string name, bool expected)
+    {
+        Assert.Equal(expected, Handle.RequiresQuotingForCase(new Identifier(name), NameHandling.Postgres));
     }
 
     [Fact]

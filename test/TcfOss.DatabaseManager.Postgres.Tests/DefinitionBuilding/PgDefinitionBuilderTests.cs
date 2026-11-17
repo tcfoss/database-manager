@@ -2914,6 +2914,165 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(new SourceRef(12, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StoredNames_ResolveLongNamesAcrossObjectsAndReferences(bool quoted)
+    {
+        string schemaName = "S" + new string('s', 62);
+        string tableName = "T" + new string('t', 62);
+        string columnName = "C" + new string('c', 62);
+        string typeName = "D" + new string('d', 62);
+        string routineName = "F" + new string('f', 62);
+        string parameterName = "P" + new string('p', 62);
+        string indexName = "I" + new string('i', 62);
+        string constraintName = "K" + new string('k', 62);
+        string triggerName = "R" + new string('r', 62);
+
+        QuoteStyle quoteStyle = quoted ? QuoteStyle.Ansi : QuoteStyle.None;
+
+        var config = PgTestConfig.GetTestConfig(searchPath: [new Identifier(schemaName + "path", quoteStyle)]);
+        var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        string schema = SqlName(schemaName, "declaration");
+
+        var statements = ParseStatements($"""
+            COMMENT ON COLUMN {SqlName(tableName, "reference")}.{SqlName(columnName, "reference")} IS 'column';
+            COMMENT ON FUNCTION {SqlName(routineName, "reference")}({SqlName(typeName, "reference")}) IS 'routine';
+            COMMENT ON INDEX {SqlName(indexName, "reference")} IS 'index';
+            COMMENT ON TRIGGER {SqlName(triggerName, "reference")} ON {SqlName(tableName, "reference")} IS 'trigger';
+            CREATE TRIGGER {SqlName(triggerName, "declaration")} AFTER UPDATE OF {SqlName(columnName, "reference")}
+                ON {SqlName(tableName, "reference")} FOR EACH ROW
+                WHEN (NEW.{SqlName(columnName, "reference")} IS NOT NULL) EXECUTE FUNCTION fire();
+            CREATE UNIQUE INDEX {SqlName(indexName, "declaration")} ON {SqlName(tableName, "reference")} ({SqlName(columnName, "reference")});
+            CREATE FUNCTION {schema}.{SqlName(routineName, "declaration")}({SqlName(parameterName, "declaration")} {SqlName(typeName, "reference")})
+                RETURNS {SqlName(typeName, "reference")} RETURN {SqlName(parameterName, "reference")};
+            CREATE FUNCTION {schema}.fire() RETURNS trigger LANGUAGE plpgsql AS 'opaque';
+            CREATE TABLE {schema}.{SqlName(tableName, "declaration")} (
+                {SqlName(columnName, "declaration")} {SqlName(typeName, "reference")},
+                CONSTRAINT {SqlName(constraintName, "declaration")} UNIQUE ({SqlName(columnName, "reference")}),
+                CONSTRAINT fk_self FOREIGN KEY ({SqlName(columnName, "reference")})
+                    REFERENCES {SqlName(tableName, "reference")} ({SqlName(columnName, "reference")})
+            );
+            CREATE DOMAIN {schema}.{SqlName(typeName, "declaration")} AS TEXT
+            """);
+
+        builder.ProcessStatements(statements, GetSchema(), 51);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        string storedSchema = StoredName(schemaName);
+
+        PgTable table = definition.Tables[new ObjectHandle("catalog", storedSchema, StoredName(tableName))];
+        PgColumn column = Assert.Single(table.Columns);
+        Assert.Equal(StoredName(columnName), column.Name.Name);
+
+        PgCustomType type = definition.CustomTypes[new ObjectHandle("catalog", storedSchema, StoredName(typeName))];
+        Assert.Equal(type.Name, Assert.IsType<PgDataType.Custom>(column.DataType).Name);
+
+        Assert.Equal(StoredName(constraintName), Assert.Single(table.UniqueConstraints.Values).Name?.Name);
+        Assert.Equal(StoredName(indexName), Assert.Single(table.Indexes.Values).Name.Name);
+        PgTableConstraint.ForeignKey foreignKey = Assert.Single(table.ForeignKeys.Values);
+        Assert.Equal(table.Name, foreignKey.ReferencedTable);
+        Assert.Equal(column.Name.Name, Assert.Single(foreignKey.ReferencedColumns).Name);
+
+        PgStoredFunction routine = definition.Functions[new ObjectHandle("catalog", storedSchema, StoredName(routineName))];
+        Assert.Equal(StoredName(parameterName), Assert.Single(routine.Parameters).Name?.Name);
+        Assert.Equal(type.Name, Assert.IsType<PgDataType.Custom>(
+            Assert.IsType<FunctionReturn.DataTypeReturn>(routine.ReturnType).DataType).Name);
+
+        PgTrigger trigger = Assert.Single(Assert.Single(definition.Triggers.Values).Values);
+        Assert.Equal(StoredName(triggerName), trigger.Name.Name);
+        Assert.Equal(table.Name, trigger.OnTable);
+        Assert.Equal(column.Name.Name, Assert.Single(Assert.IsType<TriggerEvent.Update>(Assert.Single(trigger.Events)).Columns!).Name);
+        Assert.Equal(4, definition.Comments.Count);
+        Assert.Equal(column.Name, Assert.IsType<PgCommentTarget.Column>(
+            Assert.Single(definition.Comments, comment => comment.Value == "column").Key).Name);
+        Assert.Equal(routine.Name, Assert.IsType<PgCommentTarget.Routine>(
+            Assert.Single(definition.Comments, comment => comment.Value == "routine").Key).Name);
+
+        var tableStatement = Assert.IsType<CreateTable>(statements[8]);
+        Assert.Equal(tableName + "declaration", tableStatement.Name.Values[^1].Name);
+        Assert.Equal(tableStatement.Name.Values, table.Name.OriginalIdentifiers);
+
+        string SqlName(string name, string suffix)
+        {
+            return quoted ? $"\"{name}{suffix}\"" : name + suffix;
+        }
+
+        string StoredName(string name)
+        {
+            return quoted ? name : name.ToLowerInvariant();
+        }
+    }
+
+    [Fact]
+    public void StoredNames_PreserveNonAsciiCaseInUnquotedNames()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            "CREATE TABLE \u00c9CHO (\u00c9X INT, \u00e9x INT); " +
+            "CREATE TABLE \u00e9cho (id INT)"), GetSchema(), 52);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(2, definition.Tables.Count);
+        PgTable table = definition.Tables[new ObjectHandle("catalog", "public", "\u00c9cho")];
+        Assert.Equal(["\u00c9x", "\u00e9x"], table.Columns.Select(column => column.Name.Name));
+    }
+
+    [Fact]
+    public void StoredNames_NormalizeCollationsOnDomainsCompositeFieldsAndColumns()
+    {
+        string schema = new('S', 63);
+        string collation = new('C', 63);
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"""
+            CREATE DOMAIN label AS TEXT COLLATE {schema}domain.{collation}domain;
+            CREATE TYPE details AS (value TEXT COLLATE {schema}field.{collation}field);
+            CREATE TABLE items (value TEXT COLLATE {schema}column.{collation}column)
+            """), GetSchema(), 53);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        ObjectName? domainCollation = Assert.IsType<PgCustomType.Domain>(
+            definition.CustomTypes[new ObjectHandle("catalog", "public", "label")]).Collation;
+        Assert.Equal([schema.ToLowerInvariant(), collation.ToLowerInvariant()], domainCollation!.Values.Select(name => name.Name));
+        ObjectName? fieldCollation = Assert.Single(Assert.IsType<PgCustomType.Composite>(
+            definition.CustomTypes[new ObjectHandle("catalog", "public", "details")]).Attributes).Collation;
+        Assert.Equal(domainCollation, fieldCollation);
+        Assert.Equal(domainCollation, Assert.Single(Assert.Single(definition.Tables.Values).Columns).Collation);
+    }
+
+    [Theory]
+    [InlineData("table", typeof(SqlSyntaxException.DuplicateObject))]
+    [InlineData("column", typeof(SqlSyntaxException.DuplicateColumn))]
+    [InlineData("constraint", typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
+    [InlineData("index", typeof(SqlSyntaxException.DuplicateObject))]
+    [InlineData("table-index", typeof(SqlSyntaxException.DuplicateObject))]
+    public void StoredNames_DiagnoseCollisionsAfterTruncation(string kind, Type expectedType)
+    {
+        string name = new('n', 63);
+        string sql = kind switch
+        {
+            "table" => $"CREATE TABLE {name}first (id INT); CREATE TABLE {name}second (id INT)",
+            "column" => $"CREATE TABLE items ({name}first INT, {name}second INT)",
+            "constraint" => $"CREATE TABLE items (id INT, CONSTRAINT {name}first UNIQUE (id), CONSTRAINT {name}second CHECK (id > 0))",
+            "index" => $"CREATE TABLE first (id INT); CREATE TABLE second (id INT); CREATE INDEX {name}first ON first (id); CREATE INDEX {name}second ON second (id)",
+            "table-index" => $"CREATE TABLE {name}first (id INT); CREATE INDEX {name}second ON {name}reference (id)",
+            _ => throw new InvalidOperationException()
+        };
+        var builder = CreateBuilder();
+
+        var exception = Assert.ThrowsAny<SourcedException>(() =>
+        {
+            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 54);
+            builder.ToDefinition();
+        });
+
+        Assert.IsType(expectedType, exception);
+        Assert.Equal(54, exception.ObjectSourceRef?.SourceId);
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));

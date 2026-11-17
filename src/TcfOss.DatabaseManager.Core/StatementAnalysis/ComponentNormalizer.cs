@@ -174,6 +174,16 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
         return new ObjectName([.. name.Values.Select(NormalizeSingleIdentifier)]);
     }
 
+    public ObjectName? NormalizeObjectNameNullable(ObjectName? name)
+    {
+        if (name is null)
+        {
+            return null;
+        }
+
+        return NormalizeObjectName(name);
+    }
+
     public CompoundIdentifier NormalizeIdentifier(CompoundIdentifier identifier)
     {
         return new CompoundIdentifier([.. identifier.Identifiers.Select(NormalizeSingleIdentifier)]);

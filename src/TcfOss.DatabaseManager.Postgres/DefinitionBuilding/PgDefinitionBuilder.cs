@@ -145,8 +145,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
 
         foreach ((ObjectHandle handle, Declaration<CreateType.Composite> declaration) in _compositeTypes)
         {
-            SqlValueList<PgCompositeTypeField> fields = [.. declaration.Statement.Attributes.Select(field => new PgCompositeTypeField(
-                ComponentNormalizer.NormalizeSingleIdentifier(field.Name), manager.Resolve(field.DataType, declaration.Name.Schema, declaration.SourceRef), field.Collation))];
+            SqlValueList<PgCompositeTypeField> fields = declaration.Statement.Attributes.Map(field => new PgCompositeTypeField(
+                ComponentNormalizer.NormalizeSingleIdentifier(field.Name),
+                manager.Resolve(field.DataType, declaration.Name.Schema, declaration.SourceRef),
+                ComponentNormalizer.NormalizeObjectNameNullable(field.Collation)));
+
             var fieldNames = new HashSet<string>();
             foreach (PgCompositeTypeField field in fields)
             {
@@ -160,17 +163,17 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
 
         foreach ((ObjectHandle handle, Declaration<CreateDomain> declaration) in _domains)
         {
-            SqlValueList<PgDomainConstraint> constraints = [.. declaration.Statement.Constraints.Select<StatementDomainConstraint, PgDomainConstraint>(constraint => constraint switch
+            SqlValueList<PgDomainConstraint> constraints = declaration.Statement.Constraints.Map<PgDomainConstraint>(constraint => constraint switch
             {
                 StatementDomainConstraint.Nullability nullability => new PgDomainConstraint.Nullability(nullability.NotNull,
                     ComponentNormalizer.NormalizeSingleIdentifierNullable(nullability.Name)),
                 StatementDomainConstraint.Check check => new PgDomainConstraint.Check(check.Expression,
                     ComponentNormalizer.NormalizeSingleIdentifierNullable(check.Name)),
                 _ => throw new NotImplementedException()
-            })];
+            });
             types.Add(handle, new PgCustomType.Domain(manager.GetName(handle), manager.Resolve(declaration.Statement.DataType, declaration.Name.Schema, declaration.SourceRef))
             {
-                Collation = declaration.Statement.Collation,
+                Collation = ComponentNormalizer.NormalizeObjectNameNullable(declaration.Statement.Collation),
                 Default = declaration.Statement.Default,
                 Constraints = constraints
             });
