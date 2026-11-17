@@ -469,13 +469,17 @@ public class ExpressionParser
 
     private Expression ParsePositionalParameter(ParserState state)
     {
+        return ParseCompositeContinuation(state, ParsePositionalParameterValue(state));
+    }
+
+    internal static PositionalParameter ParsePositionalParameterValue(ParserState state)
+    {
         var token = (PositionalParameterToken)state.Next();
         int number = int.Parse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture);
-        var parameter = new PositionalParameter(number)
+        return new PositionalParameter(number)
         {
             Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length)
         };
-        return ParseCompositeContinuation(state, parameter);
     }
 
     public FunctionCall ParseFunction(ParserState state, ObjectName? name)

@@ -719,6 +719,7 @@ public enum Keyword
     RULE,
     ROWID,
     ROWS,
+    ROWTYPE,
     ROWVERSION,
     RTREE,
     SAFE,

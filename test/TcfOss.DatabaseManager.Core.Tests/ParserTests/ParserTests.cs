@@ -797,4 +797,16 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
     }
+
+    [Theory]
+    [InlineData("DECLARE copied app.items.id%TYPE; BEGIN NULL; END")]
+    [InlineData("DECLARE rowvar app.items%ROWTYPE; BEGIN NULL; END")]
+    [InlineData("DECLARE copies original%TYPE ARRAY; BEGIN NULL; END")]
+    public void AnchoredDeclarations_AllGrammarRetainsPlPgSqlReferences(string sql)
+    {
+        var statement = Assert.IsType<BeginEnd>(ParseStatement(sql));
+
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
 }

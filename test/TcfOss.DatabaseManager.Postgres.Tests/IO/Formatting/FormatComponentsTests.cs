@@ -1046,4 +1046,18 @@ public class FormatComponentsTests
         Assert.Equal(expected, formatted.Trim());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("DECLARE copied app.items.id%TYPE; BEGIN NULL; END", "\"app\".\"items\".\"id\"%TYPE")]
+    [InlineData("DECLARE rows app.items%rowtype[]; BEGIN NULL; END", "\"app\".\"items\"%ROWTYPE[]")]
+    [InlineData("DECLARE copied $1%TYPE; BEGIN NULL; END", "$1%TYPE")]
+    public void ProceduralAnchoredDeclarations_FormatNamesButNotParameterPlaceholders(string sql, string expectedType)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Contains(expectedType, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

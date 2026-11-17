@@ -1797,6 +1797,134 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
     }
 
+    [Theory]
+    [InlineData("copy original%TYPE", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copy outer_label.original%TYPE", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copy app.items.id%TYPE", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copy \"App\".\"Items\".\"Id\"%type", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copy text%TYPE", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copy rowtype%TYPE", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copy CONSTANT app.items.name%TYPE COLLATE app.my_collation NOT NULL DEFAULT 'value'", typeof(DataTypeReference.PgTypeOf))]
+    [InlineData("copies original%TYPE[]", typeof(DataTypeReference.Array))]
+    [InlineData("copies app.items.id%TYPE[2][]", typeof(DataTypeReference.Array))]
+    [InlineData("copies app.items.id%TYPE ARRAY[4]", typeof(DataTypeReference.Array))]
+    [InlineData("rowvar items%ROWTYPE", typeof(DataTypeReference.PgRowTypeOf))]
+    [InlineData("rowvar rowtype%ROWTYPE", typeof(DataTypeReference.PgRowTypeOf))]
+    [InlineData("rowvar app.items%rowtype", typeof(DataTypeReference.PgRowTypeOf))]
+    [InlineData("rowvar \"App\".\"Items\"%ROWTYPE", typeof(DataTypeReference.PgRowTypeOf))]
+    [InlineData("rows app.items%ROWTYPE[]", typeof(DataTypeReference.Array))]
+    [InlineData("rows app.items%ROWTYPE[3][]", typeof(DataTypeReference.Array))]
+    [InlineData("rows app.items%ROWTYPE ARRAY[4]", typeof(DataTypeReference.Array))]
+    [InlineData("copy $1%TYPE", typeof(DataTypeReference.PgParameterTypeOf))]
+    [InlineData("copy $0%TYPE", typeof(DataTypeReference.PgParameterTypeOf))]
+    [InlineData("copies $2%TYPE[]", typeof(DataTypeReference.Array))]
+    public void ProceduralAnchoredDeclarations_RoundTripSqlFormattingAndJson(string declaration, Type expectedType)
+    {
+        var block = Assert.IsType<BeginEnd>(ParseStatement($"DECLARE {declaration}; BEGIN NULL; END"));
+        var variable = Assert.Single(block.PgOptions!.Declarations!.OfType<SubVariableDeclaration>());
+
+        Assert.IsType(expectedType, variable.DataType);
+        Assert.Equal(block, ParseStatement(block.ToSql()));
+        string formatted = Format(block);
+        Assert.Equal(block, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [block];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(block.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void ProceduralAnchoredDeclarations_PreserveSourceNamesArrayShapeAndModifiers()
+    {
+        const string sql = """
+            DECLARE
+                copied CONSTANT app.items.id%TYPE COLLATE app.my_collation NOT NULL := 1;
+                rows "App"."Items"%ROWTYPE[3][];
+                argument $1%TYPE;
+            BEGIN NULL; END
+            """;
+        var block = Assert.IsType<BeginEnd>(ParseStatement(sql, sourceId: 37));
+        SubVariableDeclaration[] variables = [.. block.PgOptions!.Declarations!.OfType<SubVariableDeclaration>()];
+        var copied = Assert.IsType<DataTypeReference.PgTypeOf>(variables[0].DataType);
+        Assert.Equal("app.items.id", copied.Name.ToSql());
+        Assert.Equal(37, copied.Name.Source!.Value.SourceId);
+        Assert.Equal(sql.IndexOf("app.items.id", StringComparison.Ordinal), copied.Name.Source.Value.Start);
+        Assert.Equal(copied.Name.Source.Value.Start + "app.items.id".Length, copied.Name.Source.Value.End);
+        Assert.True(variables[0].Constant);
+        Assert.True(variables[0].NotNull);
+        Assert.Equal("app.my_collation", variables[0].Collation!.ToSql());
+        Assert.Equal(PgInitializerOperator.Assignment, variables[0].Default!.Op);
+        var array = Assert.IsType<DataTypeReference.Array>(variables[1].DataType);
+        var row = Assert.IsType<DataTypeReference.PgRowTypeOf>(array.ElementType);
+        Assert.Equal("\"App\".\"Items\"", row.Name.ToSql());
+        Assert.All(row.Name.Values, identifier => Assert.Equal(37, identifier.Source!.Value.SourceId));
+        Assert.Equal(new uint?[] { 3, null }, array.Dimensions.Select(dimension => dimension.Length));
+        var parameter = Assert.IsType<DataTypeReference.PgParameterTypeOf>(variables[2].DataType).Parameter;
+        Assert.Equal(1, parameter.Number);
+        Assert.Equal(37, parameter.Source!.Value.SourceId);
+        Assert.Equal(sql.IndexOf("$1", StringComparison.Ordinal), parameter.Source.Value.Start);
+        Assert.Equal(parameter.Source.Value.Start + 2, parameter.Source.Value.End);
+    }
+
+    [Fact]
+    public void ProceduralAnchoredDeclarations_ApplyToCursorParametersAndNestedBlocks()
+    {
+        const string sql = """
+            DECLARE
+                original INT;
+                cursor_one CURSOR (p app.items.id%TYPE, r app.items%ROWTYPE, a $1%TYPE[]) FOR SELECT 1;
+            BEGIN
+                DECLARE copied original%TYPE; BEGIN NULL; END;
+            END
+            """;
+        var block = Assert.IsType<BeginEnd>(ParseStatement(sql));
+        var cursor = Assert.Single(block.PgOptions!.Declarations!.OfType<SubCursorDeclaration>());
+
+        Assert.IsType<DataTypeReference.PgTypeOf>(cursor.Parameters![0].DataType);
+        Assert.IsType<DataTypeReference.PgRowTypeOf>(cursor.Parameters[1].DataType);
+        var array = Assert.IsType<DataTypeReference.Array>(cursor.Parameters[2].DataType);
+        Assert.IsType<DataTypeReference.PgParameterTypeOf>(array.ElementType);
+        var inner = Assert.Single(block.Statements.OfType<BeginEnd>());
+        Assert.IsType<DataTypeReference.PgTypeOf>(
+            Assert.Single(inner.PgOptions!.Declarations!.OfType<SubVariableDeclaration>()).DataType);
+        Assert.Equal(block, ParseStatement(block.ToSql()));
+        Assert.Equal(block, ParseStatement(Format(block)));
+        Assert.Equal(block, Serialization.FromJson<BeginEnd>(Serialization.ToJson(block)));
+    }
+
+    [Theory]
+    [InlineData("%TYPE")]
+    [InlineData("%ROWTYPE")]
+    [InlineData("app.%TYPE")]
+    [InlineData("app.items%")]
+    [InlineData("app.items%ROW")]
+    [InlineData("app.items%\"ROWTYPE\"")]
+    [InlineData("app.items%\"TYPE\"")]
+    [InlineData("app.items%%TYPE")]
+    [InlineData("app.items%ROWTYPE%TYPE")]
+    [InlineData("app.items%TYPE.foo")]
+    [InlineData("app.items(2)%TYPE")]
+    [InlineData("app.items%TYPE(2)")]
+    [InlineData("app.items%ROWTYPE[-1]")]
+    [InlineData("app.items%TYPE[2147483648]")]
+    [InlineData("'app.items.id'%TYPE")]
+    [InlineData("$1%")]
+    public void ProceduralAnchoredDeclarations_RejectMalformedReferencesAndArrayBounds(string reference)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"DECLARE copied {reference}; BEGIN NULL; END"));
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg)]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void ProceduralAnchoredDeclarations_RequirePlPgSqlGrammar(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("DECLARE copied app.items.id%TYPE; BEGIN NULL; END"));
+
+        Assert.ThrowsAny<ParseException>(() => new Parser().Parse(state, null));
+    }
+
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
     {
         public override Identifier ParseIdentifier(ParserState state, string expectedLabel)

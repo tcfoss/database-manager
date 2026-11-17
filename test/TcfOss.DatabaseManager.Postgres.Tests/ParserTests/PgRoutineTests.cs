@@ -265,7 +265,10 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("COMMENT ON FUNCTION f(app.users.id%TYPE) IS 'function'")]
     [InlineData("ALTER FUNCTION f(app.users.id%TYPE) IMMUTABLE")]
     [InlineData("DROP FUNCTION f(app.users.id%TYPE)")]
-    public void PgTypeOfReferences_AreRestrictedToRoutineDefinitions(string sql)
+    [InlineData("CREATE TABLE sample (value app.users%ROWTYPE)")]
+    [InlineData("SELECT CAST(NULL AS app.users.id%TYPE)")]
+    [InlineData("SELECT CAST(NULL AS app.users%ROWTYPE)")]
+    public void PgAnchoredTypeReferences_RejectNonDeclarationContexts(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
@@ -277,6 +280,7 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("app.users.%TYPE")]
     [InlineData("app.users.id%")]
     [InlineData("app.users.id%ROWTYPE")]
+    [InlineData("app.users%ROWTYPE[]")]
     public void RoutineReturnTypes_RejectMalformedAnchoredReferences(string returnType)
     {
         Assert.ThrowsAny<ParseException>(() =>
@@ -417,6 +421,8 @@ public class PgRoutineTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("PREPARE TRANSACTION 'transaction_id';", Label = "SQL transaction preparation")]
     [InlineData("COMMIT PREPARED 'transaction_id';", Label = "SQL prepared transaction commit")]
     [InlineData("ROLLBACK PREPARED 'transaction_id';", Label = "SQL prepared transaction rollback")]
+    [InlineData("DECLARE copied app.items.id%TYPE; BEGIN NULL; END;", Label = "Procedural copied-type declaration")]
+    [InlineData("DECLARE rowvar app.items%ROWTYPE; BEGIN NULL; END;", Label = "Procedural row-type declaration")]
     [InlineData("RETURN NEXT 1;", Label = "Return next")]
     [InlineData("RETURN QUERY SELECT 1;", Label = "Return query")]
     [InlineData("EXCEPTION WHEN OTHERS THEN SELECT 1;", Label = "Exception handler")]

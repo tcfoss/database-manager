@@ -1,4 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using PgPseudoTypeValue = TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes.PgPseudoType;
@@ -66,6 +67,35 @@ public abstract record DataTypeReference : IWriteSql
         {
             Name.FormatSql(writer, manager);
             writer.Write("%TYPE");
+        }
+    }
+
+    public record PgRowTypeOf(ObjectName Name) : DataTypeReference
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Name.ToSql(writer);
+            writer.Write("%ROWTYPE");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Name.FormatSql(writer, manager);
+            writer.Write("%ROWTYPE");
+        }
+    }
+
+    public record PgParameterTypeOf(PositionalParameter Parameter) : DataTypeReference
+    {
+        public override void ToSql(SqlTextWriter writer)
+        {
+            Parameter.ToSql(writer);
+            writer.Write("%TYPE");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            ToSql(writer);
         }
     }
 

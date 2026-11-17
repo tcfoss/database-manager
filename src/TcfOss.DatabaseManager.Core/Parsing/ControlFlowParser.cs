@@ -137,7 +137,7 @@ public class ControlFlowParser
         {
             state.Next();
         }
-        DataTypeReference dataType = _p.DataTypeParser.ParseDataTypeReference(state);
+        DataTypeReference dataType = _p.DataTypeParser.ParseDeclarationDataTypeReference(state);
 
         ObjectName? collation = state.ParseKeyword(Keyword.COLLATE) ? _p.ComponentParser.ParseObjectName(state, "collation_name") : null;
 
@@ -184,7 +184,7 @@ public class ControlFlowParser
             ? state.ParseParenthesizedCommaSeparated(
                 innerState => new PgCursorParameter(
                     _parseIdentifier(innerState),
-                    _p.DataTypeParser.ParseDataTypeReference(innerState)),
+                    _p.DataTypeParser.ParseDeclarationDataTypeReference(innerState)),
                 allowEmpty: false)
             : null;
         bool useIs = state.ParseKeyword(Keyword.IS);
