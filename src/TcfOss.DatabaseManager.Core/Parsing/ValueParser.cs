@@ -77,6 +77,19 @@ public class ValueParser
         };
     }
 
+    public static Value.StringBasedValue ParseStringValue(ParserState state)
+    {
+        Token token = state.Peek();
+        return ParseValue(state) switch
+        {
+            Value.SingleQuotedString value => value,
+            Value.EscapeString value => value,
+            Value.UnicodeString value => value,
+            Value.DollarQuotedString value => value,
+            _ => throw ParserState.ExpectedCategoryException("literal_string", token)
+        };
+    }
+
     public static string ParseLiteralString(ParserState state)
     {
         Token token = state.Next();

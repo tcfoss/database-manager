@@ -9,7 +9,6 @@ namespace TcfOss.DatabaseManager.Core.Statements;
 
 public abstract record Rollback() : Statement
 {
-    // public abstract void ToSql(SqlTe)
     public record Full : Rollback
     {
         public TransactionNoun? Noun { get; init; }
@@ -72,11 +71,19 @@ public abstract record Rollback() : Statement
         }
     }
 
-
-
-    public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+    public record Prepared(Value.StringBasedValue TransactionId) : Rollback
     {
-        yield break;
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"ROLLBACK PREPARED {TransactionId}");
+        }
+
+        public override void FormatSql(SqlTextWriter writer, FormatManager manager)
+        {
+            Meta.FormatPreNonSql(writer, manager);
+            writer.WriteSqlI($"ROLLBACK PREPARED {TransactionId}");
+            Meta.FormatPostNonSql(writer, manager);
+        }
     }
 
     public record ToSavepoint(Identifier SavepointName) : Rollback
@@ -116,5 +123,10 @@ public abstract record Rollback() : Statement
             SavepointName.FormatSql(writer, manager);
             Meta.FormatPostNonSql(writer, manager);
         }
+    }
+
+    public override IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
+    {
+        yield break;
     }
 }

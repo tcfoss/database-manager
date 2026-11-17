@@ -744,4 +744,57 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
 
         Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
     }
+
+    [Theory]
+    [InlineData("PREPARE TRANSACTION 'transaction_id'", typeof(PrepareTransaction))]
+    [InlineData("COMMIT PREPARED 'transaction_id'", typeof(Commit.Prepared))]
+    [InlineData("ROLLBACK PREPARED 'transaction_id'", typeof(Rollback.Prepared))]
+    public void TwoPhaseTransactions_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData(Grammar.My)]
+    [InlineData(Grammar.Ms)]
+    public void TwoPhaseTransactions_DoNotExpandOtherDialectGrammars(Grammar grammar)
+    {
+        string[] commands = ["PREPARE TRANSACTION", "COMMIT PREPARED", "ROLLBACK PREPARED"];
+        foreach (string command in commands)
+        {
+            var state = new ParserState(grammar, GetTokens($"{command} 'transaction_id'"));
+            Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        }
+    }
+
+    [Theory]
+    [InlineData("PREPARE stmt FROM 'SELECT 1'", typeof(Prepare.FromString))]
+    [InlineData("PREPARE stmt FROM @query", typeof(Prepare.FromVariable))]
+    [InlineData("PREPARE TRANSACTION FROM 'SELECT 1'", typeof(Prepare.FromString))]
+    [InlineData("PREPARE TRANSACTION FROM @query", typeof(Prepare.FromVariable))]
+    public void Prepare_AllGrammarFallsBackToMySqlStatements(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
+
+    [Theory]
+    [InlineData(Grammar.Pg)]
+    [InlineData(Grammar.PgPl)]
+    [InlineData(Grammar.Ms)]
+    public void Prepare_StatementFallbackDoesNotExpandOtherDialectGrammars(Grammar grammar)
+    {
+        var state = new ParserState(grammar, GetTokens("PREPARE stmt FROM 'SELECT 1'"));
+
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
 }

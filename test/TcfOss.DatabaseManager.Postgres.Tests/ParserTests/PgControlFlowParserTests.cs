@@ -1239,7 +1239,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Statement statement = Assert.Single(new PgParser().Parse(state, null));
         if (commit)
         {
-            var asCommit = Assert.IsType<Commit>(statement);
+            var asCommit = Assert.IsType<Commit.Full>(statement);
             Assert.True(asCommit.WriteAsEnd);
         }
         else
@@ -1277,7 +1277,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(6, statements.Length);
         Assert.IsType<StartTransaction.Begin>(statements[0]);
         Assert.IsType<Select>(statements[1]);
-        var firstCommit = Assert.IsType<Commit>(statements[2]);
+        var firstCommit = Assert.IsType<Commit.Full>(statements[2]);
         Assert.True(firstCommit.WriteAsEnd);
         Assert.IsType<StartTransaction>(statements[3]);
         var rollbackAbort = Assert.IsType<Rollback.Full>(statements[4]);
@@ -1498,7 +1498,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.IsType<SetTransaction.Snapshot>(statements[2]);
         Assert.True(Assert.IsType<SetTransaction.Characteristics>(statements[3]).Session);
         Assert.IsType<SetVariable>(statements[4]);
-        Assert.IsType<Commit>(statements[5]);
+        Assert.IsType<Commit.Full>(statements[5]);
         Assert.Equal(ParseContext.None, state.Context);
     }
 
@@ -1617,7 +1617,7 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(new[] { "app.fk_orders", "fk_items", "\"Audit\".\"FK_Log\"" },
             named.Names.Select(name => name.ToSql()));
         Assert.IsType<SetVariable>(statements[4]);
-        Assert.IsType<Commit>(statements[5]);
+        Assert.IsType<Commit.Full>(statements[5]);
         Assert.Equal(ParseContext.None, state.Context);
     }
 
@@ -1663,6 +1663,134 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("SET CONSTRAINTS ALL DEFERRED")]
     [InlineData("SET CONSTRAINTS app.fk_orders IMMEDIATE")]
     public void SqlConstraintTiming_DoesNotIntroduceProceduralControls(string sql)
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
+    }
+
+    [Theory]
+    [InlineData("'transaction_id'")]
+    [InlineData("''")]
+    [InlineData("'transaction''; SELECT 1; --'")]
+    [InlineData("'transaction''''id'")]
+    [InlineData(@"'transaction\''id'")]
+    [InlineData("$id$transaction'id$id$")]
+    [InlineData(@"E'transaction\x27id'")]
+    [InlineData(@"U&'transaction\0027id'")]
+    public void SqlTwoPhaseTransactions_RoundTripLiteralIdsFormattingAndJson(string literal)
+    {
+        string[] commands = ["PREPARE TRANSACTION", "COMMIT PREPARED", "ROLLBACK PREPARED"];
+        foreach (string command in commands)
+        {
+            string sql = $"{command} {literal}";
+            var state = new ParserState(Grammar.Pg, GetTokens(sql));
+            var statement = Assert.IsType<Statement>(ParseStatement(state), exactMatch: false);
+            Value.StringBasedValue transactionId = command switch
+            {
+                "PREPARE TRANSACTION" => Assert.IsType<PrepareTransaction>(statement).TransactionId,
+                "COMMIT PREPARED" => Assert.IsType<Commit.Prepared>(statement).TransactionId,
+                _ => Assert.IsType<Rollback.Prepared>(statement).TransactionId
+            };
+
+            Assert.Equal(literal, transactionId.ToSql());
+            Assert.Equal(sql, statement.ToSql());
+            Assert.Equal(statement, ParseStatement(statement.ToSql()));
+            string formatted = Format(statement);
+            Assert.Equal(statement, ParseStatement(formatted));
+            Assert.Equal(formatted, Format(ParseStatement(formatted)));
+            Statement[] statements = [statement];
+            Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+            Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+        }
+    }
+
+    [Fact]
+    public void SqlTwoPhaseTransactions_RemainDistinctFromFullAndSavepointTransactions()
+    {
+        const string sql = """
+            BEGIN;
+            PREPARE TRANSACTION 'commit_id';
+            COMMIT PREPARED 'commit_id';
+            BEGIN;
+            PREPARE TRANSACTION 'rollback_id';
+            ROLLBACK PREPARED 'rollback_id';
+            BEGIN;
+            SAVEPOINT checkpoint;
+            ROLLBACK TO SAVEPOINT checkpoint;
+            COMMIT WORK AND CHAIN;
+            ROLLBACK TRANSACTION AND NO CHAIN
+            """;
+        ParserState state = GetState(sql);
+        Statement[] statements = [.. ParseStatements(state).Where(statement => statement is not InertOnly)];
+
+        Assert.Equal(11, statements.Length);
+        Assert.IsType<StartTransaction.Begin>(statements[0]);
+        Assert.IsType<PrepareTransaction>(statements[1]);
+        Assert.IsType<Commit.Prepared>(statements[2]);
+        Assert.IsType<StartTransaction.Begin>(statements[3]);
+        Assert.IsType<PrepareTransaction>(statements[4]);
+        Assert.IsType<Rollback.Prepared>(statements[5]);
+        Assert.IsType<StartTransaction.Begin>(statements[6]);
+        Assert.IsType<Savepoint>(statements[7]);
+        Assert.IsType<Rollback.ToSavepoint>(statements[8]);
+        var commit = Assert.IsType<Commit.Full>(statements[9]);
+        Assert.Equal(TransactionNoun.Work, commit.Noun);
+        Assert.False(commit.ChainOption!.Negated);
+        var rollback = Assert.IsType<Rollback.Full>(statements[10]);
+        Assert.Equal(TransactionNoun.Transaction, rollback.Noun);
+        Assert.True(rollback.ChainOption!.Negated);
+        Assert.Equal(ParseContext.None, state.Context);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("transaction_id")]
+    [InlineData("\"transaction_id\"")]
+    [InlineData("1")]
+    [InlineData("NULL")]
+    [InlineData("TRUE")]
+    [InlineData("B'0101'")]
+    [InlineData("X'ff'")]
+    [InlineData("('transaction_id')")]
+    [InlineData("'transaction_id', 'other'")]
+    [InlineData("'transaction_id' AND CHAIN")]
+    [InlineData("'transaction_id' AND NO CHAIN")]
+    [InlineData("'transaction_id' RELEASE")]
+    [InlineData("'transaction_id' TO checkpoint")]
+    public void SqlTwoPhaseTransactions_RequireOneStringLiteralWithoutTransactionOptions(string suffix)
+    {
+        string[] commands = ["PREPARE TRANSACTION", "COMMIT PREPARED", "ROLLBACK PREPARED"];
+        foreach (string command in commands)
+        {
+            var state = new ParserState(Grammar.Pg, GetTokens($"{command} {suffix}"));
+            Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        }
+    }
+
+    [Theory]
+    [InlineData("PREPARE WORK 'transaction_id'")]
+    [InlineData("PREPARE TRANSACTION WORK 'transaction_id'")]
+    [InlineData("COMMIT TRANSACTION PREPARED 'transaction_id'")]
+    [InlineData("ROLLBACK WORK PREPARED 'transaction_id'")]
+    [InlineData("END PREPARED 'transaction_id'")]
+    [InlineData("ABORT PREPARED 'transaction_id'")]
+    [InlineData("COMMIT PREPARE 'transaction_id'")]
+    [InlineData("ROLLBACK PREPARE 'transaction_id'")]
+    [InlineData("PREPARE statement_name AS SELECT 1")]
+    [InlineData("PREPARE statement_name FROM 'SELECT 1'")]
+    [InlineData("PREPARE TRANSACTION 'transaction_id' AS SELECT 1")]
+    public void SqlTwoPhaseTransactions_RejectAliasesNounsAndPreparedSqlSyntax(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("PREPARE TRANSACTION 'transaction_id'")]
+    [InlineData("COMMIT PREPARED 'transaction_id'")]
+    [InlineData("ROLLBACK PREPARED 'transaction_id'")]
+    public void SqlTwoPhaseTransactions_DoNotIntroduceProceduralControls(string sql)
     {
         var state = new ParserState(Grammar.PgPl, GetTokens(sql));
         Assert.ThrowsAny<ParseException>(() => ParseStatements(state));

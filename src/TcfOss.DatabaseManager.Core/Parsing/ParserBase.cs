@@ -133,6 +133,7 @@ public abstract class ParserBase : IParser
             Keyword.EXECUTE when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgExecute(state),
             Keyword.COMMIT when !state.Context.HasFlag(ParseContext.BeginAtomicBody) => ControlFlowParser.ParseCommit(state),
             Keyword.ROLLBACK when !state.Context.HasFlag(ParseContext.BeginAtomicBody) => ControlFlowParser.ParseRollback(state),
+            Keyword.PREPARE => ControlFlowParser.ParsePrepare(state),
             Keyword.SAVEPOINT when ControlFlowComponentHelpers.CanParsePgSqlTransaction(state) => ControlFlowParser.ParseSavepoint(state),
             Keyword.RELEASE when ControlFlowComponentHelpers.CanParsePgSqlTransaction(state) => ControlFlowParser.ParseReleaseSavepoint(state),
             Keyword.START when !state.Context.HasFlag(ParseContext.BeginAtomicBody)

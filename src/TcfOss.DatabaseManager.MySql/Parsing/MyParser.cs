@@ -71,7 +71,6 @@ public class MyParser : Parser<MyParserRunState>
         {
             Keyword.SIGNAL => ParseSignal(state),
             Keyword.RESIGNAL => ParseResignal(state),
-            Keyword.PREPARE => ParsePrepare(state),
             Keyword.EXECUTE => ParseExecute(state),
             Keyword.DROP => ParseDrop(state),
             Keyword.DEALLOCATE => ParseDeallocate(state),
@@ -275,24 +274,6 @@ public class MyParser : Parser<MyParserRunState>
             ConditionValue = conditionValue,
             InformationItems = informationItems
         };
-    }
-
-    private Prepare ParsePrepare(ParserState state)
-    {
-        state.ExpectKeyword(Keyword.PREPARE);
-
-        Identifier statementName = ComponentParser.ParseIdentifier(state);
-
-        state.ExpectKeyword(Keyword.FROM);
-
-        if (state.PeekIs<StringLiteral>())
-        {
-            return new Prepare.FromString(statementName, new Value.SingleQuotedString(((StringLiteral)state.Next()).Value));
-        }
-
-        Identifier statementSource = ComponentParser.ParseIdentifier(state);
-
-        return new Prepare.FromVariable(statementName, statementSource);
     }
 
     private MyExecute ParseExecute(ParserState state)

@@ -125,6 +125,8 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
 
     [Theory]
     [InlineData("PREPARE stmt1 FROM 'SELECT * FROM my_table WHERE id = ?'", Label = "PREPARE select")]
+    [InlineData("PREPARE prepared FROM 'SELECT 1'", Label = "PREPARE with contextual keyword name")]
+    [InlineData("PREPARE TRANSACTION FROM 'SELECT 1'", Label = "PREPARE with transaction keyword name")]
     [InlineData("PREPARE stmt2 FROM 'INSERT INTO my_table (name, value) VALUES (?, ?)'", Label = "PREPARE insert")]
     [InlineData("PREPARE stmt3 FROM @myvar", Label = "PREPARE from variable")]
     [InlineData("PREPARE stmt4 FROM myparam", Label = "PREPARE from param")]
@@ -1320,6 +1322,9 @@ public class MyParserTests : ParserTestsBase<MyLexer, MyParser>
     [InlineData("START TRANSACTION DEFERRABLE")]
     [InlineData("END WORK")]
     [InlineData("ABORT")]
+    [InlineData("PREPARE TRANSACTION 'transaction_id'")]
+    [InlineData("COMMIT PREPARED 'transaction_id'")]
+    [InlineData("ROLLBACK PREPARED 'transaction_id'")]
     public void TransactionLifecycle_RejectsPostgresSqlForms(string sql)
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));

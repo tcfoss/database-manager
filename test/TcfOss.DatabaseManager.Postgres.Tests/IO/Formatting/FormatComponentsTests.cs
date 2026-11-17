@@ -1032,4 +1032,18 @@ public class FormatComponentsTests
         Assert.Equal(expected, formatted.Trim());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("PREPARE TRANSACTION 'Work.Tx'", "PREPARE TRANSACTION 'Work.Tx';")]
+    [InlineData("COMMIT PREPARED 'transaction''id'", "COMMIT PREPARED 'transaction''id';")]
+    [InlineData("ROLLBACK PREPARED $id$transaction'id$id$", "ROLLBACK PREPARED $id$transaction'id$id$;")]
+    public void SqlTwoPhaseTransactions_FormatIdsAsStringLiterals(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

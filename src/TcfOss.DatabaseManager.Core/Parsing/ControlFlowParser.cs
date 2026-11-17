@@ -221,11 +221,18 @@ public class ControlFlowParser
             state.ExpectKeyword(Keyword.COMMIT);
         }
 
+        if (!asEnd
+            && ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
+            && state.ParseKeyword(Keyword.PREPARED))
+        {
+            return new Commit.Prepared(ValueParser.ParseStringValue(state));
+        }
+
         TransactionNoun? noun = ParseOptionalTransactionNoun(state);
         TransactionOptions opts = ParseTransactionOptions(state);
         Identifier? name = ParseTransactionName(state, noun);
 
-        return new Commit()
+        return new Commit.Full()
         {
             Noun = noun,
             ChainOption = opts.Chain,
@@ -241,6 +248,13 @@ public class ControlFlowParser
         if (!asAbort)
         {
             state.ExpectKeyword(Keyword.ROLLBACK);
+        }
+
+        if (!asAbort
+            && ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
+            && state.ParseKeyword(Keyword.PREPARED))
+        {
+            return new Rollback.Prepared(ValueParser.ParseStringValue(state));
         }
 
         TransactionNoun? noun = ParseOptionalTransactionNoun(state);
@@ -267,6 +281,43 @@ public class ControlFlowParser
             Name = name,
             WriteAsAbort = asAbort
         };
+    }
+
+    public Statement ParsePrepare(ParserState state)
+    {
+        if (ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
+            && state.PeekKeywordsAll(Keyword.PREPARE, Keyword.TRANSACTION)
+            && state.PeekNth(2) is not Word { Keyword: Keyword.FROM })
+        {
+            return ParsePrepareTransaction(state);
+        }
+        if (state.My)
+        {
+            return ParsePrepareStatement(state);
+        }
+        throw ParserState.ExpectedException("SQL statement".Italic(), state.Peek());
+    }
+
+    private Prepare ParsePrepareStatement(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.PREPARE);
+        Identifier statementName = _parseIdentifier(state);
+        state.ExpectKeyword(Keyword.FROM);
+
+        if (state.Peek() is StringLiteral literal)
+        {
+            state.Next();
+            return new Prepare.FromString(statementName, new Value.SingleQuotedString(literal.Value));
+        }
+
+        Identifier statementSource = _parseIdentifier(state);
+        return new Prepare.FromVariable(statementName, statementSource);
+    }
+
+    public static PrepareTransaction ParsePrepareTransaction(ParserState state)
+    {
+        state.ExpectKeywordsAll(Keyword.PREPARE, Keyword.TRANSACTION);
+        return new PrepareTransaction(ValueParser.ParseStringValue(state));
     }
 
     public Savepoint ParseSavepoint(ParserState state)
@@ -344,16 +395,7 @@ public class ControlFlowParser
         state.ExpectKeyword(Keyword.TRANSACTION);
         if (!session && state.ParseKeyword(Keyword.SNAPSHOT))
         {
-            Token token = state.Peek();
-            Value.StringBasedValue snapshotId = ValueParser.ParseValue(state) switch
-            {
-                Value.SingleQuotedString value => value,
-                Value.EscapeString value => value,
-                Value.UnicodeString value => value,
-                Value.DollarQuotedString value => value,
-                _ => throw ParserState.ExpectedCategoryException("literal_string", token)
-            };
-            return new SetTransaction.Snapshot(snapshotId);
+            return new SetTransaction.Snapshot(ValueParser.ParseStringValue(state));
         }
 
         SqlValueList<TransactionMode> modes = ParseTransactionModes(state, requireComma: false);
@@ -505,7 +547,7 @@ public class ControlFlowParser
         {
             return null;
         }
-        if (state.Peek() is Word { Keyword: Keyword.undefined })
+        if (state.Peek() is Word { Keyword: Keyword.undefined or Keyword.PREPARED })
         {
             return _parseIdentifier(state);
         }

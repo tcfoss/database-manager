@@ -638,6 +638,7 @@ public enum Keyword
     PRECEDING,
     PRECISION,
     PREPARE,
+    PREPARED,
     PRESERVE,
     PREWHERE,
     PRIMARY,

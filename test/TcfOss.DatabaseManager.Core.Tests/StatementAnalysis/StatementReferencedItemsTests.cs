@@ -16,7 +16,7 @@ public class StatementReferencedItemsTests
     [Fact]
     public void Commit_NoReferences()
     {
-        var stmt = new Commit();
+        var stmt = new Commit.Full();
         List<ItemRef> items = [.. stmt.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })];
         Assert.Empty(items);
     }
