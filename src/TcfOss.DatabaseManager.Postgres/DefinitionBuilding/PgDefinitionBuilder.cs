@@ -33,7 +33,6 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     private readonly List<(CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingIndexes = [];
     private readonly List<(CreateTrigger Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingTriggers = [];
     private readonly List<(CommentOn Statement, SchemaIdentifier Schema, SourceRef Source)> _pendingComments = [];
-    private int _appliedIndexCount;
 
     public override void ProcessStatements(IEnumerable<Statement> statements, SchemaIdentifier activeSchemaId, int sourceId)
     {
@@ -352,15 +351,31 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
     {
         PgTypeResolutionManager manager = GetTypeResolutionManager();
         DatabaseObjectDict<PgCustomType> types = GetCustomTypes(manager);
-        ApplyIndexes(manager);
+        DatabaseObjectDict<PgStoredFunction> functions = GetFunctions(manager);
+        DatabaseObjectDict<PgStoredProcedure> procedures = GetProcedures(manager);
+        DatabaseObjectDict<PgTable> tables = GetTables(manager);
 
-        var tables = new DatabaseObjectDict<PgTable>(Config.NameHandling);
-        foreach (KeyValuePair<ObjectHandle, PgTableBuilder> table in _tableBuilders)
+        var definition = new PgDefinition
         {
-            tables.Add(table.Key, table.Value.ToTable(manager));
+            Tables = tables,
+            CustomTypes = types,
+            Functions = functions,
+            Procedures = procedures,
+            Triggers = GetTriggers(tables, functions)
+        };
+        ApplyComments(definition, manager);
+        manager.ValidateDependencies(definition, SourceManager);
+        List<SourcedException> errors = ValidateDefinition(definition);
+        if (errors.Count != 0)
+        {
+            throw new ValidationExceptionSet(errors);
         }
-        ValidateRelationNames(tables);
 
+        return definition;
+    }
+
+    private DatabaseObjectDict<PgStoredFunction> GetFunctions(PgTypeResolutionManager manager)
+    {
         var functions = new DatabaseObjectDict<PgStoredFunction>(Config.NameHandling);
         foreach (KeyValuePair<ObjectHandle, Declaration<CreateFunction>> declaration in _functions)
         {
@@ -376,7 +391,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     item.Statement.RoutineTailMeta.Start != null ? item.Statement.RoutineTailMeta : item.Statement.Body.Meta)
             });
         }
+        return functions;
+    }
 
+    private DatabaseObjectDict<PgStoredProcedure> GetProcedures(PgTypeResolutionManager manager)
+    {
         var procedures = new DatabaseObjectDict<PgStoredProcedure>(Config.NameHandling);
         foreach ((ObjectHandle key, Declaration<CreateProcedure> item) in _procedures)
         {
@@ -389,7 +408,24 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     item.Statement.RoutineTailMeta.Start != null ? item.Statement.RoutineTailMeta : item.Statement.Body.Meta)
             });
         }
+        return procedures;
+    }
 
+    private DatabaseObjectDict<PgTable> GetTables(PgTypeResolutionManager manager)
+    {
+        List<(ObjectIdentifier Name, SourceRef Source)> indexes = ApplyIndexes(manager);
+        var tables = new DatabaseObjectDict<PgTable>(Config.NameHandling);
+        foreach (KeyValuePair<ObjectHandle, PgTableBuilder> table in _tableBuilders)
+        {
+            tables.Add(table.Key, table.Value.ToTable(manager));
+        }
+        ValidateRelationNames(tables, indexes);
+        return tables;
+    }
+
+    private DatabaseObjectDict<DatabaseComponentDict<PgTrigger>> GetTriggers(DatabaseObjectDict<PgTable> tables,
+        DatabaseObjectDict<PgStoredFunction> functions)
+    {
         var triggerResolver = new PgTriggerResolutionManager(Config, ComponentNormalizer, tables, functions);
         var triggers = new DatabaseObjectDict<DatabaseComponentDict<PgTrigger>>(Config.NameHandling);
         foreach ((CreateTrigger Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingTriggers)
@@ -407,16 +443,11 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             }
             tableTriggers.Add(triggerName, trigger);
         }
+        return triggers;
+    }
 
-        var definition = new PgDefinition
-        {
-            Tables = tables,
-            CustomTypes = types,
-            Functions = functions,
-            Procedures = procedures,
-            Triggers = triggers
-        };
-
+    private void ApplyComments(PgDefinition definition, PgTypeResolutionManager manager)
+    {
         var commentResolver = new PgCommentResolutionManager(Config, definition, manager);
         var commentTargets = new HashSet<PgCommentTarget>();
         foreach ((CommentOn Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingComments)
@@ -440,22 +471,13 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 definition.Comments.Add(target, comment);
             }
         }
-
-        manager.ValidateDependencies(definition, SourceManager);
-        List<SourcedException> errors = ValidateDefinition(definition);
-        if (errors.Count != 0)
-        {
-            throw new ValidationExceptionSet(errors);
-        }
-
-        return definition;
     }
 
-    private void ApplyIndexes(PgTypeResolutionManager manager)
+    private List<(ObjectIdentifier Name, SourceRef Source)> ApplyIndexes(PgTypeResolutionManager manager)
     {
-        while (_appliedIndexCount < _pendingIndexes.Count)
+        var indexes = new List<(ObjectIdentifier Name, SourceRef Source)>();
+        foreach ((CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingIndexes)
         {
-            (CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source) pending = _pendingIndexes[_appliedIndexCount];
             CreateIndex statement = pending.Statement;
             ObjectIdentifier tableName;
             try
@@ -472,34 +494,44 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 throw new SqlSyntaxException.CreateIndexUnknownTable(tableName, pending.Source);
             }
             tableBuilder.AddIndex(statement, pending.Source);
-            _appliedIndexCount++;
+            Identifier name = ComponentNormalizer.NormalizeSingleIdentifier(statement.Name!);
+            indexes.Add((new ObjectIdentifier(name.Name, tableName.Schema, name.QuoteStyle), pending.Source));
         }
+        return indexes;
     }
 
-    private void ValidateRelationNames(DatabaseObjectDict<PgTable> tables)
+    private void ValidateRelationNames(DatabaseObjectDict<PgTable> tables,
+        List<(ObjectIdentifier Name, SourceRef Source)> indexes)
     {
         var names = tables.Keys.ToHashSet();
         foreach (KeyValuePair<ObjectHandle, PgTable> table in tables)
         {
-            IEnumerable<Identifier> relationNames = table.Value.Indexes.Values.Select(index => index.Name)
-                .Concat(table.Value.UniqueConstraints.Values.Select(unique => unique.Name!));
+            IEnumerable<Identifier> relationNames = table.Value.UniqueConstraints.Values.Select(unique => unique.Name!);
             if (table.Value.PrimaryKey?.Name is { } primaryKeyName)
             {
                 relationNames = relationNames.Append(primaryKeyName);
             }
             foreach (Identifier relationName in relationNames)
             {
-                ObjectHandle handle = ObjectHandle.Create(
-                    new ObjectIdentifier(relationName.Name, table.Value.Name.Schema, relationName.QuoteStyle), Config.NameHandling);
-                SourceRef? source = SourceManager.GetSourceRef(handle) ?? SourceManager.GetSourceRef(table.Key);
-                if (!names.Add(handle))
-                {
-                    throw new SqlSyntaxException.DuplicateObject(relationName, source);
-                }
-                if (SourceManager.GetSourceRef(handle) == null)
-                {
-                    SourceManager.RegisterObject(handle, source ?? throw new InvalidOperationException("Table source metadata is missing."));
-                }
+                RegisterRelation(new ObjectIdentifier(relationName.Name, table.Value.Name.Schema, relationName.QuoteStyle),
+                    SourceManager.GetSourceRef(table.Key) ?? throw new InvalidOperationException("Table source metadata is missing."));
+            }
+        }
+        foreach ((ObjectIdentifier name, SourceRef source) in indexes)
+        {
+            RegisterRelation(name, source);
+        }
+
+        void RegisterRelation(ObjectIdentifier name, SourceRef source)
+        {
+            ObjectHandle handle = ObjectHandle.Create(name, Config.NameHandling);
+            if (!names.Add(handle))
+            {
+                throw new SqlSyntaxException.DuplicateObject(name, source);
+            }
+            if (SourceManager.GetSourceRef(handle) == null)
+            {
+                SourceManager.RegisterObject(handle, source);
             }
         }
     }

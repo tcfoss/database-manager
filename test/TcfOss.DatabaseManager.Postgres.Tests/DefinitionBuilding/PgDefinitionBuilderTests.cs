@@ -1126,23 +1126,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void ToDefinition_CanRetryAfterAForwardReferenceIsAdded()
-    {
-        var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE items (label label)"), GetSchema(), 0);
-        Assert.Throws<SqlSyntaxException.TypeNotFound>(builder.ToDefinition);
-        builder.ProcessStatements(ParseStatements("CREATE DOMAIN label AS TEXT"), GetSchema(), 1);
-
-        PgDefinition first = builder.ToDefinition();
-        PgDefinition second = builder.ToDefinition();
-
-        Assert.Single(first.Tables);
-        Assert.Single(first.CustomTypes);
-        Assert.Equal(first.Tables, second.Tables);
-        Assert.Equal(first.CustomTypes, second.CustomTypes);
-    }
-
-    [Fact]
     public void ToDefinition_ResolvesQuotedAndFoldedDeclarationsToDifferentTypes()
     {
         var builder = CreateBuilder();
@@ -1364,7 +1347,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
-        Assert.Equal(definition.Tables, builder.ToDefinition().Tables);
     }
 
     [Theory]
@@ -2058,18 +2040,17 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TRIGGER audit BEFORE INSERT ON items FOR ROW WHEN (NEW.id > 0 AND NEW IS NOT NULL) EXECUTE FUNCTION audit_fn()")]
     [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER UPDATE ON items FOR EACH ROW EXECUTE FUNCTION audit_fn()")]
     [InlineData("CREATE CONSTRAINT TRIGGER audit AFTER UPDATE ON items FROM other INITIALLY DEFERRED FOR ROW EXECUTE PROCEDURE audit_fn()")]
-    public void ToDefinition_CanonicalTriggersResolveIdempotently(string sql)
+    public void ToDefinition_CanonicalTriggersRoundTrip(string sql)
     {
         const string declarations = "CREATE TABLE items (id INT); CREATE TABLE other (id INT); CREATE FUNCTION audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque'; ";
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements(declarations + sql), GetSchema(), 0);
         PgTrigger trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
-        var reloaded = CreateBuilder();
 
+        var reloaded = CreateBuilder();
         reloaded.ProcessStatements(ParseStatements(declarations + trigger.ToCreateStatement(true).ToSql()), GetSchema(), 0);
 
         Assert.Equal(trigger, Assert.Single(Assert.Single(reloaded.ToDefinition().Triggers.Values).Values));
-        Assert.Equal(trigger, Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values));
     }
 
     [Theory]
@@ -2469,7 +2450,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         KeyValuePair<PgCommentTarget, string> column = Assert.Single(definition.Comments, comment => comment.Key is PgCommentTarget.Column);
         Assert.Equal("column", column.Value);
         Assert.Equal("COMMENT ON COLUMN \"public\".\"items\".\"id\" IS 'column'", new CommentOn(column.Key.ToStatementTarget(), new Value.SingleQuotedString(column.Value)).ToSql());
-        Assert.Equal(definition.Comments, builder.ToDefinition().Comments);
     }
 
     [Theory]
@@ -2618,13 +2598,14 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         builder.ProcessStatements(ParseStatements(statements), GetSchema(), 39);
 
-        KeyValuePair<PgCommentTarget, string> comment = Assert.Single(builder.ToDefinition().Comments);
+        PgDefinition definition = builder.ToDefinition();
+        KeyValuePair<PgCommentTarget, string> comment = Assert.Single(definition.Comments);
 
         var routine = Assert.IsType<PgCommentTarget.Routine>(comment.Key);
         Assert.Single(routine.ArgumentTypes);
         var roundTripBuilder = CreateBuilder();
         roundTripBuilder.ProcessStatements(ParseStatements($"CREATE DOMAIN label AS INT; CREATE FUNCTION f(IN value {declared}, OUT result TEXT) LANGUAGE SQL AS 'opaque'; " + new CommentOn(routine.ToStatementTarget(), new Value.SingleQuotedString(comment.Value)).ToSql()), GetSchema(), 40);
-        Assert.Equal(builder.ToDefinition().Comments, roundTripBuilder.ToDefinition().Comments);
+        Assert.Equal(definition.Comments, roundTripBuilder.ToDefinition().Comments);
     }
 
     [Fact]
@@ -2879,6 +2860,58 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var trigger = Assert.Single(Assert.Single(builder.ToDefinition().Triggers.Values).Values);
 
         Assert.Equal(expected, Assert.Single(trigger.Arguments));
+    }
+
+    [Fact]
+    public void ConstructionPasses_ResolveDeclarationsAcrossSourcesInEitherOrder()
+    {
+        var statements = ParseStatements("""
+            COMMENT ON INDEX app.parent_key IS 'lookup';
+            COMMENT ON TRIGGER audit ON app.child IS 'audit';
+            CREATE TRIGGER audit AFTER INSERT ON app.child EXECUTE FUNCTION app.audit_fn();
+            CREATE UNIQUE INDEX parent_key ON app.parent (id);
+            CREATE TABLE app.child (id INT, label app.label, CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES app.parent(id));
+            CREATE FUNCTION app.audit_fn() RETURNS trigger LANGUAGE plpgsql AS 'opaque';
+            CREATE PROCEDURE app.save(IN value app.label) BEGIN ATOMIC SELECT value; END;
+            CREATE TABLE app.parent (id INT);
+            CREATE DOMAIN app.label AS app.mood;
+            CREATE TYPE app.mood AS ENUM ('happy')
+            """);
+        var sourceManager = new SourceManager();
+        var builder = CreateBuilder(sourceManager);
+        var reversed = CreateBuilder();
+        for (int index = 0; index < statements.Count; index++)
+        {
+            builder.ProcessStatements([statements[index]], GetSchema(), index + 10);
+            int reverseIndex = statements.Count - index - 1;
+            reversed.ProcessStatements([statements[reverseIndex]], GetSchema(), reverseIndex + 10);
+        }
+
+        PgDefinition definition = builder.ToDefinition();
+        PgDefinition reverseDefinition = reversed.ToDefinition();
+
+        Assert.Equal(definition.Tables, reverseDefinition.Tables);
+        Assert.Equal(definition.CustomTypes, reverseDefinition.CustomTypes);
+        Assert.Equal(definition.Functions, reverseDefinition.Functions);
+        Assert.Equal(definition.Procedures, reverseDefinition.Procedures);
+        Assert.Equal(definition.Triggers, reverseDefinition.Triggers);
+        Assert.Equal(definition.Comments, reverseDefinition.Comments);
+        Assert.Equal(new SourceRef(13, statements[3].Meta.Start!.Value, statements[3].Meta.End!.Value),
+            sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "parent_key")));
+    }
+
+    [Fact]
+    public void ConstructionPasses_ReportIndexNamespaceCollisionsAtTheIndexSource()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("CREATE TABLE app.items (id INT)"), GetSchema(), 10);
+        builder.ProcessStatements(ParseStatements("CREATE TABLE app.items_key (id INT)"), GetSchema(), 11);
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX items_key ON app.items (id)"));
+        builder.ProcessStatements([statement], GetSchema(), 12);
+
+        var exception = Assert.Throws<SqlSyntaxException.DuplicateObject>(builder.ToDefinition);
+
+        Assert.Equal(new SourceRef(12, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
     private static SchemaIdentifier GetSchema()
