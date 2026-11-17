@@ -988,4 +988,20 @@ public class FormatComponentsTests
         Assert.Equal(expected, formatted.Trim());
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
+
+    [Theory]
+    [InlineData("SAVEPOINT checkpoint", "SAVEPOINT \"checkpoint\";")]
+    [InlineData("RELEASE checkpoint", "RELEASE \"checkpoint\";")]
+    [InlineData("RELEASE SAVEPOINT \"Checkpoint\"", "RELEASE SAVEPOINT \"Checkpoint\";")]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT checkpoint", "ROLLBACK WORK TO SAVEPOINT \"checkpoint\";")]
+    [InlineData("ROLLBACK TO \"SAVEPOINT\"", "ROLLBACK TO \"SAVEPOINT\";")]
+    public void SqlSavepoints_FormatNamesAsIdentifiers(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter();
+
+        string formatted = formatter.GetFormatted(sql);
+
+        Assert.Equal(expected, formatted.Trim());
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
 }

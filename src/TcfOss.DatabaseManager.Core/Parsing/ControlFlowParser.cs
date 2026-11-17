@@ -215,49 +215,73 @@ public class ControlFlowParser
 
     public Commit ParseCommit(ParserState state)
     {
-        Commit statement;
-        if (state.ParseKeyword(Keyword.END))
-        {
-            statement = new Commit.EndTransaction();
-        }
-        else
+        bool asEnd = state.ParseKeyword(Keyword.END);
+        if (!asEnd)
         {
             state.ExpectKeyword(Keyword.COMMIT);
-            statement = new Commit();
         }
+
         TransactionNoun? noun = ParseOptionalTransactionNoun(state);
         TransactionOptions opts = ParseTransactionOptions(state);
         Identifier? name = ParseTransactionName(state, noun);
-        return statement with
+
+        return new Commit()
         {
             Noun = noun,
             ChainOption = opts.Chain,
             ReleaseOption = opts.Release,
-            Name = name
+            Name = name,
+            WriteAsEnd = asEnd
         };
     }
 
     public Rollback ParseRollback(ParserState state)
     {
-        Rollback statement;
-        if (state.ParseKeyword(Keyword.ABORT))
-        {
-            statement = new Rollback.Abort();
-        }
-        else
+        bool asAbort = state.ParseKeyword(Keyword.ABORT);
+        if (!asAbort)
         {
             state.ExpectKeyword(Keyword.ROLLBACK);
-            statement = new Rollback();
         }
+
         TransactionNoun? noun = ParseOptionalTransactionNoun(state);
+        if (!asAbort
+            && ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
+            && state.ParseKeyword(Keyword.TO))
+        {
+            bool useSavepoint = state.ParseKeyword(Keyword.SAVEPOINT);
+            return new Rollback.ToSavepoint(_parseIdentifier(state))
+            {
+                Noun = noun,
+                UseSavepoint = useSavepoint
+            };
+        }
+
         TransactionOptions opts = ParseTransactionOptions(state);
         Identifier? name = ParseTransactionName(state, noun);
-        return statement with
+
+        return new Rollback.Full()
         {
             Noun = noun,
             ChainOption = opts.Chain,
             ReleaseOption = opts.Release,
-            Name = name
+            Name = name,
+            WriteAsAbort = asAbort
+        };
+    }
+
+    public Savepoint ParseSavepoint(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.SAVEPOINT);
+        return new Savepoint(_parseIdentifier(state));
+    }
+
+    public Release ParseReleaseSavepoint(ParserState state)
+    {
+        state.ExpectKeyword(Keyword.RELEASE);
+        bool useSavepoint = state.ParseKeyword(Keyword.SAVEPOINT);
+        return new Release(_parseIdentifier(state))
+        {
+            UseSavepoint = useSavepoint
         };
     }
 

@@ -24,7 +24,7 @@ public class StatementReferencedItemsTests
     [Fact]
     public void Rollback_NoReferences()
     {
-        var stmt = new Rollback();
+        var stmt = new Rollback.Full();
         List<ItemRef> items = [.. stmt.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All })];
         Assert.Empty(items);
     }

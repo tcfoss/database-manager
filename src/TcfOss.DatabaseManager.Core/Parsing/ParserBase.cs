@@ -133,10 +133,12 @@ public abstract class ParserBase : IParser
             Keyword.EXECUTE when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ControlFlowParser.ParsePgExecute(state),
             Keyword.COMMIT when !state.Context.HasFlag(ParseContext.BeginAtomicBody) => ControlFlowParser.ParseCommit(state),
             Keyword.ROLLBACK when !state.Context.HasFlag(ParseContext.BeginAtomicBody) => ControlFlowParser.ParseRollback(state),
+            Keyword.SAVEPOINT when ControlFlowComponentHelpers.CanParsePgSqlTransaction(state) => ControlFlowParser.ParseSavepoint(state),
+            Keyword.RELEASE when ControlFlowComponentHelpers.CanParsePgSqlTransaction(state) => ControlFlowParser.ParseReleaseSavepoint(state),
             Keyword.START when !state.Context.HasFlag(ParseContext.BeginAtomicBody)
-                && (state.My || CanParsePgSqlTransaction(state)) => ControlFlowParser.ParseStartTransaction(state),
-            Keyword.END when CanParsePgSqlTransaction(state) => ControlFlowParser.ParseCommit(state),
-            Keyword.ABORT when CanParsePgSqlTransaction(state) => ControlFlowParser.ParseRollback(state),
+                && (state.My || ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)) => ControlFlowParser.ParseStartTransaction(state),
+            Keyword.END when ControlFlowComponentHelpers.CanParsePgSqlTransaction(state) => ControlFlowParser.ParseCommit(state),
+            Keyword.ABORT when ControlFlowComponentHelpers.CanParsePgSqlTransaction(state) => ControlFlowParser.ParseRollback(state),
             Keyword.MOVE when state.Pg || (state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock)) => ControlFlowParser.ParsePgMove(state),
             Keyword.DECLARE => ParseDeclare(state),
             Keyword.NULL when state.PgPl && state.Context.HasFlag(ParseContext.PgProceduralBlock) => ParsePgNull(state),
@@ -418,7 +420,7 @@ public abstract class ParserBase : IParser
                 return ControlFlowParser.ParseBeginAtomic(state);
             }
         }
-        if (CanParsePgSqlTransaction(state)
+        if (ControlFlowComponentHelpers.CanParsePgSqlTransaction(state)
             && state.StatementLabel == null
             && (!state.PgPl || state.PeekNth(1) is Eof or Semicolon
                 or Word { Keyword: Keyword.WORK or Keyword.TRANSACTION or Keyword.ISOLATION or Keyword.READ or Keyword.DEFERRABLE or Keyword.NOT }))
@@ -435,13 +437,6 @@ public abstract class ParserBase : IParser
         }
         return ControlFlowParser.ParseBeginEnd(state);
     }
-
-    private static bool CanParsePgSqlTransaction(ParserState state)
-    {
-        return state.Pg
-            && (state.Context & (ParseContext.PgProceduralBlock | ParseContext.BeginAtomicBody | ParseContext.ExpectBeginAtomic | ParseContext.RoutineStatementBody)) == 0;
-    }
-
 
     protected virtual Statement ParseDeclare(ParserState state)
     {

@@ -87,4 +87,10 @@ public class ControlFlowComponentHelpers
         }
         return false;
     }
+
+    public static bool CanParsePgSqlTransaction(ParserState state)
+    {
+        return state.Pg
+            && (state.Context & (ParseContext.PgProceduralBlock | ParseContext.BeginAtomicBody | ParseContext.ExpectBeginAtomic | ParseContext.RoutineStatementBody)) == 0;
+    }
 }

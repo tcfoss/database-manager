@@ -671,4 +671,18 @@ public class ParserTests : ParserTestsBase<GenericLexer, Parser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
     }
+
+    [Theory]
+    [InlineData("SAVEPOINT checkpoint", typeof(Savepoint))]
+    [InlineData("RELEASE SAVEPOINT checkpoint", typeof(Release))]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT checkpoint", typeof(Rollback.ToSavepoint))]
+    public void Savepoints_AllGrammarRetainsPostgresSqlForms(string sql, Type expectedType)
+    {
+        IWriteSql statement = ParseStatement(sql);
+
+        Assert.IsType(expectedType, statement);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(statement, ParseStatement(Format(statement)));
+    }
 }

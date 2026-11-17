@@ -1239,11 +1239,13 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         Statement statement = Assert.Single(new PgParser().Parse(state, null));
         if (commit)
         {
-            Assert.IsType<Commit.EndTransaction>(statement);
+            var asCommit = Assert.IsType<Commit>(statement);
+            Assert.True(asCommit.WriteAsEnd);
         }
         else
         {
-            Assert.IsType<Rollback.Abort>(statement);
+            var asRollback = Assert.IsType<Rollback.Full>(statement);
+            Assert.True(asRollback.WriteAsAbort);
         }
 
         Assert.Equal(sql, statement.ToSql());
@@ -1259,16 +1261,27 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void SqlTransactions_RemainDistinctFromProceduralBlocksInMixedScripts()
     {
-        const string sql = "BEGIN; SELECT 1; END WORK AND CHAIN; START TRANSACTION READ ONLY; ABORT TRANSACTION AND NO CHAIN; BEGIN NULL; END";
+        const string sql = """
+            BEGIN;
+            SELECT 1;
+            END WORK AND CHAIN;
+            START TRANSACTION READ ONLY;
+            ABORT TRANSACTION AND NO CHAIN;
+            BEGIN
+            NULL;
+            END
+            """;
         ParserState state = GetState(sql);
         Statement[] statements = [.. ParseStatements(state).Where(statement => statement is not InertOnly)];
 
         Assert.Equal(6, statements.Length);
         Assert.IsType<StartTransaction.Begin>(statements[0]);
         Assert.IsType<Select>(statements[1]);
-        Assert.IsType<Commit.EndTransaction>(statements[2]);
+        var firstCommit = Assert.IsType<Commit>(statements[2]);
+        Assert.True(firstCommit.WriteAsEnd);
         Assert.IsType<StartTransaction>(statements[3]);
-        Assert.IsType<Rollback.Abort>(statements[4]);
+        var rollbackAbort = Assert.IsType<Rollback.Full>(statements[4]);
+        Assert.True(rollbackAbort.WriteAsAbort);
         Assert.IsType<BeginEnd>(statements[5]);
         Assert.Equal(ParseContext.None, state.Context);
         Assert.Equal(Grammar.Pg | Grammar.PgPl, state.Grammar);
@@ -1313,6 +1326,99 @@ public class PgControlFlowParserTests : ParserTestsBase<PgLexer, PgParser>
         var state = new ParserState(Grammar.PgPl, GetTokens(sql));
         Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
         Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; NULL; END"));
+    }
+
+    [Theory]
+    [InlineData("SAVEPOINT checkpoint")]
+    [InlineData("SAVEPOINT \"Checkpoint One\"")]
+    [InlineData("RELEASE checkpoint")]
+    [InlineData("RELEASE SAVEPOINT \"Checkpoint One\"")]
+    [InlineData("RELEASE \"SAVEPOINT\"")]
+    [InlineData("ROLLBACK TO checkpoint")]
+    [InlineData("ROLLBACK TO SAVEPOINT checkpoint")]
+    [InlineData("ROLLBACK WORK TO \"Checkpoint One\"")]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT checkpoint")]
+    [InlineData("ROLLBACK TRANSACTION TO checkpoint")]
+    [InlineData("ROLLBACK TRANSACTION TO SAVEPOINT checkpoint")]
+    [InlineData("ROLLBACK TO \"SAVEPOINT\"")]
+    public void SqlSavepoints_RoundTripSqlFormattingAndJson(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql), 113);
+        var statement = Assert.IsType<Statement>(ParseStatement(state), exactMatch: false);
+        Identifier name = statement switch
+        {
+            Savepoint savepoint => savepoint.Name,
+            Release release => release.Name,
+            _ => Assert.IsType<Rollback.ToSavepoint>(statement).SavepointName
+        };
+
+        Assert.Equal(113, name.Source!.Value.SourceId);
+        Assert.Equal(sql, statement.ToSql());
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        string formatted = Format(statement);
+        Assert.Equal(statement, ParseStatement(formatted));
+        Assert.Equal(formatted, Format(ParseStatement(formatted)));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        Assert.Empty(statement.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.All }));
+    }
+
+    [Fact]
+    public void SqlSavepoints_KeepTargetedAndFullRollbacksDistinct()
+    {
+        const string sql = "BEGIN; SAVEPOINT \"Checkpoint\"; ROLLBACK WORK TO SAVEPOINT \"Checkpoint\"; RELEASE \"Checkpoint\"; ROLLBACK TRANSACTION AND NO CHAIN";
+        Statement[] statements = [.. ParseStatements(sql).Where(statement => statement is not InertOnly)];
+
+        Assert.Equal(5, statements.Length);
+        Assert.IsType<StartTransaction.Begin>(statements[0]);
+        var savepoint = Assert.IsType<Savepoint>(statements[1]);
+        var targeted = Assert.IsType<Rollback.ToSavepoint>(statements[2]);
+        var release = Assert.IsType<Release>(statements[3]);
+        var full = Assert.IsType<Rollback.Full>(statements[4]);
+        Assert.Equal(savepoint.Name, targeted.SavepointName);
+        Assert.Equal(savepoint.Name, release.Name);
+        Assert.Equal(TransactionNoun.Work, targeted.Noun);
+        Assert.True(targeted.UseSavepoint);
+        Assert.False(release.UseSavepoint);
+        Assert.Equal(TransactionNoun.Transaction, full.Noun);
+        Assert.True(full.ChainOption!.Negated);
+    }
+
+    [Theory]
+    [InlineData("SAVEPOINT")]
+    [InlineData("SAVEPOINT 1")]
+    [InlineData("SAVEPOINT app.checkpoint")]
+    [InlineData("SAVEPOINT checkpoint, other")]
+    [InlineData("RELEASE")]
+    [InlineData("RELEASE SAVEPOINT")]
+    [InlineData("RELEASE TRANSACTION checkpoint")]
+    [InlineData("ROLLBACK TO")]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT")]
+    [InlineData("ROLLBACK TRAN TO checkpoint")]
+    [InlineData("ROLLBACK TO app.checkpoint")]
+    [InlineData("ROLLBACK TO SAVEPOINT checkpoint AND CHAIN")]
+    [InlineData("ROLLBACK TO checkpoint AND NO CHAIN")]
+    [InlineData("ROLLBACK AND CHAIN TO checkpoint")]
+    [InlineData("ROLLBACK TO checkpoint RELEASE")]
+    [InlineData("ABORT TO checkpoint")]
+    [InlineData("COMMIT TO checkpoint")]
+    public void SqlSavepoints_RejectMalformedSyntaxAndFullRollbackOptions(string sql)
+    {
+        var state = new ParserState(Grammar.Pg, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+    }
+
+    [Theory]
+    [InlineData("SAVEPOINT checkpoint")]
+    [InlineData("RELEASE checkpoint")]
+    [InlineData("RELEASE SAVEPOINT checkpoint")]
+    [InlineData("ROLLBACK TO checkpoint")]
+    [InlineData("ROLLBACK WORK TO SAVEPOINT checkpoint")]
+    public void SqlSavepoints_DoNotIntroduceProceduralSavepointControls(string sql)
+    {
+        var state = new ParserState(Grammar.PgPl, GetTokens(sql));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(state));
+        Assert.ThrowsAny<ParseException>(() => ParseStatements($"BEGIN {sql}; END"));
     }
 
     private sealed class LabelTransformingComponentParser(Parser parser) : PgComponentParser(parser)
