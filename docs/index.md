@@ -4,12 +4,18 @@ description: Documentation for DatabaseManager CLI users, .NET package consumers
 
 # DatabaseManager
 
-DatabaseManager compares SQL database definitions stored in version-controlled files
-with the objects on a live server and generates SQL scripts to reconcile them.
-It also parses and formats SQL files.
+DatabaseManager is a **state-based database schema comparison tool**: it compares SQL database
+definitions stored in version-controlled files with the objects on a live server and generates
+SQL scripts to reconcile them.
+
+It currently supports MySQL and MariaDB. Functionality for PostgreSQL is under active development.
 
 !!! warning
     Because this project is fairly new, you are **strongly** encouraged to review all generated SQL scripts carefully before executing them on a live server, or at least back up your database first.
+
+It also provides commands for emitting formatted SQL files and JSON representations of parsed files.
+This parsing and formatting is available for MySQL, MariaDB, and a limited subset of Microsoft SQL
+Server.
 
 ## Prerequisites
 

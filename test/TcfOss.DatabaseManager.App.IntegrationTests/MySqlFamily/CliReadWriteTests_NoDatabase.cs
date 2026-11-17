@@ -19,7 +19,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
         UpdateConfiguration(workingDir, null, null);
 
         var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "InitialChanges.sql");
-        Assert.Equal(1, diffResult);
+        Assert.Equal(ExitCodes.OtherError, diffResult);
 
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
         return Task.CompletedTask;
@@ -37,7 +37,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "InitialChanges.sql");
 
-        Assert.Equal(1, diffResult);
+        Assert.Equal(ExitCodes.OtherError, diffResult);
 
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
@@ -56,7 +56,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
 
         var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual, "InitialChanges.sql");
 
-        Assert.Equal(1, diffResult);
+        Assert.Equal(ExitCodes.OtherError, diffResult);
 
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
@@ -74,7 +74,7 @@ public abstract class CliReadWriteTests_NoDatabase(ITestOutputHelper testOutputH
         UpdateConfiguration(workingDir, null, null);
 
         var diffResult = CliRunner.RunCli("compute-changes", fileFixture, out _, out var actual);
-        Assert.Equal(1, diffResult);
+        Assert.Equal(ExitCodes.OtherError, diffResult);
         Assert.Equal(string.Format(MessageTemplates.ConnectionRequiredTemplate, "compute-changes"), actual);
 
         return Task.CompletedTask;

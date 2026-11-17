@@ -46,7 +46,10 @@ nav:
     - Formatting: app/formatting.md
     - Deploy Scripts: app/deploy-scripts.md
     - Refactors: app/refactors.md
-    - Limitations: app/limitations.md
+    - Limitations:
+      - Overview: app/limitations/index.md
+      - MySQL/MariaDB: app/limitations/mysql.md
+      - PostgreSQL: app/limitations/postgres.md
   - Libraries:
       - Package Selection: libraries/index.md
       - Quick Start: libraries/quickstart.md

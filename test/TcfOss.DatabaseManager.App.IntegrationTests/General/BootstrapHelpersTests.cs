@@ -50,7 +50,7 @@ public class BootstrapHelpersTests
 
             int result = cli.Run(["parse-files", commandFails ? "missing.sql" : "input.sql", "--working-dir", directory.FullName]);
 
-            Assert.Equal(commandFails ? 1 : 0, result);
+            Assert.Equal(commandFails ? ExitCodes.NotFoundError : 0, result);
             Assert.Throws<ObjectDisposedException>(() => AppServiceProvider.GetLogger<BootstrapHelpersTests>());
             if (commandFails)
             {
@@ -95,7 +95,7 @@ public class BootstrapHelpersTests
 
             int result = cli.Run(["download-schema", "--working-dir", directory.FullName]);
 
-            Assert.Equal(1, result);
+            Assert.Equal(ExitCodes.OtherError, result);
             Assert.Contains("download-schema", error.ToString());
             Assert.Throws<ObjectDisposedException>(() => AppServiceProvider.GetLogger<BootstrapHelpersTests>());
         }

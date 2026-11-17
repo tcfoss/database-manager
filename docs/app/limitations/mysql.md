@@ -1,17 +1,7 @@
-# Limitations
+# MySQL/MariaDB Limitations
 
-DatabaseManager intentionally rejects some otherwise-valid SQL constructs in
-database definitions. The goal is to keep definitions unambiguous, portable
-between dialects, and amenable to reliable diffing by `compute-changes`.
-
-This page lists the constructs that are deliberately not supported. If your
-definition uses one of them, DatabaseManager will surface a `Definition Error`
-pointing to the offending statement.
-
-These rules describe MySQL/MariaDB definition building. Dialect-specific rules
-such as `DEFINER`, events, trigger ordering, and character sets do not describe
-SQL Server syntax. SQL Server definition building and migration generation are
-not implemented yet.
+The following sections cover the restrictions on valid MySQL/MariaDB SQL in
+database definitions.
 
 ## Tables
 
@@ -99,7 +89,7 @@ Stored programs must declare `DEFINER = '<user>'@'<host>'` explicitly. Omitting
 the clause causes the RDBMS to record the connecting user, which is not
 reproducible.
 
-A default value can be specified in the [configuration file](./configuration.md).
+A default value can be specified in the [configuration file](../configuration.md).
 If values are provided in the configuration, `DEFINER` must be explicitly provided
 only in routines where the value should differ from the default.
 
