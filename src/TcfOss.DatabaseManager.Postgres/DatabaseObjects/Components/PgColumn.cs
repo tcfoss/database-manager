@@ -14,10 +14,21 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
     public PgConstraintOptions NullabilityOptions { get; init; } = new();
     public ColumnOption.ColumnDefault? Default { get; init; }
     public ColumnOption.Generated? Generated { get; init; }
+    public PgColumnStorageMode? Storage { get; init; }
+    public PgCompressionMethod Compression { get; init; } = PgCompressionMethod.Default;
+    public PgBackingSequence? BackingSequence { get; init; }
 
     public StatementColumn.Typed ToStatementColumn(DifferFormatManager? manager = null)
     {
         SqlValueList<StatementColumnOption> options = [];
+        if (Storage != null)
+        {
+            options.Add(new StatementColumnOption.PgStorage(Storage));
+        }
+        if (Compression != PgCompressionMethod.Default)
+        {
+            options.Add(new StatementColumnOption.PgCompression(Compression));
+        }
         if (Collation != null)
         {
             options.Add(new StatementColumnOption.PgCollation(Collation));
@@ -49,7 +60,12 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
         }
         else if (Generated is ColumnOption.Generated.PgIdentity identity)
         {
-            options.Add(new StatementColumnOption.Generated.PgIdentity(identity.Always, identity.Options.ToStatementOptions()));
+            SqlValueList<PgStatementSequenceOption> sequenceOptions = identity.Options.ToStatementOptions();
+            if (BackingSequence is { NameExplicit: true } sequence)
+            {
+                sequenceOptions.Add(new PgStatementSequenceOption.SequenceName(sequence.Name.ToObjectName(2)));
+            }
+            options.Add(new StatementColumnOption.Generated.PgIdentity(identity.Always, sequenceOptions));
         }
 
         return new StatementColumn.Typed(Name.ToSimpleIdentifier(),

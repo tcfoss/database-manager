@@ -28,6 +28,16 @@ public abstract record PgStatementSequenceOption : IWriteSql, IHaveDuplicateChec
         }
     }
 
+    public record SequenceName(ObjectName Name) : PgStatementSequenceOption
+    {
+        public override string DuplicateCheckKey => "SEQUENCE NAME";
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"SEQUENCE NAME {Name}");
+        }
+    }
+
     public record Increment(long Value) : PgStatementSequenceOption
     {
         public bool UseBy { get; init; }

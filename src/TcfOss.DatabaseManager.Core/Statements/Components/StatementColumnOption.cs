@@ -100,6 +100,26 @@ public abstract record StatementColumnOption() : IWriteSql, IHaveDuplicateCheckK
         }
     }
 
+    public record PgStorage(PgColumnStorageMode Mode) : StatementColumnOption
+    {
+        public override string DuplicateCheckKey => "STORAGE";
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"STORAGE {Mode}");
+        }
+    }
+
+    public record PgCompression(PgCompressionMethod Method) : StatementColumnOption
+    {
+        public override string DuplicateCheckKey => "COMPRESSION";
+
+        public override void ToSql(SqlTextWriter writer)
+        {
+            writer.WriteSql($"COMPRESSION {Method}");
+        }
+    }
+
     public record OnUpdate(Expression Expression) : StatementColumnOption
     {
         public override string DuplicateCheckKey => "ONUPDATE";

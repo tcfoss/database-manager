@@ -82,8 +82,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TABLE items (id INT PRIMARY KEY WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (custom_parameter = 1))")]
-    [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) USING INDEX TABLESPACE fast)")]
-    [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) USING INDEX TABLESPACE fast)")]
     [InlineData("CREATE TABLE items (id INT REFERENCES app.parents (id))")]
     [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
     [InlineData("ALTER TABLE items ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES app.parents (id) NOT VALID")]
@@ -238,7 +236,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         var exception = Assert.Throws<SqlSyntaxException.OnCommitNonTemporary>(() => builder.ProcessStatements([statement], GetSchema(), 23));
 
-        Assert.Contains(nameof(CreateTable), exception.Message);
+        Assert.Contains("items", exception.Message);
         Assert.Equal(new SourceRef(23, statement.Meta.Start!.Value, statement.Meta.End!.Value), exception.ObjectSourceRef);
     }
 
@@ -3534,6 +3532,200 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var error = Assert.Throws<DefinitionException>(builder.ToDefinition);
         Assert.Contains("partition parent resolution", error.Message);
         Assert.Equal(new SourceRef(72, statement.Meta.Start!.Value, statement.Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("id INT", "id INT STORAGE PLAIN NULL DEFAULT NULL")]
+    [InlineData("label TEXT", "label TEXT STORAGE DEFAULT COMPRESSION default COLLATE pg_catalog.\"default\" NULL")]
+    [InlineData("label TEXT", "label TEXT STORAGE EXTENDED COLLATE \"default\" NULL")]
+    [InlineData("amount NUMERIC", "amount NUMERIC STORAGE MAIN NULL")]
+    [InlineData("address INET", "address INET STORAGE MAIN NULL")]
+    public void Defaults_OmittedAndExplicitColumnDefaultsCompareEqually(string omitted, string explicitDefaults)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items ({omitted})"), GetSchema(), 80);
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items ({explicitDefaults}) USING heap TABLESPACE pg_default"), GetSchema(), 81);
+
+        PgTable expected = Assert.Single(first.ToDefinition().Tables).Value;
+        PgTable actual = Assert.Single(second.ToDefinition().Tables).Value;
+
+        Assert.Equal(expected, actual);
+        Assert.Equal(expected.GetHashCode(), actual.GetHashCode());
+    }
+
+    [Fact]
+    public void Defaults_ServerInputsAndExplicitTablespacesApplyToOwnersAndIndexes()
+    {
+        var config = PgTestConfig.GetTestConfig();
+        config = config with
+        {
+            ServerDefaults = config.ServerDefaults with
+            {
+                TableAccessMethod = new Identifier("custom_heap"),
+                Tablespace = new Identifier("session_space")
+            }
+        };
+        var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY, label TEXT,
+                CONSTRAINT pk PRIMARY KEY (id), CONSTRAINT uq UNIQUE (label) USING INDEX TABLESPACE key_space)
+                TABLESPACE table_space;
+            CREATE INDEX label_idx ON items (label);
+            CREATE INDEX explicit_idx ON items (id) TABLESPACE index_space
+            """), GetSchema(), 82);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
+
+        Assert.Equal("custom_heap", table.AccessMethod!.Name);
+        Assert.Equal("table_space", table.Tablespace!.Name);
+        Assert.Equal("session_space", table.PrimaryKey!.BackingIndex!.Tablespace!.Name);
+        Assert.Equal("key_space", Assert.Single(table.UniqueConstraints.Values).BackingIndex!.Tablespace!.Name);
+        Assert.Equal("session_space", table.Indexes[new Identifier("label_idx")].Tablespace!.Name);
+        Assert.Equal("index_space", table.Indexes[new Identifier("explicit_idx")].Tablespace!.Name);
+        Assert.True(table.PrimaryKey.BackingIndex.Unique);
+        Assert.Equal("id", Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.BackingIndex.Columns)).Name.Name);
+        var rebuilt = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 83);
+        foreach (CreateIndex index in table.ToCreateIndexStatements(true))
+        {
+            rebuilt.ProcessStatements(ParseStatements(index.ToSql()), GetSchema(), 83);
+        }
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables).Value);
+    }
+
+    [Fact]
+    public void Defaults_EmptySessionTablespaceUsesCatalogDefaultForIndexes()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id)) TABLESPACE fast;
+            CREATE INDEX ix ON items (id)
+            """), GetSchema(), 83);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
+
+        Assert.Equal("fast", table.Tablespace!.Name);
+        Assert.Equal("pg_default", table.PrimaryKey!.BackingIndex!.Tablespace!.Name);
+        Assert.Equal("pg_default", Assert.Single(table.Indexes.Values).Tablespace!.Name);
+    }
+
+    [Fact]
+    public void Defaults_ForeignKeyActionsMaterializeNoAction()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE parent (id INT CONSTRAINT pk PRIMARY KEY);
+            CREATE TABLE items (id INT, CONSTRAINT fk FOREIGN KEY (id) REFERENCES parent (id))
+            """), GetSchema(), 83);
+
+        PgTable table = builder.ToDefinition().Tables[new ObjectHandle("catalog", "public", "items")];
+        PgTableConstraint.ForeignKey foreignKey = Assert.Single(table.ForeignKeys.Values);
+
+        Assert.Equal(ReferentialAction.NoAction, foreignKey.OnDelete);
+        Assert.Equal(ReferentialAction.NoAction, foreignKey.OnUpdate);
+    }
+
+    [Theory]
+    [InlineData("COMPRESSION pglz", "COMPRESSION lz4")]
+    [InlineData("STORAGE MAIN", "STORAGE EXTERNAL")]
+    [InlineData("COMPRESSION default", "COMPRESSION pglz")]
+    public void Defaults_StorageAndCompressionDifferencesRemainSignificant(string firstOptions, string secondOptions)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (label TEXT {firstOptions})"), GetSchema(), 80);
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (label TEXT {secondOptions})"), GetSchema(), 81);
+
+        Assert.NotEqual(Assert.Single(first.ToDefinition().Tables).Value, Assert.Single(second.ToDefinition().Tables).Value);
+    }
+
+    [Fact]
+    public void BackingObjects_PreserveIdentityNamesOptionsPersistenceAndRoundTrip()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE UNLOGGED TABLE items (
+                id SMALLINT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME "App"."Ids" INCREMENT -2 CACHE 3),
+                other_id INT GENERATED BY DEFAULT AS IDENTITY,
+                CONSTRAINT pk PRIMARY KEY (id) INCLUDE (other_id))
+            """), GetSchema(), 84);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
+        PgBackingSequence explicitSequence = Assert.IsType<PgBackingSequence>(table.Columns[0].BackingSequence);
+        PgBackingSequence implicitSequence = Assert.IsType<PgBackingSequence>(table.Columns[1].BackingSequence);
+        Assert.Equal("App", explicitSequence.Name.Schema.Name);
+        Assert.Equal("Ids", explicitSequence.Name.Name);
+        Assert.True(explicitSequence.NameExplicit);
+        Assert.True(explicitSequence.Unlogged);
+        Assert.Equal(-2, explicitSequence.Options.Increment);
+        Assert.Equal(3, explicitSequence.Options.Cache);
+        Assert.False(implicitSequence.NameExplicit);
+        Assert.Equal("items_other_id_seq", implicitSequence.Name.Name);
+        Assert.Equal("other_id", Assert.Single(table.PrimaryKey!.BackingIndex!.IncludedColumns!.Columns).Name);
+        Assert.Equal(explicitSequence, explicitSequence with { NameExplicit = false });
+        Assert.Equal(explicitSequence.GetHashCode(), (explicitSequence with { NameExplicit = false }).GetHashCode());
+        Assert.NotEqual(explicitSequence, explicitSequence with { Name = implicitSequence.Name });
+        Assert.NotEqual(explicitSequence, explicitSequence with { Options = explicitSequence.Options with { Cache = 8 } });
+        PgIndex index = table.PrimaryKey.BackingIndex;
+        Assert.Equal(index, index with { NameExplicit = false });
+        Assert.Equal(index.GetHashCode(), (index with { NameExplicit = false }).GetHashCode());
+        Assert.NotEqual(index, index with { Name = new Identifier("different") });
+
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 85);
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables).Value);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BackingObjects_ImplicitNamesAvoidAllDeclaredRelationsRegardlessOfOrder(bool reverse)
+    {
+        string[] statements =
+        [
+            "CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY)",
+            "CREATE TABLE items_id_seq (id INT)",
+            "CREATE TABLE other (id INT, CONSTRAINT items_id_seq1 UNIQUE (id))",
+            "CREATE INDEX items_id_seq2 ON other (id)"
+        ];
+        var builder = CreateBuilder();
+        foreach (string sql in reverse ? statements.Reverse() : statements)
+        {
+            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 86);
+        }
+
+        PgTable table = builder.ToDefinition().Tables[new ObjectHandle("catalog", "public", "items")];
+
+        Assert.Equal("items_id_seq3", Assert.Single(table.Columns).BackingSequence!.Name.Name);
+    }
+
+    [Fact]
+    public void BackingObjects_ExplicitSequenceCollisionsHaveSources()
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME items))");
+        builder.ProcessStatements(statements, GetSchema(), 87);
+
+        var error = Assert.Throws<SqlSyntaxException.DuplicateObject>(builder.ToDefinition);
+
+        Assert.Equal(new SourceRef(87, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void BackingObjects_LongUnicodeNamesPreserveSuffixAndByteLimit()
+    {
+        string tableName = new('T', 60);
+        string columnName = string.Concat(Enumerable.Repeat("😀", 15));
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE \"{tableName}\" (\"{columnName}\" INT GENERATED ALWAYS AS IDENTITY)"), GetSchema(), 88);
+
+        PgBackingSequence sequence = Assert.Single(Assert.Single(builder.ToDefinition().Tables).Value.Columns).BackingSequence!;
+
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(sequence.Name.Name) <= 63);
+        Assert.EndsWith("_seq", sequence.Name.Name);
+        Assert.DoesNotContain("\uFFFD", sequence.Name.Name);
+        Assert.Contains("T", sequence.Name.Name);
     }
 
     private static SchemaIdentifier GetSchema()

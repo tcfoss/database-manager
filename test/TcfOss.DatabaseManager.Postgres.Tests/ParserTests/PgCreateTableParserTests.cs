@@ -16,6 +16,43 @@ namespace TcfOss.DatabaseManager.Postgres.Tests.ParserTests;
 public class PgCreateTableParserTests : ParserTestsBase<PgLexer, PgParser>
 {
     [Theory]
+    [InlineData("CREATE TABLE items (id INT STORAGE PLAIN, label TEXT STORAGE EXTENDED COMPRESSION lz4 COLLATE \"C\") USING heap TABLESPACE fast")]
+    [InlineData("CREATE TABLE items (label TEXT STORAGE DEFAULT COMPRESSION DEFAULT)")]
+    [InlineData("CREATE TABLE items (label TEXT COMPRESSION \"pglz\")")]
+    [InlineData("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME app.ids CACHE 2))")]
+    [InlineData("CREATE TEMP TABLE items (id INT) USING heap ON COMMIT DROP TABLESPACE fast")]
+    public void StorageAndIdentityNames_RoundTripSqlJsonAndFormatting(string sql)
+    {
+        var statement = Assert.IsType<CreateTable>(ParseStatement(sql));
+
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Statement[] statements = [statement];
+        Assert.Equal(statements, Serialization.FromJson<Statement[]>(Serialization.ToJson(statements)));
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted(sql);
+        Assert.IsType<CreateTable>(ParseStatement(formatted));
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT STORAGE invalid)")]
+    [InlineData("CREATE TABLE items (id INT STORAGE \"PLAIN\")")]
+    [InlineData("CREATE TABLE items (label TEXT COMPRESSION invalid)")]
+    [InlineData("CREATE TABLE items (label TEXT COMPRESSION \"PGLZ\")")]
+    [InlineData("CREATE TABLE items (label TEXT COMPRESSION 'pglz')")]
+    [InlineData("CREATE TABLE items (label TEXT STORAGE MAIN STORAGE EXTENDED)")]
+    [InlineData("CREATE TABLE items (label TEXT COMPRESSION pglz COMPRESSION lz4)")]
+    [InlineData("CREATE TABLE items (label TEXT CONSTRAINT named STORAGE EXTENDED)")]
+    [InlineData("CREATE TABLE items (label TEXT CONSTRAINT named COMPRESSION pglz)")]
+    [InlineData("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME))")]
+    [InlineData("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME ids SEQUENCE NAME other))")]
+    [InlineData("CREATE TABLE items (id INT) TABLESPACE fast USING heap")]
+    public void StorageAndIdentityNames_RejectInvalidOrRepeatedOptions(string sql)
+    {
+        Assert.ThrowsAny<ParseException>(() => ParseStatements(sql));
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE items (id INT)")]
     [InlineData("CREATE TEMP TABLE items (id INT)")]
     [InlineData("CREATE TEMPORARY TABLE IF NOT EXISTS items (id INT)")]

@@ -52,7 +52,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 case CreateTable table:
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
                     var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer,
-                        Config.AttributeDefaults, new Normalizer(Config, ComponentNormalizer), sourceRef);
+                        Config.AttributeDefaults, Config.ServerDefaults, new Normalizer(Config, ComponentNormalizer), sourceRef);
                     tableBuilder.ApplyCreateTable(table);
                     _tableBuilders.Add(nameAndHandle.Key, tableBuilder);
                     SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);
@@ -73,7 +73,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
                     break;
                 case CreateIndex index:
-                    if (index.PgOptions != null || index.Columns.Any(key => key.PgOptions != null)
+                    if (index.PgOptions is { Concurrently: true } or { Only: true } or { NullsDistinct: not null }
+                        || index.Columns.Any(key => key.PgOptions != null)
                         || index is CreateIndex.Standard { Options: not null } or CreateIndex.Unique { Options: not null })
                     {
                         throw new DefinitionException($"{index.GetType().Name} PostgreSQL index options", sourceRef);
@@ -363,6 +364,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             Procedures = procedures,
             Triggers = GetTriggers(tables, functions)
         };
+
         ApplyComments(definition, manager);
         manager.ValidateDependencies(definition, SourceManager);
         List<SourcedException> errors = ValidateDefinition(definition);
@@ -421,7 +423,64 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             tables.Add(table.Key, table.Value.ToTable(manager));
         }
         ValidateRelationNames(tables, indexes);
+        FinalizeBackingSequenceNames(tables);
         return tables;
+    }
+
+    private void FinalizeBackingSequenceNames(DatabaseObjectDict<PgTable> tables)
+    {
+        var names = tables.Keys.ToHashSet();
+        foreach (PgTable table in tables.Values)
+        {
+            foreach (Identifier index in table.Indexes.Values.Select(index => index.Name)
+                .Concat(table.UniqueConstraints.Values.Select(unique => unique.Name!))
+                .Concat(table.PrimaryKey == null ? [] : new[] { table.PrimaryKey.Name }))
+            {
+                names.Add(ObjectHandle.Create(new ObjectIdentifier(index.Name, table.Name.Schema, index.QuoteStyle), Config.NameHandling));
+            }
+        }
+        foreach (PgTable table in tables.Values)
+        {
+            foreach (PgColumn column in table.Columns.Where(column => column.BackingSequence is { NameExplicit: true }))
+            {
+                Register(column.BackingSequence!.Name, table);
+            }
+        }
+        foreach (ObjectHandle handle in tables.Keys.Order())
+        {
+            PgTable table = tables[handle];
+            for (int index = 0; index < table.Columns.Count; index++)
+            {
+                PgColumn column = table.Columns[index];
+                if (column.BackingSequence is not { NameExplicit: false } sequence)
+                {
+                    continue;
+                }
+                int suffix = 0;
+                ObjectIdentifier name;
+                do
+                {
+                    name = ComponentNormalizer.NormalizeObjectIdentifier(PgBackingObjectNames.GetIdentitySequenceName(column.Name, suffix++));
+                }
+                while (names.Contains(ObjectHandle.Create(name, Config.NameHandling)));
+                Register(name, table);
+                table.Columns[index] = column with { BackingSequence = sequence with { Name = name } };
+            }
+        }
+
+        void Register(ObjectIdentifier name, PgTable table)
+        {
+            var handle = ObjectHandle.Create(name, Config.NameHandling);
+            SourceRef? source = SourceManager.GetSourceRef(ObjectHandle.Create(table.Name, Config.NameHandling));
+            if (!names.Add(handle))
+            {
+                throw new SqlSyntaxException.DuplicateObject(name, source);
+            }
+            if (source != null && SourceManager.GetSourceRef(handle) == null)
+            {
+                SourceManager.RegisterObject(handle, source.Value);
+            }
+        }
     }
 
     private DatabaseObjectDict<DatabaseComponentDict<PgTrigger>> GetTriggers(DatabaseObjectDict<PgTable> tables,

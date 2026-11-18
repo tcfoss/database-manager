@@ -14,6 +14,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
+using TcfOss.DatabaseManager.Postgres.Configuration;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
@@ -24,6 +25,7 @@ public class PgTableBuilder(
     NameHandling nameHandling,
     INormalizeComponents componentNormalizer,
     AttributeDefaults attributeDefaults,
+    PgServerDefaults serverDefaults,
     INormalizeSql sqlNormalizer,
     SourceRef? sourceRef)
     : TableBuilder<PgTable>(name, nameHandling, componentNormalizer, sourceRef)
@@ -31,6 +33,8 @@ public class PgTableBuilder(
     private readonly List<PreColumn> _columns = [];
     private readonly PgPartitionNormalizer _partitionNormalizer = new(componentNormalizer, sqlNormalizer);
     private bool _unlogged;
+    private Identifier? _accessMethod;
+    private Identifier? _tablespace;
     private PgPrimaryKey? _primaryKey;
     private readonly DatabaseComponentDict<PgTableConstraint.Unique> _uniqueConstraints = new(nameHandling);
     private readonly DatabaseComponentDict<PreForeignKey> _foreignKeys = new(nameHandling);
@@ -58,6 +62,10 @@ public class PgTableBuilder(
         }
         _unlogged = createTable.PgOptions?.Unlogged == true;
         PartitionBy = createTable.PgOptions?.PartitionBy is { } partitionBy ? _partitionNormalizer.Normalize(partitionBy) : null;
+        _accessMethod = ComponentNormalizer.NormalizeSingleIdentifierNullable(createTable.PgOptions?.AccessMethod
+            ?? (PartitionBy == null ? serverDefaults.TableAccessMethod : null));
+        _tablespace = ComponentNormalizer.NormalizeSingleIdentifierNullable(createTable.PgOptions?.Tablespace
+            ?? serverDefaults.Tablespace ?? (PartitionBy == null ? serverDefaults.CatalogTablespace : null));
         if (createTable.PgOptions?.PartitionOf is { } partitionOf)
         {
             foreach (StatementTableOption option in createTable.TableOptions)
@@ -95,15 +103,15 @@ public class PgTableBuilder(
         ColumnOption.Generated? generated = null;
         StatementColumnOption.Generated.PgIdentity? identity = null;
         ObjectName? collation = null;
+        PgColumnStorageMode? storage = null;
+        PgCompressionMethod compression = PgCompressionMethod.Default;
 
         var seenOptions = new DuplicateGuard();
 
         foreach (StatementColumnOption option in typedColumn.Options)
         {
             if (option is StatementColumnOption.Default { PgOptions: not null }
-                or StatementColumnOption.PgReference
-                or StatementColumnOption.PrimaryKey { IndexParameters: not null }
-                or StatementColumnOption.Unique { IndexParameters: not null })
+                or StatementColumnOption.PgReference)
             {
                 throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL column constraint options", sourceRef);
             }
@@ -147,6 +155,12 @@ public class PgTableBuilder(
                 case StatementColumnOption.PgCollation collationOption:
                     collation = ComponentNormalizer.NormalizeObjectName(collationOption.Name);
                     break;
+                case StatementColumnOption.PgStorage storageOption:
+                    storage = storageOption.Mode;
+                    break;
+                case StatementColumnOption.PgCompression compressionOption:
+                    compression = compressionOption.Method;
+                    break;
                 default:
                     throw new NotImplementedException($"PostgreSQL column option {option.GetType().Name} is not implemented.");
             }
@@ -173,6 +187,8 @@ public class PgTableBuilder(
             Generated = generated,
             Identity = identity,
             Collation = collation,
+            Storage = storage,
+            Compression = compression,
             NullabilityOptions = nullabilityOptions,
             SourceRef = sourceRef
         }));
@@ -220,7 +236,8 @@ public class PgTableBuilder(
     {
         AddTablePrimaryKey(new StatementTableConstraint.PrimaryKey([new KeyPart.Column(column)], primaryKey.Name)
         {
-            PgOptions = primaryKey.PgOptions
+            PgOptions = primaryKey.PgOptions,
+            IndexParameters = primaryKey.IndexParameters
         }, sourceRef);
     }
 
@@ -229,6 +246,7 @@ public class PgTableBuilder(
         AddTableUnique(new StatementTableConstraint.UniqueConstraint([new KeyPart.Column(column)], unique.Name)
         {
             NullsDistinct = unique.NullsDistinct,
+            IndexParameters = unique.IndexParameters,
             PgOptions = unique.PgOptions
         }, sourceRef);
     }
@@ -257,7 +275,8 @@ public class PgTableBuilder(
         _primaryKey = new PgPrimaryKey(columns, keyName)
         {
             IncludedColumns = NormalizeIncludedColumns(primaryKey.IncludedColumns, columns, keyName, sourceRef),
-            Options = PgConstraintNormalizer.Normalize(primaryKey.PgOptions, "PRIMARY KEY", keyName, sourceRef, allowDeferrable: true)
+            Options = PgConstraintNormalizer.Normalize(primaryKey.PgOptions, "PRIMARY KEY", keyName, sourceRef, allowDeferrable: true),
+            BackingIndex = CreateBackingIndex(columns, keyName, primaryKey.IncludedColumns, primaryKey.IndexParameters?.Tablespace)
         };
         for (int index = 0; index < _columns.Count; index++)
         {
@@ -292,7 +311,8 @@ public class PgTableBuilder(
         {
             IncludedColumns = NormalizeIncludedColumns(unique.IncludedColumns, columns, normalizedName, sourceRef),
             NullsDistinct = unique.NullsDistinct ?? true,
-            Options = PgConstraintNormalizer.Normalize(unique.PgOptions, "UNIQUE", normalizedName, sourceRef, allowDeferrable: true)
+            Options = PgConstraintNormalizer.Normalize(unique.PgOptions, "UNIQUE", normalizedName, sourceRef, allowDeferrable: true),
+            BackingIndex = CreateBackingIndex(columns, normalizedName, unique.IncludedColumns, unique.IndexParameters?.Tablespace)
         });
     }
 
@@ -303,8 +323,8 @@ public class PgTableBuilder(
         _foreignKeys.Add(constraintName, new PreForeignKey(constraintName,
             NormalizeConstraintColumns([.. foreignKey.Columns.Select(column => new KeyPart.Column(column))], constraintName, sourceRef),
             foreignKey.ForeignTable, [.. foreignKey.ForeignColumns.Select(ComponentNormalizer.NormalizeSingleIdentifier)],
-            foreignKey.OnDelete,
-            foreignKey.OnUpdate,
+            foreignKey.OnDelete ?? attributeDefaults.ForeignKeyOnDelete,
+            foreignKey.OnUpdate ?? attributeDefaults.ForeignKeyOnUpdate,
             PgConstraintNormalizer.Normalize(foreignKey.PgOptions, "FOREIGN KEY", constraintName, sourceRef, allowDeferrable: true),
             sourceRef));
     }
@@ -323,7 +343,7 @@ public class PgTableBuilder(
 
     private static void ValidateTablePrimaryKey(StatementTableConstraint.PrimaryKey primaryKey, SourceRef? sourceRef)
     {
-        if (primaryKey.IndexParameters != null)
+        if (primaryKey.IndexParameters?.StorageParameters != null)
         {
             throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL primary key index parameters", sourceRef);
         }
@@ -333,7 +353,7 @@ public class PgTableBuilder(
 
     private static void ValidateTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef? sourceRef)
     {
-        if (unique.IndexParameters != null)
+        if (unique.IndexParameters?.StorageParameters != null)
         {
             throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL unique constraint options", sourceRef);
         }
@@ -398,12 +418,14 @@ public class PgTableBuilder(
             case CreateIndex.Standard standard:
                 ValidateConstraintIndexOptions(standard.Comment, sourceRef, organization: standard.IndexOrganization,
                     options: standard.Options, storageLocation: standard.StorageLocation);
-                AddIndexDeclaration(name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter, sourceRef, standard.IncludedColumns);
+                AddIndexDeclaration(name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter,
+                    standard.IncludedColumns, standard.PgOptions?.Tablespace, sourceRef);
                 break;
             case CreateIndex.Unique unique:
                 ValidateConstraintIndexOptions(unique.Comment, sourceRef, organization: unique.IndexOrganization,
                     options: unique.Options, storageLocation: unique.StorageLocation);
-                AddIndexDeclaration(name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter, sourceRef, unique.IncludedColumns);
+                AddIndexDeclaration(name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter,
+                    unique.IncludedColumns, unique.PgOptions?.Tablespace, sourceRef);
                 break;
             default:
                 throw new NotSupportedException("Only basic PostgreSQL standard and unique indexes are supported.");
@@ -424,7 +446,7 @@ public class PgTableBuilder(
     }
 
     private void AddIndexDeclaration(Identifier name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
-        Expression? predicate, SourceRef? sourceRef, IncludedColumns? includedColumns = null)
+        Expression? predicate, IncludedColumns? includedColumns = null, Identifier? tablespace = null, SourceRef? sourceRef = null)
     {
         method ??= new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
         name = ComponentNormalizer.NormalizeSingleIdentifier(name);
@@ -465,6 +487,7 @@ public class PgTableBuilder(
             Name = name,
             Unique = unique,
             Method = method,
+            Tablespace = GetIndexTablespace(tablespace),
             Predicate = normalizedPredicate,
             IncludedColumns = NormalizeIncludedColumns(includedColumns,
                 parts.OfType<KeyPart.Column>().Select(column => column.Name), name, sourceRef)
@@ -538,6 +561,8 @@ public class PgTableBuilder(
                 case PgStatementSequenceOption.Cycle cycleOption:
                     cycle = cycleOption.Enabled;
                     break;
+                case PgStatementSequenceOption.SequenceName:
+                    break;
                 default:
                     throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"identity sequence option {option.DuplicateCheckKey}", sourceRef);
             }
@@ -578,27 +603,48 @@ public class PgTableBuilder(
         SqlValueList<PgColumn> columns = [.. _columns.Select(column =>
         {
             DataType dataType = manager.Resolve(column.DataType, Name.Schema, column.SourceRef);
+            PgColumnStorageMode? typeStorage = PgColumnDefaults.GetStorage(dataType);
+            PgIdentityOptions? identityOptions = column.Identity is { } identity
+                ? ResolveIdentityOptions(identity, dataType, column.Name, column.SourceRef)
+                : null;
+            ObjectName? sequenceName = column.Identity?.Options?.OfType<PgStatementSequenceOption.SequenceName>().SingleOrDefault()?.Name;
+            ObjectName? typeCollation = PgColumnDefaults.GetCollation(dataType, column.Collation);
             return new PgColumn(column.Name, dataType)
             {
-                Collation = column.Collation,
-                Nullability = column.Nullability,
+                Collation = ComponentNormalizer.NormalizeObjectNameNullable(typeCollation),
+                Nullability = column.Nullability ?? (typeStorage != null ? new ColumnOption.Nullability.Null() : null),
                 NullabilityOptions = column.NullabilityOptions,
-                Default = column.Default,
-                Generated = column.Identity is { } identity
-                    ? new ColumnOption.Generated.PgIdentity(identity.Always, ResolveIdentityOptions(identity, dataType, column.Name, column.SourceRef))
-                    : column.Generated
+                Default = typeStorage != null && column.Default is ColumnOption.ColumnDefault.DefaultValue { Value: Value.Null }
+                    ? null : column.Default,
+                Storage = column.Storage == null || column.Storage == PgColumnStorageMode.Default ? typeStorage : column.Storage,
+                Compression = column.Compression,
+                Generated = identityOptions != null
+                    ? new ColumnOption.Generated.PgIdentity(column.Identity!.Always, identityOptions)
+                    : column.Generated,
+                BackingSequence = identityOptions == null ? null : new PgBackingSequence(
+                    sequenceName == null
+                        ? ComponentNormalizer.NormalizeObjectIdentifier(PgBackingObjectNames.GetIdentitySequenceName(column.Name))
+                        : ComponentNormalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromObjectName(sequenceName, Name.Schema, null)),
+                    dataType, identityOptions)
+                {
+                    NameExplicit = sequenceName != null,
+                    Unlogged = _unlogged
+                }
             };
         })];
+
         if (_primaryKey != null)
         {
             ValidateColumnReferences(_primaryKey.Columns, _primaryKey.Name.Name, SourceRef);
             ValidateColumnReferences(_primaryKey.IncludedColumns?.Columns ?? [], _primaryKey.Name.Name, SourceRef);
         }
+
         foreach (PgTableConstraint.Unique unique in _uniqueConstraints.Values)
         {
             ValidateColumnReferences(unique.Columns, unique.Name!.Name, SourceRef);
             ValidateColumnReferences(unique.IncludedColumns?.Columns ?? [], unique.Name.Name, SourceRef);
         }
+
         var foreignKeys = new DatabaseComponentDict<PgTableConstraint.ForeignKey>(NameHandling);
         foreach (PreForeignKey foreignKey in _foreignKeys.Values)
         {
@@ -611,6 +657,7 @@ public class PgTableBuilder(
                 Options = foreignKey.Options
             });
         }
+
         var indexes = new DatabaseComponentDict<PgIndex>(NameHandling);
         foreach (IndexDeclaration declaration in _indexes.Values)
         {
@@ -623,6 +670,8 @@ public class PgTableBuilder(
         var result = new PgTable(Name, columns)
         {
             Unlogged = _unlogged,
+            AccessMethod = _accessMethod,
+            Tablespace = _tablespace,
             PartitionBy = PartitionBy,
             PrimaryKey = _primaryKey,
             Checks = new DatabaseComponentDict<PgTableConstraint.Check>(_checks),
@@ -665,6 +714,26 @@ public class PgTableBuilder(
                 throw new SqlSyntaxException.IndexColumnNotFound(keyName, Name, column, sourceRef);
             }
         }
+    }
+
+    private Identifier GetIndexTablespace(Identifier? explicitTablespace)
+    {
+        return ComponentNormalizer.NormalizeSingleIdentifier(explicitTablespace
+            ?? serverDefaults.Tablespace ?? serverDefaults.CatalogTablespace);
+    }
+
+    private PgIndex CreateBackingIndex(SqlValueList<Identifier> columns, Identifier name, IncludedColumns? includedColumns,
+        Identifier? tablespace)
+    {
+        return new PgIndex(columns.Map<KeyPart>(column => new KeyPart.Column(column)))
+        {
+            Name = name,
+            NameExplicit = true,
+            Unique = true,
+            Method = new IndexMethod.BuiltIn(BuiltInIndexMethod.Btree),
+            Tablespace = GetIndexTablespace(tablespace),
+            IncludedColumns = includedColumns == null ? null : new IncludedColumns(includedColumns.Columns.Map(ComponentNormalizer.NormalizeSingleIdentifier))
+        };
     }
 
     private IncludedColumns? NormalizeIncludedColumns(IncludedColumns? includedColumns, IEnumerable<Identifier> keyColumns,
@@ -817,6 +886,8 @@ public class PgTableBuilder(
         ColumnOption.Nullability? Nullability, ColumnOption.ColumnDefault? Default, bool NotNull)
     {
         public ObjectName? Collation { get; init; }
+        public PgColumnStorageMode? Storage { get; init; }
+        public PgCompressionMethod Compression { get; init; } = PgCompressionMethod.Default;
         public PgConstraintOptions NullabilityOptions { get; init; } = new();
         public ColumnOption.Generated? Generated { get; init; }
         public StatementColumnOption.Generated.PgIdentity? Identity { get; init; }

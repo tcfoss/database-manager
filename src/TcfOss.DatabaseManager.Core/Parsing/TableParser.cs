@@ -50,9 +50,11 @@ public class TableParser
 
         PgPartitionOf? partitionOf = parent == null ? null : new PgPartitionOf(parent, ParsePartitionBound(state));
         PgPartitionBy? partitionBy = ParsePartitionBy(state);
+        Identifier? accessMethod = ParseOptionalAccessMethod(state);
 
         SqlValueList<StatementTableOption> options = ParseTableOptions(state);
         PgOnCommit? onCommit = temporary != null ? ParseOnCommit(state) : null;
+        Identifier? tablespace = ParseOptionalTablespace(state);
 
         if (!SupportsPartitionAsSelect && (partitionOf != null || partitionBy != null)
             && state.Peek() is Word { Keyword: Keyword.AS or Keyword.SELECT })
@@ -67,14 +69,30 @@ public class TableParser
             OrReplace = orReplace,
             Temporary = temporary,
             IfNotExists = ifNotExists,
-            PgOptions = unlogged || onCommit != null || partitionOf != null || partitionBy != null
-                ? new PgCreateTableOptions(unlogged, onCommit) { PartitionOf = partitionOf, PartitionBy = partitionBy }
+            PgOptions = unlogged || onCommit != null || partitionOf != null || partitionBy != null || accessMethod != null || tablespace != null
+                ? new PgCreateTableOptions(unlogged, onCommit)
+                {
+                    PartitionOf = partitionOf,
+                    PartitionBy = partitionBy,
+                    AccessMethod = accessMethod,
+                    Tablespace = tablespace
+                }
                 : null,
             PrintEmptyBody = printEmptyBody,
             TableOptions = options,
             PrintAs = printAs,
             AsSelect = selectStatement
         };
+    }
+
+    protected virtual Identifier? ParseOptionalAccessMethod(ParserState state)
+    {
+        return state.Pg && state.ParseKeyword(Keyword.USING) ? _ident(state) : null;
+    }
+
+    protected virtual Identifier? ParseOptionalTablespace(ParserState state)
+    {
+        return state.Pg && state.ParseKeyword(Keyword.TABLESPACE) ? _ident(state) : null;
     }
 
     private (SqlValueList<StatementColumn>, SqlValueList<StatementTableConstraint>) ParseColumns(ParserState state, bool partition = false)
@@ -294,6 +312,32 @@ public class TableParser
             }
             return new StatementColumnOption.PgCollation(_objname(state));
         }
+        if (_p.SupportsPostgresColumnCollationSyntax && state.ParseKeyword(Keyword.STORAGE))
+        {
+            if (constraintName != null)
+            {
+                throw new ParseException.ColumnComponentInvalidName("STORAGE", constraintName, constraintLocation);
+            }
+            return new StatementColumnOption.PgStorage(state.ParseStringEnum<PgColumnStorageMode>());
+        }
+        if (_p.SupportsPostgresColumnCollationSyntax && state.ParseKeyword(Keyword.COMPRESSION))
+        {
+            if (constraintName != null)
+            {
+                throw new ParseException.ColumnComponentInvalidName("COMPRESSION", constraintName, constraintLocation);
+            }
+            if (state.ParseKeyword(Keyword.DEFAULT))
+            {
+                return new StatementColumnOption.PgCompression(PgCompressionMethod.Default);
+            }
+            Identifier name = _ident(state);
+            string stored = Handle.GetNamePart(name, NameHandling.Postgres);
+            if (!PgCompressionMethod.TryParse(stored, out PgCompressionMethod? method) || method.ToString() != stored)
+            {
+                throw state.ExpectedException("compression method");
+            }
+            return new StatementColumnOption.PgCompression(method);
+        }
         if (state.ParseKeyword(Keyword.COMMENT))
         {
             if (constraintName != null)
@@ -443,6 +487,10 @@ public class TableParser
 
     protected virtual PgStatementSequenceOption ParseNextPostgresIdentityOption(ParserState state)
     {
+        if (state.ParseKeywordsAll(Keyword.SEQUENCE, Keyword.NAME))
+        {
+            return new PgStatementSequenceOption.SequenceName(_objname(state));
+        }
         return _p.ComponentParser.ParseSequenceOption(state) ?? throw state.ExpectedException("identity sequence option");
     }
 

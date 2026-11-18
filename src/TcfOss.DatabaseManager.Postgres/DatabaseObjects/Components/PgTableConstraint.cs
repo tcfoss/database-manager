@@ -17,12 +17,14 @@ public abstract record PgTableConstraint(Identifier? Name = null)
     {
         public IncludedColumns? IncludedColumns { get; init; }
         public bool NullsDistinct { get; init; } = true;
+        public PgIndex? BackingIndex { get; init; }
 
         public override StatementTableConstraint.UniqueConstraint ToStatementConstraint()
         {
             return new StatementTableConstraint.UniqueConstraint([.. Columns.Select(column => new KeyPart.Column(column))], Name)
             {
                 IncludedColumns = IncludedColumns,
+                IndexParameters = BackingIndex?.Tablespace is { } tablespace ? new PgConstraintIndexParameters(null, tablespace) : null,
                 NullsDistinct = NullsDistinct ? null : false,
                 PgOptions = Options.ToStatementOptions()
             };

@@ -125,7 +125,15 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
             [new ObjectHandle("catalog", "public", "items")] = tableName,
             [new ObjectHandle("catalog", "public", "label")] = typeName
         });
-        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (Id INT CONSTRAINT Required NOT NULL CONSTRAINT DefaultId DEFAULT 1, \"Label\" label NULL CONSTRAINT \"DefaultLabel\" DEFAULT 'x', plain TEXT, nullable TEXT DEFAULT NULL, calculated INT DEFAULT (1 + 2))"));
+        var statement = Assert.IsType<CreateTable>(ParseStatement("""
+            CREATE TABLE items (
+                Id INT CONSTRAINT Required NOT NULL CONSTRAINT DefaultId DEFAULT 1,
+                \"Label\" label NULL CONSTRAINT \"DefaultLabel\" DEFAULT 'x',
+                plain TEXT,
+                nullable TEXT DEFAULT NULL,
+                calculated INT DEFAULT (1 + 2))
+            """));
+
         var literal = new Value.Number("7", false);
         statement.Columns.Add(new StatementColumn.Typed(new Identifier("literal"), new DataType.Int(),
         [
@@ -151,10 +159,10 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("'x'", defaultLabel.Value.ToSql());
         Assert.Equal("DefaultLabel", defaultLabel.Name?.Name);
 
-        Assert.Null(table.Columns[2].Nullability);
+        Assert.IsType<ColumnOption.Nullability.Null>(table.Columns[2].Nullability);
         Assert.Null(table.Columns[2].Default);
 
-        Assert.IsType<Value.Null>(Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(table.Columns[3].Default).Value);
+        Assert.Null(table.Columns[3].Default);
 
         var expressionDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(table.Columns[4].Default);
         Expression parsedExpression = Assert.IsType<StatementColumnOption.Default.DefaultExpression>(
@@ -186,7 +194,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
             ? new StatementColumnOption.Default.DefaultExpression(new LiteralValue(literal), constraintName)
             : new StatementColumnOption.Default.DefaultValue(literal, constraintName);
         var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, config.AttributeDefaults,
-            new Normalizer(config, normalizer), null);
+            config.ServerDefaults, new Normalizer(config, normalizer), null);
         builder.AddColumn(new StatementColumn.Typed(new Identifier("value"), new DataType.Int(), [option]), null);
         var pendingDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(builder.Columns).Default);
         Assert.Same(expected, pendingDefault.Value);
@@ -806,7 +814,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(expected, column.Collation?.ToSql());
         StatementColumn.Typed canonical = column.ToStatementColumn();
-        Assert.IsType<StatementColumnOption.PgCollation>(canonical.Options[0]);
+        Assert.Single(canonical.Options.OfType<StatementColumnOption.PgCollation>());
         var rebuilt = CreateBuilder();
         var reparsed = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({canonical.ToSql()})"));
         rebuilt.ApplyCreateTable(reparsed);
@@ -971,7 +979,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres);
         return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
             NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults,
-            new Normalizer(PgTestConfig.GetTestConfig(), normalizer), sourceRef);
+            PgTestConfig.GetTestConfig().ServerDefaults, new Normalizer(PgTestConfig.GetTestConfig(), normalizer), sourceRef);
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)

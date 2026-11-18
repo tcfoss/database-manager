@@ -13,6 +13,8 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : IDatabaseObject<CreateTable>
 {
     public bool Unlogged { get; init; }
+    public Identifier? AccessMethod { get; init; }
+    public Identifier? Tablespace { get; init; }
     public PgPartitioning? PartitionBy { get; init; }
     public PgTablePartition? PartitionOf { get; init; }
     public PgPrimaryKey? PrimaryKey { get; init; }
@@ -41,15 +43,19 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
         SqlValueList<StatementColumn> columns = Columns.Map<StatementColumn>(column =>
         {
             StatementColumn.Typed typed = column.ToStatementColumn(manager);
-            return PartitionOf == null ? typed : new StatementColumn.PgPartitionOverride(typed.Name, typed.Options);
+            return PartitionOf == null ? typed : new StatementColumn.PgPartitionOverride(typed.Name,
+                [.. typed.Options.Where(option => option is not (StatementColumnOption.PgStorage
+                    or StatementColumnOption.PgCompression or StatementColumnOption.PgCollation))]);
         });
         return new CreateTable(Name.ToObjectName(includeSchema ? 2 : 1), columns, constraints)
         {
-            PgOptions = Unlogged || PartitionBy != null || PartitionOf != null
+            PgOptions = Unlogged || PartitionBy != null || PartitionOf != null || AccessMethod != null || Tablespace != null
                 ? new PgCreateTableOptions(Unlogged, null)
                 {
                     PartitionBy = PartitionBy?.ToStatementPartitionBy(),
-                    PartitionOf = PartitionOf?.ToStatementPartitionOf(includeSchema)
+                    PartitionOf = PartitionOf?.ToStatementPartitionOf(includeSchema),
+                    AccessMethod = AccessMethod,
+                    Tablespace = Tablespace
                 }
                 : null
         };

@@ -66,6 +66,10 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
         {
             writer.WriteSql($" {PgOptions.PartitionBy}");
         }
+        if (PgOptions?.AccessMethod != null)
+        {
+            writer.WriteSql($" USING {PgOptions.AccessMethod}");
+        }
 
         if (TableOptions.Any())
         {
@@ -76,6 +80,10 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
         if (PgOptions?.OnCommit != null)
         {
             writer.WriteSql($" ON COMMIT {PgOptions.OnCommit}");
+        }
+        if (PgOptions?.Tablespace != null)
+        {
+            writer.WriteSql($" TABLESPACE {PgOptions.Tablespace}");
         }
 
         if (AsSelect != null)
@@ -124,6 +132,11 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
             writer.Write(" ");
             PgOptions.PartitionBy.FormatSql(writer, manager);
         }
+        if (PgOptions?.AccessMethod != null)
+        {
+            writer.Write(" USING ");
+            PgOptions.AccessMethod.FormatSql(writer, manager);
+        }
 
         if (TableOptions.Any())
         {
@@ -133,6 +146,11 @@ public record CreateTable(ObjectName Name, SqlValueList<StatementColumn> Columns
         if (PgOptions?.OnCommit != null)
         {
             writer.WriteSql($" ON COMMIT {PgOptions.OnCommit}");
+        }
+        if (PgOptions?.Tablespace != null)
+        {
+            writer.Write(" TABLESPACE ");
+            PgOptions.Tablespace.FormatSql(writer, manager);
         }
 
         if (AsSelect != null)
