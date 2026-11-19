@@ -3,13 +3,12 @@ using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 
 public abstract record KeyPart() : IWriteSql
 {
-    public PgIndexKeyOptions? PgOptions { get; init; }
+    public PgKeyPartOptions? PgOptions { get; init; }
 
     public abstract void ToSql(SqlTextWriter writer);
     public abstract void FormatSql(SqlTextWriter writer, FormatManager manager);

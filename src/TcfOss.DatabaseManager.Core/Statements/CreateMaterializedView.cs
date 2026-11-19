@@ -2,7 +2,6 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
-using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
@@ -11,7 +10,7 @@ public record CreateMaterializedView(ObjectName Name, Select Body) : Statement, 
     public SqlValueList<Identifier>? Columns { get; init; }
     public bool IfNotExists { get; init; }
     public Identifier? AccessMethod { get; init; }
-    public SqlValueList<PgStorageParameter>? StorageParameters { get; init; }
+    public SqlValueList<ObjectNameKvp>? StorageParameters { get; init; }
     public Identifier? Tablespace { get; init; }
     public bool? WithData { get; init; }
 

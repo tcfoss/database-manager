@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -92,16 +93,16 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void AddIndexOrConstraint_RejectsExclusionWithoutAttributesWithSource()
+    public void AddIndexOrConstraint_RequiresExclusionNameWithSource()
     {
         var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, EXCLUDE (id WITH =))"));
         var builder = CreateBuilder();
         var source = new SourceRef(7, 0, 10);
 
-        var exception = Assert.Throws<DefinitionException>(() => builder.AddIndexOrConstraint(Assert.Single(statement.Constraints), source));
+        var exception = Assert.Throws<DefinitionException.TableConstraintNameRequired>(() => builder.AddIndexOrConstraint(Assert.Single(statement.Constraints), source));
 
         Assert.Equal(source, exception.ObjectSourceRef);
-        Assert.Contains(nameof(CreateTable), exception.Message);
+        Assert.Contains("EXCLUDE", exception.Message);
     }
 
     [Fact]
@@ -314,7 +315,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         var result = Assert.Single(builder.ToTable(CreateManager()).Indexes.Values);
         Assert.Equal("ix", result.Name.Name);
-        var part = Assert.IsType<KeyPart.Column>(Assert.Single(result.Columns));
+        var part = Assert.IsType<PgKeyPart.Column>(Assert.Single(result.Columns));
         Assert.Equal("id", part.Name.Name);
         Assert.NotNull(part.Direction);
         Assert.Equal("payload", Assert.Single(result.IncludedColumns!.Columns).Name);
@@ -966,6 +967,46 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
         Assert.Contains(table.GetReferencedItems(context),
             reference => reference is ItemRef.ObjectNameRef { Name: var name } && name.ToSql() == "public.parent");
+    }
+
+    [Fact]
+    public void ToTable_ExclusionColumnErrorsRetainConstraintSource()
+    {
+        var builder = CreateBuilder(new SourceRef(95, 0, 10));
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT)")));
+        var declaration = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE ((missing + 1) WITH =))"));
+        var source = new SourceRef(96, 20, 80);
+        builder.AddIndexOrConstraint(Assert.Single(declaration.Constraints), source);
+
+        var error = Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToTable(CreateManager()));
+
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("sqlserver", typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    [InlineData("gin", typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    [InlineData("duplicate", typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
+    public void AddIndexOrConstraint_RejectsUnrepresentedOrDuplicateExclusionOptions(string option, Type expectedType)
+    {
+        var builder = CreateBuilder();
+        var declaration = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =))"));
+        var exclusion = Assert.IsType<StatementTableConstraint.PgExclusion>(Assert.Single(declaration.Constraints));
+        SqlValueList<StatementIndexOption> parameters = option switch
+        {
+            "sqlserver" => [new StatementIndexOption.PadIndex(true)],
+            "gin" => [new StatementIndexOption.PgFastUpdate(true)],
+            _ => [new StatementIndexOption.FillFactor(70), new StatementIndexOption.FillFactor(80)]
+        };
+        var source = new SourceRef(97, 20, 80);
+
+        var error = Assert.ThrowsAny<SqlSyntaxException>(() => builder.AddIndexOrConstraint(exclusion with
+        {
+            IndexParameters = new PgConstraintIndexParameters(parameters, null)
+        }, source));
+
+        Assert.IsType(expectedType, error);
+        Assert.Equal(source, error.ObjectSourceRef);
     }
 
     private static PgTypeResolutionManager CreateManager()

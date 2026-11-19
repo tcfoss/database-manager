@@ -221,7 +221,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         var state = GetState(sql, 149);
         var parser = new PgParser();
         var statement = Assert.IsType<CreateView>(parser.ParseStatement(state));
-        SqlValueList<PgStorageParameter> options = Assert.IsType<SqlValueList<PgStorageParameter>>(statement.PgOptions);
+        SqlValueList<ObjectNameKvp> options = Assert.IsType<SqlValueList<ObjectNameKvp>>(statement.PgOptions);
 
         Assert.Equal(new[] { "security_barrier", "security_invoker", "check_option" }, options.Select(option => option.Name.ToSql()));
         Assert.Equal("TRUE", Assert.IsType<Value.Boolean>(options[0].Value).ToSql());
@@ -230,7 +230,7 @@ public class PgViewParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("LOCAL", Assert.IsType<ViewCheckOption.Specified>(statement.ViewCheckOption).Scope.ToSql());
         Assert.NotNull(statement.CreateOrLabel);
         Assert.Equal("id", Assert.Single(statement.Columns!).Name);
-        foreach (PgStorageParameter option in options)
+        foreach (ObjectNameKvp option in options)
         {
             Identifier name = Assert.Single(option.Name.Values);
             Assert.Equal(149, name.Source!.Value.SourceId);

@@ -32,6 +32,7 @@ public class PgTableBuilder(
 {
     private readonly List<PreColumn> _columns = [];
     private readonly PgPartitionNormalizer _partitionNormalizer = new(componentNormalizer, sqlNormalizer);
+    private readonly PgExclusionNormalizer _exclusionNormalizer = new(componentNormalizer, sqlNormalizer);
     private bool _unlogged;
     private Identifier? _accessMethod;
     private Identifier? _tablespace;
@@ -39,6 +40,7 @@ public class PgTableBuilder(
     private readonly DatabaseComponentDict<PgTableConstraint.Unique> _uniqueConstraints = new(nameHandling);
     private readonly DatabaseComponentDict<PreForeignKey> _foreignKeys = new(nameHandling);
     private readonly DatabaseComponentDict<PgTableConstraint.Check> _checks = new(nameHandling);
+    private readonly DatabaseComponentDict<ExclusionDeclaration> _exclusions = new(nameHandling);
     private readonly DatabaseComponentDict<IndexDeclaration> _indexes = new(nameHandling);
     private readonly HashSet<string> _constraintNames = [];
 
@@ -209,7 +211,7 @@ public class PgTableBuilder(
     public override void AddIndexOrConstraint(StatementTableConstraint constraint, SourceRef? sourceRef)
     {
         sourceRef ??= SourceRef;
-        if (constraint is StatementTableConstraint.PgExclusion or StatementTableConstraint.PgUsingIndex)
+        if (constraint is StatementTableConstraint.PgUsingIndex)
         {
             throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL constraint options", sourceRef);
         }
@@ -226,6 +228,9 @@ public class PgTableBuilder(
                 break;
             case StatementTableConstraint.Check check:
                 AddTableCheck(check, sourceRef);
+                break;
+            case StatementTableConstraint.PgExclusion exclusion:
+                AddTableExclusion(exclusion, sourceRef);
                 break;
             default:
                 throw new NotImplementedException($"PostgreSQL constraint {constraint.GetType().Name} is not implemented.");
@@ -341,6 +346,41 @@ public class PgTableBuilder(
         });
     }
 
+    private void AddTableExclusion(StatementTableConstraint.PgExclusion exclusion, SourceRef? sourceRef)
+    {
+        ValidateConstraintIndexOptions(exclusion.Comment, sourceRef);
+        Identifier name = AddConstraintName(exclusion.Name, "EXCLUDE", sourceRef);
+        if (_indexes.ContainsKey(name))
+        {
+            throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
+        }
+        IndexMethod method = exclusion.Method ?? new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
+        if (method is IndexMethod.Custom custom)
+        {
+            method = custom with { Method = ComponentNormalizer.NormalizeSingleIdentifier(custom.Method) };
+        }
+        ValidateIncludedColumnMethod(method, exclusion.IncludedColumns, sourceRef);
+        PgTableConstraint.Exclusion normalized = _exclusionNormalizer.Normalize(exclusion, name, method,
+            GetIndexTablespace(exclusion.IndexParameters?.Tablespace), sourceRef);
+        normalized = normalized with
+        {
+            BackingIndex = normalized.BackingIndex with
+            {
+                IncludedColumns = NormalizeIncludedColumns(exclusion.IncludedColumns,
+                    normalized.BackingIndex.Columns.OfType<PgKeyPart.Column>().Select(column => column.Name), name, sourceRef)
+            }
+        };
+        foreach (PgKeyPart.IndexExpression key in normalized.BackingIndex.Columns.OfType<PgKeyPart.IndexExpression>())
+        {
+            ValidateExpressionScope(key.Expression, sourceRef);
+        }
+        if (normalized.BackingIndex.Predicate != null)
+        {
+            ValidateExpressionScope(normalized.BackingIndex.Predicate, sourceRef);
+        }
+        _exclusions.Add(name, new ExclusionDeclaration(normalized, sourceRef));
+    }
+
     private static void ValidateTablePrimaryKey(StatementTableConstraint.PrimaryKey primaryKey, SourceRef? sourceRef)
     {
         if (primaryKey.IndexParameters?.StorageParameters != null)
@@ -450,7 +490,7 @@ public class PgTableBuilder(
     {
         method ??= new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
         name = ComponentNormalizer.NormalizeSingleIdentifier(name);
-        if (_indexes.ContainsKey(name) || _uniqueConstraints.ContainsKey(name))
+        if (_indexes.ContainsKey(name) || _uniqueConstraints.ContainsKey(name) || _exclusions.ContainsKey(name))
         {
             throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
         }
@@ -472,8 +512,8 @@ public class PgTableBuilder(
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"UNIQUE USING {method.ToSql()}", sourceRef);
         }
         ValidateIncludedColumnMethod(method, includedColumns, sourceRef);
-        SqlValueList<KeyPart> parts = NormalizeIndexParts(columns, sourceRef);
-        foreach (KeyPart.IndexExpression part in parts.OfType<KeyPart.IndexExpression>())
+        SqlValueList<PgKeyPart> parts = NormalizeIndexParts(columns, sourceRef);
+        foreach (PgKeyPart.IndexExpression part in parts.OfType<PgKeyPart.IndexExpression>())
         {
             ValidateExpressionScope(part.Expression, sourceRef);
         }
@@ -482,7 +522,7 @@ public class PgTableBuilder(
         {
             ValidateExpressionScope(normalizedPredicate, sourceRef);
         }
-        _indexes.Add(name, new IndexDeclaration(new PgIndex(KeyPart.RemoveOptionalElementsFromKeyParts(parts))
+        _indexes.Add(name, new IndexDeclaration(new PgIndex(parts)
         {
             Name = name,
             Unique = unique,
@@ -490,7 +530,7 @@ public class PgTableBuilder(
             Tablespace = GetIndexTablespace(tablespace),
             Predicate = normalizedPredicate,
             IncludedColumns = NormalizeIncludedColumns(includedColumns,
-                parts.OfType<KeyPart.Column>().Select(column => column.Name), name, sourceRef)
+                parts.OfType<PgKeyPart.Column>().Select(column => column.Name), name, sourceRef)
         }, sourceRef));
     }
 
@@ -661,10 +701,14 @@ public class PgTableBuilder(
         var indexes = new DatabaseComponentDict<PgIndex>(NameHandling);
         foreach (IndexDeclaration declaration in _indexes.Values)
         {
-            ValidateColumnReferences(declaration.Index.Columns.OfType<KeyPart.Column>().Select(column => column.Name),
-                declaration.Index.Name.Name, declaration.SourceRef);
-            ValidateColumnReferences(declaration.Index.IncludedColumns?.Columns ?? [], declaration.Index.Name.Name, declaration.SourceRef);
+            ValidateIndexColumnReferences(declaration.Index, declaration.SourceRef);
             indexes.Add(declaration.Index.Name, declaration.Index);
+        }
+        var exclusions = new DatabaseComponentDict<PgTableConstraint.Exclusion>(NameHandling);
+        foreach (ExclusionDeclaration declaration in _exclusions.Values)
+        {
+            ValidateIndexColumnReferences(declaration.Constraint.BackingIndex, declaration.SourceRef);
+            exclusions.Add(declaration.Constraint.Name!, declaration.Constraint);
         }
 
         var result = new PgTable(Name, columns)
@@ -677,6 +721,7 @@ public class PgTableBuilder(
             Checks = new DatabaseComponentDict<PgTableConstraint.Check>(_checks),
             ForeignKeys = foreignKeys,
             UniqueConstraints = new DatabaseComponentDict<PgTableConstraint.Unique>(_uniqueConstraints),
+            Exclusions = exclusions,
             Indexes = indexes
         };
 
@@ -693,16 +738,31 @@ public class PgTableBuilder(
         }
         foreach (IndexDeclaration declaration in _indexes.Values)
         {
-            foreach (KeyPart.IndexExpression part in declaration.Index.Columns.OfType<KeyPart.IndexExpression>())
-            {
-                ValidateExpressionColumns(part.Expression, result, NameHandling, declaration.SourceRef);
-            }
-            if (declaration.Index.Predicate != null)
-            {
-                ValidateExpressionColumns(declaration.Index.Predicate, result, NameHandling, declaration.SourceRef);
-            }
+            ValidateIndexExpressions(declaration.Index, result, declaration.SourceRef);
+        }
+        foreach (ExclusionDeclaration declaration in _exclusions.Values)
+        {
+            ValidateIndexExpressions(declaration.Constraint.BackingIndex, result, declaration.SourceRef);
         }
         return result;
+    }
+
+    private void ValidateIndexColumnReferences(PgIndex index, SourceRef? sourceRef)
+    {
+        ValidateColumnReferences(index.Columns.OfType<PgKeyPart.Column>().Select(column => column.Name), index.Name.Name, sourceRef);
+        ValidateColumnReferences(index.IncludedColumns?.Columns ?? [], index.Name.Name, sourceRef);
+    }
+
+    private void ValidateIndexExpressions(PgIndex index, PgTable table, SourceRef? sourceRef)
+    {
+        foreach (PgKeyPart.IndexExpression part in index.Columns.OfType<PgKeyPart.IndexExpression>())
+        {
+            ValidateExpressionColumns(part.Expression, table, NameHandling, sourceRef);
+        }
+        if (index.Predicate != null)
+        {
+            ValidateExpressionColumns(index.Predicate, table, NameHandling, sourceRef);
+        }
     }
 
     private void ValidateColumnReferences(IEnumerable<Identifier> columns, string keyName, SourceRef? sourceRef)
@@ -725,7 +785,7 @@ public class PgTableBuilder(
     private PgIndex CreateBackingIndex(SqlValueList<Identifier> columns, Identifier name, IncludedColumns? includedColumns,
         Identifier? tablespace)
     {
-        return new PgIndex(columns.Map<KeyPart>(column => new KeyPart.Column(column)))
+        return new PgIndex(columns.Map<PgKeyPart>(column => new PgKeyPart.Column(column)))
         {
             Name = name,
             NameExplicit = true,
@@ -798,22 +858,32 @@ public class PgTableBuilder(
         return result;
     }
 
-    private SqlValueList<KeyPart> NormalizeIndexParts(SqlValueList<KeyPart> keyParts, SourceRef? sourceRef)
+    private SqlValueList<PgKeyPart> NormalizeIndexParts(SqlValueList<KeyPart> keyParts, SourceRef? sourceRef)
     {
         if (keyParts.Count == 0)
         {
             throw new SqlSyntaxException.EmptyIndexColumnList("An index", sourceRef);
         }
-        SqlValueList<KeyPart> result = [];
+        SqlValueList<PgKeyPart> result = [];
         foreach (KeyPart part in keyParts)
         {
+            if (part.PgOptions != null)
+            {
+                throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "standalone index key options", sourceRef);
+            }
             switch (part)
             {
                 case KeyPart.Column { Length: null } column:
-                    result.Add(new KeyPart.Column(ComponentNormalizer.NormalizeSingleIdentifier(column.Name), null, column.Direction));
+                    result.Add(new PgKeyPart.Column(ComponentNormalizer.NormalizeSingleIdentifier(column.Name))
+                    {
+                        Direction = column.Direction == Direction.Descending ? Direction.Descending : null
+                    });
                     break;
                 case KeyPart.IndexExpression expression:
-                    result.Add(new KeyPart.IndexExpression(GetNormalizedExpression(expression.Expression), expression.Direction));
+                    result.Add(new PgKeyPart.IndexExpression(GetNormalizedExpression(expression.Expression))
+                    {
+                        Direction = expression.Direction == Direction.Descending ? Direction.Descending : null
+                    });
                     break;
                 default:
                     throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "index column prefix lengths", sourceRef);
@@ -895,6 +965,8 @@ public class PgTableBuilder(
     }
 
     public sealed record PrePartition(ObjectName Parent, PgPartitionBounds Bound, CreateTable Statement, SourceRef? SourceRef);
+
+    private sealed record ExclusionDeclaration(PgTableConstraint.Exclusion Constraint, SourceRef? SourceRef);
 
     private sealed record PreForeignKey(
         Identifier Name,

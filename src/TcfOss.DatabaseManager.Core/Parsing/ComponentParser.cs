@@ -102,7 +102,7 @@ public class ComponentParser(ParserBase parser)
             length = ValueParser.ParseLiteralUInt(state);
             state.ExpectRightParen();
         }
-        (PgIndexKeyOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
+        (PgKeyPartOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
 
         Token peeked = state.Peek();
         if (peeked is not Comma and not ParenClose && !(exclusion && state.PeekKeyword(Keyword.WITH)))
@@ -130,15 +130,15 @@ public class ComponentParser(ParserBase parser)
                 throw ParserState.ExpectedException("column name, function call, or parenthesized index expression", start);
             }
         }
-        (PgIndexKeyOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
+        (PgKeyPartOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
 
         return new KeyPart.IndexExpression(expr, direction) { PgOptions = options };
     }
 
-    private (PgIndexKeyOptions? Options, Direction? Direction) ParseKeyPartTail(ParserState state, bool postgres)
+    private (PgKeyPartOptions? Options, Direction? Direction) ParseKeyPartTail(ParserState state, bool postgres)
     {
         ObjectName? operatorClass = null;
-        SqlValueList<PgStorageParameter>? parameters = null;
+        SqlValueList<ObjectNameKvp>? parameters = null;
         if (postgres && state.Peek() is Word { Keyword: not (Keyword.ASC or Keyword.DESC or Keyword.NULLS or Keyword.COLLATE or Keyword.WITH) })
         {
             operatorClass = ParseObjectName(state);
@@ -150,8 +150,8 @@ public class ComponentParser(ParserBase parser)
         Direction? direction = ParseDirection(state);
         NullsOrder? nullsOrder = postgres ? ParseOptionalNullsOrder(state) : null;
 
-        PgIndexKeyOptions? options = operatorClass != null || nullsOrder != null
-            ? new PgIndexKeyOptions(operatorClass, parameters, nullsOrder) : null;
+        PgKeyPartOptions? options = operatorClass != null || nullsOrder != null
+            ? new PgKeyPartOptions(operatorClass, parameters, nullsOrder) : null;
 
         return (options, direction);
     }
@@ -622,7 +622,7 @@ public class ComponentParser(ParserBase parser)
         return null;
     }
 
-    public PgStorageParameter ParseStorageParameter(ParserState state, int maxParts, bool requireValue, string label = "storage parameter")
+    public ObjectNameKvp ParseStorageParameter(ParserState state, int maxParts, bool requireValue, string label = "storage parameter")
     {
         ObjectName name = ParseBoundedObjectName(state, 1, maxParts, label);
         Value? value;
@@ -635,7 +635,7 @@ public class ComponentParser(ParserBase parser)
         {
             value = state.ConsumeTokenIs<Equal>() ? ParseSimpleValue(state) : null;
         }
-        return new PgStorageParameter(name, value);
+        return new ObjectNameKvp(name, value);
     }
 
     public ObjectName ParseStorageParameterName(ParserState state)
@@ -643,7 +643,7 @@ public class ComponentParser(ParserBase parser)
         return ParseBoundedObjectName(state, 1, 2, "storage parameter name");
     }
 
-    public PgStorageParameter ParseStorageParameter(ParserState state)
+    public ObjectNameKvp ParseStorageParameter(ParserState state)
     {
         return ParseStorageParameter(state, maxParts: 2, requireValue: false);
     }

@@ -28,7 +28,7 @@ public abstract record PgColumnConfigurationOperation : IWriteSql
         }
     }
 
-    public record SetOptions(SqlValueList<PgStorageParameter> Parameters) : PgColumnConfigurationOperation
+    public record SetOptions(SqlValueList<ObjectNameKvp> Parameters) : PgColumnConfigurationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {

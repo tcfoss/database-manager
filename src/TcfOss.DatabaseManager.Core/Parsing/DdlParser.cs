@@ -1494,7 +1494,7 @@ public class DdlParser
         }
         SqlValueList<Identifier>? columns = state.ParseParenthesizedCommaSeparatedOptional(_parseIdentifier, false);
 
-        SqlValueList<PgStorageParameter>? pgOptions = ParseOptionalPgViewOptions(state);
+        SqlValueList<ObjectNameKvp>? pgOptions = ParseOptionalPgViewOptions(state);
         MsViewWithOptions? msOptions = ParseOptionalViewWithOptions(state);
 
         state.ExpectKeyword(Keyword.AS);
@@ -1523,7 +1523,7 @@ public class DdlParser
         };
     }
 
-    protected virtual SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    protected virtual SqlValueList<ObjectNameKvp>? ParseOptionalPgViewOptions(ParserState state)
     {
         if (!state.PeekKeyword(Keyword.WITH) || !state.PeekNthIs<ParenOpen>(1))
         {
@@ -1563,7 +1563,7 @@ public class DdlParser
 
         Identifier? accessMethod = state.ParseKeyword(Keyword.USING) ? _parseIdentifier(state) : null;
 
-        SqlValueList<PgStorageParameter>? storageParameters = state.ParseKeyword(Keyword.WITH)
+        SqlValueList<ObjectNameKvp>? storageParameters = state.ParseKeyword(Keyword.WITH)
             ? state.ParseParenthesizedCommaSeparated(_p.ComponentParser.ParseStorageParameter, false)
             : null;
 
@@ -1792,9 +1792,9 @@ public class DdlParser
         }
     }
 
-    private PgStorageParameter ParseMaterializedViewColumnOption(ParserState state)
+    private ObjectNameKvp ParseMaterializedViewColumnOption(ParserState state)
     {
-        PgStorageParameter parameter = _p.ComponentParser.ParseStorageParameter(state, maxParts: 1, requireValue: true, "materialized view column option");
+        ObjectNameKvp parameter = _p.ComponentParser.ParseStorageParameter(state, maxParts: 1, requireValue: true, "materialized view column option");
         return parameter;
     }
 

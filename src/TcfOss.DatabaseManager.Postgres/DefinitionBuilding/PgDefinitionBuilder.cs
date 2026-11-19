@@ -434,6 +434,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         {
             foreach (Identifier index in table.Indexes.Values.Select(index => index.Name)
                 .Concat(table.UniqueConstraints.Values.Select(unique => unique.Name!))
+                .Concat(table.Exclusions.Values.Select(exclusion => exclusion.BackingIndex.Name))
                 .Concat(table.PrimaryKey == null ? [] : new[] { table.PrimaryKey.Name }))
             {
                 names.Add(ObjectHandle.Create(new ObjectIdentifier(index.Name, table.Name.Schema, index.QuoteStyle), Config.NameHandling));
@@ -566,7 +567,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         var names = tables.Keys.ToHashSet();
         foreach (KeyValuePair<ObjectHandle, PgTable> table in tables)
         {
-            IEnumerable<Identifier> relationNames = table.Value.UniqueConstraints.Values.Select(unique => unique.Name!);
+            IEnumerable<Identifier> relationNames = table.Value.UniqueConstraints.Values.Select(unique => unique.Name!)
+                .Concat(table.Value.Exclusions.Values.Select(exclusion => exclusion.BackingIndex.Name));
             if (table.Value.PrimaryKey?.Name is { } primaryKeyName)
             {
                 relationNames = relationNames.Append(primaryKeyName);
@@ -721,8 +723,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     && referencedColumns.SetEquals(unique.Columns.Select(column => column.Name)));
                 backed |= referencedTable.Indexes.Values.Any(index => index is { Unique: true, Predicate: null }
                                                                       && index.Columns.Count == foreignKey.ReferencedColumns.Count
-                                                                      && index.Columns.All(part => part is KeyPart.Column)
-                                                                      && referencedColumns.SetEquals(index.Columns.Cast<KeyPart.Column>().Select(column => column.Name.Name)));
+                                                                      && index.Columns.All(part => part is PgKeyPart.Column)
+                                                                      && referencedColumns.SetEquals(index.Columns.Cast<PgKeyPart.Column>().Select(column => column.Name.Name)));
                 if (!backed)
                 {
                     errors.Add(new DefinitionException.ForeignKeyNoReferencedBackingIndex(keyName, table.Name, referencedTable.Name, source));

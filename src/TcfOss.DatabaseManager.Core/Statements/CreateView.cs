@@ -22,7 +22,7 @@ public record CreateView(ObjectName Name, Select Body) : Statement, ICreateState
     public SecurityContext? SecurityContext { get; init; }
     public ViewCheckOption? ViewCheckOption { get; init; }
     public MsViewWithOptions? MsOptions { get; init; }
-    public SqlValueList<PgStorageParameter>? PgOptions { get; init; }
+    public SqlValueList<ObjectNameKvp>? PgOptions { get; init; }
 
     public override void ToSql(SqlTextWriter writer)
     {

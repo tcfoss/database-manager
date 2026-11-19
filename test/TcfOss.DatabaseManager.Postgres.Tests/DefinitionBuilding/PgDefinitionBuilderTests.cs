@@ -83,7 +83,6 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TABLE items (id INT, PRIMARY KEY (id) WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT uq UNIQUE (id) WITH (custom_parameter = 1))")]
     [InlineData("CREATE TABLE items (id INT REFERENCES app.parents (id))")]
-    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
     [InlineData("ALTER TABLE items ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES app.parents (id) NOT VALID")]
     [InlineData("ALTER TABLE items ADD UNIQUE USING INDEX items_idx")]
     [InlineData("ALTER TABLE items ALTER CONSTRAINT fk DEFERRABLE")]
@@ -1364,6 +1363,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CREATE TABLE items (id INT, UNIQUE (id))")]
     [InlineData("CREATE TABLE items (id INT, FOREIGN KEY (id) REFERENCES items(id))")]
     [InlineData("CREATE TABLE items (id INT, CHECK (id > 0))")]
+    [InlineData("CREATE TABLE items (id INT, EXCLUDE (id WITH =))")]
     public void TableConstraints_RequireExplicitNames(string sql)
     {
         var builder = CreateBuilder();
@@ -1479,7 +1479,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgDefinition definition = builder.ToDefinition();
 
         PgTable table = Assert.Single(definition.Tables).Value;
-        Assert.IsType<KeyPart.IndexExpression>(Assert.Single(Assert.Single(table.Indexes.Values).Columns));
+        Assert.IsType<PgKeyPart.IndexExpression>(Assert.Single(Assert.Single(table.Indexes.Values).Columns));
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
@@ -1623,7 +1623,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgTable table = Assert.Single(definition.Tables).Value;
         PgIndex index = Assert.Single(table.Indexes.Values);
         Assert.Equal(unique, index.Unique);
-        Assert.Equal("id", Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns)).Name.Name);
+        Assert.Equal("id", Assert.IsType<PgKeyPart.Column>(Assert.Single(index.Columns)).Name.Name);
         Assert.Equal("Payload", Assert.Single(index.IncludedColumns!.Columns).Name);
         Assert.Contains("INCLUDE (\"Payload\")", Assert.Single(table.ToCreateIndexStatements(true)).ToSql());
         var rebuilt = CreateBuilder();
@@ -3584,7 +3584,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("session_space", table.Indexes[new Identifier("label_idx")].Tablespace!.Name);
         Assert.Equal("index_space", table.Indexes[new Identifier("explicit_idx")].Tablespace!.Name);
         Assert.True(table.PrimaryKey.BackingIndex.Unique);
-        Assert.Equal("id", Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.BackingIndex.Columns)).Name.Name);
+        Assert.Equal("id", Assert.IsType<PgKeyPart.Column>(Assert.Single(table.PrimaryKey.BackingIndex.Columns)).Name.Name);
         var rebuilt = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
         rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 83);
         foreach (CreateIndex index in table.ToCreateIndexStatements(true))
@@ -3726,6 +3726,287 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.EndsWith("_seq", sequence.Name.Name);
         Assert.DoesNotContain("\uFFFD", sequence.Name.Name);
         Assert.Contains("T", sequence.Name.Name);
+    }
+
+    [Fact]
+    public void Exclusions_PreserveKeysOperatorsAndOwnerBackedIndexAndRoundTrip()
+    {
+        var sources = new SourceManager();
+        var builder = CreateBuilder(sources);
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (Room INT, Span INT, Label TEXT,
+                CONSTRAINT No_Overlap EXCLUDE USING gist
+                    (Room WITH =, (App.Bucket(Span)) App.Range_Ops (Siglen = 4) WITH OPERATOR(App.&&))
+                INCLUDE (Label) WITH (fillfactor = 70, buffering = on)
+                USING INDEX TABLESPACE Fast WHERE (Room > 0) DEFERRABLE INITIALLY DEFERRED)
+            """), GetSchema(), 90);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+        PgTableConstraint.Exclusion exclusion = Assert.Single(table.Exclusions.Values);
+        PgIndex index = exclusion.BackingIndex;
+
+        Assert.Equal("no_overlap", exclusion.Name!.Name);
+        Assert.Equal(new[] { "=", "&&" }, exclusion.Elements.Select(element => element.Operator.Name));
+        Assert.Equal("app", exclusion.Elements[1].Operator.Schema!.Name);
+        Assert.Equal("room", Assert.IsType<PgKeyPart.Column>(exclusion.Elements[0].Key).Name.Name);
+        var expression = Assert.IsType<PgKeyPart.IndexExpression>(exclusion.Elements[1].Key);
+        Assert.Equal(new[] { "app", "range_ops" }, expression.OperatorClass!.Name.Values.Select(identifier => identifier.Name));
+        Assert.Equal(4, expression.OperatorClass.SignatureLength);
+        Assert.Equal(exclusion.Elements.Map(element => element.Key), index.Columns);
+        Assert.Equal(exclusion.Name, index.Name);
+        Assert.True(index.NameExplicit);
+        Assert.False(index.Unique);
+        Assert.Equal(BuiltInIndexMethod.Gist, Assert.IsType<IndexMethod.BuiltIn>(index.Method).Method);
+        Assert.Equal("fast", index.Tablespace!.Name);
+        Assert.Equal("label", Assert.Single(index.IncludedColumns!.Columns).Name);
+        Assert.NotNull(index.Predicate);
+        Assert.Equal(70U, index.FillFactor);
+        Assert.Equal(PgIndexBufferingMode.On, index.Buffering);
+        Assert.Null(index.DeduplicateItems);
+        Assert.True(exclusion.Options.Deferrable);
+        Assert.True(exclusion.Options.InitiallyDeferred);
+        Assert.Empty(table.Indexes);
+        Assert.Empty(table.ToCreateIndexStatements(true));
+        Assert.Equal(90, sources.GetSourceRef(new ObjectHandle("catalog", "public", "no_overlap"))?.SourceId);
+
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 91);
+        PgTable roundTripped = Assert.Single(rebuilt.ToDefinition().Tables.Values);
+        Assert.Equal(table, roundTripped);
+        Assert.Equal(table.GetHashCode(), roundTripped.GetHashCode());
+        Assert.Equal(index, index with { NameExplicit = false });
+        Assert.Equal(index.GetHashCode(), (index with { NameExplicit = false }).GetHashCode());
+    }
+
+    [Theory]
+    [InlineData("EXCLUDE (id WITH =)", "EXCLUDE USING btree (id ASC NULLS LAST WITH OPERATOR(=)) USING INDEX TABLESPACE pg_default NOT DEFERRABLE INITIALLY IMMEDIATE")]
+    [InlineData("EXCLUDE USING btree (id DESC WITH =)", "EXCLUDE USING btree (id DESC NULLS FIRST WITH =)")]
+    [InlineData("EXCLUDE USING gist (id WITH =) WITH (fillfactor = 70, buffering = on)", "EXCLUDE USING gist (id WITH =) WITH (buffering = on, fillfactor = 70)")]
+    [InlineData("EXCLUDE USING btree (id WITH =) WITH (deduplicate_items)", "EXCLUDE USING btree (id WITH =) WITH (deduplicate_items = on)")]
+    [InlineData("EXCLUDE USING Custom_Method (id App.Ops (SIGLEN = 32, NUMRANGES = 4) WITH OPERATOR(App.=))", "EXCLUDE USING custom_method (id app.ops (numranges = 4, siglen = 32) WITH OPERATOR(app.=))")]
+    public void Exclusions_NormalizeNamesDefaultsAndParameterOrder(string firstClause, string secondClause)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, CONSTRAINT ex {firstClause})"), GetSchema(), 90);
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, CONSTRAINT ex {secondClause})"), GetSchema(), 91);
+
+        PgTable expected = Assert.Single(first.ToDefinition().Tables.Values);
+        PgTable actual = Assert.Single(second.ToDefinition().Tables.Values);
+
+        Assert.Equal(expected, actual);
+        Assert.Equal(expected.GetHashCode(), actual.GetHashCode());
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("WITH (deduplicate_items)", true)]
+    [InlineData("WITH (deduplicate_items = on)", true)]
+    [InlineData("WITH (deduplicate_items = off)", false)]
+    public void Exclusions_TypedBooleanOptionPreservesOmissionAndRoundTrips(string options, bool? expected)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            $"CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =) {options})"), GetSchema(), 90);
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+        PgIndex index = Assert.Single(table.Exclusions.Values).BackingIndex;
+
+        Assert.Equal(expected, index.DeduplicateItems);
+        Assert.Null(index.FillFactor);
+        Assert.Null(index.Buffering);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 91);
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
+    }
+
+    [Fact]
+    public void Exclusions_QuotedIdentifiersRemainSafeAndRoundTrip()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE "Table; DROP TABLE items" ("Column" INT,
+                CONSTRAINT "Constraint; SELECT 1" EXCLUDE USING "Method"
+                    ("Column" "App"."Ops" ("siglen" = 4) WITH OPERATOR("App".&&))
+                USING INDEX TABLESPACE "Space")
+            """), GetSchema(), 90);
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 91);
+
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
+        PgTableConstraint.Exclusion exclusion = Assert.Single(table.Exclusions.Values);
+        Assert.Equal("Constraint; SELECT 1", exclusion.Name!.Name);
+        Assert.Equal("Method", Assert.IsType<IndexMethod.Custom>(exclusion.BackingIndex.Method).Method.Name);
+        Assert.Equal("App", exclusion.Elements[0].Operator.Schema!.Name);
+    }
+
+    [Theory]
+    [InlineData("(id WITH =)", "(id WITH <>)")]
+    [InlineData("(id WITH =, other WITH =)", "(other WITH =, id WITH =)")]
+    [InlineData("USING btree (id WITH =)", "USING hash (id WITH =)")]
+    [InlineData("(id WITH =) WHERE (id > 0)", "(id WITH =) WHERE (id > 1)")]
+    [InlineData("(id WITH =) INCLUDE (label)", "(id WITH =) INCLUDE (other)")]
+    [InlineData("(id WITH =) WITH (fillfactor = 70)", "(id WITH =) WITH (fillfactor = 80)")]
+    [InlineData("USING gist (id WITH =) WITH (buffering = on)", "USING gist (id WITH =) WITH (buffering = off)")]
+    [InlineData("(id WITH =) WITH (deduplicate_items = on)", "(id WITH =) WITH (deduplicate_items = off)")]
+    [InlineData("(id WITH =) NOT DEFERRABLE", "(id WITH =) DEFERRABLE")]
+    [InlineData("(id WITH =) DEFERRABLE", "(id WITH =) INITIALLY DEFERRED")]
+    [InlineData("(id NULLS FIRST WITH =)", "(id NULLS LAST WITH =)")]
+    [InlineData("(id app.first_ops WITH =)", "(id app.second_ops WITH =)")]
+    [InlineData("(id app.ops (siglen = 4) WITH =)", "(id app.ops (siglen = 8) WITH =)")]
+    [InlineData("(id app.ops (numranges = 4) WITH =)", "(id app.ops (numranges = 8) WITH =)")]
+    [InlineData("(id WITH OPERATOR(app.=))", "(id WITH OPERATOR(\"App\".=))")]
+    [InlineData("((id + 1) WITH =)", "((id + 2) WITH =)")]
+    [InlineData("(label COLLATE app.first WITH =)", "(label COLLATE app.second WITH =)")]
+    [InlineData("(id WITH =) USING INDEX TABLESPACE first_space", "(id WITH =) USING INDEX TABLESPACE second_space")]
+    public void Exclusions_PreserveMeaningfulDifferences(string firstClause, string secondClause)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, other INT, label TEXT, CONSTRAINT ex EXCLUDE {firstClause})"), GetSchema(), 90);
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, other INT, label TEXT, CONSTRAINT ex EXCLUDE {secondClause})"), GetSchema(), 91);
+
+        Assert.NotEqual(Assert.Single(first.ToDefinition().Tables.Values), Assert.Single(second.ToDefinition().Tables.Values));
+    }
+
+    [Fact]
+    public void Exclusions_ReserveRelationNamesBeforeImplicitSequenceAllocation()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY);
+            CREATE TABLE other (id INT, CONSTRAINT items_id_seq EXCLUDE (id WITH =))
+            """), GetSchema(), 90);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal("items_id_seq1", Assert.Single(definition.Tables[new ObjectHandle("catalog", "public", "items")].Columns).BackingSequence!.Name.Name);
+    }
+
+    [Theory]
+    [InlineData("(missing WITH =)")]
+    [InlineData("((missing + 1) WITH =)")]
+    [InlineData("(id WITH =) INCLUDE (missing)")]
+    [InlineData("(id WITH =) WHERE (missing > 0)")]
+    public void Exclusions_UnknownColumnsRetainDeclarationSource(string clause)
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements($"CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE {clause})");
+        builder.ProcessStatements(statements, GetSchema(), 92);
+
+        var error = Assert.ThrowsAny<SqlSyntaxException>(builder.ToDefinition);
+
+        Assert.Equal(new SourceRef(92, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+        Assert.Contains("missing", error.Message);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ex CHECK (id > 0), CONSTRAINT Ex EXCLUDE (id WITH =))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =), CONSTRAINT Ex UNIQUE (id))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =) NOT DEFERRABLE INITIALLY DEFERRED)")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =) INCLUDE (id))")]
+    public void Exclusions_InvalidOptionsAndDuplicateNamesHaveSources(string sql)
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements(sql);
+
+        var error = Assert.ThrowsAny<SqlSyntaxException>(() => builder.ProcessStatements(statements, GetSchema(), 93));
+
+        Assert.Equal(new SourceRef(93, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("TSVECTOR", "tsvector_ops", "", null, null)]
+    [InlineData("TSVECTOR", "tsvector_ops", "(siglen = 32)", 32, null)]
+    [InlineData("INT[]", "gist__int_ops", "(numranges = 8)", null, 8)]
+    [InlineData("INT[]", "app.ops", "(siglen = 32, numranges = 8)", 32, 8)]
+    public void Exclusions_TypedOperatorClassOptionsPreserveOmissionAndRoundTrip(string type, string operatorClass,
+        string parameters, int? signatureLength, int? numberOfRanges)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            $"CREATE TABLE items (value {type}, CONSTRAINT ex EXCLUDE USING gist (value {operatorClass} {parameters} WITH &&))"), GetSchema(), 93);
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+        PgIndex index = Assert.Single(table.Exclusions.Values).BackingIndex;
+        PgKeyPart.OperatorClassOptions options = Assert.Single(index.Columns).OperatorClass!;
+
+        Assert.Equal(signatureLength, options.SignatureLength);
+        Assert.Equal(numberOfRanges, options.NumberOfRanges);
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 94);
+        PgTable actual = Assert.Single(rebuilt.ToDefinition().Tables.Values);
+        Assert.Equal(table, actual);
+        Assert.Equal(table.GetHashCode(), actual.GetHashCode());
+    }
+
+    [Theory]
+    [InlineData("bits = 4")]
+    [InlineData("\"Siglen\" = 32")]
+    [InlineData("siglen = 0")]
+    [InlineData("siglen = 1.5")]
+    [InlineData("numranges = 0")]
+    [InlineData("numranges = 2147483648")]
+    [InlineData("numranges = true")]
+    [InlineData("siglen = 'many'")]
+    public void Exclusions_RejectUnrepresentedOperatorClassParametersWithSource(string parameters)
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements($"CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE USING gist (id app.ops ({parameters}) WITH =))");
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 93));
+
+        Assert.Equal(new SourceRef(93, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+        Assert.Contains("operator class parameter", error.Clause);
+    }
+
+    [Fact]
+    public void Exclusions_RejectDuplicateNormalizedOperatorClassParametersWithSource()
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE USING gist (id app.ops (siglen = 32, SIGLEN = 64) WITH =))");
+
+        var error = Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 93));
+
+        Assert.Equal(new SourceRef(93, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("EXCLUDE (id WITH =) WITH (custom_parameter = 70)")]
+    [InlineData("EXCLUDE (id WITH =) WITH (custom_flag)")]
+    [InlineData("EXCLUDE USING custom_method (id WITH =) WITH (custom_parameter = 70)")]
+    public void Exclusions_RejectUnrepresentedStorageOptionsWithSource(string clause)
+    {
+        var builder = CreateBuilder();
+        var statements = ParseStatements($"CREATE TABLE items (id INT, CONSTRAINT ex {clause})");
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() =>
+            builder.ProcessStatements(statements, GetSchema(), 93));
+
+        Assert.Equal(new SourceRef(93, statements[0].Meta.Start!.Value, statements[0].Meta.End!.Value), error.ObjectSourceRef);
+        Assert.Contains("EXCLUDE index option", error.Clause);
+        Assert.Contains("custom_", error.Clause);
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE ex (id INT); CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =))")]
+    [InlineData("CREATE TABLE other (id INT, CONSTRAINT ex UNIQUE (id)); CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =))")]
+    [InlineData("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =)); CREATE INDEX ex ON items (id)")]
+    [InlineData("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME ex), CONSTRAINT ex EXCLUDE (id WITH =))")]
+    public void Exclusions_BackingIndexesShareTheRelationNamespace(string sql)
+    {
+        var builder = CreateBuilder();
+
+        var error = Assert.Throws<SqlSyntaxException.DuplicateObject>(() =>
+        {
+            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 94);
+            builder.ToDefinition();
+        });
+
+        Assert.Equal(94, error.ObjectSourceRef?.SourceId);
+        Assert.Contains("ex", error.Message);
     }
 
     private static SchemaIdentifier GetSchema()

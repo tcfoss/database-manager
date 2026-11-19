@@ -21,6 +21,7 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
     public DatabaseComponentDict<PgTableConstraint.Unique> UniqueConstraints { get; init; } = [];
     public DatabaseComponentDict<PgTableConstraint.ForeignKey> ForeignKeys { get; init; } = [];
     public DatabaseComponentDict<PgTableConstraint.Check> Checks { get; init; } = [];
+    public DatabaseComponentDict<PgTableConstraint.Exclusion> Exclusions { get; init; } = [];
     public DatabaseComponentDict<PgIndex> Indexes { get; init; } = [];
 
     public IEnumerable<CreateIndex> ToCreateIndexStatements(bool includeSchema)
@@ -40,6 +41,7 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
         constraints.AddRange(Checks.Values.Select(constraint => constraint.ToStatementConstraint()));
         constraints.AddRange(ForeignKeys.Values.Select(foreignKey => foreignKey.ToStatementConstraint()));
         constraints.AddRange(UniqueConstraints.Values.Select(unique => unique.ToStatementConstraint()));
+        constraints.AddRange(Exclusions.Values.Select(exclusion => exclusion.ToStatementConstraint()));
         SqlValueList<StatementColumn> columns = Columns.Map<StatementColumn>(column =>
         {
             StatementColumn.Typed typed = column.ToStatementColumn(manager);

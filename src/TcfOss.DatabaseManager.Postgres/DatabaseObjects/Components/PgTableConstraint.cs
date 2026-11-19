@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
@@ -57,5 +58,27 @@ public abstract record PgTableConstraint(Identifier? Name = null)
                 PgOptions = Options.ToStatementOptions()
             };
         }
+    }
+
+    public record Exclusion(SqlValueList<Exclusion.Element> Elements, Identifier Name) : PgTableConstraint(Name)
+    {
+        public required PgIndex BackingIndex { get; init; }
+
+        public override StatementTableConstraint.PgExclusion ToStatementConstraint()
+        {
+            SqlValueList<StatementIndexOption>? indexOptions = BackingIndex.ToStatementIndexOptions();
+            return new StatementTableConstraint.PgExclusion(
+                Elements.Map(element => new PgExclusionElement(element.Key.ToStatementKeyPart(), element.Operator)), Name)
+            {
+                Method = BackingIndex.Method,
+                IncludedColumns = BackingIndex.IncludedColumns,
+                Predicate = BackingIndex.Predicate,
+                IndexParameters = indexOptions != null || BackingIndex.Tablespace != null
+                    ? new PgConstraintIndexParameters(indexOptions, BackingIndex.Tablespace) : null,
+                PgOptions = Options.ToStatementOptions()
+            };
+        }
+
+        public record Element(PgKeyPart Key, PgOperatorReference Operator);
     }
 }

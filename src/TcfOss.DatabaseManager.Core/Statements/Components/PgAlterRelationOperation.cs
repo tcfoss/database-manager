@@ -70,7 +70,7 @@ public abstract record PgAlterRelationOperation : IWriteSql
         }
     }
 
-    public record SetStorageParameters(SqlValueList<PgStorageParameter> Parameters) : PgAlterRelationOperation
+    public record SetStorageParameters(SqlValueList<ObjectNameKvp> Parameters) : PgAlterRelationOperation
     {
         public override void ToSql(SqlTextWriter writer)
         {

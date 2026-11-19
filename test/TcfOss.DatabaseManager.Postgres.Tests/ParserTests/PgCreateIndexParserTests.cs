@@ -104,7 +104,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         var statement = Assert.IsType<CreateIndex.Unique>(ParseStatement(sql));
         PgCreateIndexOptions options = Assert.IsType<PgCreateIndexOptions>(statement.PgOptions);
         var key = Assert.IsType<KeyPart.Column>(Assert.Single(statement.Columns));
-        PgIndexKeyOptions keyOptions = Assert.IsType<PgIndexKeyOptions>(key.PgOptions);
+        PgKeyPartOptions keyOptions = Assert.IsType<PgKeyPartOptions>(key.PgOptions);
 
         Assert.True(options.Concurrently);
         Assert.True(options.Only);
