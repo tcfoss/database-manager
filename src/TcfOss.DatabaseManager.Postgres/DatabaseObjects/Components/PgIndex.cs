@@ -17,6 +17,7 @@ public record PgIndex(SqlValueList<PgKeyPart> Columns)
     public bool Unique { get; init; }
     public IndexMethod Method { get; init; } = IndexMethod.Default;
     public Expression? Predicate { get; init; }
+    public Expression? NormalizedPredicate { get; init; }
     public IncludedColumns? IncludedColumns { get; init; }
     public uint? FillFactor { get; init; }
     public PgIndexBufferingMode? Buffering { get; init; }
@@ -26,7 +27,8 @@ public record PgIndex(SqlValueList<PgKeyPart> Columns)
     {
         return other is not null && EqualityContract == other.EqualityContract
             && Name == other.Name && Tablespace == other.Tablespace
-            && Unique == other.Unique && Method == other.Method && Predicate == other.Predicate
+            && Unique == other.Unique && Method == other.Method
+            && (NormalizedPredicate ?? Predicate) == (other.NormalizedPredicate ?? other.Predicate)
             && IncludedColumns == other.IncludedColumns && Columns.Equals(other.Columns)
             && FillFactor == other.FillFactor && Buffering == other.Buffering
             && DeduplicateItems == other.DeduplicateItems;
@@ -35,7 +37,7 @@ public record PgIndex(SqlValueList<PgKeyPart> Columns)
     public override int GetHashCode()
     {
         return HashCode.Combine(
-            HashCode.Combine(EqualityContract, Name, Tablespace, Unique, Method, Predicate, IncludedColumns, Columns),
+            HashCode.Combine(EqualityContract, Name, Tablespace, Unique, Method, NormalizedPredicate ?? Predicate, IncludedColumns, Columns),
             FillFactor, Buffering, DeduplicateItems);
     }
 

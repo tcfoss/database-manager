@@ -143,13 +143,16 @@ public class PgTableBuilder(
                         : new ColumnOption.Nullability.Null(nullabilityName);
                     break;
                 case StatementColumnOption.Default defaultOption:
-                    defaultValue = NormalizeDefault(defaultOption);
+                    defaultValue = NormalizeColumnDefault(defaultOption);
                     break;
                 case StatementColumnOption.Generated.AsExpression expression:
-                    Expression normalized = GetNormalizedExpression(expression.Expression);
+                    (Expression normalized, Expression flattened) = GetNormalizedExpressions(expression.Expression);
                     ValidateExpressionScope(normalized, sourceRef);
                     generated = new ColumnOption.Generated.AsExpression(normalized,
-                        expression.ModeGiven ? expression.Mode : attributeDefaults.GeneratedColumnMode);
+                        expression.ModeGiven ? expression.Mode : attributeDefaults.GeneratedColumnMode)
+                    {
+                        NormalizedExpression = flattened
+                    };
                     break;
                 case StatementColumnOption.Generated.PgIdentity identityOption:
                     identity = identityOption;
@@ -206,6 +209,24 @@ public class PgTableBuilder(
                 : array with { ElementType = element };
         }
         return reference;
+    }
+
+    private ColumnOption.ColumnDefault NormalizeColumnDefault(StatementColumnOption.Default option)
+    {
+        if (option is StatementColumnOption.Default.DefaultExpression expression)
+        {
+            Expression unwrapped = expression.Expression;
+            while (unwrapped is Nested nested)
+            {
+                unwrapped = nested.Expression;
+            }
+            if (unwrapped is LiteralValue literal)
+            {
+                return new ColumnOption.ColumnDefault.DefaultValue(ComponentNormalizer.NormalizeValue(literal.Value),
+                    ComponentNormalizer.NormalizeSingleIdentifierNullable(option.Name));
+            }
+        }
+        return NormalizeDefault(option);
     }
 
     public override void AddIndexOrConstraint(StatementTableConstraint constraint, SourceRef? sourceRef)
@@ -338,10 +359,11 @@ public class PgTableBuilder(
     {
         ValidateConstraintIndexOptions(check.Comment, sourceRef);
         Identifier constraintName = AddConstraintName(check.Name, "CHECK", sourceRef);
-        Expression expression = GetNormalizedExpression(check.Expression);
+        (Expression expression, Expression flattened) = GetNormalizedExpressions(check.Expression);
         ValidateExpressionScope(expression, sourceRef);
         _checks.Add(constraintName, new PgTableConstraint.Check(expression, constraintName)
         {
+            NormalizedExpression = flattened,
             Options = PgConstraintNormalizer.Normalize(check.PgOptions, "CHECK", constraintName, sourceRef, allowNoInherit: true)
         });
     }
@@ -529,6 +551,7 @@ public class PgTableBuilder(
             Method = method,
             Tablespace = GetIndexTablespace(tablespace),
             Predicate = normalizedPredicate,
+            NormalizedPredicate = predicate == null ? null : sqlNormalizer.NormalizeExpression(predicate),
             IncludedColumns = NormalizeIncludedColumns(includedColumns,
                 parts.OfType<PgKeyPart.Column>().Select(column => column.Name), name, sourceRef)
         }, sourceRef));
@@ -882,6 +905,7 @@ public class PgTableBuilder(
                 case StatementKeyPart.IndexExpression expression:
                     result.Add(new PgKeyPart.IndexExpression(GetNormalizedExpression(expression.Expression))
                     {
+                        NormalizedExpression = sqlNormalizer.NormalizeExpression(expression.Expression),
                         Direction = expression.Direction == Direction.Descending ? Direction.Descending : null
                     });
                     break;
@@ -944,12 +968,12 @@ public class PgTableBuilder(
 
     protected override Expression GetNormalizedExpression(Expression expression)
     {
-        return expression;
+        return sqlNormalizer.NormalizeExpressionNoFlatten(expression);
     }
 
     protected override (Expression Normalized, Expression Flattened) GetNormalizedExpressions(Expression expression)
     {
-        return (expression, expression);
+        return (GetNormalizedExpression(expression), sqlNormalizer.NormalizeExpression(expression));
     }
 
     public sealed record PreColumn(ColumnIdentifier Name, DataTypeReference DataType,

@@ -168,8 +168,8 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var expressionDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(table.Columns[4].Default);
         Expression parsedExpression = Assert.IsType<StatementColumnOption.Default.DefaultExpression>(
             Assert.Single(Assert.IsType<StatementColumn.Typed>(statement.Columns[4]).Options)).Expression;
-        Assert.Same(parsedExpression, expressionDefault.Expression);
-        Assert.Same(parsedExpression, expressionDefault.NormalizedExpression);
+        Assert.Equal(parsedExpression, expressionDefault.Expression);
+        Assert.Equal(ParseExpression("1 + 2"), expressionDefault.NormalizedExpression);
 
         var literalDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(table.Columns[5].Default);
         Assert.Same(literal, literalDefault.Value);
@@ -1050,10 +1050,10 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null)
     {
-        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres);
+        var normalizer = new PgComponentNormalizer(PgTestConfig.GetTestConfig());
         return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
             NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults,
-            PgTestConfig.GetTestConfig().ServerDefaults, new Normalizer(PgTestConfig.GetTestConfig(), normalizer), sourceRef);
+            PgTestConfig.GetTestConfig().ServerDefaults, new PgExpressionNormalizer(PgTestConfig.GetTestConfig(), normalizer), sourceRef);
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)

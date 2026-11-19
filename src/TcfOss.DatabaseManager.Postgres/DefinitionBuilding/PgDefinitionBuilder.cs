@@ -21,8 +21,7 @@ using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 namespace TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 
 public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, ILogger<PgDefinitionBuilder> logger)
-    : DefinitionBuilder<PgDefinition, PgConfig, PgSchemaMapping>(config, sourceManager, logger,
-        new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider(), config.NameHandling))
+    : DefinitionBuilder<PgDefinition, PgConfig, PgSchemaMapping>(config, sourceManager, logger, new PgComponentNormalizer(config))
 {
     private readonly Dictionary<ObjectHandle, Declaration<CreateType.Enumerated>> _enumeratedTypes = [];
     private readonly Dictionary<ObjectHandle, Declaration<CreateType.Composite>> _compositeTypes = [];
@@ -52,7 +51,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 case CreateTable table:
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
                     var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer,
-                        Config.AttributeDefaults, Config.ServerDefaults, new Normalizer(Config, ComponentNormalizer), sourceRef);
+                        Config.AttributeDefaults, Config.ServerDefaults, new PgExpressionNormalizer(Config, ComponentNormalizer), sourceRef);
                     tableBuilder.ApplyCreateTable(table);
                     _tableBuilders.Add(nameAndHandle.Key, tableBuilder);
                     SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);

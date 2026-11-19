@@ -4070,6 +4070,158 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(context.CurrentContext);
     }
 
+    [Theory]
+    [InlineData("01 + (0x10 * 0b10)", "(1) + 16 * 2")]
+    [InlineData("1_000 + .25", "1000 + 0.25")]
+    [InlineData("0001.20E+002 + 0o10", "1.20e2 + 8")]
+    [InlineData("1.20e-002 + 00", "01.20E-2 + 0")]
+    [InlineData("UTIL.compute((0x10))", "util.COMPUTE(16)")]
+    [InlineData("compute(01)", "\"compute\"(1)")]
+    public void ComparisonExpressions_EquivalentSpellingsProduceEqualTables(string left, string right)
+    {
+        PgTable first = BuildExpressionTable(left);
+        PgTable second = BuildExpressionTable(right);
+
+        Assert.Equal(first, second);
+        Assert.Equal(first.GetHashCode(), second.GetHashCode());
+        var rebuilt = CreateBuilder();
+        var manager = PgTestConfig.GetDifferFormatManager();
+        string sql = first.ToCreateStatement(true, manager).ToSql() + "; "
+            + string.Join("; ", first.ToCreateIndexStatements(true, manager).Select(index => index.ToSql()));
+        rebuilt.ProcessStatements(ParseStatements(sql), GetSchema(), 99);
+        Assert.Equal(first, Assert.Single(rebuilt.ToDefinition().Tables.Values));
+    }
+
+    [Theory]
+    [InlineData("0xFF", "0255")]
+    [InlineData("0b1_000", "8")]
+    [InlineData("0o77", "63")]
+    [InlineData("000000000000000000000000000123456789012345678901234567890", "123456789012345678901234567890")]
+    [InlineData(".2500", "0.2500")]
+    public void ComparisonExpressions_ParenthesizedLiteralDefaultsMatchBareLiterals(string left, string right)
+    {
+        var first = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (id NUMERIC DEFAULT (({left})))"), GetSchema(), 99);
+        var second = CreateBuilder();
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (id NUMERIC DEFAULT {right})"), GetSchema(), 99);
+
+        PgTable firstTable = Assert.Single(first.ToDefinition().Tables.Values);
+        PgTable secondTable = Assert.Single(second.ToDefinition().Tables.Values);
+        Assert.Equal(firstTable, secondTable);
+        Assert.Equal(firstTable.GetHashCode(), secondTable.GetHashCode());
+    }
+
+    [Theory]
+    [InlineData("(1 + 2) * 3", "1 + 2 * 3")]
+    [InlineData("1 - 2", "2 - 1")]
+    [InlineData("1 + 2", "1 + 3")]
+    [InlineData("1", "1.0")]
+    [InlineData("1.0", "1.00")]
+    [InlineData("CAST(1 AS INT)", "CAST(1 AS BIGINT)")]
+    [InlineData("CAST('1' AS INT)", "'1'")]
+    [InlineData("util.compute(1)", "util.other(1)")]
+    [InlineData("""util."Compute"(1)""", "util.compute(1)")]
+    public void ComparisonExpressions_PreserveMeaningfulDifferences(string left, string right)
+    {
+        PgTable first = BuildExpressionTable(left);
+        PgTable second = BuildExpressionTable(right);
+
+        Assert.NotEqual(first, second);
+        Assert.NotEqual(first.Columns[1].Default, second.Columns[1].Default);
+        Assert.NotEqual(first.Columns[2].Generated, second.Columns[2].Generated);
+        Assert.NotEqual(Assert.Single(first.Checks.Values), Assert.Single(second.Checks.Values));
+        Assert.NotEqual(Assert.Single(first.Exclusions.Values), Assert.Single(second.Exclusions.Values));
+        Assert.NotEqual(Assert.Single(first.Indexes.Values), Assert.Single(second.Indexes.Values));
+    }
+
+    [Fact]
+    public void ComparisonExpressions_FlatteningIsIdempotentAndDoesNotAffectEmission()
+    {
+        var config = PgTestConfig.GetTestConfig();
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+        Expression parsed = ParseExpression("(ID + 0x10) * 03");
+
+        Expression comparison = normalizer.NormalizeExpression(parsed);
+        Expression printable = normalizer.NormalizeExpressionNoFlatten(parsed);
+
+        Assert.Equal(normalizer.NormalizeExpression(ParseExpression("(id + 16) * 3")), comparison);
+        Assert.Equal(comparison, normalizer.NormalizeExpression(comparison));
+        Assert.Equal(printable, normalizer.NormalizeExpressionNoFlatten(printable));
+        Assert.Equal(comparison, normalizer.NormalizeExpression(ParseExpression(printable.ToSql())));
+        Assert.Contains("0x10", printable.ToSql());
+        Assert.NotEqual(comparison, normalizer.NormalizeExpression(ParseExpression("id + 16 * 3")));
+    }
+
+    [Theory]
+    [InlineData("COALESCE(1, 2)", "coalesce(1, 2)", "\"coalesce\"(1, 2)")]
+    [InlineData("GREATEST(1, 2)", "greatest(1, 2)", "\"greatest\"(1, 2)")]
+    [InlineData("LEAST(1, 2)", "least(1, 2)", "\"least\"(1, 2)")]
+    [InlineData("NULLIF(1, 2)", "nullif(1, 2)", "\"nullif\"(1, 2)")]
+    [InlineData("CURRENT_DATE", "current_date", "\"current_date\"()")]
+    [InlineData("CURRENT_TIMESTAMP(2)", "current_timestamp(2)", "\"current_timestamp\"(2)")]
+    public void ComparisonExpressions_KeywordFunctionsRemainPrintableAndDistinctFromQuotedCalls(string sql, string equivalent, string quoted)
+    {
+        var config = PgTestConfig.GetTestConfig();
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+        Expression parsed = ParseExpression(sql);
+
+        Expression comparison = normalizer.NormalizeExpression(parsed);
+        Expression printable = normalizer.NormalizeExpressionNoFlatten(parsed);
+
+        Assert.Equal(normalizer.NormalizeExpression(ParseExpression(equivalent)), comparison);
+        Assert.NotEqual(normalizer.NormalizeExpression(ParseExpression(quoted)), comparison);
+        Assert.Equal(parsed, ParseExpression(printable.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("compute(1)", "\"compute\"(1)")]
+    [InlineData("LOWER('X')", "\"lower\"('X')")]
+    [InlineData("util.compute(1)", "\"util\".\"compute\"(1)")]
+    [InlineData("util.lower('X')", "\"util\".\"lower\"('X')")]
+    public void ComparisonExpressions_OrdinaryFunctionNamesIgnoreOptionalQuotes(string sql, string equivalent)
+    {
+        var config = PgTestConfig.GetTestConfig();
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+        Expression parsed = ParseExpression(sql);
+
+        Expression comparison = normalizer.NormalizeExpression(parsed);
+        Expression expected = normalizer.NormalizeExpression(ParseExpression(equivalent));
+
+        Assert.Equal(expected, comparison);
+        Assert.Equal(expected.GetHashCode(), comparison.GetHashCode());
+        Assert.Equal(comparison, normalizer.NormalizeExpression(comparison));
+        Assert.Equal(parsed, ParseExpression(normalizer.NormalizeExpressionNoFlatten(parsed).ToSql()));
+    }
+
+    [Fact]
+    public void ComparisonExpressions_KeywordDistinctionDoesNotDependOnConfiguredQuoting()
+    {
+        var config = PgTestConfig.GetTestConfig() with { QuoteStyle = QuoteStyle.None };
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+
+        Expression keyword = normalizer.NormalizeExpression(ParseExpression("coalesce(1, 2)"));
+        Expression quoted = normalizer.NormalizeExpression(ParseExpression("\"coalesce\"(1, 2)"));
+
+        Assert.NotEqual(keyword, quoted);
+        Assert.Equal(quoted, normalizer.NormalizeExpression(quoted));
+    }
+
+    private static PgTable BuildExpressionTable(string expression)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"""
+            CREATE TABLE items (
+                id INT,
+                value NUMERIC DEFAULT ({expression}),
+                calculated NUMERIC GENERATED ALWAYS AS ({expression}) STORED,
+                CONSTRAINT ck CHECK (({expression}) > 0),
+                CONSTRAINT ex EXCLUDE USING gist (({expression}) WITH =)
+                    WHERE (({expression}) > 0));
+            CREATE INDEX ix ON items (({expression})) WHERE ({expression}) > 0
+            """), GetSchema(), 99);
+        return Assert.Single(builder.ToDefinition().Tables.Values);
+    }
+
     private static SchemaIdentifier GetSchema()
     {
         return new SchemaIdentifier("public", new CatalogIdentifier("catalog"));

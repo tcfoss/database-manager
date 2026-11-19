@@ -31,6 +31,19 @@ public abstract record PgKeyPart
 
     public record IndexExpression(Expression Expression) : PgKeyPart
     {
+        public Expression NormalizedExpression { get; init; } = Expression;
+
+        public virtual bool Equals(IndexExpression? other)
+        {
+            return other is not null && base.Equals(other)
+                && NormalizedExpression == other.NormalizedExpression;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), NormalizedExpression);
+        }
+
         public override StatementKeyPart ToStatementKeyPart(bool removeOptionalElements)
         {
             return new StatementKeyPart.IndexExpression(Expression, Direction.Clean(removeOptionalElements))

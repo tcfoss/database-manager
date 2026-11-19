@@ -51,6 +51,19 @@ public abstract record PgTableConstraint(Identifier? Name = null)
 
     public record Check(Expression Expression, Identifier Name) : PgTableConstraint(Name)
     {
+        public Expression NormalizedExpression { get; init; } = Expression;
+
+        public virtual bool Equals(Check? other)
+        {
+            return other is not null && base.Equals(other)
+                && NormalizedExpression == other.NormalizedExpression;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), NormalizedExpression);
+        }
+
         public override StatementTableConstraint.Check ToStatementConstraint(bool removeOptionalElements)
         {
             return new StatementTableConstraint.Check(Expression, Name)

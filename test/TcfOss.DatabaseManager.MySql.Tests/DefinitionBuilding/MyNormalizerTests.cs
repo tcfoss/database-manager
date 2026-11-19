@@ -97,4 +97,44 @@ public class MyNormalizerTests
 
         Assert.Equal(expected, normalizer.NormalizeExpression(expression).ToSql());
     }
+
+    [Theory]
+    [InlineData("TRUE + 0002", "1 + 2")]
+    [InlineData("FALSE + 000", "0 + 0")]
+    [InlineData("0001.20E+002 + .25", "1.20e2 + 0.25")]
+    [InlineData("01.20E-002 + 00", "1.20e-2 + 0")]
+    [InlineData("0001.00 + 000", "1.00 + 0")]
+    public void NormalizeExpression_NormalizesLiteralValuesOnlyForComparison(string sql, string equivalent)
+    {
+        var config = TestConfig.GetMyTestConfig();
+        var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
+        var parser = new MyParser();
+        Expression expression = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)]));
+        Expression expected = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(equivalent)]));
+
+        Expression normalized = normalizer.NormalizeExpression(expression);
+        Expression normalizedExpected = normalizer.NormalizeExpression(expected);
+
+        Assert.Equal(normalizedExpected, normalized);
+        Assert.Equal(normalizedExpected.GetHashCode(), normalized.GetHashCode());
+        Assert.Equal(normalized, normalizer.NormalizeExpression(normalized));
+        Assert.Equal(expression, normalizer.NormalizeExpressionNoFlatten(expression));
+    }
+
+    [Theory]
+    [InlineData("1", "1.0")]
+    [InlineData("1.0", "1e0")]
+    [InlineData("1.0", "1.00")]
+    [InlineData("0x10", "16")]
+    [InlineData("X'10'", "16")]
+    public void NormalizeExpression_PreservesNumericTypesScaleAndBinaryLiterals(string left, string right)
+    {
+        var config = TestConfig.GetMyTestConfig();
+        var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
+        var parser = new MyParser();
+        Expression first = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(left)]));
+        Expression second = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(right)]));
+
+        Assert.NotEqual(normalizer.NormalizeExpression(first), normalizer.NormalizeExpression(second));
+    }
 }

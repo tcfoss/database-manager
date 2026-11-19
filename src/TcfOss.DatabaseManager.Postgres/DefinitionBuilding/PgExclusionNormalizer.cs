@@ -38,7 +38,8 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
                 Method = method,
                 Tablespace = tablespace,
                 IncludedColumns = exclusion.IncludedColumns,
-                Predicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpressionNoFlatten(exclusion.Predicate)
+                Predicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpressionNoFlatten(exclusion.Predicate),
+                NormalizedPredicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpression(exclusion.Predicate)
             }, exclusion.IndexParameters?.StorageParameters, sourceRef)
         };
     }
@@ -53,7 +54,8 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
             },
             StatementKeyPart.IndexExpression expression => new PgKeyPart.IndexExpression(sqlNormalizer.NormalizeExpressionNoFlatten(expression.Expression))
             {
-                Direction = expression.Direction
+                Direction = expression.Direction,
+                NormalizedExpression = sqlNormalizer.NormalizeExpression(expression.Expression)
             },
             _ => throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "EXCLUDE index column prefix lengths", sourceRef)
         };

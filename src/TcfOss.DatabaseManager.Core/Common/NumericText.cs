@@ -5,6 +5,28 @@ namespace TcfOss.DatabaseManager.Core.Common;
 
 internal static class NumericText
 {
+    public static string NormalizeDecimal(string text)
+    {
+        int exponentStart = text.IndexOfAny(['e', 'E']);
+        string mantissa = exponentStart < 0 ? text : text[..exponentStart];
+        string sign = mantissa.StartsWith('-') ? "-" : "";
+        mantissa = mantissa.TrimStart('+', '-').TrimStart('0');
+        if (mantissa.Length == 0 || mantissa[0] == '.')
+        {
+            mantissa = "0" + mantissa;
+        }
+        string exponent = "";
+        if (exponentStart >= 0)
+        {
+            string digits = text[(exponentStart + 1)..];
+            bool negative = digits.StartsWith('-');
+            digits = digits.TrimStart('+', '-').TrimStart('0');
+            exponent = "e" + (digits.Length == 0 ? "0" : (negative ? "-" : "") + digits);
+        }
+        // Decimal points, fractional zeros, and exponent forms carry type/scale information.
+        return sign + mantissa + exponent;
+    }
+
     public static string ToDecimal(string text)
     {
         text = text.Replace("_", "", StringComparison.Ordinal);
