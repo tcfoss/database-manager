@@ -98,7 +98,7 @@ public class MyTableBuilderValidationTests
         tableBuilder.AddColumn(statementColumns[0], null);
         tableBuilder.AddColumn(statementColumns[1], null);
 
-        var pkConstraint = new StatementTableConstraint.PrimaryKey([new KeyPart.Column(new Identifier("col1"))]);
+        var pkConstraint = new StatementTableConstraint.PrimaryKey([new StatementKeyPart.Column(new Identifier("col1"))]);
 
         tableBuilder.AddPrimaryKey(pkConstraint, null);
 
@@ -121,7 +121,7 @@ public class MyTableBuilderValidationTests
         tableBuilder.AddColumn(statementColumns[0], null);
         tableBuilder.AddColumn(statementColumns[1], null);
 
-        var pkConstraint = new StatementTableConstraint.PrimaryKey([new KeyPart.Column(new Identifier("col1"))]);
+        var pkConstraint = new StatementTableConstraint.PrimaryKey([new StatementKeyPart.Column(new Identifier("col1"))]);
 
         var exception = Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() =>
         {
@@ -183,7 +183,7 @@ public class MyTableBuilderValidationTests
     public void IndexMethods_RejectCustomMethodsWithSourcedSyntaxError(bool unique)
     {
         var builder = GetTableBuilder();
-        SqlValueList<KeyPart> columns = [new KeyPart.Column(new Identifier("col1"))];
+        SqlValueList<StatementKeyPart> columns = [new StatementKeyPart.Column(new Identifier("col1"))];
         var method = new IndexMethod.Custom(new Identifier("bloom"));
         var source = new SourceRef(7, 3, 29);
 

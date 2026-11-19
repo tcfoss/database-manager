@@ -1,6 +1,5 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
@@ -16,19 +15,19 @@ public class PgTableParser(Parser parser) : TableParser(parser)
     public override StatementTableConstraint? ParseOptionalTableConstraint(ParserState state, bool alterTable = false)
     {
         StatementTableConstraint? constraint = base.ParseOptionalTableConstraint(state, alterTable);
-        IEnumerable<KeyPart> columns = constraint switch
+        IEnumerable<StatementKeyPart> columns = constraint switch
         {
             StatementTableConstraint.PrimaryKey primaryKey => primaryKey.Columns,
             StatementTableConstraint.UniqueConstraint unique => unique.Columns,
             _ => []
         };
-        if (columns.Any(key => key is not KeyPart.Column { Length: null, Direction: null, PgOptions: null }))
+        if (columns.Any(key => key is not StatementKeyPart.Column { Length: null, Direction: null, OperatorClass: null, NullsOrder: null }))
         {
             throw state.ExpectedException("constraint column name");
         }
         if (constraint is StatementTableConstraint.PgExclusion exclusion)
         {
-            foreach (KeyPart.IndexExpression key in exclusion.Elements.Select(element => element.Key).OfType<KeyPart.IndexExpression>())
+            foreach (StatementKeyPart.IndexExpression key in exclusion.Elements.Select(element => element.Key).OfType<StatementKeyPart.IndexExpression>())
             {
                 Expression expression = key.Expression is Collate collate ? collate.Expression : key.Expression;
                 if (expression is not (SingleIdentifier or Nested))

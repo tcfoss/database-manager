@@ -1,7 +1,9 @@
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects;
+using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
+using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -24,24 +26,27 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
     public DatabaseComponentDict<PgTableConstraint.Exclusion> Exclusions { get; init; } = [];
     public DatabaseComponentDict<PgIndex> Indexes { get; init; } = [];
 
-    public IEnumerable<CreateIndex> ToCreateIndexStatements(bool includeSchema)
+    public IEnumerable<CreateIndex> ToCreateIndexStatements(bool includeSchema, DifferFormatManager manager)
     {
-        return Indexes.Values.Select(index => index.ToCreateStatement(Name, includeSchema));
+        return Indexes.Values.Select(index => index.ToCreateStatement(Name, includeSchema, manager));
     }
 
     public ObjectType ObjectType => ObjectType.Table;
 
-    public CreateTable ToCreateStatement(bool includeSchema, DifferFormatManager? manager = null)
+    public CreateTable ToCreateStatement(bool includeSchema, DifferFormatManager manager)
     {
         var constraints = new SqlValueList<StatementTableConstraint>();
         if (PrimaryKey != null)
         {
             constraints.Add(PrimaryKey.ToStatementConstraint());
         }
-        constraints.AddRange(Checks.Values.Select(constraint => constraint.ToStatementConstraint()));
-        constraints.AddRange(ForeignKeys.Values.Select(foreignKey => foreignKey.ToStatementConstraint()));
-        constraints.AddRange(UniqueConstraints.Values.Select(unique => unique.ToStatementConstraint()));
-        constraints.AddRange(Exclusions.Values.Select(exclusion => exclusion.ToStatementConstraint()));
+
+        bool omitModifiersIfDefault = manager.Formatting.OmitModifiersIfDefault;
+        constraints.AddRange(Checks.Values.Select(constraint => constraint.ToStatementConstraint(omitModifiersIfDefault)));
+        constraints.AddRange(ForeignKeys.Values.Select(foreignKey => foreignKey.ToStatementConstraint(omitModifiersIfDefault)));
+        constraints.AddRange(UniqueConstraints.Values.Select(unique => unique.ToStatementConstraint(omitModifiersIfDefault)));
+        constraints.AddRange(Exclusions.Values.Select(exclusion => exclusion.ToStatementConstraint(omitModifiersIfDefault)));
+
         SqlValueList<StatementColumn> columns = Columns.Map<StatementColumn>(column =>
         {
             StatementColumn.Typed typed = column.ToStatementColumn(manager);
@@ -65,17 +70,117 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
 
     public IEnumerable<ItemRef> GetReferencedItems(ReferencedItemsManager context)
     {
-        foreach (ItemRef item in ToCreateStatement(true).GetReferencedItems(context))
+        if (PartitionOf != null)
         {
-            yield return item;
+            using (context.Enter(ReferencedItemsContext.CreateTablePartitionParent))
+            {
+                ItemRef? parent = context.CreateObjectRef(PartitionOf.Parent.ToObjectName(2));
+                if (parent != null)
+                {
+                    yield return parent;
+                }
+            }
         }
-        foreach (CreateIndex index in ToCreateIndexStatements(true))
+        using (context.Enter(ReferencedItemsContext.CreateTablePartitionExpression))
         {
-            foreach (ItemRef item in index.GetReferencedItems(context))
+            foreach (ItemRef item in GetExpressionReferences(PartitionBy?.Keys.Select(key => key.Expression) ?? [], context))
+            {
+                yield return item;
+            }
+            IEnumerable<Expression> bounds = PartitionOf?.Bound switch
+            {
+                PgPartitionBounds.List list => list.Values,
+                PgPartitionBounds.Range range => range.From.Concat(range.To)
+                    .OfType<PgPartitionBounds.RangeValue.ExpressionValue>().Select(value => value.Expression),
+                _ => []
+            };
+            foreach (ItemRef item in GetExpressionReferences(bounds, context))
             {
                 yield return item;
             }
         }
+        using (context.Enter(ReferencedItemsContext.AlterColumnExpression))
+        {
+            foreach (PgColumn column in Columns)
+            {
+                if (column.Default is ColumnOption.ColumnDefault.DefaultExpression defaultExpression)
+                {
+                    foreach (ItemRef item in GetExpressionReferences([defaultExpression.Expression], context))
+                    {
+                        yield return item;
+                    }
+                }
+                if (column.Generated is ColumnOption.Generated.AsExpression generated)
+                {
+                    foreach (ItemRef item in GetExpressionReferences([generated.Expression], context))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+        using (context.Enter(ReferencedItemsContext.ConstraintTable))
+        {
+            foreach (PgTableConstraint.ForeignKey foreignKey in ForeignKeys.Values)
+            {
+                ItemRef? table = context.CreateObjectRef(foreignKey.ReferencedTable.ToObjectName(2));
+                if (table != null)
+                {
+                    yield return table;
+                }
+            }
+        }
+        using (context.Enter(ReferencedItemsContext.ConstraintExpression))
+        {
+            foreach (ItemRef item in GetExpressionReferences(Checks.Values.Select(check => check.Expression), context))
+            {
+                yield return item;
+            }
+            foreach (PgTableConstraint.Exclusion exclusion in Exclusions.Values)
+            {
+                foreach (ItemRef item in GetExpressionReferences(
+                    GetIndexExpressions(exclusion.Elements.Select(element => element.Key), exclusion.BackingIndex.Predicate), context))
+                {
+                    yield return item;
+                }
+            }
+        }
+        foreach (PgIndex index in Indexes.Values)
+        {
+            using (context.Enter(ReferencedItemsContext.CreateIndexTable))
+            {
+                ItemRef? table = context.CreateObjectRef(Name.ToObjectName(2));
+                if (table != null)
+                {
+                    yield return table;
+                }
+            }
+            using (context.Enter(ReferencedItemsContext.CreateIndexExpression))
+            {
+                foreach (ItemRef item in GetExpressionReferences(GetIndexExpressions(index.Columns, index.Predicate), context))
+                {
+                    yield return item;
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<Expression> GetIndexExpressions(IEnumerable<PgKeyPart> keys, Expression? predicate)
+    {
+        foreach (PgKeyPart.IndexExpression key in keys.OfType<PgKeyPart.IndexExpression>())
+        {
+            yield return key.Expression;
+        }
+        if (predicate != null)
+        {
+            yield return predicate;
+        }
+    }
+
+    private static IEnumerable<ItemRef.ObjectNameRef> GetExpressionReferences(IEnumerable<Expression> expressions,
+        ReferencedItemsManager context)
+    {
+        return expressions.SelectMany(expression => expression.GetReferencedItems(context)).OfType<ItemRef.ObjectNameRef>();
     }
 
     public PseudoTable ToPseudoTable()

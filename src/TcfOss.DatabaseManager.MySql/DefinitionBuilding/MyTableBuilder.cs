@@ -301,15 +301,15 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             case StatementTableConstraint.Standard k:
                 BuiltInIndexMethod indexMethod = GetBuiltInIndexMethod(k.IndexMethod, sourceRef);
-                SqlValueList<KeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.IndexName?.Name);
+                SqlValueList<MyKeyPart> columns = NormalizeKeyParts(k.Columns, _quoteStyle, indexMethod.ToString(), k.IndexName?.Name);
                 key = new MyKey.Standard(columns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { IndexMethod = indexMethod, Comment = k.Comment };
                 break;
             case StatementTableConstraint.FullText k:
-                SqlValueList<KeyPart> fullTextColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "FULLTEXT", k.IndexName?.Name);
+                SqlValueList<MyKeyPart> fullTextColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "FULLTEXT", k.IndexName?.Name);
                 key = new MyKey.FullText(fullTextColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             case StatementTableConstraint.Spatial k:
-                SqlValueList<KeyPart> spatialColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "SPATIAL", k.IndexName?.Name);
+                SqlValueList<MyKeyPart> spatialColumns = NormalizeKeyParts(k.Columns, _quoteStyle, "SPATIAL", k.IndexName?.Name);
                 key = new MyKey.Spatial(spatialColumns, k.IndexName?.ToSimpleIdentifier(_quoteStyle)) { Comment = k.Comment };
                 break;
             default:
@@ -383,21 +383,21 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         return direction ?? Direction.Ascending;
     }
 
-    private SqlValueList<KeyPart> NormalizeKeyParts(SqlValueList<KeyPart> keyParts, QuoteStyle quoteStyle, string indexMethod, string? keyName)
+    private SqlValueList<MyKeyPart> NormalizeKeyParts(SqlValueList<StatementKeyPart> keyParts, QuoteStyle quoteStyle, string indexMethod, string? keyName)
     {
-        SqlValueList<KeyPart> normalized = [];
-        foreach (KeyPart part in keyParts)
+        SqlValueList<MyKeyPart> normalized = [];
+        foreach (StatementKeyPart part in keyParts)
         {
             switch (part)
             {
-                case KeyPart.Column col:
+                case StatementKeyPart.Column col:
                 {
                     Identifier normalizedName = col.Name.ToSimpleIdentifier(quoteStyle);
                     Direction? direction = GetIndexDirection(col.Direction, indexMethod, keyName);
-                    normalized.Add(col with { Name = normalizedName, Direction = direction });
+                    normalized.Add(new MyKeyPart.Column(normalizedName, col.Length, direction));
                     break;
                 }
-                case KeyPart.IndexExpression expr:
+                case StatementKeyPart.IndexExpression expr:
                 {
                     // The outer Nested wrapper is semantically required by MySQL functional index syntax:
                     // it marks the column as an expression rather than a plain column name, so it must be
@@ -406,7 +406,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                         ? new Nested(GetNormalizedExpression(outerNested.Expression))
                         : GetNormalizedExpression(expr.Expression);
                     Direction? direction = GetIndexDirection(expr.Direction, indexMethod, keyName);
-                    normalized.Add(new KeyPart.IndexExpression(normalizedExpr, direction));
+                    normalized.Add(new MyKeyPart.IndexExpression(normalizedExpr, direction));
                     break;
                 }
                 default:
@@ -440,7 +440,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(primaryKey.Name, "PRIMARY KEY", "column", columnName, "MySQL", sourceRef);
         }
-        SqlValueList<KeyPart> columnKeyPart = NormalizeKeyParts([new KeyPart.Column(columnName.ToSimpleIdentifier())], _quoteStyle, _attributeDefaults.IndexMethod.ToString(), "PRIMARY");
+        SqlValueList<MyKeyPart> columnKeyPart = NormalizeKeyParts([new StatementKeyPart.Column(columnName.ToSimpleIdentifier())], _quoteStyle, _attributeDefaults.IndexMethod.ToString(), "PRIMARY");
         return new MyPrimaryKey(columnKeyPart)
         {
             IndexMethod = _attributeDefaults.IndexMethod

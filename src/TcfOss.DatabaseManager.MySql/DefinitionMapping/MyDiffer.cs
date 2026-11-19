@@ -342,7 +342,7 @@ public partial class MyDiffer
         var newUniqueKeys = new DatabaseComponentDict<MyUniqueKey>();
         foreach ((Handle keyId, MyUniqueKey key) in table.UniqueKeys)
         {
-            if (key.Columns.Any(part => part is KeyPart.Column col && col.Name == oldId))
+            if (key.Columns.Any(part => part is MyKeyPart.Column col && col.Name == oldId))
             {
                 newUniqueKeys[keyId] = key with
                 {
@@ -374,7 +374,7 @@ public partial class MyDiffer
         var newKeys = new DatabaseComponentDict<MyKey>();
         foreach ((Handle keyId, MyKey key) in table.Keys)
         {
-            if (key.Columns.Any(part => part is KeyPart.Column col && col.Name == oldId))
+            if (key.Columns.Any(part => part is MyKeyPart.Column col && col.Name == oldId))
             {
                 newKeys[keyId] = key with
                 {
@@ -448,12 +448,12 @@ public partial class MyDiffer
         };
     }
 
-    private static SqlValueList<KeyPart> GetNewKeyParts(IEnumerable<KeyPart> keyParts, Identifier oldId, Identifier newId)
+    private static SqlValueList<MyKeyPart> GetNewKeyParts(IEnumerable<MyKeyPart> keyParts, Identifier oldId, Identifier newId)
     {
-        var newKeyParts = new SqlValueList<KeyPart>();
-        foreach (KeyPart keyPart in keyParts)
+        var newKeyParts = new SqlValueList<MyKeyPart>();
+        foreach (MyKeyPart keyPart in keyParts)
         {
-            if (keyPart is KeyPart.Column col && col.Name == oldId)
+            if (keyPart is MyKeyPart.Column col && col.Name == oldId)
             {
                 newKeyParts.Add(col with { Name = newId });
             }

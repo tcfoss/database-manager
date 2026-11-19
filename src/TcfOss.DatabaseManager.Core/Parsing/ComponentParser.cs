@@ -93,7 +93,7 @@ public class ComponentParser(ParserBase parser)
         return new ObjectName(idents);
     }
 
-    private KeyPart.Column ParseKeyPartColumn(ParserState state, bool permitLength, bool postgres, bool exclusion)
+    private StatementKeyPart.Column ParseKeyPartColumn(ParserState state, bool permitLength, bool postgres, bool exclusion)
     {
         Identifier name = ParseIdentifier(state);
         uint? length = null;
@@ -102,19 +102,24 @@ public class ComponentParser(ParserBase parser)
             length = ValueParser.ParseLiteralUInt(state);
             state.ExpectRightParen();
         }
-        (PgKeyPartOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
+        (PgStatementOperatorClass? operatorClass, Direction? direction, NullsOrder? nullsOrder) = ParseKeyPartTail(state, postgres);
 
         Token peeked = state.Peek();
         if (peeked is not Comma and not ParenClose && !(exclusion && state.PeekKeyword(Keyword.WITH)))
         {
             throw state.ExpectedException(")", ",");
         }
-        return new KeyPart.Column(name, length, direction) { PgOptions = options };
+        return new StatementKeyPart.Column(name, direction)
+        {
+            Length = length,
+            OperatorClass = operatorClass,
+            NullsOrder = nullsOrder
+        };
     }
 
-    private KeyPart ParseKeyPartInList(ParserState state, bool allowLength, bool postgres, bool exclusion = false)
+    private StatementKeyPart ParseKeyPartInList(ParserState state, bool allowLength, bool postgres, bool exclusion = false)
     {
-        if (state.TryParse(parserState => ParseKeyPartColumn(parserState, allowLength, postgres, exclusion), out KeyPart.Column? keyPartColumn))
+        if (state.TryParse(parserState => ParseKeyPartColumn(parserState, allowLength, postgres, exclusion), out StatementKeyPart.Column? keyPartColumn))
         {
             return keyPartColumn;
         }
@@ -130,12 +135,12 @@ public class ComponentParser(ParserBase parser)
                 throw ParserState.ExpectedException("column name, function call, or parenthesized index expression", start);
             }
         }
-        (PgKeyPartOptions? options, Direction? direction) = ParseKeyPartTail(state, postgres);
+        (PgStatementOperatorClass? operatorClass, Direction? direction, NullsOrder? nullsOrder) = ParseKeyPartTail(state, postgres);
 
-        return new KeyPart.IndexExpression(expr, direction) { PgOptions = options };
+        return new StatementKeyPart.IndexExpression(expr, direction) { OperatorClass = operatorClass, NullsOrder = nullsOrder };
     }
 
-    private (PgKeyPartOptions? Options, Direction? Direction) ParseKeyPartTail(ParserState state, bool postgres)
+    private (PgStatementOperatorClass? OperatorClass, Direction? Direction, NullsOrder? NullsOrder) ParseKeyPartTail(ParserState state, bool postgres)
     {
         ObjectName? operatorClass = null;
         SqlValueList<ObjectNameKvp>? parameters = null;
@@ -150,10 +155,10 @@ public class ComponentParser(ParserBase parser)
         Direction? direction = ParseDirection(state);
         NullsOrder? nullsOrder = postgres ? ParseOptionalNullsOrder(state) : null;
 
-        PgKeyPartOptions? options = operatorClass != null || nullsOrder != null
-            ? new PgKeyPartOptions(operatorClass, parameters, nullsOrder) : null;
+        PgStatementOperatorClass? options = operatorClass != null
+            ? new PgStatementOperatorClass(operatorClass, parameters) : null;
 
-        return (options, direction);
+        return (options, direction, nullsOrder);
     }
 
     public SqlValueList<Identifier> ParseParenthisizedIdentifierList(ParserState state, bool allowEmpty)
@@ -161,12 +166,12 @@ public class ComponentParser(ParserBase parser)
         return state.ParseParenthesizedCommaSeparated(ParseIdentifier, allowEmpty);
     }
 
-    public SqlValueList<KeyPart> ParseParenthesizedKeyPartList(ParserState state, bool allowEmpty, bool allowLength = true, bool allowPgOptions = false)
+    public SqlValueList<StatementKeyPart> ParseParenthesizedKeyPartList(ParserState state, bool allowEmpty, bool allowLength = true, bool allowPgOptions = false)
     {
         return state.ParseParenthesizedCommaSeparated(parserState => ParseKeyPartInList(parserState, allowLength, allowPgOptions), allowEmpty);
     }
 
-    public KeyPart ParseExclusionKeyPart(ParserState state)
+    public StatementKeyPart ParseExclusionKeyPart(ParserState state)
     {
         return ParseKeyPartInList(state, allowLength: false, postgres: true, exclusion: true);
     }

@@ -103,8 +103,8 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         const string sql = "CREATE UNIQUE INDEX CONCURRENTLY items_idx ON ONLY items USING bloom (label app.text_ops (bits = 4) ASC NULLS FIRST) INCLUDE (payload) NULLS NOT DISTINCT WITH (fillfactor = 80) TABLESPACE fast WHERE label IS NOT NULL";
         var statement = Assert.IsType<CreateIndex.Unique>(ParseStatement(sql));
         PgCreateIndexOptions options = Assert.IsType<PgCreateIndexOptions>(statement.PgOptions);
-        var key = Assert.IsType<KeyPart.Column>(Assert.Single(statement.Columns));
-        PgKeyPartOptions keyOptions = Assert.IsType<PgKeyPartOptions>(key.PgOptions);
+        var key = Assert.IsType<StatementKeyPart.Column>(Assert.Single(statement.Columns));
+        PgStatementOperatorClass keyOptions = Assert.IsType<PgStatementOperatorClass>(key.OperatorClass);
 
         Assert.True(options.Concurrently);
         Assert.True(options.Only);
@@ -112,16 +112,29 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("bloom", Assert.IsType<IndexMethod.Custom>(statement.IndexMethod).Method.Name);
         Assert.Equal("fast", options.Tablespace!.Name);
         Assert.Equal(80U, Assert.IsType<StatementIndexOption.FillFactor>(Assert.Single(statement.Options!)).Value);
-        Assert.Equal("app.text_ops", keyOptions.OperatorClass!.ToSql());
-        Assert.Equal("bits", Assert.Single(keyOptions.OperatorClassParameters!).Name.ToSql());
-        Assert.Equal(NullsOrder.First, keyOptions.NullsOrder);
+        Assert.Equal("app.text_ops", keyOptions.Name.ToSql());
+        Assert.Equal("bits", Assert.Single(keyOptions.Parameters!).Name.ToSql());
+        Assert.Equal(NullsOrder.First, key.NullsOrder);
         Assert.Equal(Direction.Ascending, key.Direction);
-        Assert.Equal(key.PgOptions, Assert.Single(KeyPart.RemoveOptionalElementsFromKeyParts(statement.Columns)).PgOptions);
 
         var plain = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ON items (id)"));
         Assert.Null(plain.Name);
         Assert.Null(plain.PgOptions);
-        Assert.Null(Assert.Single(plain.Columns).PgOptions);
+        Assert.Null(Assert.Single(plain.Columns).OperatorClass);
+    }
+
+    [Theory]
+    [InlineData("label NULLS FIRST")]
+    [InlineData("(length(label)) NULLS LAST")]
+    public void ExpandedIndexes_NullsOrderingDoesNotRequireOperatorClass(string keySql)
+    {
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items ({keySql})"));
+        StatementKeyPart key = Assert.Single(statement.Columns);
+
+        Assert.Null(key.OperatorClass);
+        Assert.NotNull(key.NullsOrder);
+        var rebuilt = Assert.IsType<CreateIndex.Standard>(ParseStatement(statement.ToSql()));
+        Assert.Equal(key, Assert.Single(rebuilt.Columns));
     }
 
     [Fact]
@@ -129,7 +142,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
     {
         var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX items_idx ON items (id(5))"));
 
-        Assert.IsType<KeyPart.IndexExpression>(Assert.Single(statement.Columns));
+        Assert.IsType<StatementKeyPart.IndexExpression>(Assert.Single(statement.Columns));
     }
 
     [Fact]
@@ -147,7 +160,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         const string sql = "/* lead */ CREATE INDEX CONCURRENTLY \"Index\" ON ONLY \"App\".\"Items\" (\"Label\" \"App\".\"TextOps\" (\"Bits\" = 4) NULLS FIRST) TABLESPACE \"Fast\" WHERE \"Label\" IS NOT NULL /* tail */; SELECT 1";
         var statements = ParseStatements(sql, sourceId: 211);
         var statement = Assert.IsType<CreateIndex.Standard>(statements[0]);
-        var key = Assert.IsType<KeyPart.Column>(Assert.Single(statement.Columns));
+        var key = Assert.IsType<StatementKeyPart.Column>(Assert.Single(statement.Columns));
 
         Assert.Equal(2, statements.Count);
         Assert.Equal(0, statement.Meta.Start);
@@ -155,7 +168,7 @@ public class PgCreateIndexParserTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(211, statement.Name!.Source!.Value.SourceId);
         Assert.All(statement.TableName.Values, identifier => Assert.Equal(211, identifier.Source!.Value.SourceId));
         Assert.Equal(211, key.Name.Source!.Value.SourceId);
-        Assert.All(key.PgOptions!.OperatorClass!.Values, identifier => Assert.Equal(211, identifier.Source!.Value.SourceId));
+        Assert.All(key.OperatorClass!.Name.Values, identifier => Assert.Equal(211, identifier.Source!.Value.SourceId));
         Assert.Equal(211, statement.PgOptions!.Tablespace!.Source!.Value.SourceId);
         Assert.Contains(statement.Meta.PreNonSql!, trivia => trivia is NonSql.BlockComment { Body: " lead " });
         Assert.Contains(statement.Meta.PostNonSql!, trivia => trivia is NonSql.BlockComment { Body: " tail " });

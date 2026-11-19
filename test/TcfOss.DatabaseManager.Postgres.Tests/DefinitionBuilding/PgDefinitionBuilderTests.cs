@@ -630,7 +630,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
         PgDefinition original = builder.ToDefinition();
         PgTable table = Assert.Single(original.Tables).Value;
-        CreateTable tableStatement = table.ToCreateStatement(includeSchema, null!);
+        CreateTable tableStatement = table.ToCreateStatement(includeSchema, PgTestConfig.GetDifferFormatManager());
         Assert.Equal(ObjectType.Table, table.ObjectType);
         Assert.Equal(includeSchema ? 2 : 1, tableStatement.Name.Values.Count);
         var statements = new List<Statement> { tableStatement };
@@ -648,7 +648,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(original.Tables, result.Tables);
         Assert.Equal(original.CustomTypes, result.CustomTypes);
-        Assert.Equal(table.ToCreateStatement(includeSchema).ToSql(), Assert.Single(result.Tables).Value.ToCreateStatement(includeSchema).ToSql());
+        Assert.Equal(table.ToCreateStatement(includeSchema, PgTestConfig.GetDifferFormatManager()).ToSql(), Assert.Single(result.Tables).Value.ToCreateStatement(includeSchema, PgTestConfig.GetDifferFormatManager()).ToSql());
     }
 
     [Theory]
@@ -1260,7 +1260,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("label", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(table.Columns[2].DataType).ElementType).Name.Name);
         PgStoredFunction function = Assert.Single(definition.Functions).Value;
         Assert.Equal("labels", Assert.IsType<PgDataType.Custom>(Assert.IsType<PgDataType.Array>(Assert.IsType<FunctionReturn.DataTypeReturn>(function.ReturnType).DataType).ElementType).Name.Name);
-        var statements = new List<Statement> { table.ToCreateStatement(true), function.ToCreateStatement(true), Assert.Single(definition.Procedures).Value.ToCreateStatement(true) };
+        var statements = new List<Statement> { table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()), function.ToCreateStatement(true), Assert.Single(definition.Procedures).Value.ToCreateStatement(true) };
         statements.AddRange(definition.CustomTypes.Values.Select(type => type.ToCreateStatement(true)));
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 1);
@@ -1287,8 +1287,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.IsType<ColumnOption.Nullability.NotNull>(table.Columns[0].Nullability);
         Assert.Equal("id", Assert.Single(table.PrimaryKey!.Columns).Name);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", new[] { table.ToCreateStatement(true).ToSql() }
-            .Concat(table.ToCreateIndexStatements(true).Select(statement => statement.ToSql())))), GetSchema(), 1);
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", new[] { table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql() }
+            .Concat(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager()).Select(statement => statement.ToSql())))), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
     }
 
@@ -1318,7 +1318,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(ReferentialAction.Cascade, foreignKey.OnDelete);
         Assert.Equal(ReferentialAction.Restrict, foreignKey.OnUpdate);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", definition.Tables.Values.Select(table => table.ToCreateStatement(true).ToSql()))), GetSchema(), 1);
+        rebuilt.ProcessStatements(ParseStatements(string.Join("; ", definition.Tables.Values.Select(table => table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()))), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
     }
 
@@ -1332,12 +1332,12 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         PgTable parent = definition.Tables[new ObjectHandle("catalog", "public", "parent")];
         Assert.True(Assert.Single(parent.Indexes.Values).Unique);
-        Assert.Contains("ON \"public\".\"parent\" USING BTREE", Assert.Single(parent.ToCreateIndexStatements(true)).ToSql());
+        Assert.Contains("ON \"public\".\"parent\" USING BTREE", Assert.Single(parent.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager())).ToSql());
         var statements = new List<Statement>();
         foreach (PgTable table in definition.Tables.Values)
         {
-            statements.AddRange(table.ToCreateIndexStatements(true));
-            statements.Add(table.ToCreateStatement(true));
+            statements.AddRange(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager()));
+            statements.Add(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()));
         }
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 1);
@@ -1481,7 +1481,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgTable table = Assert.Single(definition.Tables).Value;
         Assert.IsType<PgKeyPart.IndexExpression>(Assert.Single(Assert.Single(table.Indexes.Values).Columns));
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
+        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager())).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
     }
 
@@ -1524,7 +1524,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgTable table = Assert.Single(definition.Tables).Value;
         Assert.Equal((BuiltInIndexMethod)BuiltInIndexMethod.Hash, Assert.Single(table.Indexes.Values).Method);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
+        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager())).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
     }
 
@@ -1539,7 +1539,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("ck_id", Assert.Single(table.Checks.Values).Name!.Name);
         Assert.Equal("fk_self", Assert.Single(table.ForeignKeys.Values).Name!.Name);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 1);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
     }
 
@@ -1569,8 +1569,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("uq", unique.Name!.Name);
         Assert.Equal("id", Assert.Single(unique.Columns).Name);
         Assert.Empty(table.Indexes);
-        Assert.Empty(table.ToCreateIndexStatements(true));
-        CreateTable statement = table.ToCreateStatement(true);
+        Assert.Empty(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager()));
+        CreateTable statement = table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager());
         Assert.IsType<StatementTableConstraint.UniqueConstraint>(Assert.Single(statement.Constraints));
         if (includesPayload)
         {
@@ -1625,9 +1625,9 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(unique, index.Unique);
         Assert.Equal("id", Assert.IsType<PgKeyPart.Column>(Assert.Single(index.Columns)).Name.Name);
         Assert.Equal("Payload", Assert.Single(index.IncludedColumns!.Columns).Name);
-        Assert.Contains("INCLUDE (\"Payload\")", Assert.Single(table.ToCreateIndexStatements(true)).ToSql());
+        Assert.Contains("INCLUDE (\"Payload\")", Assert.Single(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager())).ToSql());
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true)).ToSql()}"), GetSchema(), 1);
+        rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager())).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
     }
 
@@ -2786,12 +2786,12 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements($"CREATE TABLE items (flags BIT VARYING(16) DEFAULT {literal})"), GetSchema(), 0);
         var table = Assert.Single(builder.ToDefinition().Tables.Values);
-        string canonical = table.ToCreateStatement(includeSchema: true).ToSql();
+        string canonical = table.ToCreateStatement(includeSchema: true, PgTestConfig.GetDifferFormatManager()).ToSql();
 
         Assert.Contains("DEFAULT " + literal, canonical);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(canonical), GetSchema(), 0);
-        Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true).ToSql());
+        Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true, PgTestConfig.GetDifferFormatManager()).ToSql());
     }
 
     [Theory]
@@ -2804,7 +2804,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements($"CREATE TABLE items (amount NUMERIC DEFAULT {literal})"), GetSchema(), 0);
         var table = Assert.Single(builder.ToDefinition().Tables.Values);
-        string canonical = table.ToCreateStatement(includeSchema: true).ToSql();
+        string canonical = table.ToCreateStatement(includeSchema: true, PgTestConfig.GetDifferFormatManager()).ToSql();
 
         decimal expected = decimal.Parse(expectedDecimalText, CultureInfo.InvariantCulture);
         var defaultValue = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(table.Columns).Default);
@@ -2817,7 +2817,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var rebuiltDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(rebuiltTable.Columns).Default);
         var rebuiltNumber = Assert.IsType<Value.Number>(rebuiltDefault.Value);
         Assert.Equal(expected, decimal.Parse(rebuiltNumber.DecimalText, NumberStyles.Float, CultureInfo.InvariantCulture));
-        Assert.Equal(canonical, rebuiltTable.ToCreateStatement(includeSchema: true).ToSql());
+        Assert.Equal(canonical, rebuiltTable.ToCreateStatement(includeSchema: true, PgTestConfig.GetDifferFormatManager()).ToSql());
     }
 
     [Theory]
@@ -2843,14 +2843,14 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (START WITH 0x10 INCREMENT BY 0b10 CACHE 1_0))"), GetSchema(), 0);
         var table = Assert.Single(builder.ToDefinition().Tables.Values);
-        string canonical = table.ToCreateStatement(includeSchema: true).ToSql();
+        string canonical = table.ToCreateStatement(includeSchema: true, PgTestConfig.GetDifferFormatManager()).ToSql();
 
         Assert.Contains("START WITH 16", canonical);
         Assert.Contains("INCREMENT BY 2", canonical);
         Assert.Contains("CACHE 10", canonical);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(canonical), GetSchema(), 0);
-        Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true).ToSql());
+        Assert.Equal(canonical, Assert.Single(rebuilt.ToDefinition().Tables.Values).ToCreateStatement(includeSchema: true, PgTestConfig.GetDifferFormatManager()).ToSql());
     }
 
     [Theory]
@@ -3162,7 +3162,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.NotNull(table.PrimaryKey);
         Assert.Equal(expectedName, table.PrimaryKey.Name.Name);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 58);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 58);
         Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
     }
 
@@ -3284,7 +3284,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.All(table.Checks.Values, check => Assert.True(check.Options.NoInherit));
         var rebuilt = CreateBuilder();
         IEnumerable<Statement> statements = definition.CustomTypes.Values.Select(type => type.ToCreateStatement(true))
-            .Concat(definition.Tables.Values.Select(item => item.ToCreateStatement(true)));
+            .Concat(definition.Tables.Values.Select(item => item.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager())));
         rebuilt.ProcessStatements(ParseStatements(string.Join("; ", statements.Select(statement => statement.ToSql()))), GetSchema(), 62);
         PgDefinition roundTrip = rebuilt.ToDefinition();
         Assert.Equal(definition.Tables, roundTrip.Tables);
@@ -3383,7 +3383,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.False(table.Checks[new Identifier("positive")].Options.NoInherit);
         Assert.True(table.Checks[new Identifier("bounded")].Options.NoInherit);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 61);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 61);
         Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
     }
 
@@ -3474,7 +3474,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.True(table.Unlogged);
         Assert.NotNull(table.PartitionBy);
-        CreateTable emitted = table.ToCreateStatement(true);
+        CreateTable emitted = table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager());
         Assert.NotNull(emitted.PgOptions?.PartitionBy);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements(emitted.ToSql()), GetSchema(), 71);
@@ -3586,8 +3586,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.True(table.PrimaryKey.BackingIndex.Unique);
         Assert.Equal("id", Assert.IsType<PgKeyPart.Column>(Assert.Single(table.PrimaryKey.BackingIndex.Columns)).Name.Name);
         var rebuilt = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 83);
-        foreach (CreateIndex index in table.ToCreateIndexStatements(true))
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 83);
+        foreach (CreateIndex index in table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager()))
         {
             rebuilt.ProcessStatements(ParseStatements(index.ToSql()), GetSchema(), 83);
         }
@@ -3673,7 +3673,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.NotEqual(index, index with { Name = new Identifier("different") });
 
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 85);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 85);
         Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables).Value);
     }
 
@@ -3766,11 +3766,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.True(exclusion.Options.Deferrable);
         Assert.True(exclusion.Options.InitiallyDeferred);
         Assert.Empty(table.Indexes);
-        Assert.Empty(table.ToCreateIndexStatements(true));
+        Assert.Empty(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager()));
         Assert.Equal(90, sources.GetSourceRef(new ObjectHandle("catalog", "public", "no_overlap"))?.SourceId);
 
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 91);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 91);
         PgTable roundTripped = Assert.Single(rebuilt.ToDefinition().Tables.Values);
         Assert.Equal(table, roundTripped);
         Assert.Equal(table.GetHashCode(), roundTripped.GetHashCode());
@@ -3815,7 +3815,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(index.FillFactor);
         Assert.Null(index.Buffering);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 91);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 91);
         Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
     }
 
@@ -3832,7 +3832,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
 
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 91);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 91);
 
         Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
         PgTableConstraint.Exclusion exclusion = Assert.Single(table.Exclusions.Values);
@@ -3934,7 +3934,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(signatureLength, options.SignatureLength);
         Assert.Equal(numberOfRanges, options.NumberOfRanges);
         var rebuilt = CreateBuilder();
-        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true).ToSql()), GetSchema(), 94);
+        rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 94);
         PgTable actual = Assert.Single(rebuilt.ToDefinition().Tables.Values);
         Assert.Equal(table, actual);
         Assert.Equal(table.GetHashCode(), actual.GetHashCode());
@@ -4007,6 +4007,67 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(94, error.ObjectSourceRef?.SourceId);
         Assert.Contains("ex", error.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TableModel_ReferencesCanonicalExpressionsAndRelationsWithoutEmission(bool includeReferences)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE parent (id INT CONSTRAINT pk PRIMARY KEY);
+            CREATE TABLE items (
+                id INT DEFAULT util.default_id(),
+                calculated INT GENERATED ALWAYS AS (util.calculate(id)) STORED,
+                CONSTRAINT ck CHECK (util.valid(id)),
+                CONSTRAINT fk FOREIGN KEY (id) REFERENCES parent (id),
+                CONSTRAINT ex EXCLUDE USING gist ((util.bucket(id)) WITH =)
+                    WHERE (util.keep(id)));
+            CREATE INDEX ix ON items ((util.index_key(id))) WHERE util.index_filter(id)
+            """), GetSchema(), 98);
+        PgTable table = builder.ToDefinition().Tables[new ObjectHandle("catalog", "public", "items")] with
+        {
+            PartitionBy = new PgPartitioning(PgPartitionStrategy.List,
+                [new PgPartitioning.Key(ParseExpression("util.partition_key(id)"))]),
+            PartitionOf = new PgTablePartition(ObjectIdentifier.FromStrings("catalog", "public", "partition_parent"),
+                new PgPartitionBounds.Range(
+                    [new PgPartitionBounds.RangeValue.MinValue(), new PgPartitionBounds.RangeValue.ExpressionValue(ParseExpression("util.lower_bound()"))],
+                    [new PgPartitionBounds.RangeValue.ExpressionValue(ParseExpression("util.upper_bound()")), new PgPartitionBounds.RangeValue.MaxValue()]))
+        };
+        var context = new ReferencedItemsManager { Filters = includeReferences ? ObjectNameFilters.All : ObjectNameFilters.None };
+        using (context.Enter(ReferencedItemsContext.FromClause))
+        {
+            ItemRef[] references = [.. table.GetReferencedItems(context)];
+
+            string[] expected = includeReferences
+                ? ["public.partition_parent", "util.partition_key", "util.lower_bound", "util.upper_bound",
+                    "util.default_id", "util.calculate", "public.parent", "util.valid", "util.bucket",
+                    "util.keep", "public.items", "util.index_key", "util.index_filter"]
+                : [];
+            Assert.All(references, reference => Assert.IsType<ItemRef.ObjectNameRef>(reference));
+            Assert.Equal(expected, references.Cast<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql().Replace("\"", "", StringComparison.Ordinal)));
+            Assert.Equal(ReferencedItemsContext.FromClause, context.CurrentContext);
+        }
+        Assert.Null(context.CurrentContext);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TableModel_ListPartitionBoundsReportFunctionsWithoutSentinelOrHashDependencies(bool hasListBound)
+    {
+        var table = new PgTable(ObjectIdentifier.FromStrings("catalog", "public", "items"), [])
+        {
+            PartitionOf = new PgTablePartition(ObjectIdentifier.FromStrings("catalog", "public", "parent"),
+                hasListBound ? new PgPartitionBounds.List([ParseExpression("util.bound_value()")]) : new PgPartitionBounds.Hash(4, 1))
+        };
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        string[] names = [.. table.GetReferencedItems(context).Cast<ItemRef.ObjectNameRef>().Select(reference => reference.Name.ToSql())];
+
+        Assert.Equal(hasListBound ? ["public.parent", "util.bound_value"] : ["public.parent"], names);
+        Assert.Null(context.CurrentContext);
     }
 
     private static SchemaIdentifier GetSchema()

@@ -74,7 +74,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     break;
                 case CreateIndex index:
                     if (index.PgOptions is { Concurrently: true } or { Only: true } or { NullsDistinct: not null }
-                        || index.Columns.Any(key => key.PgOptions != null)
+                        || index.Columns.Any(key => (key.OperatorClass != null || key.NullsOrder != null))
                         || index is CreateIndex.Standard { Options: not null } or CreateIndex.Unique { Options: not null })
                     {
                         throw new DefinitionException($"{index.GetType().Name} PostgreSQL index options", sourceRef);

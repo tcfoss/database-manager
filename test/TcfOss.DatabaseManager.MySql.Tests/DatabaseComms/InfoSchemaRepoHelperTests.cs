@@ -177,8 +177,8 @@ public class InfoSchemaRepoHelperTests
             Handle.Create(new Identifier("my_index"), NameHandling.Uppercase),
             new MyKey.Standard(
                 [
-                    new KeyPart.Column(new Identifier("first")),
-                    new KeyPart.Column(new Identifier("second"))
+                    new MyKeyPart.Column(new Identifier("first")),
+                    new MyKeyPart.Column(new Identifier("second"))
                 ],
                 new Identifier("my_index"))
             {
@@ -210,7 +210,7 @@ public class InfoSchemaRepoHelperTests
         var expected = new KeyValuePair<Handle, MyKey>(
             Handle.Create(new Identifier("body_search"), NameHandling.None),
             new MyKey.FullText(
-                [new KeyPart.Column(new Identifier("body"))],
+                [new MyKeyPart.Column(new Identifier("body"))],
                 new Identifier("body_search")));
 
         Assert.Equal(expected, actual);
@@ -237,7 +237,7 @@ public class InfoSchemaRepoHelperTests
         var expected = new KeyValuePair<Handle, MyKey>(
             Handle.Create(new Identifier("location_index"), NameHandling.None),
             new MyKey.Spatial(
-                [new KeyPart.Column(new Identifier("location"))],
+                [new MyKeyPart.Column(new Identifier("location"))],
                 new Identifier("location_index")));
 
         Assert.Equal(expected, actual);

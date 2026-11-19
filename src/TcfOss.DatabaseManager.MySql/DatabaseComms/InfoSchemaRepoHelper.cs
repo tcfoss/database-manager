@@ -257,7 +257,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
     {
         IndexInfo first = info.First();
         var id = new Identifier(first.IndexName, _quoteStyle);
-        var keyParts = new SqlValueList<KeyPart>([.. info.OrderBy(s => s.SeqInIndex).Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))]);
+        var keyParts = new SqlValueList<MyKeyPart>([.. info.OrderBy(s => s.SeqInIndex).Select(s => new MyKeyPart.Column(s.ColumnName, s.SubPart, s.Collation))]);
         MyKey key;
 
         Comment? comment = null;

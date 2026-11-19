@@ -3,6 +3,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 
@@ -56,11 +57,11 @@ public record PgIndex(SqlValueList<PgKeyPart> Columns)
         return options.Count == 0 ? null : options;
     }
 
-    public CreateIndex ToCreateStatement(ObjectIdentifier table, bool includeSchema)
+    public CreateIndex ToCreateStatement(ObjectIdentifier table, bool includeSchema, DifferFormatManager manager)
     {
         ObjectName tableName = table.ToObjectName(includeSchema ? 2 : 1);
         return Unique
-            ? new CreateIndex.Unique(Columns.Map(column => column.ToStatementKeyPart()), Name, tableName)
+            ? new CreateIndex.Unique(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)), Name, tableName)
             {
                 IndexMethod = Method,
                 IndexMethodAfterTableName = true,
@@ -69,7 +70,7 @@ public record PgIndex(SqlValueList<PgKeyPart> Columns)
                 Options = ToStatementIndexOptions(),
                 PgOptions = Tablespace == null ? null : new PgCreateIndexOptions(false, false) { Tablespace = Tablespace }
             }
-            : new CreateIndex.Standard(Columns.Map(column => column.ToStatementKeyPart()), Name, tableName)
+            : new CreateIndex.Standard(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)), Name, tableName)
             {
                 IndexMethod = Method,
                 IndexMethodAfterTableName = true,

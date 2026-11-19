@@ -12,7 +12,7 @@ public abstract record PgTableConstraint(Identifier? Name = null)
 {
     public PgConstraintOptions Options { get; init; } = new();
 
-    public abstract StatementTableConstraint ToStatementConstraint();
+    public abstract StatementTableConstraint ToStatementConstraint(bool removeOptionalElements);
 
     public record Unique(SqlValueList<Identifier> Columns, Identifier Name) : PgTableConstraint(Name)
     {
@@ -20,9 +20,9 @@ public abstract record PgTableConstraint(Identifier? Name = null)
         public bool NullsDistinct { get; init; } = true;
         public PgIndex? BackingIndex { get; init; }
 
-        public override StatementTableConstraint.UniqueConstraint ToStatementConstraint()
+        public override StatementTableConstraint.UniqueConstraint ToStatementConstraint(bool removeOptionalElements)
         {
-            return new StatementTableConstraint.UniqueConstraint([.. Columns.Select(column => new KeyPart.Column(column))], Name)
+            return new StatementTableConstraint.UniqueConstraint([.. Columns.Select(column => new StatementKeyPart.Column(column))], Name)
             {
                 IncludedColumns = IncludedColumns,
                 IndexParameters = BackingIndex?.Tablespace is { } tablespace ? new PgConstraintIndexParameters(null, tablespace) : null,
@@ -38,7 +38,7 @@ public abstract record PgTableConstraint(Identifier? Name = null)
         public ReferentialAction? OnDelete { get; init; }
         public ReferentialAction? OnUpdate { get; init; }
 
-        public override StatementTableConstraint.ForeignKey ToStatementConstraint()
+        public override StatementTableConstraint.ForeignKey ToStatementConstraint(bool removeOptionalElements)
         {
             return new StatementTableConstraint.ForeignKey([.. Columns], ReferencedTable.ToObjectName(2), [.. ReferencedColumns], Name)
             {
@@ -51,7 +51,7 @@ public abstract record PgTableConstraint(Identifier? Name = null)
 
     public record Check(Expression Expression, Identifier Name) : PgTableConstraint(Name)
     {
-        public override StatementTableConstraint.Check ToStatementConstraint()
+        public override StatementTableConstraint.Check ToStatementConstraint(bool removeOptionalElements)
         {
             return new StatementTableConstraint.Check(Expression, Name)
             {
@@ -64,11 +64,11 @@ public abstract record PgTableConstraint(Identifier? Name = null)
     {
         public required PgIndex BackingIndex { get; init; }
 
-        public override StatementTableConstraint.PgExclusion ToStatementConstraint()
+        public override StatementTableConstraint.PgExclusion ToStatementConstraint(bool removeOptionalElements)
         {
             SqlValueList<StatementIndexOption>? indexOptions = BackingIndex.ToStatementIndexOptions();
             return new StatementTableConstraint.PgExclusion(
-                Elements.Map(element => new PgExclusionElement(element.Key.ToStatementKeyPart(), element.Operator)), Name)
+                Elements.Map(element => new PgExclusionElement(element.Key.ToStatementKeyPart(removeOptionalElements), element.Operator)), Name)
             {
                 Method = BackingIndex.Method,
                 IncludedColumns = BackingIndex.IncludedColumns,

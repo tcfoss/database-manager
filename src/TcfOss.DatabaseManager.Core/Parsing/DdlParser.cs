@@ -1952,7 +1952,7 @@ public class DdlParser
 
         bool allowPgOptions = supportsIndexOptions && state.PgAny;
 
-        SqlValueList<KeyPart> columns = _p.ComponentParser.ParseParenthesizedKeyPartList(
+        SqlValueList<StatementKeyPart> columns = _p.ComponentParser.ParseParenthesizedKeyPartList(
             state, allowEmpty: false, allowLength: !allowPgOptions, allowPgOptions: allowPgOptions);
 
         IncludedColumns? includedColumns = null;

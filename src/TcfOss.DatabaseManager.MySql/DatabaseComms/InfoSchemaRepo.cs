@@ -357,7 +357,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 
                 if (constraintType == "PRIMARY KEY")
                 {
-                    KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
+                    MyKeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new MyKeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
                     IndexInfo first = indexInfo.First();
                     (BuiltInIndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
 
@@ -372,7 +372,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                     var id = new Identifier(grouping.Key, _quoteStyle);
                     IndexInfo first = indexInfo.First();
                     (BuiltInIndexMethod? indexMethod, Comment? comment) = first.GetIndexTypeAndComment(_lexer, _parser);
-                    KeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new KeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
+                    MyKeyPart.Column[] keyColumns = [.. indexInfo.Select(s => new MyKeyPart.Column(s.ColumnName, s.SubPart, s.Collation))];
 
                     uniqueKeys.Add(Handle.Create(id, _config.NameHandling), new MyUniqueKey(keyColumns, id)
                     {

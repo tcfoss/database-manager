@@ -541,7 +541,7 @@ public class TableParser
             state.Next();
             method = ParseIndexMethod(state);
         }
-        SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
+        SqlValueList<StatementKeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
         if (state.My && state.PeekKeyword(Keyword.USING)
             && !(SupportsPostgresConstraintSyntax && state.PeekNth(1) is Word { Keyword: Keyword.INDEX }))
         {
@@ -598,7 +598,7 @@ public class TableParser
         Identifier? indexName = null;
         BuiltInIndexMethod? method = null;
         Comment? comment = null;
-        SqlValueList<KeyPart>? columns = null;
+        SqlValueList<StatementKeyPart>? columns = null;
 
         while (true)
         {
@@ -768,7 +768,7 @@ public class TableParser
         }
         SqlValueList<PgExclusionElement> elements = state.ParseParenthesizedCommaSeparated(parserState =>
         {
-            KeyPart key = _p.ComponentParser.ParseExclusionKeyPart(parserState);
+            StatementKeyPart key = _p.ComponentParser.ParseExclusionKeyPart(parserState);
             parserState.ExpectKeyword(Keyword.WITH);
             return new PgExclusionElement(key, _p.ExpressionParser.ParsePostgresOperatorReference(parserState));
         }, false);
@@ -935,7 +935,7 @@ public class TableParser
             }
         }
 
-        SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
+        SqlValueList<StatementKeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
 
         IncludedColumns? includedColumns = ParseOptionalIncludedColumns(state);
 
@@ -1025,7 +1025,7 @@ public class TableParser
             state.Next();
         }
 
-        SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
+        SqlValueList<StatementKeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
 
         BuiltInIndexMethod? method = null;
         Comment? comment = null;
@@ -1066,7 +1066,7 @@ public class TableParser
             _ = state.Next();
         }
 
-        SqlValueList<KeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
+        SqlValueList<StatementKeyPart> cols = _p.ComponentParser.ParseParenthesizedKeyPartList(state, false);
 
         Comment? comment = null;
         if (state.PeekKeyword(Keyword.COMMENT))

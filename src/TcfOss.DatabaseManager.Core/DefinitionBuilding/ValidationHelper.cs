@@ -13,9 +13,9 @@ public partial class ValidationHelper(ILogger logger)
         s_logExtractingKeyParts(_logger, source.Name?.Name, extractionReason, null);
 
         var columnNames = new List<Identifier>();
-        foreach (KeyPart keyPart in source.Columns)
+        foreach (MyKeyPart keyPart in source.Columns)
         {
-            if (keyPart is KeyPart.Column columnKeyPart)
+            if (keyPart is MyKeyPart.Column columnKeyPart)
             {
                 columnNames.Add(columnKeyPart.Name);
             }

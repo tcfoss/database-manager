@@ -36,7 +36,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
             {
                 Check check => [check.Expression],
                 PgExclusion exclusion => exclusion.Elements.Select(element => element.Key)
-                    .OfType<KeyPart.IndexExpression>().Select(key => key.Expression),
+                    .OfType<StatementKeyPart.IndexExpression>().Select(key => key.Expression),
                 _ => []
             };
             if (this is PgExclusion { Predicate: { } predicate })
@@ -100,7 +100,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         }
     }
 
-    public record PrimaryKey(SqlValueList<KeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
+    public record PrimaryKey(SqlValueList<StatementKeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
     {
         public PgConstraintIndexParameters? IndexParameters { get; init; }
         public IncludedColumns? IncludedColumns { get; init; }
@@ -184,7 +184,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         }
     }
 
-    public record UniqueConstraint(SqlValueList<KeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
+    public record UniqueConstraint(SqlValueList<StatementKeyPart> Columns, Identifier? Name = null) : StatementTableConstraint(Name)
     {
         public bool? NullsDistinct { get; init; }
         public PgConstraintIndexParameters? IndexParameters { get; init; }
@@ -457,12 +457,12 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         }
     }
 
-    public abstract record NonConstraintKey(SqlValueList<KeyPart> Columns, Identifier? IndexName) : StatementTableConstraint
+    public abstract record NonConstraintKey(SqlValueList<StatementKeyPart> Columns, Identifier? IndexName) : StatementTableConstraint
     {
         public KeyLabel? KeyLabel { get; init; }
     }
 
-    public record Standard(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
+    public record Standard(SqlValueList<StatementKeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
         public IndexMethod? IndexMethod { get; init; }
         public IndexOrganization? IndexOrganization { get; init; }
@@ -559,7 +559,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         }
     }
 
-    public record FullText(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
+    public record FullText(SqlValueList<StatementKeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -594,7 +594,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         }
     }
 
-    public record Spatial(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
+    public record Spatial(SqlValueList<StatementKeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
         public BuiltInIndexMethod? IndexMethod { get; init; }
 
@@ -640,7 +640,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
     }
 
 
-    public record UniqueIndex(SqlValueList<KeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
+    public record UniqueIndex(SqlValueList<StatementKeyPart> Columns, Identifier? IndexName) : NonConstraintKey(Columns, IndexName)
     {
         public IndexMethod? IndexMethod { get; init; }
         public IndexOrganization? IndexOrganization { get; init; }
@@ -741,7 +741,7 @@ public abstract record StatementTableConstraint(Identifier? Name = null) : IWrit
         }
     }
 
-    public static void FormatKeyParts(SqlTextWriter writer, SqlValueList<KeyPart> keyParts, FormatManager manager)
+    public static void FormatKeyParts(SqlTextWriter writer, SqlValueList<StatementKeyPart> keyParts, FormatManager manager)
     {
         writer.Write("(");
         for (int i = 0; i < keyParts.Count; i++)

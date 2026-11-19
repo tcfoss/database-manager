@@ -488,7 +488,7 @@ public partial class MyDefinitionBuilder
         {
             if (column.AutoIncrement)
             {
-                if (table.PrimaryKey == null || !table.PrimaryKey.Columns.Any(x => x is KeyPart.Column keyCol && keyCol.Name.Name == column.Name.Name))
+                if (table.PrimaryKey == null || !table.PrimaryKey.Columns.Any(x => x is MyKeyPart.Column keyCol && keyCol.Name.Name == column.Name.Name))
                 {
                     errors.Add(new SqlSyntaxException.AutoIncrementPrimaryKeyOnly(column.Name, sourceRef));
                 }
@@ -662,9 +662,9 @@ public partial class MyDefinitionBuilder
     {
         var errors = new List<SourcedException>();
 
-        foreach (KeyPart keyPart in table.PrimaryKey?.Columns ?? [])
+        foreach (MyKeyPart keyPart in table.PrimaryKey?.Columns ?? [])
         {
-            if (keyPart is KeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
+            if (keyPart is MyKeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
             {
                 errors.Add(new SqlSyntaxException.IndexColumnNotFound("PRIMARY", table.Name, columnPart.Name, sourceRef));
             }
@@ -672,9 +672,9 @@ public partial class MyDefinitionBuilder
 
         foreach (MyUniqueKey uniqueKey in table.UniqueKeys.Values)
         {
-            foreach (KeyPart keyPart in uniqueKey.Columns)
+            foreach (MyKeyPart keyPart in uniqueKey.Columns)
             {
-                if (keyPart is KeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
+                if (keyPart is MyKeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
                 {
                     errors.Add(new SqlSyntaxException.IndexColumnNotFound(uniqueKey.ConstraintName!, table.Name, columnPart.Name, sourceRef));
                 }
@@ -683,9 +683,9 @@ public partial class MyDefinitionBuilder
 
         foreach (MyKey key in table.Keys.Values)
         {
-            foreach (KeyPart keyPart in key.Columns)
+            foreach (MyKeyPart keyPart in key.Columns)
             {
-                if (keyPart is KeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
+                if (keyPart is MyKeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
                 {
                     errors.Add(new SqlSyntaxException.IndexColumnNotFound(key.IndexName!, table.Name, columnPart.Name, sourceRef));
                 }

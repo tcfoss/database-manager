@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Postgres.Configuration;
 using TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 
@@ -9,6 +10,17 @@ namespace TcfOss.DatabaseManager.Postgres.Tests;
 
 public static class PgTestConfig
 {
+    public static DifferFormatManager GetDifferFormatManager()
+    {
+        var config = GetTestConfig();
+        return new DifferFormatManager
+        {
+            QuoteStyle = config.QuoteStyle,
+            AttributeDefaults = config.AttributeDefaults,
+            Formatting = new DifferFormattingSettings { OmitModifiersIfDefault = false }
+        };
+    }
+
     public static PgConfig GetTestConfig(SqlValueList<Identifier>? searchPath = null, FormattingSettings? formatSettings = null)
     {
         var config = new PgConfig

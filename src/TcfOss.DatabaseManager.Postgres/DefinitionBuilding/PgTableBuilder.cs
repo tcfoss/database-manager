@@ -239,7 +239,7 @@ public class PgTableBuilder(
 
     private void AddColumnPrimaryKey(Identifier column, StatementColumnOption.PrimaryKey primaryKey, SourceRef? sourceRef)
     {
-        AddTablePrimaryKey(new StatementTableConstraint.PrimaryKey([new KeyPart.Column(column)], primaryKey.Name)
+        AddTablePrimaryKey(new StatementTableConstraint.PrimaryKey([new StatementKeyPart.Column(column)], primaryKey.Name)
         {
             PgOptions = primaryKey.PgOptions,
             IndexParameters = primaryKey.IndexParameters
@@ -248,7 +248,7 @@ public class PgTableBuilder(
 
     private void AddColumnUnique(Identifier column, StatementColumnOption.Unique unique, SourceRef? sourceRef)
     {
-        AddTableUnique(new StatementTableConstraint.UniqueConstraint([new KeyPart.Column(column)], unique.Name)
+        AddTableUnique(new StatementTableConstraint.UniqueConstraint([new StatementKeyPart.Column(column)], unique.Name)
         {
             NullsDistinct = unique.NullsDistinct,
             IndexParameters = unique.IndexParameters,
@@ -326,7 +326,7 @@ public class PgTableBuilder(
         ValidateConstraintIndexOptions(foreignKey.Comment, sourceRef);
         Identifier constraintName = AddConstraintName(foreignKey.Name, "FOREIGN KEY", sourceRef);
         _foreignKeys.Add(constraintName, new PreForeignKey(constraintName,
-            NormalizeConstraintColumns([.. foreignKey.Columns.Select(column => new KeyPart.Column(column))], constraintName, sourceRef),
+            NormalizeConstraintColumns([.. foreignKey.Columns.Select(column => new StatementKeyPart.Column(column))], constraintName, sourceRef),
             foreignKey.ForeignTable, [.. foreignKey.ForeignColumns.Select(ComponentNormalizer.NormalizeSingleIdentifier)],
             foreignKey.OnDelete ?? attributeDefaults.ForeignKeyOnDelete,
             foreignKey.OnUpdate ?? attributeDefaults.ForeignKeyOnUpdate,
@@ -485,7 +485,7 @@ public class PgTableBuilder(
         return ComponentNormalizer.NormalizeSingleIdentifier(name);
     }
 
-    private void AddIndexDeclaration(Identifier name, SqlValueList<KeyPart> columns, bool unique, IndexMethod? method,
+    private void AddIndexDeclaration(Identifier name, SqlValueList<StatementKeyPart> columns, bool unique, IndexMethod? method,
         Expression? predicate, IncludedColumns? includedColumns = null, Identifier? tablespace = null, SourceRef? sourceRef = null)
     {
         method ??= new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
@@ -500,8 +500,8 @@ public class PgTableBuilder(
         }
         if (!IndexMethod.IsBtree(method) && columns.Any(part => part switch
             {
-                KeyPart.Column column => column.Direction != null,
-                KeyPart.IndexExpression expression => expression.Direction != null,
+                StatementKeyPart.Column column => column.Direction != null,
+                StatementKeyPart.IndexExpression expression => expression.Direction != null,
                 _ => false
             }))
         {
@@ -834,7 +834,7 @@ public class PgTableBuilder(
         }
     }
 
-    private SqlValueList<Identifier> NormalizeConstraintColumns(SqlValueList<KeyPart> keyParts, Identifier? constraintName, SourceRef? sourceRef)
+    private SqlValueList<Identifier> NormalizeConstraintColumns(SqlValueList<StatementKeyPart> keyParts, Identifier? constraintName, SourceRef? sourceRef)
     {
         if (keyParts.Count == 0)
         {
@@ -842,9 +842,9 @@ public class PgTableBuilder(
         }
         SqlValueList<Identifier> result = [];
         var seen = new HashSet<string>();
-        foreach (KeyPart keyPart in keyParts)
+        foreach (StatementKeyPart keyPart in keyParts)
         {
-            if (keyPart is not KeyPart.Column { Length: null, Direction: null } column)
+            if (keyPart is not StatementKeyPart.Column { Length: null, Direction: null } column)
             {
                 throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "index expressions, prefix lengths, or sort directions in PRIMARY KEY/UNIQUE constraints", sourceRef);
             }
@@ -858,28 +858,28 @@ public class PgTableBuilder(
         return result;
     }
 
-    private SqlValueList<PgKeyPart> NormalizeIndexParts(SqlValueList<KeyPart> keyParts, SourceRef? sourceRef)
+    private SqlValueList<PgKeyPart> NormalizeIndexParts(SqlValueList<StatementKeyPart> keyParts, SourceRef? sourceRef)
     {
         if (keyParts.Count == 0)
         {
             throw new SqlSyntaxException.EmptyIndexColumnList("An index", sourceRef);
         }
         SqlValueList<PgKeyPart> result = [];
-        foreach (KeyPart part in keyParts)
+        foreach (StatementKeyPart part in keyParts)
         {
-            if (part.PgOptions != null)
+            if ((part.OperatorClass != null || part.NullsOrder != null))
             {
                 throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "standalone index key options", sourceRef);
             }
             switch (part)
             {
-                case KeyPart.Column { Length: null } column:
+                case StatementKeyPart.Column { Length: null } column:
                     result.Add(new PgKeyPart.Column(ComponentNormalizer.NormalizeSingleIdentifier(column.Name))
                     {
                         Direction = column.Direction == Direction.Descending ? Direction.Descending : null
                     });
                     break;
-                case KeyPart.IndexExpression expression:
+                case StatementKeyPart.IndexExpression expression:
                     result.Add(new PgKeyPart.IndexExpression(GetNormalizedExpression(expression.Expression))
                     {
                         Direction = expression.Direction == Direction.Descending ? Direction.Descending : null

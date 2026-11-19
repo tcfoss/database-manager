@@ -149,10 +149,10 @@ public class PgConstraintParserTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal("custom", Assert.IsType<IndexMethod.Custom>(exclusion.Method).Method.Name);
         var element = Assert.Single(exclusion.Elements);
-        var key = Assert.IsType<KeyPart.Column>(element.Key);
-        Assert.Equal("app.int_ops", key.PgOptions!.OperatorClass!.ToSql());
-        Assert.Single(key.PgOptions.OperatorClassParameters!);
-        Assert.Equal(NullsOrder.Last, key.PgOptions.NullsOrder);
+        var key = Assert.IsType<StatementKeyPart.Column>(element.Key);
+        Assert.Equal("app.int_ops", key.OperatorClass!.Name.ToSql());
+        Assert.Single(key.OperatorClass!.Parameters!);
+        Assert.Equal(NullsOrder.Last, key.NullsOrder);
         Assert.Equal("&&", element.Operator.Name);
         Assert.Equal("app", element.Operator.Schema!.Name);
         Assert.True(element.Operator.UseOperatorSyntax);

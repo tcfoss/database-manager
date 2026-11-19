@@ -43,15 +43,15 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
         };
     }
 
-    private PgKeyPart NormalizeKey(KeyPart key, IndexMethod method, SourceRef? sourceRef)
+    private PgKeyPart NormalizeKey(StatementKeyPart key, IndexMethod method, SourceRef? sourceRef)
     {
         PgKeyPart normalized = key switch
         {
-            KeyPart.Column { Length: null } column => new PgKeyPart.Column(componentNormalizer.NormalizeSingleIdentifier(column.Name))
+            StatementKeyPart.Column { Length: null } column => new PgKeyPart.Column(componentNormalizer.NormalizeSingleIdentifier(column.Name))
             {
                 Direction = column.Direction
             },
-            KeyPart.IndexExpression expression => new PgKeyPart.IndexExpression(sqlNormalizer.NormalizeExpressionNoFlatten(expression.Expression))
+            StatementKeyPart.IndexExpression expression => new PgKeyPart.IndexExpression(sqlNormalizer.NormalizeExpressionNoFlatten(expression.Expression))
             {
                 Direction = expression.Direction
             },
@@ -59,7 +59,7 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
         };
 
         Direction? direction = normalized.Direction;
-        NullsOrder? nullsOrder = key.PgOptions?.NullsOrder;
+        NullsOrder? nullsOrder = key.NullsOrder;
         if (IndexMethod.IsBtree(method))
         {
             if (nullsOrder == (direction == Direction.Descending ? NullsOrder.First : NullsOrder.Last))
@@ -75,16 +75,16 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
         {
             Direction = direction,
             NullsOrder = nullsOrder,
-            OperatorClass = NormalizeOperatorClass(key.PgOptions, sourceRef)
+            OperatorClass = NormalizeOperatorClass(key.OperatorClass, sourceRef)
         };
     }
 
-    private PgKeyPart.OperatorClassOptions? NormalizeOperatorClass(PgKeyPartOptions? options, SourceRef? sourceRef)
+    private PgKeyPart.OperatorClassOptions? NormalizeOperatorClass(PgStatementOperatorClass? options, SourceRef? sourceRef)
     {
-        PgKeyPart.OperatorClassOptions? result = options?.OperatorClass is { } operatorClass
+        PgKeyPart.OperatorClassOptions? result = options?.Name is { } operatorClass
             ? new PgKeyPart.OperatorClassOptions(componentNormalizer.NormalizeObjectName(operatorClass)) : null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (ObjectNameKvp parameter in options?.OperatorClassParameters ?? [])
+        foreach (ObjectNameKvp parameter in options?.Parameters ?? [])
         {
             ObjectName name = componentNormalizer.NormalizeObjectName(parameter.Name);
             if (result == null || name.Values.Count != 1
