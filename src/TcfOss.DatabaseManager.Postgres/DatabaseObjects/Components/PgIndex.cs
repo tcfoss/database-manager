@@ -12,7 +12,6 @@ namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 public record PgIndex(SqlValueList<PgKeyPart> Columns)
 {
     public required Identifier Name { get; init; }
-    public bool NameExplicit { get; init; } = true;
     public Identifier? Tablespace { get; init; }
     public bool Unique { get; init; }
     public IndexMethod Method { get; init; } = IndexMethod.Default;
@@ -43,18 +42,24 @@ public record PgIndex(SqlValueList<PgKeyPart> Columns)
 
     public SqlValueList<StatementIndexOption>? ToStatementIndexOptions()
     {
+        return GetStatementIndexOptions(FillFactor, Buffering, DeduplicateItems);
+    }
+
+    internal static SqlValueList<StatementIndexOption>? GetStatementIndexOptions(uint? fillFactor, PgIndexBufferingMode? buffering,
+        bool? deduplicateItems)
+    {
         SqlValueList<StatementIndexOption> options = [];
-        if (FillFactor is { } fillFactor)
+        if (fillFactor is { } factor)
         {
-            options.Add(new StatementIndexOption.FillFactor(fillFactor));
+            options.Add(new StatementIndexOption.FillFactor(factor));
         }
-        if (Buffering is { } buffering)
+        if (buffering is { } mode)
         {
-            options.Add(new StatementIndexOption.PgBuffering(buffering));
+            options.Add(new StatementIndexOption.PgBuffering(mode));
         }
-        if (DeduplicateItems is { } deduplicateItems)
+        if (deduplicateItems is { } deduplicate)
         {
-            options.Add(new StatementIndexOption.PgDeduplicateItems(deduplicateItems));
+            options.Add(new StatementIndexOption.PgDeduplicateItems(deduplicate));
         }
         return options.Count == 0 ? null : options;
     }

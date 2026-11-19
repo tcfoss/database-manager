@@ -3204,7 +3204,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(Assert.Single(Assert.Single(definition.Functions.Values).Parameters).Name);
         Assert.Null(Assert.Single(Assert.Single(definition.Procedures.Values).Parameters).Name);
         PgTable table = Assert.Single(definition.Tables.Values);
-        Assert.IsType<ColumnOption.Generated.PgIdentity>(table.Columns[0].Generated);
+        Assert.IsType<PgIdentity>(table.Columns[0].Identity);
         Assert.All(table.Columns, column => Assert.Null(Assert.IsType<ColumnOption.Nullability.NotNull>(column.Nullability).Name));
     }
 
@@ -3555,7 +3555,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void Defaults_ServerInputsAndExplicitTablespacesApplyToOwnersAndIndexes()
+    public void Defaults_ServerInputsApplyToStandaloneIndexesButOnlyExplicitBackingSettingsAreManaged()
     {
         var config = PgTestConfig.GetTestConfig();
         config = config with
@@ -3579,12 +3579,12 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal("custom_heap", table.AccessMethod!.Name);
         Assert.Equal("table_space", table.Tablespace!.Name);
-        Assert.Equal("session_space", table.PrimaryKey!.BackingIndex!.Tablespace!.Name);
+        Assert.Null(table.PrimaryKey!.BackingIndex.Tablespace);
         Assert.Equal("key_space", Assert.Single(table.UniqueConstraints.Values).BackingIndex!.Tablespace!.Name);
         Assert.Equal("session_space", table.Indexes[new Identifier("label_idx")].Tablespace!.Name);
         Assert.Equal("index_space", table.Indexes[new Identifier("explicit_idx")].Tablespace!.Name);
-        Assert.True(table.PrimaryKey.BackingIndex.Unique);
-        Assert.Equal("id", Assert.IsType<PgKeyPart.Column>(Assert.Single(table.PrimaryKey.BackingIndex.Columns)).Name.Name);
+        Assert.Null(table.PrimaryKey.BackingIndex.Name);
+        Assert.Equal("id", Assert.Single(table.PrimaryKey.Columns).Name);
         var rebuilt = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
         rebuilt.ProcessStatements(ParseStatements(table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()), GetSchema(), 83);
         foreach (CreateIndex index in table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager()))
@@ -3606,7 +3606,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
 
         Assert.Equal("fast", table.Tablespace!.Name);
-        Assert.Equal("pg_default", table.PrimaryKey!.BackingIndex!.Tablespace!.Name);
+        Assert.Null(table.PrimaryKey!.BackingIndex.Tablespace);
         Assert.Equal("pg_default", Assert.Single(table.Indexes.Values).Tablespace!.Name);
     }
 
@@ -3641,7 +3641,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void BackingObjects_PreserveIdentityNamesOptionsPersistenceAndRoundTrip()
+    public void BackingObjects_PreserveReferencesAndInlineConfigurationWithoutDuplicatingOwnerAttributes()
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("""
@@ -3652,24 +3652,22 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             """), GetSchema(), 84);
 
         PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
-        PgBackingSequence explicitSequence = Assert.IsType<PgBackingSequence>(table.Columns[0].BackingSequence);
-        PgBackingSequence implicitSequence = Assert.IsType<PgBackingSequence>(table.Columns[1].BackingSequence);
-        Assert.Equal("App", explicitSequence.Name.Schema.Name);
+        PgBackingSequence explicitSequence = Assert.IsType<PgIdentity>(table.Columns[0].Identity).BackingSequence;
+        PgBackingSequence implicitSequence = Assert.IsType<PgIdentity>(table.Columns[1].Identity).BackingSequence;
+        Assert.Equal("App", explicitSequence.Name!.Schema.Name);
         Assert.Equal("Ids", explicitSequence.Name.Name);
-        Assert.True(explicitSequence.NameExplicit);
-        Assert.True(explicitSequence.Unlogged);
-        Assert.Equal(-2, explicitSequence.Options.Increment);
+        Assert.True(table.Unlogged);
+        Assert.Equal(-2, explicitSequence.Options!.Increment);
         Assert.Equal(3, explicitSequence.Options.Cache);
-        Assert.False(implicitSequence.NameExplicit);
-        Assert.Equal("items_other_id_seq", implicitSequence.Name.Name);
-        Assert.Equal("other_id", Assert.Single(table.PrimaryKey!.BackingIndex!.IncludedColumns!.Columns).Name);
-        Assert.Equal(explicitSequence, explicitSequence with { NameExplicit = false });
-        Assert.Equal(explicitSequence.GetHashCode(), (explicitSequence with { NameExplicit = false }).GetHashCode());
+        Assert.Null(explicitSequence.Options.Start);
+        Assert.Null(explicitSequence.Options.MinValue);
+        Assert.Null(implicitSequence.Name);
+        Assert.Null(implicitSequence.Options);
+        Assert.Equal("other_id", Assert.Single(table.PrimaryKey!.IncludedColumns!.Columns).Name);
         Assert.NotEqual(explicitSequence, explicitSequence with { Name = implicitSequence.Name });
         Assert.NotEqual(explicitSequence, explicitSequence with { Options = explicitSequence.Options with { Cache = 8 } });
-        PgIndex index = table.PrimaryKey.BackingIndex;
-        Assert.Equal(index, index with { NameExplicit = false });
-        Assert.Equal(index.GetHashCode(), (index with { NameExplicit = false }).GetHashCode());
+        PgBackingIndex index = table.PrimaryKey.BackingIndex;
+        Assert.Null(index.Name);
         Assert.NotEqual(index, index with { Name = new Identifier("different") });
 
         var rebuilt = CreateBuilder();
@@ -3680,7 +3678,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void BackingObjects_ImplicitNamesAvoidAllDeclaredRelationsRegardlessOfOrder(bool reverse)
+    public void BackingObjects_ImplicitNamesAreNotSynthesizedOrReservedRegardlessOfOrder(bool reverse)
     {
         string[] statements =
         [
@@ -3697,7 +3695,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         PgTable table = builder.ToDefinition().Tables[new ObjectHandle("catalog", "public", "items")];
 
-        Assert.Equal("items_id_seq3", Assert.Single(table.Columns).BackingSequence!.Name.Name);
+        PgBackingSequence sequence = Assert.Single(table.Columns).Identity!.BackingSequence;
+        Assert.Null(sequence.Name);
+        Assert.Null(sequence.Options);
+        Assert.DoesNotContain("items_id_seq", table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql());
     }
 
     [Fact]
@@ -3713,19 +3714,59 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void BackingObjects_LongUnicodeNamesPreserveSuffixAndByteLimit()
+    public void BackingObjects_ExplicitLongUnicodeNamesUseStoredNameNormalization()
     {
         string tableName = new('T', 60);
         string columnName = string.Concat(Enumerable.Repeat("😀", 15));
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements($"CREATE TABLE \"{tableName}\" (\"{columnName}\" INT GENERATED ALWAYS AS IDENTITY)"), GetSchema(), 88);
+        string sequenceName = string.Concat(Enumerable.Repeat("😀", 20));
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE \"{tableName}\" (\"{columnName}\" INT GENERATED ALWAYS AS IDENTITY (SEQUENCE NAME \"{sequenceName}\"))"), GetSchema(), 88);
 
-        PgBackingSequence sequence = Assert.Single(Assert.Single(builder.ToDefinition().Tables).Value.Columns).BackingSequence!;
+        PgBackingSequence sequence = Assert.Single(Assert.Single(builder.ToDefinition().Tables).Value.Columns).Identity!.BackingSequence;
 
-        Assert.True(System.Text.Encoding.UTF8.GetByteCount(sequence.Name.Name) <= 63);
-        Assert.EndsWith("_seq", sequence.Name.Name);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(sequence.Name!.Name) <= 63);
+        Assert.Equal(string.Concat(Enumerable.Repeat("😀", 15)), sequence.Name.Name);
         Assert.DoesNotContain("\uFFFD", sequence.Name.Name);
-        Assert.Contains("T", sequence.Name.Name);
+        Assert.Null(sequence.Options);
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("UNIQUE (id)")]
+    [InlineData("EXCLUDE (id WITH =)")]
+    public void BackingObjects_UnspecifiedInlineIndexSettingsRemainDistinctFromExplicitSettings(string constraint)
+    {
+        var first = CreateBuilder();
+        first.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT, CONSTRAINT key_name {constraint})"), GetSchema(), 88);
+        var second = CreateBuilder();
+        second.ProcessStatements(ParseStatements(
+            $"CREATE TABLE items (id INT, CONSTRAINT key_name {constraint} USING INDEX TABLESPACE pg_default)"), GetSchema(), 89);
+        PgTable omitted = Assert.Single(first.ToDefinition().Tables.Values);
+        PgTable configured = Assert.Single(second.ToDefinition().Tables.Values);
+
+        Assert.NotEqual(omitted, configured);
+        Assert.DoesNotContain("USING INDEX TABLESPACE", omitted.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql());
+        Assert.Contains("USING INDEX TABLESPACE", configured.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql());
+    }
+
+    [Theory]
+    [InlineData("CACHE 1")]
+    [InlineData("INCREMENT 1")]
+    [InlineData("NO MINVALUE")]
+    [InlineData("NO CYCLE")]
+    public void BackingObjects_ExplicitInlineSequenceSettingsRemainDistinctFromUnmanagedSettings(string options)
+    {
+        var first = CreateBuilder();
+        first.ProcessStatements(ParseStatements("CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY)"), GetSchema(), 88);
+        var second = CreateBuilder();
+        second.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY ({options}))"), GetSchema(), 89);
+        PgColumn omitted = Assert.Single(Assert.Single(first.ToDefinition().Tables.Values).Columns);
+        PgColumn configured = Assert.Single(Assert.Single(second.ToDefinition().Tables.Values).Columns);
+
+        Assert.NotEqual(omitted, configured);
+        Assert.Null(omitted.Identity!.BackingSequence.Options);
+        Assert.NotNull(configured.Identity!.BackingSequence.Options);
+        Assert.Null(configured.Identity.BackingSequence.Name);
     }
 
     [Fact]
@@ -3743,7 +3784,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
         PgTableConstraint.Exclusion exclusion = Assert.Single(table.Exclusions.Values);
-        PgIndex index = exclusion.BackingIndex;
+        PgBackingIndex index = exclusion.BackingIndex;
 
         Assert.Equal("no_overlap", exclusion.Name!.Name);
         Assert.Equal(new[] { "=", "&&" }, exclusion.Elements.Select(element => element.Operator.Name));
@@ -3752,14 +3793,11 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         var expression = Assert.IsType<PgKeyPart.IndexExpression>(exclusion.Elements[1].Key);
         Assert.Equal(new[] { "app", "range_ops" }, expression.OperatorClass!.Name.Values.Select(identifier => identifier.Name));
         Assert.Equal(4, expression.OperatorClass.SignatureLength);
-        Assert.Equal(exclusion.Elements.Map(element => element.Key), index.Columns);
-        Assert.Equal(exclusion.Name, index.Name);
-        Assert.True(index.NameExplicit);
-        Assert.False(index.Unique);
-        Assert.Equal(BuiltInIndexMethod.Gist, Assert.IsType<IndexMethod.BuiltIn>(index.Method).Method);
+        Assert.Null(index.Name);
+        Assert.Equal(BuiltInIndexMethod.Gist, Assert.IsType<IndexMethod.BuiltIn>(exclusion.Method).Method);
         Assert.Equal("fast", index.Tablespace!.Name);
-        Assert.Equal("label", Assert.Single(index.IncludedColumns!.Columns).Name);
-        Assert.NotNull(index.Predicate);
+        Assert.Equal("label", Assert.Single(exclusion.IncludedColumns!.Columns).Name);
+        Assert.NotNull(exclusion.Predicate);
         Assert.Equal(70U, index.FillFactor);
         Assert.Equal(PgIndexBufferingMode.On, index.Buffering);
         Assert.Null(index.DeduplicateItems);
@@ -3774,12 +3812,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         PgTable roundTripped = Assert.Single(rebuilt.ToDefinition().Tables.Values);
         Assert.Equal(table, roundTripped);
         Assert.Equal(table.GetHashCode(), roundTripped.GetHashCode());
-        Assert.Equal(index, index with { NameExplicit = false });
-        Assert.Equal(index.GetHashCode(), (index with { NameExplicit = false }).GetHashCode());
     }
 
     [Theory]
-    [InlineData("EXCLUDE (id WITH =)", "EXCLUDE USING btree (id ASC NULLS LAST WITH OPERATOR(=)) USING INDEX TABLESPACE pg_default NOT DEFERRABLE INITIALLY IMMEDIATE")]
+    [InlineData("EXCLUDE (id WITH =)", "EXCLUDE USING btree (id ASC NULLS LAST WITH OPERATOR(=)) NOT DEFERRABLE INITIALLY IMMEDIATE")]
     [InlineData("EXCLUDE USING btree (id DESC WITH =)", "EXCLUDE USING btree (id DESC NULLS FIRST WITH =)")]
     [InlineData("EXCLUDE USING gist (id WITH =) WITH (fillfactor = 70, buffering = on)", "EXCLUDE USING gist (id WITH =) WITH (buffering = on, fillfactor = 70)")]
     [InlineData("EXCLUDE USING btree (id WITH =) WITH (deduplicate_items)", "EXCLUDE USING btree (id WITH =) WITH (deduplicate_items = on)")]
@@ -3809,7 +3845,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements(
             $"CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =) {options})"), GetSchema(), 90);
         PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
-        PgIndex index = Assert.Single(table.Exclusions.Values).BackingIndex;
+        PgBackingIndex index = Assert.Single(table.Exclusions.Values).BackingIndex;
 
         Assert.Equal(expected, index.DeduplicateItems);
         Assert.Null(index.FillFactor);
@@ -3837,7 +3873,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
         PgTableConstraint.Exclusion exclusion = Assert.Single(table.Exclusions.Values);
         Assert.Equal("Constraint; SELECT 1", exclusion.Name!.Name);
-        Assert.Equal("Method", Assert.IsType<IndexMethod.Custom>(exclusion.BackingIndex.Method).Method.Name);
+        Assert.Equal("Method", Assert.IsType<IndexMethod.Custom>(exclusion.Method).Method.Name);
         Assert.Equal("App", exclusion.Elements[0].Operator.Schema!.Name);
     }
 
@@ -3871,7 +3907,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void Exclusions_ReserveRelationNamesBeforeImplicitSequenceAllocation()
+    public void Exclusions_DoNotRequireImplicitSequenceNameAllocation()
     {
         var builder = CreateBuilder();
         builder.ProcessStatements(ParseStatements("""
@@ -3881,7 +3917,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         PgDefinition definition = builder.ToDefinition();
 
-        Assert.Equal("items_id_seq1", Assert.Single(definition.Tables[new ObjectHandle("catalog", "public", "items")].Columns).BackingSequence!.Name.Name);
+        Assert.Null(Assert.Single(definition.Tables[new ObjectHandle("catalog", "public", "items")].Columns).Identity!.BackingSequence.Name);
     }
 
     [Theory]
@@ -3928,8 +3964,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         builder.ProcessStatements(ParseStatements(
             $"CREATE TABLE items (value {type}, CONSTRAINT ex EXCLUDE USING gist (value {operatorClass} {parameters} WITH &&))"), GetSchema(), 93);
         PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
-        PgIndex index = Assert.Single(table.Exclusions.Values).BackingIndex;
-        PgKeyPart.OperatorClassOptions options = Assert.Single(index.Columns).OperatorClass!;
+        PgTableConstraint.Exclusion exclusion = Assert.Single(table.Exclusions.Values);
+        PgKeyPart.OperatorClassOptions options = Assert.Single(exclusion.Elements).Key.OperatorClass!;
 
         Assert.Equal(signatureLength, options.SignatureLength);
         Assert.Equal(numberOfRanges, options.NumberOfRanges);

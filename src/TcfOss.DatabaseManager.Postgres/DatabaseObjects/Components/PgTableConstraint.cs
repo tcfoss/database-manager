@@ -18,14 +18,14 @@ public abstract record PgTableConstraint(Identifier? Name = null)
     {
         public IncludedColumns? IncludedColumns { get; init; }
         public bool NullsDistinct { get; init; } = true;
-        public PgIndex? BackingIndex { get; init; }
+        public PgBackingIndex BackingIndex { get; init; } = new();
 
         public override StatementTableConstraint.UniqueConstraint ToStatementConstraint(bool removeOptionalElements)
         {
             return new StatementTableConstraint.UniqueConstraint([.. Columns.Select(column => new StatementKeyPart.Column(column))], Name)
             {
                 IncludedColumns = IncludedColumns,
-                IndexParameters = BackingIndex?.Tablespace is { } tablespace ? new PgConstraintIndexParameters(null, tablespace) : null,
+                IndexParameters = BackingIndex.ToStatementIndexParameters(),
                 NullsDistinct = NullsDistinct ? null : false,
                 PgOptions = Options.ToStatementOptions()
             };
@@ -75,19 +75,34 @@ public abstract record PgTableConstraint(Identifier? Name = null)
 
     public record Exclusion(SqlValueList<Exclusion.Element> Elements, Identifier Name) : PgTableConstraint(Name)
     {
-        public required PgIndex BackingIndex { get; init; }
+        public PgBackingIndex BackingIndex { get; init; } = new();
+        public IndexMethod Method { get; init; } = IndexMethod.Default;
+        public IncludedColumns? IncludedColumns { get; init; }
+        public Expression? Predicate { get; init; }
+        public Expression? NormalizedPredicate { get; init; }
+
+        public virtual bool Equals(Exclusion? other)
+        {
+            return other is not null && base.Equals(other)
+                && Elements.Equals(other.Elements) && BackingIndex == other.BackingIndex
+                && Method == other.Method && IncludedColumns == other.IncludedColumns
+                && (NormalizedPredicate ?? Predicate) == (other.NormalizedPredicate ?? other.Predicate);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(base.GetHashCode(), Elements, BackingIndex, Method, IncludedColumns, NormalizedPredicate ?? Predicate);
+        }
 
         public override StatementTableConstraint.PgExclusion ToStatementConstraint(bool removeOptionalElements)
         {
-            SqlValueList<StatementIndexOption>? indexOptions = BackingIndex.ToStatementIndexOptions();
             return new StatementTableConstraint.PgExclusion(
                 Elements.Map(element => new PgExclusionElement(element.Key.ToStatementKeyPart(removeOptionalElements), element.Operator)), Name)
             {
-                Method = BackingIndex.Method,
-                IncludedColumns = BackingIndex.IncludedColumns,
-                Predicate = BackingIndex.Predicate,
-                IndexParameters = indexOptions != null || BackingIndex.Tablespace != null
-                    ? new PgConstraintIndexParameters(indexOptions, BackingIndex.Tablespace) : null,
+                Method = Method,
+                IncludedColumns = IncludedColumns,
+                Predicate = Predicate,
+                IndexParameters = BackingIndex.ToStatementIndexParameters(),
                 PgOptions = Options.ToStatementOptions()
             };
         }

@@ -422,18 +422,18 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             tables.Add(table.Key, table.Value.ToTable(manager));
         }
         ValidateRelationNames(tables, indexes);
-        FinalizeBackingSequenceNames(tables);
+        ValidateBackingSequenceNames(tables);
         return tables;
     }
 
-    private void FinalizeBackingSequenceNames(DatabaseObjectDict<PgTable> tables)
+    private void ValidateBackingSequenceNames(DatabaseObjectDict<PgTable> tables)
     {
         var names = tables.Keys.ToHashSet();
         foreach (PgTable table in tables.Values)
         {
             foreach (Identifier index in table.Indexes.Values.Select(index => index.Name)
                 .Concat(table.UniqueConstraints.Values.Select(unique => unique.Name!))
-                .Concat(table.Exclusions.Values.Select(exclusion => exclusion.BackingIndex.Name))
+                .Concat(table.Exclusions.Values.Select(exclusion => exclusion.Name!))
                 .Concat(table.PrimaryKey == null ? [] : new[] { table.PrimaryKey.Name }))
             {
                 names.Add(ObjectHandle.Create(new ObjectIdentifier(index.Name, table.Name.Schema, index.QuoteStyle), Config.NameHandling));
@@ -441,30 +441,13 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         }
         foreach (PgTable table in tables.Values)
         {
-            foreach (PgColumn column in table.Columns.Where(column => column.BackingSequence is { NameExplicit: true }))
+            foreach (PgColumn column in table.Columns)
             {
-                Register(column.BackingSequence!.Name, table);
-            }
-        }
-        foreach (ObjectHandle handle in tables.Keys.Order())
-        {
-            PgTable table = tables[handle];
-            for (int index = 0; index < table.Columns.Count; index++)
-            {
-                PgColumn column = table.Columns[index];
-                if (column.BackingSequence is not { NameExplicit: false } sequence)
+                if (column.Identity?.BackingSequence.Name is not { } name)
                 {
                     continue;
                 }
-                int suffix = 0;
-                ObjectIdentifier name;
-                do
-                {
-                    name = ComponentNormalizer.NormalizeObjectIdentifier(PgBackingObjectNames.GetIdentitySequenceName(column.Name, suffix++));
-                }
-                while (names.Contains(ObjectHandle.Create(name, Config.NameHandling)));
                 Register(name, table);
-                table.Columns[index] = column with { BackingSequence = sequence with { Name = name } };
             }
         }
 
@@ -567,7 +550,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         foreach (KeyValuePair<ObjectHandle, PgTable> table in tables)
         {
             IEnumerable<Identifier> relationNames = table.Value.UniqueConstraints.Values.Select(unique => unique.Name!)
-                .Concat(table.Value.Exclusions.Values.Select(exclusion => exclusion.BackingIndex.Name));
+                .Concat(table.Value.Exclusions.Values.Select(exclusion => exclusion.Name!));
             if (table.Value.PrimaryKey?.Name is { } primaryKeyName)
             {
                 relationNames = relationNames.Append(primaryKeyName);

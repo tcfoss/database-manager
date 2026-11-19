@@ -139,7 +139,7 @@ public record PgTable(ObjectIdentifier Name, SqlValueList<PgColumn> Columns) : I
             foreach (PgTableConstraint.Exclusion exclusion in Exclusions.Values)
             {
                 foreach (ItemRef item in GetExpressionReferences(
-                    GetIndexExpressions(exclusion.Elements.Select(element => element.Key), exclusion.BackingIndex.Predicate), context))
+                    GetIndexExpressions(exclusion.Elements.Select(element => element.Key), exclusion.Predicate), context))
                 {
                     yield return item;
                 }

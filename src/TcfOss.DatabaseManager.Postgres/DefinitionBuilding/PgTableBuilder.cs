@@ -102,7 +102,7 @@ public class PgTableBuilder(
         ColumnOption.Nullability? nullability = null;
         PgConstraintOptions nullabilityOptions = new();
         ColumnOption.ColumnDefault? defaultValue = null;
-        ColumnOption.Generated? generated = null;
+        ColumnOption.Generated.AsExpression? generated = null;
         StatementColumnOption.Generated.PgIdentity? identity = null;
         ObjectName? collation = null;
         PgColumnStorageMode? storage = null;
@@ -177,6 +177,10 @@ public class PgTableBuilder(
         if (identity != null && defaultValue != null)
         {
             throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
+        }
+        if (identity != null && generated != null)
+        {
+            throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "GENERATED", "column", typedColumn.Name.Name, sourceRef);
         }
         if (identity != null)
         {
@@ -302,7 +306,10 @@ public class PgTableBuilder(
         {
             IncludedColumns = NormalizeIncludedColumns(primaryKey.IncludedColumns, columns, keyName, sourceRef),
             Options = PgConstraintNormalizer.Normalize(primaryKey.PgOptions, "PRIMARY KEY", keyName, sourceRef, allowDeferrable: true),
-            BackingIndex = CreateBackingIndex(columns, keyName, primaryKey.IncludedColumns, primaryKey.IndexParameters?.Tablespace)
+            BackingIndex = new PgBackingIndex
+            {
+                Tablespace = ComponentNormalizer.NormalizeSingleIdentifierNullable(primaryKey.IndexParameters?.Tablespace)
+            }
         };
         for (int index = 0; index < _columns.Count; index++)
         {
@@ -338,7 +345,10 @@ public class PgTableBuilder(
             IncludedColumns = NormalizeIncludedColumns(unique.IncludedColumns, columns, normalizedName, sourceRef),
             NullsDistinct = unique.NullsDistinct ?? true,
             Options = PgConstraintNormalizer.Normalize(unique.PgOptions, "UNIQUE", normalizedName, sourceRef, allowDeferrable: true),
-            BackingIndex = CreateBackingIndex(columns, normalizedName, unique.IncludedColumns, unique.IndexParameters?.Tablespace)
+            BackingIndex = new PgBackingIndex
+            {
+                Tablespace = ComponentNormalizer.NormalizeSingleIdentifierNullable(unique.IndexParameters?.Tablespace)
+            }
         });
     }
 
@@ -381,24 +391,25 @@ public class PgTableBuilder(
         {
             method = custom with { Method = ComponentNormalizer.NormalizeSingleIdentifier(custom.Method) };
         }
+
         ValidateIncludedColumnMethod(method, exclusion.IncludedColumns, sourceRef);
+
         PgTableConstraint.Exclusion normalized = _exclusionNormalizer.Normalize(exclusion, name, method,
-            GetIndexTablespace(exclusion.IndexParameters?.Tablespace), sourceRef);
+            ComponentNormalizer.NormalizeSingleIdentifierNullable(exclusion.IndexParameters?.Tablespace), sourceRef);
+
         normalized = normalized with
         {
-            BackingIndex = normalized.BackingIndex with
-            {
-                IncludedColumns = NormalizeIncludedColumns(exclusion.IncludedColumns,
-                    normalized.BackingIndex.Columns.OfType<PgKeyPart.Column>().Select(column => column.Name), name, sourceRef)
-            }
+            IncludedColumns = NormalizeIncludedColumns(exclusion.IncludedColumns,
+                normalized.Elements.Select(element => element.Key).OfType<PgKeyPart.Column>().Select(column => column.Name), name, sourceRef)
         };
-        foreach (PgKeyPart.IndexExpression key in normalized.BackingIndex.Columns.OfType<PgKeyPart.IndexExpression>())
+
+        foreach (PgKeyPart.IndexExpression key in normalized.Elements.Select(element => element.Key).OfType<PgKeyPart.IndexExpression>())
         {
             ValidateExpressionScope(key.Expression, sourceRef);
         }
-        if (normalized.BackingIndex.Predicate != null)
+        if (normalized.Predicate != null)
         {
-            ValidateExpressionScope(normalized.BackingIndex.Predicate, sourceRef);
+            ValidateExpressionScope(normalized.Predicate, sourceRef);
         }
         _exclusions.Add(name, new ExclusionDeclaration(normalized, sourceRef));
     }
@@ -581,7 +592,7 @@ public class PgTableBuilder(
     }
 
 
-    private PgIdentityOptions ResolveIdentityOptions(StatementColumnOption.Generated.PgIdentity identity,
+    private PgIdentityOptions? ResolveIdentityOptions(StatementColumnOption.Generated.PgIdentity identity,
         DataType dataType, ColumnIdentifier column, SourceRef? sourceRef)
     {
         (long typeMinimum, long typeMaximum) = dataType switch
@@ -591,13 +602,16 @@ public class PgTableBuilder(
             DataType.BigInt => (long.MinValue, long.MaxValue),
             _ => throw new SqlSyntaxException.AutoIncrementIntegerOnly(column.ToSimpleIdentifier(), Name, sourceRef)
         };
+
         long? start = null;
         long increment = 1;
         long? minimum = null;
         long? maximum = null;
         long cache = 1;
         bool cycle = false;
-        var seenOptions = new HashSet<string>(StringComparer.Ordinal);
+
+        var seenOptions = new DuplicateGuard();
+
         foreach (PgStatementSequenceOption option in identity.Options ?? [])
         {
             if (!seenOptions.Add(option.DuplicateCheckKey))
@@ -630,6 +644,7 @@ public class PgTableBuilder(
                     throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", $"identity sequence option {option.DuplicateCheckKey}", sourceRef);
             }
         }
+
         if (increment == 0)
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "zero identity sequence increment", sourceRef);
@@ -638,8 +653,10 @@ public class PgTableBuilder(
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "nonpositive identity sequence cache", sourceRef);
         }
+
         long effectiveMinimum = minimum ?? (increment > 0 ? 1 : typeMinimum);
         long effectiveMaximum = maximum ?? (increment > 0 ? typeMaximum : -1);
+
         if (effectiveMinimum < typeMinimum || effectiveMinimum > typeMaximum
             || effectiveMaximum < typeMinimum || effectiveMaximum > typeMaximum)
         {
@@ -654,7 +671,18 @@ public class PgTableBuilder(
         {
             throw new SqlSyntaxException.UnsupportedDialectClause("PostgreSQL", "identity sequence start outside its bounds", sourceRef);
         }
-        return new PgIdentityOptions(effectiveStart, increment, effectiveMinimum, effectiveMaximum, cache, cycle);
+        if (seenOptions.Count == 0 || (seenOptions.Count == 1 && seenOptions.Contains("SEQUENCE NAME")))
+        {
+            return null;
+        }
+
+        return new PgIdentityOptions(
+            seenOptions.Contains("START") ? effectiveStart : null,
+            seenOptions.Contains("INCREMENT") ? increment : null,
+            seenOptions.Contains("MINVALUE") ? new PgIdentityOptions.Bound(minimum) : null,
+            seenOptions.Contains("MAXVALUE") ? new PgIdentityOptions.Bound(maximum) : null,
+            seenOptions.Contains("CACHE") ? cache : null,
+            seenOptions.Contains("CYCLE") ? cycle : null);
     }
 
     public PgTable ToTable(PgTypeResolutionManager manager)
@@ -681,18 +709,12 @@ public class PgTableBuilder(
                     ? null : column.Default,
                 Storage = column.Storage == null || column.Storage == PgColumnStorageMode.Default ? typeStorage : column.Storage,
                 Compression = column.Compression,
-                Generated = identityOptions != null
-                    ? new ColumnOption.Generated.PgIdentity(column.Identity!.Always, identityOptions)
-                    : column.Generated,
-                BackingSequence = identityOptions == null ? null : new PgBackingSequence(
-                    sequenceName == null
-                        ? ComponentNormalizer.NormalizeObjectIdentifier(PgBackingObjectNames.GetIdentitySequenceName(column.Name))
+                Generated = column.Generated,
+                Identity = column.Identity == null ? null : new PgIdentity(column.Identity.Always,
+                    new PgBackingSequence(sequenceName == null
+                        ? null
                         : ComponentNormalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromObjectName(sequenceName, Name.Schema, null)),
-                    dataType, identityOptions)
-                {
-                    NameExplicit = sequenceName != null,
-                    Unlogged = _unlogged
-                }
+                        identityOptions))
             };
         })];
 
@@ -724,13 +746,14 @@ public class PgTableBuilder(
         var indexes = new DatabaseComponentDict<PgIndex>(NameHandling);
         foreach (IndexDeclaration declaration in _indexes.Values)
         {
-            ValidateIndexColumnReferences(declaration.Index, declaration.SourceRef);
+            ValidateIndexColumnReferences(declaration.Index.Columns, declaration.Index.IncludedColumns, declaration.Index.Name, declaration.SourceRef);
             indexes.Add(declaration.Index.Name, declaration.Index);
         }
         var exclusions = new DatabaseComponentDict<PgTableConstraint.Exclusion>(NameHandling);
         foreach (ExclusionDeclaration declaration in _exclusions.Values)
         {
-            ValidateIndexColumnReferences(declaration.Constraint.BackingIndex, declaration.SourceRef);
+            ValidateIndexColumnReferences(declaration.Constraint.Elements.Select(element => element.Key),
+                declaration.Constraint.IncludedColumns, declaration.Constraint.Name!, declaration.SourceRef);
             exclusions.Add(declaration.Constraint.Name!, declaration.Constraint);
         }
 
@@ -761,30 +784,30 @@ public class PgTableBuilder(
         }
         foreach (IndexDeclaration declaration in _indexes.Values)
         {
-            ValidateIndexExpressions(declaration.Index, result, declaration.SourceRef);
+            ValidateIndexExpressions(declaration.Index.Columns, declaration.Index.Predicate, result, declaration.SourceRef);
         }
         foreach (ExclusionDeclaration declaration in _exclusions.Values)
         {
-            ValidateIndexExpressions(declaration.Constraint.BackingIndex, result, declaration.SourceRef);
+            ValidateIndexExpressions(declaration.Constraint.Elements.Select(element => element.Key), declaration.Constraint.Predicate, result, declaration.SourceRef);
         }
         return result;
     }
 
-    private void ValidateIndexColumnReferences(PgIndex index, SourceRef? sourceRef)
+    private void ValidateIndexColumnReferences(IEnumerable<PgKeyPart> keyParts, IncludedColumns? includedColumns, Identifier name, SourceRef? sourceRef)
     {
-        ValidateColumnReferences(index.Columns.OfType<PgKeyPart.Column>().Select(column => column.Name), index.Name.Name, sourceRef);
-        ValidateColumnReferences(index.IncludedColumns?.Columns ?? [], index.Name.Name, sourceRef);
+        ValidateColumnReferences(keyParts.OfType<PgKeyPart.Column>().Select(column => column.Name), name.Name, sourceRef);
+        ValidateColumnReferences(includedColumns?.Columns ?? [], name.Name, sourceRef);
     }
 
-    private void ValidateIndexExpressions(PgIndex index, PgTable table, SourceRef? sourceRef)
+    private void ValidateIndexExpressions(IEnumerable<PgKeyPart> keyParts, Expression? predicate, PgTable table, SourceRef? sourceRef)
     {
-        foreach (PgKeyPart.IndexExpression part in index.Columns.OfType<PgKeyPart.IndexExpression>())
+        foreach (PgKeyPart.IndexExpression part in keyParts.OfType<PgKeyPart.IndexExpression>())
         {
             ValidateExpressionColumns(part.Expression, table, NameHandling, sourceRef);
         }
-        if (index.Predicate != null)
+        if (predicate != null)
         {
-            ValidateExpressionColumns(index.Predicate, table, NameHandling, sourceRef);
+            ValidateExpressionColumns(predicate, table, NameHandling, sourceRef);
         }
     }
 
@@ -803,20 +826,6 @@ public class PgTableBuilder(
     {
         return ComponentNormalizer.NormalizeSingleIdentifier(explicitTablespace
             ?? serverDefaults.Tablespace ?? serverDefaults.CatalogTablespace);
-    }
-
-    private PgIndex CreateBackingIndex(SqlValueList<Identifier> columns, Identifier name, IncludedColumns? includedColumns,
-        Identifier? tablespace)
-    {
-        return new PgIndex(columns.Map<PgKeyPart>(column => new PgKeyPart.Column(column)))
-        {
-            Name = name,
-            NameExplicit = true,
-            Unique = true,
-            Method = new IndexMethod.BuiltIn(BuiltInIndexMethod.Btree),
-            Tablespace = GetIndexTablespace(tablespace),
-            IncludedColumns = includedColumns == null ? null : new IncludedColumns(includedColumns.Columns.Map(ComponentNormalizer.NormalizeSingleIdentifier))
-        };
     }
 
     private IncludedColumns? NormalizeIncludedColumns(IncludedColumns? includedColumns, IEnumerable<Identifier> keyColumns,
@@ -983,7 +992,7 @@ public class PgTableBuilder(
         public PgColumnStorageMode? Storage { get; init; }
         public PgCompressionMethod Compression { get; init; } = PgCompressionMethod.Default;
         public PgConstraintOptions NullabilityOptions { get; init; } = new();
-        public ColumnOption.Generated? Generated { get; init; }
+        public ColumnOption.Generated.AsExpression? Generated { get; init; }
         public StatementColumnOption.Generated.PgIdentity? Identity { get; init; }
         public SourceRef? SourceRef { get; init; }
     }

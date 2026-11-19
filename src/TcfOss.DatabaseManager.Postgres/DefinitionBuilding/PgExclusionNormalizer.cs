@@ -15,12 +15,13 @@ namespace TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INormalizeSql sqlNormalizer)
 {
     public PgTableConstraint.Exclusion Normalize(StatementTableConstraint.PgExclusion exclusion, Identifier name,
-        IndexMethod method, Identifier tablespace, SourceRef? sourceRef)
+        IndexMethod method, Identifier? tablespace, SourceRef? sourceRef)
     {
         if (exclusion.Elements.Count == 0)
         {
             throw new SqlSyntaxException.EmptyIndexColumnList("An EXCLUDE constraint", sourceRef);
         }
+
         SqlValueList<PgTableConstraint.Exclusion.Element> elements = exclusion.Elements.Map(element => new PgTableConstraint.Exclusion.Element(
             NormalizeKey(element.Key, method, sourceRef),
             element.Operator with
@@ -28,19 +29,18 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
                 Schema = componentNormalizer.NormalizeSingleIdentifierNullable(element.Operator.Schema),
                 UseOperatorSyntax = element.Operator.Schema != null
             }));
+
         return new PgTableConstraint.Exclusion(elements, name)
         {
             Options = PgConstraintNormalizer.Normalize(exclusion.PgOptions, "EXCLUDE", name, sourceRef, allowDeferrable: true),
-            BackingIndex = ApplyStorageParameters(new PgIndex(elements.Map(element => element.Key))
+            Method = method,
+            IncludedColumns = exclusion.IncludedColumns,
+            Predicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpressionNoFlatten(exclusion.Predicate),
+            NormalizedPredicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpression(exclusion.Predicate),
+            BackingIndex = ApplyStorageParameters(new PgBackingIndex
             {
-                Name = name,
-                NameExplicit = true,
-                Method = method,
-                Tablespace = tablespace,
-                IncludedColumns = exclusion.IncludedColumns,
-                Predicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpressionNoFlatten(exclusion.Predicate),
-                NormalizedPredicate = exclusion.Predicate == null ? null : sqlNormalizer.NormalizeExpression(exclusion.Predicate)
-            }, exclusion.IndexParameters?.StorageParameters, sourceRef)
+                Tablespace = tablespace
+            }, exclusion.IndexParameters?.StorageParameters, name, sourceRef)
         };
     }
 
@@ -107,15 +107,15 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
         return result;
     }
 
-    private static PgIndex ApplyStorageParameters(PgIndex index, SqlValueList<StatementIndexOption>? parameters,
-        SourceRef? sourceRef)
+    private static PgBackingIndex ApplyStorageParameters(PgBackingIndex index, SqlValueList<StatementIndexOption>? parameters,
+        Identifier name, SourceRef? sourceRef)
     {
         var seen = new HashSet<Type>();
         foreach (StatementIndexOption parameter in parameters ?? [])
         {
             if (!seen.Add(parameter.GetType()))
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce(parameter.GetType().Name, "EXCLUDE index", index.Name, sourceRef);
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce(parameter.GetType().Name, "EXCLUDE index", name, sourceRef);
             }
             index = parameter switch
             {

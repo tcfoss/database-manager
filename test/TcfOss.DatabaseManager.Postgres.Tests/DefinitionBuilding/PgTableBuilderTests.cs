@@ -437,17 +437,13 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("SMALLINT", "", true, 1L, 1L, 1L, 32767L)]
-    [InlineData("INT", "", false, 1L, 1L, 1L, 2147483647L)]
-    [InlineData("BIGINT", "", true, 1L, 1L, 1L, long.MaxValue)]
-    [InlineData("SMALLINT", "(INCREMENT -1)", false, -1L, -1L, -32768L, -1L)]
-    [InlineData("INT", "(INCREMENT BY -1)", true, -1L, -1L, -2147483648L, -1L)]
-    [InlineData("BIGINT", "(INCREMENT -1)", false, -1L, -1L, long.MinValue, -1L)]
-    public void IdentityOptions_ResolveDefaultsAfterIntegerTypeResolution(string type, string options, bool always,
-        long start, long increment, long minimum, long maximum)
+    [InlineData("SMALLINT", true)]
+    [InlineData("INT", false)]
+    [InlineData("BIGINT", true)]
+    public void IdentityOptions_LeaveUnspecifiedBackingNamesAndConfigurationUnmanaged(string type, bool always)
     {
         string mode = always ? "ALWAYS" : "BY DEFAULT";
-        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id {type} GENERATED {mode} AS IDENTITY {options})"));
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id {type} GENERATED {mode} AS IDENTITY)"));
         var builder = CreateBuilder();
         builder.ApplyCreateTable(statement);
         PgTableBuilder.PreColumn pending = Assert.Single(builder.Columns);
@@ -457,30 +453,68 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         var table = builder.ToTable(CreateManager());
         var column = Assert.Single(table.Columns);
-        var identity = Assert.IsType<ColumnOption.Generated.PgIdentity>(column.Generated);
+        var identity = Assert.IsType<PgIdentity>(column.Identity);
         Assert.Equal(always, identity.Always);
-        Assert.Equal(new PgIdentityOptions(start, increment, minimum, maximum, 1, false), identity.Options);
+        Assert.Null(column.Generated);
+        Assert.Null(identity.BackingSequence.Name);
+        Assert.Null(identity.BackingSequence.Options);
         Assert.IsType<ColumnOption.Nullability.NotNull>(column.Nullability);
-        Assert.Equal(6, identity.Options.ToStatementOptions().Count);
+        Assert.DoesNotContain("CACHE", column.ToStatementColumn().ToSql());
 
         var rebuilt = CreateBuilder();
         rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({column.ToStatementColumn().ToSql()})")));
-        Assert.Equal(identity, Assert.Single(rebuilt.ToTable(CreateManager()).Columns).Generated);
+        Assert.Equal(identity, Assert.Single(rebuilt.ToTable(CreateManager()).Columns).Identity);
     }
 
     [Theory]
-    [InlineData("MINVALUE 10 MAXVALUE 20", 10L, 1L, 10L, 20L, 1L, false)]
+    [InlineData("MINVALUE 10 MAXVALUE 20", null, null, 10L, 20L, null, null)]
     [InlineData("MAXVALUE -5 MINVALUE -20 INCREMENT -3 CACHE 4 CYCLE START -8", -8L, -3L, -20L, -5L, 4L, true)]
-    [InlineData("INCREMENT -2 NO MINVALUE NO MAXVALUE NO CYCLE", -1L, -2L, long.MinValue, -1L, 1L, false)]
-    [InlineData("CACHE 2 START WITH 12 MINVALUE 10 MAXVALUE 20 INCREMENT BY 2", 12L, 2L, 10L, 20L, 2L, false)]
-    public void IdentityOptions_NormalizeExplicitBoundsAndNoForms(string options, long start, long increment,
-        long minimum, long maximum, long cache, bool cycle)
+    [InlineData("CACHE 2 START WITH 12 MINVALUE 10 MAXVALUE 20 INCREMENT BY 2", 12L, 2L, 10L, 20L, 2L, null)]
+    [InlineData("CACHE 10", null, null, null, null, 10L, null)]
+    [InlineData("INCREMENT -1", null, -1L, null, null, null, null)]
+    [InlineData("SEQUENCE NAME app.ids", null, null, null, null, null, null)]
+    public void IdentityOptions_PreserveOnlyExplicitConfiguration(string options, long? start, long? increment,
+        long? minimum, long? maximum, long? cache, bool? cycle)
     {
         var builder = CreateBuilder();
         builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id BIGINT GENERATED ALWAYS AS IDENTITY ({options}))")));
-        var identity = Assert.IsType<ColumnOption.Generated.PgIdentity>(Assert.Single(builder.ToTable(CreateManager()).Columns).Generated);
+        PgColumn column = Assert.Single(builder.ToTable(CreateManager()).Columns);
+        var identity = Assert.IsType<PgIdentity>(column.Identity);
+        if (options.StartsWith("SEQUENCE NAME", StringComparison.Ordinal))
+        {
+            Assert.NotNull(identity.BackingSequence.Name);
+            Assert.Null(identity.BackingSequence.Options);
+        }
+        else
+        {
+            Assert.Equal(new PgIdentityOptions(start, increment,
+                minimum is { } min ? new PgIdentityOptions.Bound(min) : null,
+                maximum is { } max ? new PgIdentityOptions.Bound(max) : null, cache, cycle), identity.BackingSequence.Options);
+        }
+        var rebuilt = CreateBuilder();
+        rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({column.ToStatementColumn().ToSql()})")));
+        Assert.Equal(column, Assert.Single(rebuilt.ToTable(CreateManager()).Columns));
+    }
 
-        Assert.Equal(new PgIdentityOptions(start, increment, minimum, maximum, cache, cycle), identity.Options);
+    [Fact]
+    public void IdentityOptions_DistinguishExplicitDefaultBoundsFromUnmanagedBounds()
+    {
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (INCREMENT -2 NO MINVALUE NO MAXVALUE NO CYCLE))")));
+        PgColumn column = Assert.Single(builder.ToTable(CreateManager()).Columns);
+        PgIdentityOptions options = column.Identity!.BackingSequence.Options!;
+
+        Assert.Equal(new PgIdentityOptions.Bound(null), options.MinValue);
+        Assert.Equal(new PgIdentityOptions.Bound(null), options.MaxValue);
+        Assert.Null(options.Start);
+        Assert.Null(options.Cache);
+        Assert.Equal(false, options.Cycle);
+        Assert.Contains("NO MINVALUE", column.ToStatementColumn().ToSql());
+        Assert.Contains("NO MAXVALUE", column.ToStatementColumn().ToSql());
+        var rebuilt = CreateBuilder();
+        rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({column.ToStatementColumn().ToSql()})")));
+        Assert.Equal(column, Assert.Single(rebuilt.ToTable(CreateManager()).Columns));
     }
 
     [Theory]

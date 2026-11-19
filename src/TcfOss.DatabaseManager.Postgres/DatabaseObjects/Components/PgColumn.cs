@@ -13,10 +13,10 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
     public ColumnOption.Nullability? Nullability { get; init; }
     public PgConstraintOptions NullabilityOptions { get; init; } = new();
     public ColumnOption.ColumnDefault? Default { get; init; }
-    public ColumnOption.Generated? Generated { get; init; }
+    public ColumnOption.Generated.AsExpression? Generated { get; init; }
+    public PgIdentity? Identity { get; init; }
     public PgColumnStorageMode? Storage { get; init; }
     public PgCompressionMethod Compression { get; init; } = PgCompressionMethod.Default;
-    public PgBackingSequence? BackingSequence { get; init; }
 
     public StatementColumn.Typed ToStatementColumn(DifferFormatManager? manager = null)
     {
@@ -58,14 +58,14 @@ public record PgColumn(ColumnIdentifier Name, DataType DataType)
         {
             options.Add(new StatementColumnOption.Generated.AsExpression(generated.Expression, generated.Mode, true, true, false));
         }
-        else if (Generated is ColumnOption.Generated.PgIdentity identity)
+        else if (Identity is { } identity)
         {
-            SqlValueList<PgStatementSequenceOption> sequenceOptions = identity.Options.ToStatementOptions();
-            if (BackingSequence is { NameExplicit: true } sequence)
+            SqlValueList<PgStatementSequenceOption> sequenceOptions = identity.BackingSequence.Options?.ToStatementOptions() ?? [];
+            if (identity.BackingSequence.Name is { } sequenceName)
             {
-                sequenceOptions.Add(new PgStatementSequenceOption.SequenceName(sequence.Name.ToObjectName(2)));
+                sequenceOptions.Add(new PgStatementSequenceOption.SequenceName(sequenceName.ToObjectName(2)));
             }
-            options.Add(new StatementColumnOption.Generated.PgIdentity(identity.Always, sequenceOptions));
+            options.Add(new StatementColumnOption.Generated.PgIdentity(identity.Always, sequenceOptions.Count == 0 ? null : sequenceOptions));
         }
 
         return new StatementColumn.Typed(Name.ToSimpleIdentifier(),

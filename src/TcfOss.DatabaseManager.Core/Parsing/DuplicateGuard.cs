@@ -30,4 +30,11 @@ public class DuplicateGuard
     {
         AddGuarded(item.DuplicateCheckKey, location);
     }
+
+    public bool Contains(string key)
+    {
+        return _seen.Contains(key);
+    }
+
+    public int Count => _seen.Count;
 }
