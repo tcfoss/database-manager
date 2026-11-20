@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
@@ -194,8 +195,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         StatementColumnOption.Default option = asExpression
             ? new StatementColumnOption.Default.DefaultExpression(new LiteralValue(literal), constraintName)
             : new StatementColumnOption.Default.DefaultValue(literal, constraintName);
-        var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, config.AttributeDefaults,
-            config.ServerDefaults, new Normalizer(config, normalizer), null);
+        var builder = CreateBuilder(componentNormalizer: normalizer);
         builder.AddColumn(new StatementColumn.Typed(new Identifier("value"), new DataType.Int(), [option]), null);
         var pendingDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(builder.Columns).Default);
         Assert.Same(expected, pendingDefault.Value);
@@ -735,6 +735,8 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CONSTRAINT ix PRIMARY KEY (id)", true)]
     [InlineData("CONSTRAINT ix UNIQUE (id)", false)]
     [InlineData("CONSTRAINT ix UNIQUE (id)", true)]
+    [InlineData("CONSTRAINT ix EXCLUDE (id WITH =)", false)]
+    [InlineData("CONSTRAINT ix EXCLUDE (id WITH =)", true)]
     public void IndexAndConstraintNames_RejectCollisionsInBothDeclarationOrders(string constraintSql, bool indexFirst)
     {
         var source = new SourceRef(7, 0, 10);
@@ -1082,12 +1084,26 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         return new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
     }
 
-    private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null)
+    private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null, ComponentNormalizer? componentNormalizer = null)
     {
-        var normalizer = new PgComponentNormalizer(PgTestConfig.GetTestConfig());
-        return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
+        SourceRef tableSource = sourceRef ?? new SourceRef(0, 0, 0);
+        ComponentNormalizer normalizer = componentNormalizer ?? new PgComponentNormalizer(PgTestConfig.GetTestConfig());
+        ObjectIdentifier tableName = normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items"));
+        var registry = new RelationNameRegistry();
+        registry.Register(tableName.ToSimpleIdentifier(), tableName.Schema, tableSource);
+        return new PgTableBuilder(tableName,
             NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults,
-            PgTestConfig.GetTestConfig().ServerDefaults, new PgExpressionNormalizer(PgTestConfig.GetTestConfig(), normalizer), sourceRef);
+            PgTestConfig.GetTestConfig().ServerDefaults, new PgExpressionNormalizer(PgTestConfig.GetTestConfig(), normalizer),
+            registry.Register, tableSource);
+    }
+
+    private sealed class RelationNameRegistry()
+        : PgDefinitionBuilder(PgTestConfig.GetTestConfig(), new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance)
+    {
+        public ObjectNameAndHandle Register(Identifier name, SchemaIdentifier schema, SourceRef sourceRef)
+        {
+            return RegisterRelationName(name, schema, sourceRef);
+        }
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)

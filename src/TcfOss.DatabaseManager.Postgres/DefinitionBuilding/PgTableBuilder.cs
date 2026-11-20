@@ -27,12 +27,15 @@ public class PgTableBuilder(
     AttributeDefaults attributeDefaults,
     PgServerDefaults serverDefaults,
     INormalizeSql sqlNormalizer,
-    SourceRef? sourceRef)
+    Func<Identifier, SchemaIdentifier, SourceRef, ObjectNameAndHandle> registerRelationName,
+    SourceRef sourceRef)
     : TableBuilder<PgTable>(name, nameHandling, componentNormalizer, sourceRef)
 {
     private readonly List<PreColumn> _columns = [];
     private readonly PgPartitionNormalizer _partitionNormalizer = new(componentNormalizer, sqlNormalizer);
     private readonly PgExclusionNormalizer _exclusionNormalizer = new(componentNormalizer, sqlNormalizer);
+    private readonly Func<Identifier, SchemaIdentifier, SourceRef, ObjectNameAndHandle> _registerRelationName = registerRelationName;
+
     private bool _unlogged;
     private Identifier? _accessMethod;
     private Identifier? _tablespace;
@@ -296,11 +299,7 @@ public class PgTableBuilder(
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce("PRIMARY KEY", "table", Name, sourceRef);
         }
-        Identifier keyName = AddConstraintName(primaryKey.Name, "PRIMARY KEY", sourceRef);
-        if (_indexes.ContainsKey(keyName))
-        {
-            throw new SqlSyntaxException.DuplicateObject(keyName, sourceRef);
-        }
+        Identifier keyName = AddConstraintName(primaryKey.Name, "PRIMARY KEY", sourceRef, hasBackingIndex: true);
         SqlValueList<Identifier> columns = NormalizeConstraintColumns(primaryKey.Columns, keyName, sourceRef);
         _primaryKey = new PgPrimaryKey(columns, keyName)
         {
@@ -334,11 +333,7 @@ public class PgTableBuilder(
     private void AddTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef? sourceRef)
     {
         ValidateTableUnique(unique, sourceRef);
-        Identifier normalizedName = AddConstraintName(unique.Name, "UNIQUE constraint", sourceRef);
-        if (_indexes.ContainsKey(normalizedName))
-        {
-            throw new SqlSyntaxException.DuplicateObject(normalizedName, sourceRef);
-        }
+        Identifier normalizedName = AddConstraintName(unique.Name, "UNIQUE constraint", sourceRef, hasBackingIndex: true);
         SqlValueList<Identifier> columns = NormalizeConstraintColumns(unique.Columns, normalizedName, sourceRef);
         _uniqueConstraints.Add(normalizedName, new PgTableConstraint.Unique(columns, normalizedName)
         {
@@ -381,11 +376,7 @@ public class PgTableBuilder(
     private void AddTableExclusion(StatementTableConstraint.PgExclusion exclusion, SourceRef? sourceRef)
     {
         ValidateConstraintIndexOptions(exclusion.Comment, sourceRef);
-        Identifier name = AddConstraintName(exclusion.Name, "EXCLUDE", sourceRef);
-        if (_indexes.ContainsKey(name))
-        {
-            throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
-        }
+        Identifier name = AddConstraintName(exclusion.Name, "EXCLUDE", sourceRef, hasBackingIndex: true);
         IndexMethod method = exclusion.Method ?? new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
         if (method is IndexMethod.Custom custom)
         {
@@ -505,7 +496,7 @@ public class PgTableBuilder(
         }
     }
 
-    private Identifier AddConstraintName(Identifier? name, string constraintType, SourceRef? sourceRef)
+    private Identifier AddConstraintName(Identifier? name, string constraintType, SourceRef? sourceRef, bool hasBackingIndex = false)
     {
         if (name == null)
         {
@@ -515,22 +506,17 @@ public class PgTableBuilder(
         {
             throw new SqlSyntaxException.SpecifiedMoreThanOnce(name.Name, "table", Name, sourceRef);
         }
-        return ComponentNormalizer.NormalizeSingleIdentifier(name);
+        return hasBackingIndex
+            ? _registerRelationName(name, Name.Schema, sourceRef ?? SourceRef).Id.ToSimpleIdentifier()
+            : ComponentNormalizer.NormalizeSingleIdentifier(name);
     }
 
     private void AddIndexDeclaration(Identifier name, SqlValueList<StatementKeyPart> columns, bool unique, IndexMethod? method,
         Expression? predicate, IncludedColumns? includedColumns = null, Identifier? tablespace = null, SourceRef? sourceRef = null)
     {
         method ??= new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
-        name = ComponentNormalizer.NormalizeSingleIdentifier(name);
-        if (_indexes.ContainsKey(name) || _uniqueConstraints.ContainsKey(name) || _exclusions.ContainsKey(name))
-        {
-            throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
-        }
-        if (_primaryKey?.Name != null && _primaryKey.Name.Name == name.Name)
-        {
-            throw new SqlSyntaxException.DuplicateObject(name, sourceRef);
-        }
+        ObjectNameAndHandle nameAndHandle = _registerRelationName(name, Name.Schema, sourceRef ?? SourceRef);
+        name = nameAndHandle.Id.ToSimpleIdentifier();
         if (!IndexMethod.IsBtree(method) && columns.Any(part => part switch
             {
                 StatementKeyPart.Column column => column.Direction != null,

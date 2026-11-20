@@ -1454,20 +1454,21 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("label", Assert.Single(foreignKey.ReferencedColumns).Name);
     }
 
-    [Fact]
-    public void PrimaryKeys_RegisterNamedBackingRelationsInTheTableSchema()
+    [Theory]
+    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("UNIQUE (id)")]
+    [InlineData("EXCLUDE (id WITH =)")]
+    public void IndexBackedConstraints_RegisterNamedBackingRelationsInTheTableSchema(string constraint)
     {
         var sourceManager = new SourceManager();
         var builder = CreateBuilder(sourceManager);
         builder.ProcessStatements(ParseStatements(
-            "CREATE TABLE app.items (id INT, CONSTRAINT items_pk PRIMARY KEY (id))"), GetSchema(), 7);
+            $"CREATE TABLE app.items (id INT, CONSTRAINT items_key {constraint})"), GetSchema(), 7);
 
-        PgTable table = Assert.Single(builder.ToDefinition().Tables).Value;
-
-        Assert.Equal("items_pk", table.PrimaryKey?.Name?.Name);
         Assert.Equal(sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items")),
-            sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items_pk")));
-        Assert.NotNull(sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items_pk")));
+            sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items_key")));
+        Assert.NotNull(sourceManager.GetSourceRef(new ObjectHandle("catalog", "app", "items_key")));
+        Assert.Single(builder.ToDefinition().Tables);
     }
 
     [Fact]
@@ -1486,6 +1487,29 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
+    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("UNIQUE (id)")]
+    [InlineData("EXCLUDE (id WITH =)")]
+    public void IndexNames_PreserveSchemaAndQuotedCaseDistinctions(string constraint)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"""
+            CREATE TABLE public.first (id INT, CONSTRAINT key_name {constraint});
+            CREATE TABLE app.second (id INT, CONSTRAINT key_name {constraint});
+            CREATE TABLE public.third (id INT, CONSTRAINT "Key_Name" {constraint});
+            CREATE TABLE other.fourth (id INT);
+            CREATE INDEX key_name ON other.fourth (id);
+            CREATE INDEX "KEY_NAME" ON public.first (id)
+            """), GetSchema(), 72);
+
+        PgDefinition definition = builder.ToDefinition();
+
+        Assert.Equal(4, definition.Tables.Count);
+        Assert.Equal("key_name", Assert.Single(definition.Tables[new ObjectHandle("catalog", "other", "fourth")].Indexes.Values).Name.Name);
+        Assert.Equal("KEY_NAME", Assert.Single(definition.Tables[new ObjectHandle("catalog", "public", "first")].Indexes.Values).Name.Name);
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE items (id INT); CREATE INDEX ix ON items (id); CREATE INDEX IX ON items (id)")]
     [InlineData("CREATE TABLE items (id INT); CREATE INDEX items ON items (id)")]
     [InlineData("CREATE TABLE items (id INT, CONSTRAINT ix UNIQUE (id)); CREATE INDEX ix ON items (id)")]
@@ -1495,9 +1519,54 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void Indexes_RejectRelationNamespaceCollisions(string sql)
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
 
-        Assert.Throws<SqlSyntaxException.DuplicateObject>(builder.ToDefinition);
+        Assert.Throws<SqlSyntaxException.DuplicateObject>(() =>
+        {
+            builder.ProcessStatements(ParseStatements(sql), GetSchema(), 0);
+            builder.ToDefinition();
+        });
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY (id)", false)]
+    [InlineData("PRIMARY KEY (id)", true)]
+    [InlineData("UNIQUE (id)", false)]
+    [InlineData("UNIQUE (id)", true)]
+    [InlineData("EXCLUDE (id WITH =)", false)]
+    [InlineData("EXCLUDE (id WITH =)", true)]
+    public void IndexBackedConstraints_RejectTableNameCollisionsDuringRegistration(string constraint, bool tableFirst)
+    {
+        var builder = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE app.key_name (id INT)"));
+        var owner = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE app.items (id INT, CONSTRAINT key_name {constraint})"));
+        Statement first = tableFirst ? table : owner;
+        Statement second = tableFirst ? owner : table;
+        builder.ProcessStatements([first], GetSchema(), 70);
+
+        var error = Assert.Throws<SqlSyntaxException.DuplicateObject>(() =>
+            builder.ProcessStatements([second], GetSchema(), 71));
+
+        Assert.Equal(new SourceRef(71, second.Meta.Start!.Value, second.Meta.End!.Value), error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("PRIMARY KEY (id)", "UNIQUE (id)")]
+    [InlineData("UNIQUE (id)", "PRIMARY KEY (id)")]
+    [InlineData("PRIMARY KEY (id)", "EXCLUDE (id WITH =)")]
+    [InlineData("EXCLUDE (id WITH =)", "PRIMARY KEY (id)")]
+    [InlineData("UNIQUE (id)", "EXCLUDE (id WITH =)")]
+    [InlineData("EXCLUDE (id WITH =)", "UNIQUE (id)")]
+    public void IndexBackedConstraints_RejectCrossTableCollisionsDuringRegistration(string firstConstraint, string secondConstraint)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements(
+            $"CREATE TABLE app.first (id INT, CONSTRAINT key_name {firstConstraint})"), GetSchema(), 70);
+        var second = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE app.second (id INT, CONSTRAINT Key_Name {secondConstraint})"));
+
+        var error = Assert.Throws<SqlSyntaxException.DuplicateObject>(() =>
+            builder.ProcessStatements([second], GetSchema(), 71));
+
+        Assert.Equal(new SourceRef(71, second.Meta.Start!.Value, second.Meta.End!.Value), error.ObjectSourceRef);
     }
 
     [Theory]
@@ -3055,6 +3124,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("constraint", typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
     [InlineData("index", typeof(SqlSyntaxException.DuplicateObject))]
     [InlineData("table-index", typeof(SqlSyntaxException.DuplicateObject))]
+    [InlineData("backing-index", typeof(SqlSyntaxException.DuplicateObject))]
     public void StoredNames_DiagnoseCollisionsAfterTruncation(string kind, Type expectedType)
     {
         string name = new('n', 63);
@@ -3065,6 +3135,7 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
             "constraint" => $"CREATE TABLE items (id INT, CONSTRAINT {name}first UNIQUE (id), CONSTRAINT {name}second CHECK (id > 0))",
             "index" => $"CREATE TABLE first (id INT); CREATE TABLE second (id INT); CREATE INDEX {name}first ON first (id); CREATE INDEX {name}second ON second (id)",
             "table-index" => $"CREATE TABLE {name}first (id INT); CREATE INDEX {name}second ON {name}reference (id)",
+            "backing-index" => $"CREATE TABLE first (id INT, CONSTRAINT {name}first PRIMARY KEY (id)); CREATE TABLE second (id INT, CONSTRAINT {name}second UNIQUE (id))",
             _ => throw new InvalidOperationException()
         };
         var builder = CreateBuilder();

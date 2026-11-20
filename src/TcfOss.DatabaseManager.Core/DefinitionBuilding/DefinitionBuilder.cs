@@ -35,17 +35,47 @@ public abstract class DefinitionBuilder<TDefinition, TConfig, TSchemaMapping>(TC
     // ReSharper restore MemberCanBeProtected.Global
     // ReSharper restore UnusedMemberInSuper.Global
 
-    protected ObjectNameAndHandle GetAndValidateName<T>(T statement, SchemaIdentifier activeSchemaId, SourceRef? sourceRef) where T : ICreateStatement
+    protected ObjectNameAndHandle GetName<T>(T statement, SchemaIdentifier activeSchemaId)
+        where T : ICreateStatement
     {
         ObjectIdentifier objectId = ComponentNormalizer.NormalizeObjectIdentifier(
             ObjectIdentifier.FromObjectName(statement.Name, activeSchemaId, QuoteStyle));
         ObjectHandle handle = ObjectHandle.Create(statement.Name, activeSchemaId, _nameHandling);
 
-        if (!ObjectHandles.Add(handle))
-        {
-            throw new SqlSyntaxException.DuplicateObject(objectId, sourceRef);
-        }
+        return new ObjectNameAndHandle(objectId, handle);
+    }
+
+    protected ObjectNameAndHandle GetName(Identifier name, SchemaIdentifier activeSchemaId)
+    {
+        ObjectIdentifier objectId = ComponentNormalizer.NormalizeObjectIdentifier(
+            ObjectIdentifier.FromIdentifier(name, activeSchemaId, QuoteStyle));
+        ObjectHandle handle = ObjectHandle.Create(objectId, _nameHandling);
 
         return new ObjectNameAndHandle(objectId, handle);
+    }
+
+    protected ObjectNameAndHandle GetAndValidateName<T>(T statement, SchemaIdentifier activeSchemaId, SourceRef? sourceRef)
+        where T : ICreateStatement
+    {
+        ObjectNameAndHandle nameAndHandle = GetName(statement, activeSchemaId);
+
+        if (!ObjectHandles.Add(nameAndHandle.Key))
+        {
+            throw new SqlSyntaxException.DuplicateObject(nameAndHandle.Id, sourceRef);
+        }
+
+        return nameAndHandle;
+    }
+
+    protected ObjectNameAndHandle GetAndValidateName(Identifier name, SchemaIdentifier activeSchemaId, SourceRef? sourceRef)
+    {
+        ObjectNameAndHandle nameAndHandle = GetName(name, activeSchemaId);
+
+        if (!ObjectHandles.Add(nameAndHandle.Key))
+        {
+            throw new SqlSyntaxException.DuplicateObject(nameAndHandle.Id, sourceRef);
+        }
+
+        return nameAndHandle;
     }
 }

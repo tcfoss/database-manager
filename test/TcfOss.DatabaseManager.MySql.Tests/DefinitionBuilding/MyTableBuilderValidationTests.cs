@@ -284,7 +284,7 @@ public class MyTableBuilderValidationTests
             config.Schemas.Values.First().SchemaDefaults,
             componentNormalizer,
             expressionNormalizer,
-            null);
+            new SourceRef(0, 0, 0));
         return tableBuilder;
     }
 }

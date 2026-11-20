@@ -51,7 +51,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 case CreateTable table:
                     ObjectNameAndHandle nameAndHandle = GetAndValidateName(table, activeSchemaId, sourceRef);
                     var tableBuilder = new PgTableBuilder(nameAndHandle.Id, Config.NameHandling, ComponentNormalizer,
-                        Config.AttributeDefaults, Config.ServerDefaults, new PgExpressionNormalizer(Config, ComponentNormalizer), sourceRef);
+                        Config.AttributeDefaults, Config.ServerDefaults, new PgExpressionNormalizer(Config, ComponentNormalizer), RegisterRelationName, sourceRef);
                     tableBuilder.ApplyCreateTable(table);
                     _tableBuilders.Add(nameAndHandle.Key, tableBuilder);
                     SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);
@@ -66,7 +66,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                     AddDeclaration(domain, activeSchemaId, sourceRef, _domains);
                     break;
                 case CreateFunction function:
-                    AddDeclaration(function, activeSchemaId, sourceRef, _functions);
+                    AddFunctionDeclaration(function, activeSchemaId, sourceRef);
                     break;
                 case CreateProcedure procedure:
                     AddDeclaration(procedure, activeSchemaId, sourceRef, _procedures);
@@ -103,6 +103,20 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         ObjectNameAndHandle nameAndHandle = GetAndValidateName(statement, activeSchemaId, sourceRef);
         declarations.Add(nameAndHandle.Key, new Declaration<TStatement>(nameAndHandle.Id, statement, sourceRef));
         SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);
+    }
+
+    private void AddFunctionDeclaration(CreateFunction createFunction, SchemaIdentifier activeSchemaId, SourceRef sourceRef)
+    {
+        ObjectNameAndHandle nameAndHandle = GetName(createFunction, activeSchemaId);
+        _functions.Add(nameAndHandle.Key, new Declaration<CreateFunction>(nameAndHandle.Id, createFunction, sourceRef));
+    }
+
+    protected ObjectNameAndHandle RegisterRelationName(Identifier name, SchemaIdentifier activeSchemaId, SourceRef sourceRef)
+    {
+        ObjectNameAndHandle nameAndHandle = GetAndValidateName(name, activeSchemaId, sourceRef);
+        SourceManager.RegisterObject(nameAndHandle.Key, sourceRef);
+
+        return nameAndHandle;
     }
 
     private PgTypeResolutionManager GetTypeResolutionManager()
@@ -415,13 +429,12 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
 
     private DatabaseObjectDict<PgTable> GetTables(PgTypeResolutionManager manager)
     {
-        List<(ObjectIdentifier Name, SourceRef Source)> indexes = ApplyIndexes(manager);
+        ApplyIndexes(manager);
         var tables = new DatabaseObjectDict<PgTable>(Config.NameHandling);
         foreach (KeyValuePair<ObjectHandle, PgTableBuilder> table in _tableBuilders)
         {
             tables.Add(table.Key, table.Value.ToTable(manager));
         }
-        ValidateRelationNames(tables, indexes);
         ValidateBackingSequenceNames(tables);
         return tables;
     }
@@ -516,9 +529,8 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
         }
     }
 
-    private List<(ObjectIdentifier Name, SourceRef Source)> ApplyIndexes(PgTypeResolutionManager manager)
+    private void ApplyIndexes(PgTypeResolutionManager manager)
     {
-        var indexes = new List<(ObjectIdentifier Name, SourceRef Source)>();
         foreach ((CreateIndex Statement, SchemaIdentifier Schema, SourceRef Source) pending in _pendingIndexes)
         {
             CreateIndex statement = pending.Statement;
@@ -537,46 +549,6 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
                 throw new SqlSyntaxException.CreateIndexUnknownTable(tableName, pending.Source);
             }
             tableBuilder.AddIndex(statement, pending.Source);
-            Identifier name = ComponentNormalizer.NormalizeSingleIdentifier(statement.Name!);
-            indexes.Add((new ObjectIdentifier(name.Name, tableName.Schema, name.QuoteStyle), pending.Source));
-        }
-        return indexes;
-    }
-
-    private void ValidateRelationNames(DatabaseObjectDict<PgTable> tables,
-        List<(ObjectIdentifier Name, SourceRef Source)> indexes)
-    {
-        var names = tables.Keys.ToHashSet();
-        foreach (KeyValuePair<ObjectHandle, PgTable> table in tables)
-        {
-            IEnumerable<Identifier> relationNames = table.Value.UniqueConstraints.Values.Select(unique => unique.Name!)
-                .Concat(table.Value.Exclusions.Values.Select(exclusion => exclusion.Name!));
-            if (table.Value.PrimaryKey?.Name is { } primaryKeyName)
-            {
-                relationNames = relationNames.Append(primaryKeyName);
-            }
-            foreach (Identifier relationName in relationNames)
-            {
-                RegisterRelation(new ObjectIdentifier(relationName.Name, table.Value.Name.Schema, relationName.QuoteStyle),
-                    SourceManager.GetSourceRef(table.Key) ?? throw new InvalidOperationException("Table source metadata is missing."));
-            }
-        }
-        foreach ((ObjectIdentifier name, SourceRef source) in indexes)
-        {
-            RegisterRelation(name, source);
-        }
-
-        void RegisterRelation(ObjectIdentifier name, SourceRef source)
-        {
-            ObjectHandle handle = ObjectHandle.Create(name, Config.NameHandling);
-            if (!names.Add(handle))
-            {
-                throw new SqlSyntaxException.DuplicateObject(name, source);
-            }
-            if (SourceManager.GetSourceRef(handle) == null)
-            {
-                SourceManager.RegisterObject(handle, source);
-            }
         }
     }
 

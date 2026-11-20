@@ -19,7 +19,7 @@ using TcfOss.DatabaseManager.MySql.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MySql.DefinitionBuilding;
 
-public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaults schemaDefaults, INormalizeComponents componentNormalizer, INormalizeSql expressionNormalizer, SourceRef? sourceRef)
+public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaults schemaDefaults, INormalizeComponents componentNormalizer, INormalizeSql expressionNormalizer, SourceRef sourceRef)
     : TableBuilder<MyTable>(name, config.NameHandling, componentNormalizer, sourceRef)
 {
     private readonly SqlValueList<MyColumn> _columns = [];

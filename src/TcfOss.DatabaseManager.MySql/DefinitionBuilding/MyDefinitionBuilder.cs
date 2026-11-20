@@ -173,7 +173,7 @@ public partial class MyDefinitionBuilder
         return pseudoTables;
     }
 
-    private MyTableBuilder ConstructTableBuilder(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef? sourceRef)
+    private MyTableBuilder ConstructTableBuilder(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef sourceRef)
     {
         var builder = new MyTableBuilder(tableId, Config, Config.Schemas[tableId.Schema].SchemaDefaults, ComponentNormalizer, _expressionNormalizer, sourceRef);
         ValidateCreateTable(createTableStatement, tableId, sourceRef);
@@ -181,7 +181,7 @@ public partial class MyDefinitionBuilder
         return builder;
     }
 
-    private ObjectNameAndHandle AddTable(CreateTable createTableStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef = null)
+    private ObjectNameAndHandle AddTable(CreateTable createTableStatement, SchemaIdentifier currentSchema, SourceRef sourceRef)
     {
         ObjectNameAndHandle tableNameAndHandle = GetAndValidateName(createTableStatement, currentSchema, sourceRef);
         MyTableBuilder tableBuilder = ConstructTableBuilder(createTableStatement, tableNameAndHandle.Id, sourceRef);
