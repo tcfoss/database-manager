@@ -150,4 +150,50 @@ public class MyNormalizerTests
         Assert.Equal(expression, normalized);
         Assert.NotEqual(new LiteralValue(new Value.Number("1", false)), normalized);
     }
+
+    [Theory]
+    [InlineData("CURRENT_DATE", "CURRENT_DATE()")]
+    [InlineData("current_date", "CURRENT_DATE()")]
+    [InlineData("CURRENT_TIME", "CURRENT_TIME()")]
+    [InlineData("current_time", "CURRENT_TIME()")]
+    [InlineData("CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()")]
+    [InlineData("current_timestamp", "CURRENT_TIMESTAMP()")]
+    [InlineData("CURRENT_TIMESTAMP", "NOW()")]
+    [InlineData("CURRENT_USER", "CURRENT_USER()")]
+    [InlineData("current_user", "CURRENT_USER()")]
+    public void NormalizeExpression_OptionalParenthesesAreCanonicalizedOnlyForComparison(string sql, string equivalent)
+    {
+        var config = TestConfig.GetMyTestConfig();
+        var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
+        var parser = new MyParser();
+        Expression expression = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)]));
+        Expression expected = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(equivalent)]));
+
+        Expression normalized = normalizer.NormalizeExpression(expression);
+        Expression normalizedExpected = normalizer.NormalizeExpression(expected);
+
+        Assert.NotEqual(expression, expected);
+        Assert.Equal(normalizedExpected, normalized);
+        Assert.Equal(normalizedExpected.GetHashCode(), normalized.GetHashCode());
+        Assert.Equal(normalized, normalizer.NormalizeExpression(normalized));
+        Assert.Equal(expression, normalizer.NormalizeExpressionNoFlatten(expression));
+        Assert.Equal(sql, expression.ToSql());
+    }
+
+    [Theory]
+    [InlineData("CURRENT_TIMESTAMP(3)", "CURRENT_TIMESTAMP()")]
+    [InlineData("CURRENT_TIMESTAMP(3)", "CURRENT_TIMESTAMP(6)")]
+    [InlineData("app.CURRENT_TIMESTAMP()", "CURRENT_TIMESTAMP")]
+    [InlineData("`CURRENT_TIMESTAMP`()", "CURRENT_TIMESTAMP")]
+    public void NormalizeExpression_OptionalParenthesesDoNotErasePrecisionOrNameDistinctions(string sql, string different)
+    {
+        var config = TestConfig.GetMyTestConfig();
+        var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
+        var parser = new MyParser();
+        Expression expression = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(sql)]));
+        Expression other = parser.ExpressionParser.ParseExpr(new ParserState(Grammar.My, [.. new MyLexer().Tokenize(different)]));
+
+        Assert.NotEqual(normalizer.NormalizeExpression(expression), normalizer.NormalizeExpression(other));
+        Assert.Equal(expression, normalizer.NormalizeExpressionNoFlatten(expression));
+    }
 }

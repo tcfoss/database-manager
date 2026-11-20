@@ -1,12 +1,12 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Configuration;
 
 namespace TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 
 public class PgComponentNormalizer(PgConfig config)
-    : ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider(), config.NameHandling)
+    : ComponentNormalizer(config.QuoteStyle, new PgFunctionNameProvider(), config.NameHandling)
 {
     public override Value NormalizeValue(Value value)
     {

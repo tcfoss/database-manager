@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using TcfOss.DatabaseManager.Core.Common;
+using TcfOss.DatabaseManager.Core.Configuration;
+using TcfOss.DatabaseManager.Core.Configuration.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions.Components;
@@ -1058,6 +1060,59 @@ public class FormatComponentsTests
         string formatted = formatter.GetFormatted(sql);
 
         Assert.Contains(expectedType, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("CURRENT_DATE", "CURRENT_DATE")]
+    [InlineData("CURRENT_TIME", "CURRENT_TIME")]
+    [InlineData("CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP")]
+    [InlineData("LOCALTIME", "LOCALTIME")]
+    [InlineData("LOCALTIMESTAMP", "LOCALTIMESTAMP")]
+    [InlineData("CURRENT_ROLE", "CURRENT_ROLE")]
+    [InlineData("CURRENT_USER", "CURRENT_USER")]
+    [InlineData("SESSION_USER", "SESSION_USER")]
+    [InlineData("SYSTEM_USER", "SYSTEM_USER")]
+    [InlineData("USER", "USER")]
+    [InlineData("CURRENT_CATALOG", "CURRENT_CATALOG")]
+    [InlineData("CURRENT_SCHEMA", "CURRENT_SCHEMA")]
+    [InlineData("current_role", "current_role")]
+    [InlineData("LOCALTIME(3)", "LOCALTIME(3)")]
+    [InlineData("LOCALTIMESTAMP(3)", "LOCALTIMESTAMP(3)")]
+    [InlineData("GREATEST(1, 2)", "GREATEST(1, 2)")]
+    [InlineData("LEAST(1, 2)", "LEAST(1, 2)")]
+    [InlineData("\"current_role\"", "\"current_role\"")]
+    [InlineData("\"current_role\"()", "\"current_role\"()")]
+    [InlineData("app.current_role", "\"app\".\"current_role\"")]
+    [InlineData("app.current_role()", "\"app\".\"current_role\"()")]
+    public void KeywordFunctions_FormatWithoutChangingTheirSyntax(string sql, string expected)
+    {
+        var state = new Core.Parsing.ParserState(Core.Parsing.Grammar.Pg, [.. new PgLexer().Tokenize(sql)]);
+        var expression = new PgParser().ExpressionParser.ParseExpr(state);
+        using var writer = new SqlTextWriter(new StringBuilder());
+
+        expression.FormatSql(writer, Helpers.CreateFormatManager());
+
+        Assert.Equal(expected, writer.ToString());
+        using var formatter = Helpers.CreateFormatter();
+        string formatted = formatter.GetFormatted($"SELECT {sql}");
+        Assert.Contains(expected, formatted);
+        Assert.Equal(formatted, formatter.GetFormatted(formatted));
+    }
+
+    [Theory]
+    [InlineData("\"current_role\"", "\"current_role\"")]
+    [InlineData("\"current_role\"()", "\"current_role\"()")]
+    [InlineData("\"coalesce\"(1, 2)", "\"coalesce\"(1, 2)")]
+    [InlineData("\"ordinary\"()", "ordinary()")]
+    public void KeywordNames_RemainQuotedWhenRemovingOptionalIdentifierQuotes(string sql, string expected)
+    {
+        using var formatter = Helpers.CreateFormatter(
+            formatSettings: new FormattingSettings { Quoting = IdentifierQuotationHandling.OnlyIfSpecial });
+
+        string formatted = formatter.GetFormatted($"SELECT {sql}");
+
+        Assert.Contains(expected, formatted);
         Assert.Equal(formatted, formatter.GetFormatted(formatted));
     }
 }

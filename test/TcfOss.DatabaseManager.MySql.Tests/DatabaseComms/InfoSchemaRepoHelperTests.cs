@@ -141,7 +141,7 @@ public class InfoSchemaRepoHelperTests
             new FunctionCall(
                 new ObjectName(new Identifier("CURRENT_TIMESTAMP")))
             {
-                Arguments = FunctionArguments.EmptyList()
+                Arguments = new FunctionArguments.None()
             });
 
         Assert.Equal(expected, actual);

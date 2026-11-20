@@ -453,4 +453,23 @@ public class ExpressionParserTests : ParserTestsBase<GenericLexer, Parser>
         Assert.Equal(sql, expression.ToSql());
         Assert.IsType<Eof>(state.Peek());
     }
+
+    [Theory]
+    [InlineData("CURRENT_DATE")]
+    [InlineData("CURRENT_TIME")]
+    [InlineData("CURRENT_TIMESTAMP")]
+    [InlineData("CURRENT_USER")]
+    [InlineData("SYSTEM_USER")]
+    [InlineData("NOW")]
+    public void BareFunctions_PreserveOmittedParentheses(string name)
+    {
+        var bare = Assert.IsType<FunctionCall>(ParseExpression(name));
+        var parenthesized = Assert.IsType<FunctionCall>(ParseExpression($"{name}()"));
+
+        Assert.IsType<FunctionArguments.None>(bare.Arguments);
+        Assert.IsType<FunctionArguments.List>(parenthesized.Arguments);
+        Assert.Equal(name, bare.ToSql());
+        Assert.Equal($"{name}()", parenthesized.ToSql());
+        Assert.NotEqual(bare, parenthesized);
+    }
 }

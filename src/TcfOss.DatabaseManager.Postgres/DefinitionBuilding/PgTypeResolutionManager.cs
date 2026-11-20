@@ -17,7 +17,7 @@ public class PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<Object
     private readonly Dictionary<ObjectHandle, ObjectIdentifier> _names = names.ToDictionary(entry => entry.Key, entry => componentNormalizer.NormalizeObjectIdentifier(entry.Value));
 
     public PgTypeResolutionManager(PgConfig config, IReadOnlyDictionary<ObjectHandle, ObjectIdentifier> names)
-        : this(config, names, new ComponentNormalizer(config.QuoteStyle, new FunctionNameProvider(), config.NameHandling))
+        : this(config, names, new PgComponentNormalizer(config))
     {
     }
 

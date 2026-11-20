@@ -4315,8 +4315,15 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CURRENT_DATE", "current_date", "\"current_date\"()")]
     [InlineData("CURRENT_TIME", "current_time", "\"current_time\"()")]
     [InlineData("CURRENT_TIMESTAMP(2)", "current_timestamp(2)", "\"current_timestamp\"(2)")]
+    [InlineData("LOCALTIME", "localtime", "\"localtime\"()")]
+    [InlineData("LOCALTIMESTAMP", "localtimestamp", "\"localtimestamp\"()")]
+    [InlineData("CURRENT_ROLE", "current_role", "\"current_role\"()")]
     [InlineData("CURRENT_USER", "current_user", "\"current_user\"()")]
+    [InlineData("SESSION_USER", "session_user", "\"session_user\"()")]
     [InlineData("SYSTEM_USER", "system_user", "\"system_user\"()")]
+    [InlineData("USER", "user", "\"user\"()")]
+    [InlineData("CURRENT_CATALOG", "current_catalog", "\"current_catalog\"()")]
+    [InlineData("CURRENT_SCHEMA", "current_schema", "\"current_schema\"()")]
     public void ComparisonExpressions_KeywordFunctionsRemainPrintableAndDistinctFromQuotedCalls(string sql, string equivalent, string quoted)
     {
         var config = PgTestConfig.GetTestConfig();
@@ -4413,6 +4420,37 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(expected, Assert.IsType<Value.Number>(normalized.Value).Value);
         Assert.Equal(expression, normalizer.NormalizeExpressionNoFlatten(expression));
+    }
+
+    [Theory]
+    [InlineData("CURRENT_DATE")]
+    [InlineData("CURRENT_TIME")]
+    [InlineData("CURRENT_TIMESTAMP")]
+    [InlineData("LOCALTIME")]
+    [InlineData("LOCALTIME(3)")]
+    [InlineData("LOCALTIMESTAMP")]
+    [InlineData("LOCALTIMESTAMP(3)")]
+    [InlineData("CURRENT_ROLE")]
+    [InlineData("CURRENT_USER")]
+    [InlineData("SESSION_USER")]
+    [InlineData("SYSTEM_USER")]
+    [InlineData("USER")]
+    [InlineData("CURRENT_CATALOG")]
+    [InlineData("CURRENT_SCHEMA")]
+    public void KeywordDefaults_EmitWithoutIdentifierQuotesOrInventedParentheses(string sql)
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (value TEXT DEFAULT {sql})"), GetSchema(), 100);
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+
+        CreateTable emitted = table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager());
+
+        var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(emitted.Columns));
+        var defaultValue = Assert.Single(column.Options.OfType<StatementColumnOption.Default.DefaultExpression>());
+        Assert.Equal(sql, defaultValue.Expression.ToSql());
+        var rebuilt = CreateBuilder();
+        rebuilt.ProcessStatements(ParseStatements(emitted.ToSql()), GetSchema(), 101);
+        Assert.Equal(table, Assert.Single(rebuilt.ToDefinition().Tables.Values));
     }
 
     private static PgTable BuildExpressionTable(string expression)

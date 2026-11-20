@@ -1557,7 +1557,7 @@ public abstract class MyDefinitionBuilderTestsBase
         var nestOpen = "";
         var nestClose = "";
 
-        var expected3 = $"`last_updated` TIMESTAMP NOT NULL DEFAULT ({currentTimestamp}) ON UPDATE {currentTimestamp}";
+        var expected3 = $"`last_updated` TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE {currentTimestamp}";
         Assert.Equal(expected3, table.Columns[2].ToSql());
         var expected4 = $"`gen1` INT{DefaultIntegerWidth} SIGNED GENERATED ALWAYS AS (`id` + 100) VIRTUAL";
         Assert.Equal(expected4, table.Columns[3].ToSql());

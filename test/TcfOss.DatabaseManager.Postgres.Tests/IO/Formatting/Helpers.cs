@@ -1,4 +1,3 @@
-using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.DefinitionBuilding;
@@ -6,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using TcfOss.DatabaseManager.Postgres.Lexing;
 using TcfOss.DatabaseManager.Postgres.Parsing;
 
@@ -16,12 +16,12 @@ public static class Helpers
     public static Formatter CreateFormatter(PseudoTableSet? pseudoTables = null, FormattingSettings? formatSettings = null)
     {
         var config = PgTestConfig.GetTestConfig(formatSettings: formatSettings);
-        return new Formatter(config, new TextParser(new PgLexer(), new PgParser()), new FunctionNameProvider(), pseudoTables?.CloneExternalOnly());
+        return new Formatter(config, new TextParser(new PgLexer(), new PgParser()), new PgFunctionNameProvider(), pseudoTables?.CloneExternalOnly());
     }
 
     public static FormatManager CreateFormatManager()
     {
-        var functionNameProvider = new FunctionNameProvider();
+        var functionNameProvider = new PgFunctionNameProvider();
         return new FormatManager
         {
             Formatting = new FormattingSettings(),

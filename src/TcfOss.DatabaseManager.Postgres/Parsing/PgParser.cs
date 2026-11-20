@@ -5,6 +5,7 @@ using TcfOss.DatabaseManager.Core.Lexing.Tokens;
 using TcfOss.DatabaseManager.Core.Parsing;
 using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
+using TcfOss.DatabaseManager.Postgres.BuiltIn;
 using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.CreateOrLabel;
 
 namespace TcfOss.DatabaseManager.Postgres.Parsing;
@@ -20,6 +21,8 @@ public class PgParser : Parser
 
     public PgParser()
     {
+        IsBuiltInFunction = new PgFunctionNameProvider().IsBuiltInFunction;
+        AllowsFunctionCallWithoutParentheses = PgFunctionNameProvider.AllowsFunctionCallWithoutParentheses;
         PrecedenceManager = new PgPrecedenceManager();
         ComponentParser = new PgComponentParser(this);
         DataTypeParser = new PgDataTypeParser(this);

@@ -2,6 +2,7 @@ using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Configuration;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
+using TcfOss.DatabaseManager.Postgres.BuiltIn;
 
 namespace TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 
@@ -21,7 +22,7 @@ public class PgExpressionNormalizer(ConfigBase config, ComponentNormalizer compo
             return normalized;
         }
         ObjectName name = ComponentNormalizer.NormalizeObjectName(functionCall.Name);
-        if (functionCall.Name.Values.Count == 1 && IsKeywordFunction(name.Values[0].Name))
+        if (functionCall.Name.Values.Count == 1 && PgFunctionNameProvider.IsKeywordFunction(name.Values[0].Name))
         {
             name = new ObjectName(name.Values[0] with
             {
@@ -32,14 +33,5 @@ public class PgExpressionNormalizer(ConfigBase config, ComponentNormalizer compo
         {
             Name = name
         };
-    }
-
-    private static bool IsKeywordFunction(string name)
-    {
-        return name is "coalesce" or "greatest" or "least" or "nullif"
-            or "current_date" or "current_time" or "current_timestamp"
-            or "localtime" or "localtimestamp"
-            or "current_role" or "current_user" or "session_user" or "system_user" or "user"
-            or "current_catalog" or "current_schema";
     }
 }

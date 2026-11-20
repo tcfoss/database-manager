@@ -1,6 +1,7 @@
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Expressions;
+using TcfOss.DatabaseManager.Core.Expressions.Components;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
@@ -18,6 +19,17 @@ public class MyNormalizer(MyConfig config, ComponentNormalizer componentNormaliz
     protected override FunctionCall NormalizeFunctionCall(FunctionCall functionCall, bool inSelect = false, bool flatten = false)
     {
         FunctionCall normalized = base.NormalizeFunctionCall(functionCall, inSelect, flatten);
+        if (flatten
+            && normalized.Name.Values is [{ QuoteStyle: QuoteStyle.None } name]
+            && FunctionNameProvider.AllowsFunctionCallWithoutParentheses(name.Name)
+            && normalized.Arguments is FunctionArguments.None)
+        {
+            normalized = normalized with
+            {
+                Name = new ObjectName(name with { Name = name.Name.ToUpperInvariant() }),
+                Arguments = FunctionArguments.EmptyList()
+            };
+        }
         if (functionCall.Name.Values.Count == 1 && functionCall.Name.Values[0].Name.Equals("NOW", StringComparison.OrdinalIgnoreCase))
         {
             return normalized with { Name = new ObjectName(new Identifier("CURRENT_TIMESTAMP")) };

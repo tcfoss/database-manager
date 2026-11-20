@@ -1579,4 +1579,66 @@ public class PgExpressionOperatorTests : ParserTestsBase<PgLexer, PgParser>
     {
         Assert.ThrowsAny<ParseException>(() => ParseStatement("SELECT " + sql));
     }
+
+    [Theory]
+    [InlineData("CURRENT_DATE")]
+    [InlineData("CURRENT_TIME")]
+    [InlineData("CURRENT_TIMESTAMP")]
+    [InlineData("LOCALTIME")]
+    [InlineData("LOCALTIMESTAMP")]
+    [InlineData("CURRENT_ROLE")]
+    [InlineData("CURRENT_USER")]
+    [InlineData("SESSION_USER")]
+    [InlineData("SYSTEM_USER")]
+    [InlineData("USER")]
+    [InlineData("CURRENT_CATALOG")]
+    [InlineData("CURRENT_SCHEMA")]
+    public void KeywordFunctions_BareFormsPreserveTheirSyntax(string sql)
+    {
+        foreach (string spelling in new[] { sql, sql.ToLowerInvariant() })
+        {
+            var call = Assert.IsType<FunctionCall>(ParseExpression(spelling));
+
+            Assert.IsType<FunctionArguments.None>(call.Arguments);
+            Assert.Equal(spelling, call.ToSql());
+            Assert.Equal(call, ParseExpression(call.ToSql()));
+        }
+    }
+
+    [Theory]
+    [InlineData("CURRENT_TIME(3)")]
+    [InlineData("CURRENT_TIMESTAMP(3)")]
+    [InlineData("LOCALTIME(3)")]
+    [InlineData("LOCALTIMESTAMP(3)")]
+    public void KeywordFunctions_PreserveExplicitPrecision(string sql)
+    {
+        var call = Assert.IsType<FunctionCall>(ParseExpression(sql));
+
+        Assert.Single(Assert.IsType<FunctionArguments.List>(call.Arguments).Arguments!);
+        Assert.Equal(sql, call.ToSql());
+        Assert.Equal(call, ParseExpression(call.ToSql()));
+    }
+
+    [Theory]
+    [InlineData("current_role")]
+    [InlineData("localtime")]
+    [InlineData("current_schema")]
+    public void KeywordNames_QuotedAndQualifiedFormsRemainIdentifiersOrOrdinaryCalls(string name)
+    {
+        Assert.IsType<SingleIdentifier>(ParseExpression($"\"{name}\""));
+        Assert.IsType<CompoundIdentifier>(ParseExpression($"app.{name}"));
+        Assert.IsType<FunctionArguments.List>(
+            Assert.IsType<FunctionCall>(ParseExpression($"\"{name}\"()")).Arguments);
+        Assert.IsType<FunctionArguments.List>(
+            Assert.IsType<FunctionCall>(ParseExpression($"app.{name}()")).Arguments);
+    }
+
+    [Fact]
+    public void KeywordFunctions_PostgresRecognitionDoesNotExpandTheCoreParser()
+    {
+        var core = new Parser();
+
+        Assert.IsType<SingleIdentifier>(core.ExpressionParser.ParseExpr(GetState("CURRENT_ROLE")));
+        Assert.IsType<SingleIdentifier>(ParseExpression("NOW"));
+    }
 }
