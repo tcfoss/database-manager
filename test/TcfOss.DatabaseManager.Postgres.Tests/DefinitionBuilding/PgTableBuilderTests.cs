@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.BuiltIn;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -12,6 +14,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 using TcfOss.DatabaseManager.Core.Tests.ParserTests;
 using TcfOss.DatabaseManager.Postgres.BuiltIn;
+using TcfOss.DatabaseManager.Postgres.DatabaseObjects;
 using TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Postgres.DefinitionBuilding;
 using TcfOss.DatabaseManager.Postgres.Lexing;
@@ -91,16 +94,16 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Fact]
-    public void AddIndexOrConstraint_RejectsExclusionWithoutAttributesWithSource()
+    public void AddIndexOrConstraint_RequiresExclusionNameWithSource()
     {
         var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, EXCLUDE (id WITH =))"));
         var builder = CreateBuilder();
         var source = new SourceRef(7, 0, 10);
 
-        var exception = Assert.Throws<DefinitionException>(() => builder.AddIndexOrConstraint(Assert.Single(statement.Constraints), source));
+        var exception = Assert.Throws<DefinitionException.TableConstraintNameRequired>(() => builder.AddIndexOrConstraint(Assert.Single(statement.Constraints), source));
 
         Assert.Equal(source, exception.ObjectSourceRef);
-        Assert.Contains(nameof(CreateTable), exception.Message);
+        Assert.Contains("EXCLUDE", exception.Message);
     }
 
     [Fact]
@@ -124,7 +127,15 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
             [new ObjectHandle("catalog", "public", "items")] = tableName,
             [new ObjectHandle("catalog", "public", "label")] = typeName
         });
-        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (Id INT CONSTRAINT Required NOT NULL CONSTRAINT DefaultId DEFAULT 1, \"Label\" label NULL CONSTRAINT \"DefaultLabel\" DEFAULT 'x', plain TEXT, nullable TEXT DEFAULT NULL, calculated INT DEFAULT (1 + 2))"));
+        var statement = Assert.IsType<CreateTable>(ParseStatement("""
+            CREATE TABLE items (
+                Id INT CONSTRAINT Required NOT NULL CONSTRAINT DefaultId DEFAULT 1,
+                "Label" label NULL CONSTRAINT "DefaultLabel" DEFAULT 'x',
+                plain TEXT,
+                nullable TEXT DEFAULT NULL,
+                calculated INT DEFAULT (1 + 2))
+            """));
+
         var literal = new Value.Number("7", false);
         statement.Columns.Add(new StatementColumn.Typed(new Identifier("literal"), new DataType.Int(),
         [
@@ -150,16 +161,16 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("'x'", defaultLabel.Value.ToSql());
         Assert.Equal("DefaultLabel", defaultLabel.Name?.Name);
 
-        Assert.Null(table.Columns[2].Nullability);
+        Assert.IsType<ColumnOption.Nullability.Null>(table.Columns[2].Nullability);
         Assert.Null(table.Columns[2].Default);
 
-        Assert.IsType<Value.Null>(Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(table.Columns[3].Default).Value);
+        Assert.Null(table.Columns[3].Default);
 
         var expressionDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(table.Columns[4].Default);
         Expression parsedExpression = Assert.IsType<StatementColumnOption.Default.DefaultExpression>(
             Assert.Single(Assert.IsType<StatementColumn.Typed>(statement.Columns[4]).Options)).Expression;
-        Assert.Same(parsedExpression, expressionDefault.Expression);
-        Assert.Same(parsedExpression, expressionDefault.NormalizedExpression);
+        Assert.Equal(parsedExpression, expressionDefault.Expression);
+        Assert.Equal(ParseExpression("1 + 2"), expressionDefault.NormalizedExpression);
 
         var literalDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(table.Columns[5].Default);
         Assert.Same(literal, literalDefault.Value);
@@ -184,7 +195,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         StatementColumnOption.Default option = asExpression
             ? new StatementColumnOption.Default.DefaultExpression(new LiteralValue(literal), constraintName)
             : new StatementColumnOption.Default.DefaultValue(literal, constraintName);
-        var builder = new PgTableBuilder(tableName, config.NameHandling, normalizer, null);
+        var builder = CreateBuilder(componentNormalizer: normalizer);
         builder.AddColumn(new StatementColumn.Typed(new Identifier("value"), new DataType.Int(), [option]), null);
         var pendingDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(Assert.Single(builder.Columns).Default);
         Assert.Same(expected, pendingDefault.Value);
@@ -245,7 +256,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void PrimaryKeys_SetPendingColumnNotNullInEitherDeclarationOrder(bool keyFirst)
     {
         var builder = CreateBuilder();
-        var primaryKey = new StatementTableConstraint.PrimaryKey([new KeyPart.Column(new Identifier("ID"))]);
+        var primaryKey = new StatementTableConstraint.PrimaryKey([new StatementKeyPart.Column(new Identifier("ID"))], new Identifier("pk"));
         var column = Assert.IsType<StatementColumn.Typed>(Assert.Single(
             Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (Id INT NULL)")).Columns));
         if (keyFirst)
@@ -304,7 +315,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         var result = Assert.Single(builder.ToTable(CreateManager()).Indexes.Values);
         Assert.Equal("ix", result.Name.Name);
-        var part = Assert.IsType<KeyPart.Column>(Assert.Single(result.Columns));
+        var part = Assert.IsType<PgKeyPart.Column>(Assert.Single(result.Columns));
         Assert.Equal("id", part.Name.Name);
         Assert.NotNull(part.Direction);
         Assert.Equal("payload", Assert.Single(result.IncludedColumns!.Columns).Name);
@@ -329,7 +340,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void AddPrimaryKey_RejectsEmptyColumnListWithSourcedSyntaxError()
     {
-        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, PRIMARY KEY (id))"));
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id))"));
         var constraint = Assert.IsType<StatementTableConstraint.PrimaryKey>(Assert.Single(table.Constraints)) with
         {
             Columns = []
@@ -349,7 +360,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     public void AddPrimaryKey_RejectsNonColumnKeyPartsWithSourcedSyntaxError(string sql)
     {
         var index = Assert.IsType<CreateIndex.Standard>(ParseStatement(sql));
-        var constraint = new StatementTableConstraint.PrimaryKey(index.Columns);
+        var constraint = new StatementTableConstraint.PrimaryKey(index.Columns, new Identifier("pk"));
         var sourceRef = new SourceRef(4, 10, 20);
         var builder = CreateBuilder();
 
@@ -381,7 +392,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     {
         var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)")) with
         {
-            Columns = [new KeyPart.Column(new Identifier("id"), 3)]
+            Columns = [new StatementKeyPart.Column(new Identifier("id")) { Length = 3 }]
         };
         var sourceRef = new SourceRef(4, 10, 20);
         var builder = CreateBuilder();
@@ -426,17 +437,13 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("SMALLINT", "", true, 1L, 1L, 1L, 32767L)]
-    [InlineData("INT", "", false, 1L, 1L, 1L, 2147483647L)]
-    [InlineData("BIGINT", "", true, 1L, 1L, 1L, long.MaxValue)]
-    [InlineData("SMALLINT", "(INCREMENT -1)", false, -1L, -1L, -32768L, -1L)]
-    [InlineData("INT", "(INCREMENT BY -1)", true, -1L, -1L, -2147483648L, -1L)]
-    [InlineData("BIGINT", "(INCREMENT -1)", false, -1L, -1L, long.MinValue, -1L)]
-    public void IdentityOptions_ResolveDefaultsAfterIntegerTypeResolution(string type, string options, bool always,
-        long start, long increment, long minimum, long maximum)
+    [InlineData("SMALLINT", true)]
+    [InlineData("INT", false)]
+    [InlineData("BIGINT", true)]
+    public void IdentityOptions_LeaveUnspecifiedBackingNamesAndConfigurationUnmanaged(string type, bool always)
     {
         string mode = always ? "ALWAYS" : "BY DEFAULT";
-        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id {type} GENERATED {mode} AS IDENTITY {options})"));
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id {type} GENERATED {mode} AS IDENTITY)"));
         var builder = CreateBuilder();
         builder.ApplyCreateTable(statement);
         PgTableBuilder.PreColumn pending = Assert.Single(builder.Columns);
@@ -446,30 +453,68 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         var table = builder.ToTable(CreateManager());
         var column = Assert.Single(table.Columns);
-        var identity = Assert.IsType<ColumnOption.Generated.PgIdentity>(column.Generated);
+        var identity = Assert.IsType<PgIdentity>(column.Identity);
         Assert.Equal(always, identity.Always);
-        Assert.Equal(new PgIdentityOptions(start, increment, minimum, maximum, 1, false), identity.Options);
+        Assert.Null(column.Generated);
+        Assert.Null(identity.BackingSequence.Name);
+        Assert.Null(identity.BackingSequence.Options);
         Assert.IsType<ColumnOption.Nullability.NotNull>(column.Nullability);
-        Assert.Equal(6, identity.Options.ToStatementOptions().Count);
+        Assert.DoesNotContain("CACHE", column.ToStatementColumn().ToSql());
 
         var rebuilt = CreateBuilder();
         rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({column.ToStatementColumn().ToSql()})")));
-        Assert.Equal(identity, Assert.Single(rebuilt.ToTable(CreateManager()).Columns).Generated);
+        Assert.Equal(identity, Assert.Single(rebuilt.ToTable(CreateManager()).Columns).Identity);
     }
 
     [Theory]
-    [InlineData("MINVALUE 10 MAXVALUE 20", 10L, 1L, 10L, 20L, 1L, false)]
+    [InlineData("MINVALUE 10 MAXVALUE 20", null, null, 10L, 20L, null, null)]
     [InlineData("MAXVALUE -5 MINVALUE -20 INCREMENT -3 CACHE 4 CYCLE START -8", -8L, -3L, -20L, -5L, 4L, true)]
-    [InlineData("INCREMENT -2 NO MINVALUE NO MAXVALUE NO CYCLE", -1L, -2L, long.MinValue, -1L, 1L, false)]
-    [InlineData("CACHE 2 START WITH 12 MINVALUE 10 MAXVALUE 20 INCREMENT BY 2", 12L, 2L, 10L, 20L, 2L, false)]
-    public void IdentityOptions_NormalizeExplicitBoundsAndNoForms(string options, long start, long increment,
-        long minimum, long maximum, long cache, bool cycle)
+    [InlineData("CACHE 2 START WITH 12 MINVALUE 10 MAXVALUE 20 INCREMENT BY 2", 12L, 2L, 10L, 20L, 2L, null)]
+    [InlineData("CACHE 10", null, null, null, null, 10L, null)]
+    [InlineData("INCREMENT -1", null, -1L, null, null, null, null)]
+    [InlineData("SEQUENCE NAME app.ids", null, null, null, null, null, null)]
+    public void IdentityOptions_PreserveOnlyExplicitConfiguration(string options, long? start, long? increment,
+        long? minimum, long? maximum, long? cache, bool? cycle)
     {
         var builder = CreateBuilder();
         builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id BIGINT GENERATED ALWAYS AS IDENTITY ({options}))")));
-        var identity = Assert.IsType<ColumnOption.Generated.PgIdentity>(Assert.Single(builder.ToTable(CreateManager()).Columns).Generated);
+        PgColumn column = Assert.Single(builder.ToTable(CreateManager()).Columns);
+        var identity = Assert.IsType<PgIdentity>(column.Identity);
+        if (options.StartsWith("SEQUENCE NAME", StringComparison.Ordinal))
+        {
+            Assert.NotNull(identity.BackingSequence.Name);
+            Assert.Null(identity.BackingSequence.Options);
+        }
+        else
+        {
+            Assert.Equal(new PgIdentityOptions(start, increment,
+                minimum is { } min ? new PgIdentityOptions.Bound(min) : null,
+                maximum is { } max ? new PgIdentityOptions.Bound(max) : null, cache, cycle), identity.BackingSequence.Options);
+        }
+        var rebuilt = CreateBuilder();
+        rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({column.ToStatementColumn().ToSql()})")));
+        Assert.Equal(column, Assert.Single(rebuilt.ToTable(CreateManager()).Columns));
+    }
 
-        Assert.Equal(new PgIdentityOptions(start, increment, minimum, maximum, cache, cycle), identity.Options);
+    [Fact]
+    public void IdentityOptions_DistinguishExplicitDefaultBoundsFromUnmanagedBounds()
+    {
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT GENERATED ALWAYS AS IDENTITY (INCREMENT -2 NO MINVALUE NO MAXVALUE NO CYCLE))")));
+        PgColumn column = Assert.Single(builder.ToTable(CreateManager()).Columns);
+        PgIdentityOptions options = column.Identity!.BackingSequence.Options!;
+
+        Assert.Equal(new PgIdentityOptions.Bound(null), options.MinValue);
+        Assert.Equal(new PgIdentityOptions.Bound(null), options.MaxValue);
+        Assert.Null(options.Start);
+        Assert.Null(options.Cache);
+        Assert.Equal(false, options.Cycle);
+        Assert.Contains("NO MINVALUE", column.ToStatementColumn().ToSql());
+        Assert.Contains("NO MAXVALUE", column.ToStatementColumn().ToSql());
+        var rebuilt = CreateBuilder();
+        rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({column.ToStatementColumn().ToSql()})")));
+        Assert.Equal(column, Assert.Single(rebuilt.ToTable(CreateManager()).Columns));
     }
 
     [Theory]
@@ -609,7 +654,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     }
 
     [Theory]
-    [InlineData("PRIMARY KEY (id)")]
+    [InlineData("CONSTRAINT \"Pk\" PRIMARY KEY (id)")]
     [InlineData("CONSTRAINT pk PRIMARY KEY (id)")]
     public void PrimaryKeys_AllowIndexesWithDistinctNames(string constraint)
     {
@@ -680,7 +725,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [Fact]
     public void AddIndex_RejectsUnsupportedIndexVariants()
     {
-        var index = new CreateIndex.FullText([new KeyPart.Column(new Identifier("id"))], new Identifier("ix"), new ObjectName(new Identifier("items")));
+        var index = new CreateIndex.FullText([new StatementKeyPart.Column(new Identifier("id"))], new Identifier("ix"), new ObjectName(new Identifier("items")));
 
         Assert.Throws<NotSupportedException>(() => CreateBuilder().AddIndex(index, null));
     }
@@ -690,6 +735,8 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("CONSTRAINT ix PRIMARY KEY (id)", true)]
     [InlineData("CONSTRAINT ix UNIQUE (id)", false)]
     [InlineData("CONSTRAINT ix UNIQUE (id)", true)]
+    [InlineData("CONSTRAINT ix EXCLUDE (id WITH =)", false)]
+    [InlineData("CONSTRAINT ix EXCLUDE (id WITH =)", true)]
     public void IndexAndConstraintNames_RejectCollisionsInBothDeclarationOrders(string constraintSql, bool indexFirst)
     {
         var source = new SourceRef(7, 0, 10);
@@ -754,13 +801,11 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(source, error.ObjectSourceRef);
     }
 
-    [Theory]
-    [InlineData("PRIMARY KEY (id, id)")]
-    [InlineData("CONSTRAINT pk PRIMARY KEY (id, id)")]
-    public void PrimaryKeys_RejectDuplicateColumnsWithOrWithoutConstraintName(string constraint)
+    [Fact]
+    public void PrimaryKeys_RejectDuplicateColumns()
     {
         var builder = CreateBuilder();
-        var table = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (id INT, {constraint})"));
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id, id))"));
 
         Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => builder.ApplyCreateTable(table));
     }
@@ -806,7 +851,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.Equal(expected, column.Collation?.ToSql());
         StatementColumn.Typed canonical = column.ToStatementColumn();
-        Assert.IsType<StatementColumnOption.PgCollation>(canonical.Options[0]);
+        Assert.Single(canonical.Options.OfType<StatementColumnOption.PgCollation>());
         var rebuilt = CreateBuilder();
         var reparsed = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items ({canonical.ToSql()})"));
         rebuilt.ApplyCreateTable(reparsed);
@@ -828,21 +873,408 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal(source, exception.ObjectSourceRef);
     }
 
+    [Theory]
+    [InlineData("missing NOT NULL NO INHERIT", typeof(SqlSyntaxException.TypeNotFound))]
+    [InlineData("SMALLINT GENERATED ALWAYS AS IDENTITY (MAXVALUE 999999)", typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    [InlineData("INT GENERATED ALWAYS AS (missing + 1)", typeof(SqlSyntaxException.SelectIdentifierNotFound))]
+    public void PendingColumns_RetainTheirSourceForFinalizationFailures(string definition, Type errorType)
+    {
+        var builder = CreateBuilder(new SourceRef(63, 0, 10));
+        var source = new SourceRef(64, 20, 40);
+        var statement = Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items (value {definition})"));
+
+        builder.AddColumn(Assert.Single(statement.Columns), source);
+
+        PgTableBuilder.PreColumn pending = Assert.Single(builder.Columns);
+        Assert.Equal(source, pending.SourceRef);
+        var error = Assert.ThrowsAny<SourcedException>(() => builder.ToTable(CreateManager()));
+        Assert.IsType(errorType, error);
+        SourceRef expectedSource = pending.DataType is DataTypeReference.Named { Name.Source: { } location }
+            ? location with { SourceId = source.SourceId }
+            : source;
+        Assert.Equal(expectedSource, error.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void PrimaryKeyIncludes_RejectDuplicateAndMissingColumns()
+    {
+        var duplicateBuilder = CreateBuilder();
+        var duplicate = Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id) INCLUDE (id))"));
+        Assert.Throws<SqlSyntaxException.SpecifiedMoreThanOnce>(() => duplicateBuilder.ApplyCreateTable(duplicate));
+        var missingBuilder = CreateBuilder();
+        missingBuilder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT, CONSTRAINT pk PRIMARY KEY (id) INCLUDE (missing))")));
+
+        Assert.Throws<SqlSyntaxException.IndexColumnNotFound>(() => missingBuilder.ToTable(CreateManager()));
+    }
+
+    [Theory]
+    [InlineData("DEFAULT")]
+    [InlineData("FOR VALUES IN (1, 2, NULL)")]
+    [InlineData("FOR VALUES FROM (MINVALUE, 1) TO (MAXVALUE, 9)")]
+    [InlineData("FOR VALUES WITH (MODULUS 4, REMAINDER 1)")]
+    [InlineData("FOR VALUES WITH (REMAINDER 1, MODULUS 4)")]
+    public void PendingPartitions_PreserveBoundsOverridesAndSourceAndEmitCanonicalMetadata(string bound)
+    {
+        var source = new SourceRef(73, 10, 200);
+        var statement = Assert.IsType<CreateTable>(ParseStatement(
+            $"CREATE TABLE items PARTITION OF App.Parent (Id WITH OPTIONS DEFAULT 1, CONSTRAINT ck CHECK (id > 0)) {bound} PARTITION BY HASH (Id)"));
+        var builder = CreateBuilder(source);
+
+        builder.ApplyCreateTable(statement);
+
+        PgTableBuilder.PrePartition pending = Assert.IsType<PgTableBuilder.PrePartition>(builder.PartitionOf);
+        Assert.Equal("\"app\".\"parent\"", pending.Parent.ToSql());
+        Assert.Same(statement, pending.Statement);
+        Assert.IsType<StatementColumn.PgPartitionOverride>(Assert.Single(pending.Statement.Columns));
+        Assert.Single(pending.Statement.Constraints);
+        Assert.Equal(source, pending.SourceRef);
+        Assert.Equal(source, Assert.Throws<DefinitionException>(() => builder.ToTable(CreateManager())).ObjectSourceRef);
+
+        var table = new PgTable(ObjectIdentifier.FromStrings("catalog", "app", "items"), [])
+        {
+            PartitionOf = new PgTablePartition(ObjectIdentifier.FromStrings("catalog", "app", "parent"), pending.Bound),
+            PartitionBy = builder.PartitionBy
+        };
+        CreateTable emitted = table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager());
+        Assert.Equal("app.parent", emitted.PgOptions!.PartitionOf!.Parent.ToSql());
+        Assert.Equal("parent", table.ToCreateStatement(false, PgTestConfig.GetDifferFormatManager()).PgOptions!.PartitionOf!.Parent.ToSql());
+        var rebuilt = CreateBuilder();
+        rebuilt.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(emitted.ToSql())));
+        Assert.Equal(pending.Bound, rebuilt.PartitionOf!.Bound);
+        Assert.Equal(pending.Bound.GetHashCode(), rebuilt.PartitionOf.Bound.GetHashCode());
+        Assert.Equal(builder.PartitionBy, rebuilt.PartitionBy);
+    }
+
+    [Fact]
+    public void PartitionBounds_IgnoreHashOptionOrderButPreserveValues()
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 1)")));
+        second.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items PARTITION OF parent FOR VALUES WITH (REMAINDER 1, MODULUS 4)")));
+
+        var bounds = Assert.IsType<PgPartitionBounds.Hash>(first.PartitionOf!.Bound);
+
+        Assert.Equal(bounds, second.PartitionOf!.Bound);
+        Assert.Equal(bounds.GetHashCode(), second.PartitionOf.Bound.GetHashCode());
+        Assert.NotEqual(bounds, bounds with { Modulus = 8 });
+        Assert.NotEqual(bounds, bounds with { Remainder = 2 });
+    }
+
+    [Theory]
+    [InlineData("DEFAULT", "FOR VALUES IN (1)")]
+    [InlineData("FOR VALUES IN (1)", "FOR VALUES IN (2)")]
+    [InlineData("FOR VALUES FROM (1) TO (2)", "FOR VALUES FROM (1) TO (3)")]
+    [InlineData("FOR VALUES FROM (MINVALUE) TO (2)", "FOR VALUES FROM (1) TO (2)")]
+    public void PartitionBounds_PreserveMeaningfulDifferences(string left, string right)
+    {
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        first.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items PARTITION OF parent {left}")));
+        second.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement($"CREATE TABLE items PARTITION OF parent {right}")));
+        var parent = ObjectIdentifier.FromStrings("catalog", "public", "parent");
+        var partition = new PgTablePartition(parent, first.PartitionOf!.Bound);
+
+        Assert.NotEqual(partition, new PgTablePartition(parent, second.PartitionOf!.Bound));
+        Assert.NotEqual(partition, partition with { Parent = ObjectIdentifier.FromStrings("catalog", "public", "other") });
+    }
+
+    [Fact]
+    public void PartitionEmission_UsesColumnOverridesInsteadOfTypeDeclarations()
+    {
+        var builder = CreateBuilder();
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id TEXT STORAGE EXTENDED COMPRESSION lz4 COLLATE \"C\" DEFAULT 'x' NOT NULL)")));
+        PgTable table = builder.ToTable(CreateManager()) with
+        {
+            PartitionOf = new PgTablePartition(ObjectIdentifier.FromStrings("catalog", "public", "parent"), new PgPartitionBounds.DefaultPartition())
+        };
+
+        CreateTable emitted = table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager());
+        var reparsed = Assert.IsType<CreateTable>(ParseStatement(emitted.ToSql()));
+
+        var column = Assert.IsType<StatementColumn.PgPartitionOverride>(Assert.Single(reparsed.Columns));
+        Assert.Equal("id", column.Name.Name);
+        Assert.Equal(2, column.Options.Count);
+        Assert.DoesNotContain(column.Options, option => option is StatementColumnOption.PgStorage
+            or StatementColumnOption.PgCompression or StatementColumnOption.PgCollation);
+        Assert.Equal(emitted, reparsed);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+        Assert.Contains(table.GetReferencedItems(context),
+            reference => reference is ItemRef.ObjectNameRef { Name: var name } && name.ToSql() == "public.parent");
+    }
+
+    [Fact]
+    public void ToTable_ExclusionColumnErrorsRetainConstraintSource()
+    {
+        var builder = CreateBuilder(new SourceRef(95, 0, 10));
+        builder.ApplyCreateTable(Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT)")));
+        var declaration = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE ((missing + 1) WITH =))"));
+        var source = new SourceRef(96, 20, 80);
+        builder.AddIndexOrConstraint(Assert.Single(declaration.Constraints), source);
+
+        var error = Assert.Throws<SqlSyntaxException.SelectIdentifierNotFound>(() => builder.ToTable(CreateManager()));
+
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("sqlserver", typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    [InlineData("gin", typeof(SqlSyntaxException.UnsupportedDialectClause))]
+    [InlineData("duplicate", typeof(SqlSyntaxException.SpecifiedMoreThanOnce))]
+    public void AddIndexOrConstraint_RejectsUnrepresentedOrDuplicateExclusionOptions(string option, Type expectedType)
+    {
+        var builder = CreateBuilder();
+        var declaration = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =))"));
+        var exclusion = Assert.IsType<StatementTableConstraint.PgExclusion>(Assert.Single(declaration.Constraints));
+        SqlValueList<StatementIndexOption> parameters = option switch
+        {
+            "sqlserver" => [new StatementIndexOption.PadIndex(true)],
+            "gin" => [new StatementIndexOption.PgFastUpdate(true)],
+            _ => [new StatementIndexOption.FillFactor(70), new StatementIndexOption.FillFactor(80)]
+        };
+        var source = new SourceRef(97, 20, 80);
+
+        var error = Assert.ThrowsAny<SqlSyntaxException>(() => builder.AddIndexOrConstraint(exclusion with
+        {
+            IndexParameters = new PgConstraintIndexParameters(parameters, null)
+        }, source));
+
+        Assert.IsType(expectedType, error);
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void PgKeyParts_EmissionPreservesOperatorClassAndNullOrdering(bool expressionKey, bool descending, bool removeOptionalElements)
+    {
+        var name = new Identifier("label");
+        var expression = new Nested(new SingleIdentifier(name));
+        PgKeyPart key = expressionKey ? new PgKeyPart.IndexExpression(expression) : new PgKeyPart.Column(name);
+        key = key with
+        {
+            Direction = descending ? Direction.Descending : Direction.Ascending,
+            NullsOrder = NullsOrder.First,
+            OperatorClass = new PgKeyPart.OperatorClassOptions(new ObjectName([new Identifier("app"), new Identifier("text_ops")]))
+            {
+                SignatureLength = 32
+            }
+        };
+
+        StatementKeyPart emitted = key.ToStatementKeyPart(removeOptionalElements);
+
+        string direction = descending ? " DESC" : removeOptionalElements ? "" : " ASC";
+        string expected = (expressionKey ? "(label)" : "label") + " app.text_ops (siglen = 32)" + direction + " NULLS FIRST";
+        Assert.Equal(expected, emitted.ToSql());
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items USING gist ({expected})"));
+        Assert.Equal(emitted, Assert.Single(statement.Columns));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TableEmission_PreservesAbsentOrExplicitPhysicalOptions(bool explicitTablespace)
+    {
+        var table = new PgTable(ObjectIdentifier.FromStrings("catalog", "public", "items"), [])
+        {
+            Tablespace = explicitTablespace ? new Identifier("fast") : null
+        };
+
+        CreateTable statement = table.ToCreateStatement(false, PgTestConfig.GetDifferFormatManager());
+
+        Assert.Equal("items", statement.Name.ToSql());
+        if (explicitTablespace)
+        {
+            Assert.Equal("fast", statement.PgOptions?.Tablespace?.Name);
+        }
+        else
+        {
+            Assert.Null(statement.PgOptions);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IndexEmission_PreservesUnqualifiedTargetsAndUnmanagedTablespaces(bool unique)
+    {
+        var index = new PgIndex([new PgKeyPart.Column(new Identifier("id"))])
+        {
+            Name = new Identifier("ix"),
+            Unique = unique,
+            FillFactor = 70,
+            DeduplicateItems = false
+        };
+
+        CreateIndex statement = index.ToCreateStatement(ObjectIdentifier.FromStrings("catalog", "public", "items"),
+            false, PgTestConfig.GetDifferFormatManager());
+
+        Assert.Equal("items", statement.TableName.ToSql());
+        Assert.Null(statement.PgOptions);
+        Assert.Equal(unique, statement is CreateIndex.Unique);
+        Assert.Equal(statement, ParseStatement(statement.ToSql()));
+        Assert.Equal(index.ToStatementIndexOptions(), statement switch
+        {
+            CreateIndex.Unique uniqueIndex => uniqueIndex.Options,
+            CreateIndex.Standard standard => standard.Options,
+            _ => throw new InvalidOperationException()
+        });
+        var predicate = new LiteralValue(new Value.Boolean(true));
+        PgIndex printable = index with { Predicate = predicate };
+        PgIndex comparison = index with { NormalizedPredicate = predicate };
+        Assert.Equal(printable, comparison);
+        Assert.Equal(printable.GetHashCode(), comparison.GetHashCode());
+    }
+
+    [Fact]
+    public void IndexExpressionEquality_IncludesComparisonExpressionAndKeyAttributes()
+    {
+        var expression = new PgKeyPart.IndexExpression(ParseExpression("(id + 1)"))
+        {
+            NormalizedExpression = ParseExpression("id + 1")
+        };
+
+        Assert.False(expression.Equals((PgKeyPart.IndexExpression?)null));
+        Assert.NotEqual(expression, expression with { Direction = Direction.Descending });
+        Assert.NotEqual(expression, expression with { NormalizedExpression = ParseExpression("id + 2") });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddIndexOrConstraint_RejectsEmptyOrPrefixLengthExclusionKeysWithSource(bool prefixLength)
+    {
+        var builder = CreateBuilder();
+        var declaration = Assert.IsType<CreateTable>(ParseStatement(
+            "CREATE TABLE items (id INT, CONSTRAINT ex EXCLUDE (id WITH =))"));
+        var exclusion = Assert.IsType<StatementTableConstraint.PgExclusion>(Assert.Single(declaration.Constraints));
+        var source = new SourceRef(101, 10, 80);
+        var element = Assert.Single(exclusion.Elements);
+        exclusion = exclusion with
+        {
+            Elements = prefixLength
+                ? [element with { Key = new StatementKeyPart.Column(new Identifier("id")) { Length = 2 } }]
+                : []
+        };
+
+        var error = Assert.ThrowsAny<SqlSyntaxException>(() => builder.AddIndexOrConstraint(exclusion, source));
+
+        if (prefixLength)
+        {
+            Assert.IsType<SqlSyntaxException.UnsupportedDialectClause>(error);
+        }
+        else
+        {
+            Assert.IsType<SqlSyntaxException.EmptyIndexColumnList>(error);
+        }
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Theory]
+    [InlineData("id NULLS FIRST")]
+    [InlineData("id int4_ops")]
+    public void AddIndex_RejectsKeyOptionsPendingIndexFinalization(string key)
+    {
+        var builder = CreateBuilder();
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement($"CREATE INDEX ix ON items ({key})"));
+        var source = new SourceRef(102, 10, 80);
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() => builder.AddIndex(index, source));
+
+        Assert.Equal("standalone index key options", error.Clause);
+        Assert.Equal(source, error.ObjectSourceRef);
+    }
+
+    [Fact]
+    public void AddIndex_EmptyStorageOptionsMatchOmission()
+    {
+        var statement = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)"));
+        var first = CreateBuilder();
+        var second = CreateBuilder();
+        var table = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items (id INT)"));
+        first.ApplyCreateTable(table);
+        second.ApplyCreateTable(table);
+
+        first.AddIndex(statement, null);
+        second.AddIndex(statement with { Options = [] }, null);
+
+        Assert.Equal(first.ToTable(CreateManager()), second.ToTable(CreateManager()));
+    }
+
+    [Fact]
+    public void AddIndex_RejectsFillFactorPendingStorageOptionConstruction()
+    {
+        var builder = CreateBuilder();
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id) WITH (fillfactor = 70)"));
+
+        Assert.Throws<NotImplementedException>(() => builder.AddIndex(index, null));
+    }
+
+    [Fact]
+    public void AddIndex_RejectsUnrepresentedStorageOptionsWithSource()
+    {
+        var builder = CreateBuilder();
+        var index = Assert.IsType<CreateIndex.Standard>(ParseStatement("CREATE INDEX ix ON items (id)"));
+        var source = new SourceRef(103, 10, 80);
+
+        var error = Assert.Throws<SqlSyntaxException.UnsupportedDialectClause>(() =>
+            builder.AddIndex(index with { Options = [new StatementIndexOption.PadIndex(true)] }, source));
+
+        Assert.Equal(source, error.ObjectSourceRef);
+        Assert.Contains("PAD_INDEX", error.Clause);
+    }
+
+    [Fact]
+    public void PendingPartitions_RejectUnsupportedTableOptions()
+    {
+        var builder = CreateBuilder();
+        var statement = Assert.IsType<CreateTable>(ParseStatement("CREATE TABLE items PARTITION OF parent DEFAULT"));
+
+        Assert.Throws<NotImplementedException>(() =>
+            builder.ApplyCreateTable(statement with { TableOptions = [new TestTableOption()] }));
+    }
+
     private static PgTypeResolutionManager CreateManager()
     {
         var config = PgTestConfig.GetTestConfig();
         return new PgTypeResolutionManager(config, new Dictionary<ObjectHandle, ObjectIdentifier>());
     }
 
-    private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null)
+    private static PgTableBuilder CreateBuilder(SourceRef? sourceRef = null, ComponentNormalizer? componentNormalizer = null)
     {
-        var normalizer = new ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted);
-        return new PgTableBuilder(normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items")),
-            NameHandling.LowercaseUnlessQuoted, normalizer, sourceRef);
+        SourceRef tableSource = sourceRef ?? new SourceRef(0, 0, 0);
+        ComponentNormalizer normalizer = componentNormalizer ?? new PgComponentNormalizer(PgTestConfig.GetTestConfig());
+        ObjectIdentifier tableName = normalizer.NormalizeObjectIdentifier(ObjectIdentifier.FromStrings("catalog", "public", "items"));
+        var registry = new RelationNameRegistry();
+        registry.Register(tableName.ToSimpleIdentifier(), tableName.Schema, tableSource);
+        return new PgTableBuilder(tableName,
+            NameHandling.Postgres, normalizer, PgTestConfig.GetTestConfig().AttributeDefaults,
+            PgTestConfig.GetTestConfig().ServerDefaults, new PgExpressionNormalizer(PgTestConfig.GetTestConfig(), normalizer),
+            registry.Register, tableSource);
+    }
+
+    private sealed class RelationNameRegistry()
+        : PgDefinitionBuilder(PgTestConfig.GetTestConfig(), new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance)
+    {
+        public ObjectNameAndHandle Register(Identifier name, SchemaIdentifier schema, SourceRef sourceRef)
+        {
+            return RegisterRelationName(name, schema, sourceRef);
+        }
     }
 
     private sealed class DefaultValueNormalizer(Value normalizedValue)
-        : ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.LowercaseUnlessQuoted)
+        : ComponentNormalizer(QuoteStyle.Ansi, new FunctionNameProvider(), NameHandling.Postgres)
     {
         public override Value NormalizeValue(Value value)
         {
@@ -850,7 +1282,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
         }
     }
 
-    private record TestKeyPart : KeyPart
+    private record TestKeyPart : StatementKeyPart
     {
         public override void ToSql(SqlTextWriter writer)
         {
@@ -865,7 +1297,7 @@ public class PgTableBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
     private record TestSequenceOption : PgStatementSequenceOption
     {
-        public override string UniqueName => "TEST";
+        public override string DuplicateCheckKey => "TEST";
 
         public override void ToSql(SqlTextWriter writer)
         {

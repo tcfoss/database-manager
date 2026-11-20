@@ -1,10 +1,9 @@
-using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
 
-namespace TcfOss.DatabaseManager.Core.Statements.Components;
+namespace TcfOss.DatabaseManager.Core.Common;
 
-public record PgStorageParameter(ObjectName Name, Value? Value = null) : IWriteSql
+public record ObjectNameKvp(ObjectName Name, Value? Value = null) : IWriteSql
 {
     public void ToSql(SqlTextWriter writer)
     {

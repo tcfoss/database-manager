@@ -173,7 +173,7 @@ public partial class MyDefinitionBuilder
         return pseudoTables;
     }
 
-    private MyTableBuilder ConstructTableBuilder(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef? sourceRef)
+    private MyTableBuilder ConstructTableBuilder(CreateTable createTableStatement, ObjectIdentifier tableId, SourceRef sourceRef)
     {
         var builder = new MyTableBuilder(tableId, Config, Config.Schemas[tableId.Schema].SchemaDefaults, ComponentNormalizer, _expressionNormalizer, sourceRef);
         ValidateCreateTable(createTableStatement, tableId, sourceRef);
@@ -181,7 +181,7 @@ public partial class MyDefinitionBuilder
         return builder;
     }
 
-    private ObjectNameAndHandle AddTable(CreateTable createTableStatement, SchemaIdentifier currentSchema, SourceRef? sourceRef = null)
+    private ObjectNameAndHandle AddTable(CreateTable createTableStatement, SchemaIdentifier currentSchema, SourceRef sourceRef)
     {
         ObjectNameAndHandle tableNameAndHandle = GetAndValidateName(createTableStatement, currentSchema, sourceRef);
         MyTableBuilder tableBuilder = ConstructTableBuilder(createTableStatement, tableNameAndHandle.Id, sourceRef);
@@ -488,7 +488,7 @@ public partial class MyDefinitionBuilder
         {
             if (column.AutoIncrement)
             {
-                if (table.PrimaryKey == null || !table.PrimaryKey.Columns.Any(x => x is KeyPart.Column keyCol && keyCol.Name.Name == column.Name.Name))
+                if (table.PrimaryKey == null || !table.PrimaryKey.Columns.Any(x => x is MyKeyPart.Column keyCol && keyCol.Name.Name == column.Name.Name))
                 {
                     errors.Add(new SqlSyntaxException.AutoIncrementPrimaryKeyOnly(column.Name, sourceRef));
                 }
@@ -662,9 +662,9 @@ public partial class MyDefinitionBuilder
     {
         var errors = new List<SourcedException>();
 
-        foreach (KeyPart keyPart in table.PrimaryKey?.Columns ?? [])
+        foreach (MyKeyPart keyPart in table.PrimaryKey?.Columns ?? [])
         {
-            if (keyPart is KeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
+            if (keyPart is MyKeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
             {
                 errors.Add(new SqlSyntaxException.IndexColumnNotFound("PRIMARY", table.Name, columnPart.Name, sourceRef));
             }
@@ -672,9 +672,9 @@ public partial class MyDefinitionBuilder
 
         foreach (MyUniqueKey uniqueKey in table.UniqueKeys.Values)
         {
-            foreach (KeyPart keyPart in uniqueKey.Columns)
+            foreach (MyKeyPart keyPart in uniqueKey.Columns)
             {
-                if (keyPart is KeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
+                if (keyPart is MyKeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
                 {
                     errors.Add(new SqlSyntaxException.IndexColumnNotFound(uniqueKey.ConstraintName!, table.Name, columnPart.Name, sourceRef));
                 }
@@ -683,9 +683,9 @@ public partial class MyDefinitionBuilder
 
         foreach (MyKey key in table.Keys.Values)
         {
-            foreach (KeyPart keyPart in key.Columns)
+            foreach (MyKeyPart keyPart in key.Columns)
             {
-                if (keyPart is KeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
+                if (keyPart is MyKeyPart.Column columnPart && !table.Columns.Any(x => x.Name.Name == columnPart.Name.Name))
                 {
                     errors.Add(new SqlSyntaxException.IndexColumnNotFound(key.IndexName!, table.Name, columnPart.Name, sourceRef));
                 }

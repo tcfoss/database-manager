@@ -1,15 +1,16 @@
 using TcfOss.DatabaseManager.Core.IO;
+using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.Statements.Components;
 
-public abstract record PgConstraintOption : IWriteSql
+public abstract record PgConstraintOption : IWriteSql, IHaveDuplicateCheckKey
 {
-    public abstract string UniqueName { get; }
+    public abstract string DuplicateCheckKey { get; }
     public abstract void ToSql(SqlTextWriter writer);
 
     public record Deferrable(bool Value) : PgConstraintOption
     {
-        public override string UniqueName => "DEFERRABLE";
+        public override string DuplicateCheckKey => "DEFERRABLE";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -19,7 +20,7 @@ public abstract record PgConstraintOption : IWriteSql
 
     public record InitiallyDeferred(bool Value) : PgConstraintOption
     {
-        public override string UniqueName => "INITIALLY";
+        public override string DuplicateCheckKey => "INITIALLY";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -29,7 +30,7 @@ public abstract record PgConstraintOption : IWriteSql
 
     public record NotValid : PgConstraintOption
     {
-        public override string UniqueName => "NOT VALID";
+        public override string DuplicateCheckKey => "NOT VALID";
 
         public override void ToSql(SqlTextWriter writer)
         {
@@ -39,7 +40,7 @@ public abstract record PgConstraintOption : IWriteSql
 
     public record NoInherit : PgConstraintOption
     {
-        public override string UniqueName => "NO INHERIT";
+        public override string DuplicateCheckKey => "NO INHERIT";
 
         public override void ToSql(SqlTextWriter writer)
         {

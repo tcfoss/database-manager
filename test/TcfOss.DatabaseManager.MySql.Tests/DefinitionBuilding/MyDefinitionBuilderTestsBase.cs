@@ -95,7 +95,7 @@ public abstract class MyDefinitionBuilderTestsBase
         var table = Assert.Single(def.Tables).Value;
         Assert.NotNull(table);
         Assert.NotNull(table.PrimaryKey);
-        var pkColumn = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
+        var pkColumn = Assert.IsType<MyKeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
         Assert.Equal("id", pkColumn.Name.Name);
     }
 
@@ -1557,7 +1557,7 @@ public abstract class MyDefinitionBuilderTestsBase
         var nestOpen = "";
         var nestClose = "";
 
-        var expected3 = $"`last_updated` TIMESTAMP NOT NULL DEFAULT ({currentTimestamp}) ON UPDATE {currentTimestamp}";
+        var expected3 = $"`last_updated` TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP) ON UPDATE {currentTimestamp}";
         Assert.Equal(expected3, table.Columns[2].ToSql());
         var expected4 = $"`gen1` INT{DefaultIntegerWidth} SIGNED GENERATED ALWAYS AS (`id` + 100) VIRTUAL";
         Assert.Equal(expected4, table.Columns[3].ToSql());
@@ -1876,10 +1876,10 @@ public abstract class MyDefinitionBuilderTestsBase
 
         var table = Assert.Single(definition.Tables.Values);
         var ft = Assert.IsType<MyKey.FullText>(Assert.Single(table.Keys, k => k.Key.Name == "ft_idx").Value);
-        var ftCol = Assert.IsType<KeyPart.Column>(Assert.Single(ft.Columns));
+        var ftCol = Assert.IsType<MyKeyPart.Column>(Assert.Single(ft.Columns));
         Assert.Equal("description", ftCol.Name.Name);
         var sp = Assert.IsType<MyKey.Spatial>(Assert.Single(table.Keys, k => k.Key.Name == "sp_idx").Value);
-        var spCol = Assert.IsType<KeyPart.Column>(Assert.Single(sp.Columns));
+        var spCol = Assert.IsType<MyKeyPart.Column>(Assert.Single(sp.Columns));
         Assert.Equal("location", spCol.Name.Name);
     }
 

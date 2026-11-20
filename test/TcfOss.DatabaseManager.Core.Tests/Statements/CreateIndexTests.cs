@@ -14,7 +14,7 @@ public class CreateIndexTests
 {
     private static readonly ObjectName s_table = new([new Identifier("mytable")]);
     private static readonly Identifier s_name = new("ix");
-    private static readonly SqlValueList<KeyPart> s_columns = [new KeyPart.Column(new Identifier("col1"))];
+    private static readonly SqlValueList<StatementKeyPart> s_columns = [new StatementKeyPart.Column(new Identifier("col1"))];
 
     [Theory]
     [InlineData(false)]
@@ -134,6 +134,38 @@ public class CreateIndexTests
 
         Assert.Equal(s_table, reference.Name);
         Assert.Empty(index.GetReferencedItems(new ReferencedItemsManager { Filters = ObjectNameFilters.None }));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void MyKeyParts_EmissionOmitsOnlyOptionalDirection(bool expressionKey, bool descending, bool removeOptionalElements)
+    {
+        Direction direction = descending ? Direction.Descending : Direction.Ascending;
+        var name = new Identifier("label");
+        var expression = new Nested(new SingleIdentifier(name));
+        MyKeyPart key = expressionKey
+            ? new MyKeyPart.IndexExpression(expression, direction)
+            : new MyKeyPart.Column(name, 12, direction);
+
+        StatementKeyPart emitted = key.ToStatementKeyPart(removeOptionalElements);
+
+        string suffix = descending ? " DESC" : removeOptionalElements ? "" : " ASC";
+        Assert.Equal((expressionKey ? "(label)" : "label(12)") + suffix, emitted.ToSql());
+        if (expressionKey)
+        {
+            Assert.Equal(expression, Assert.IsType<StatementKeyPart.IndexExpression>(emitted).Expression);
+        }
+        else
+        {
+            Assert.Equal(12U, Assert.IsType<StatementKeyPart.Column>(emitted).Length);
+        }
     }
 
     private static CreateIndex.Unique CreateUnique(bool options)

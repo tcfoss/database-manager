@@ -197,7 +197,7 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Single(columns);
         var column = columns.FirstOrDefault();
         Assert.NotNull(column);
-        var columnAsKeyPart = column as KeyPart.Column;
+        var columnAsKeyPart = column as MyKeyPart.Column;
         Assert.NotNull(columnAsKeyPart);
         Assert.Equal("book_id", columnAsKeyPart.Name.Name);
     }
@@ -231,7 +231,7 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.NotNull(columns);
         Assert.Single(columns);
 
-        var column = columns.FirstOrDefault() as KeyPart.Column;
+        var column = columns.FirstOrDefault() as MyKeyPart.Column;
         Assert.NotNull(column);
         Assert.Equal("contributor_id", column.Name.Name);
 
@@ -250,13 +250,13 @@ public abstract class BaseInfoSchemaRepoTests
 
         Assert.NotNull(table.PrimaryKey);
 
-        var refCol = Assert.IsType<KeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
+        var refCol = Assert.IsType<MyKeyPart.Column>(Assert.Single(table.PrimaryKey.Columns));
         Assert.Equal("id", refCol.Name.Name);
         Assert.Null(refCol.Length);
         Assert.Equal(Direction.Descending, refCol.Direction);
 
         var index = Assert.Single(table.Keys.Values);
-        var indexCol = Assert.IsType<KeyPart.Column>(Assert.Single(index.Columns));
+        var indexCol = Assert.IsType<MyKeyPart.Column>(Assert.Single(index.Columns));
         Assert.Equal("val", indexCol.Name.Name);
         Assert.NotNull(indexCol.Length);
         Assert.Equal(5u, indexCol.Length);
@@ -350,7 +350,7 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Single(primaryKeyColumns);
         var primaryKeyColumn = primaryKeyColumns.FirstOrDefault();
         Assert.NotNull(primaryKeyColumn);
-        var primaryKeyColumnAsKeyPart = primaryKeyColumn as KeyPart.Column;
+        var primaryKeyColumnAsKeyPart = primaryKeyColumn as MyKeyPart.Column;
         Assert.NotNull(primaryKeyColumnAsKeyPart);
         Assert.Equal("rental_id", primaryKeyColumnAsKeyPart.Name.Name);
 
@@ -365,11 +365,11 @@ public abstract class BaseInfoSchemaRepoTests
         Assert.Equal(2, uniqueKey.Columns.Count);
         var uniqueKeyColumns = uniqueKey.Columns.ToList();
 
-        var uniqueCol1 = uniqueKeyColumns[0] as KeyPart.Column;
+        var uniqueCol1 = uniqueKeyColumns[0] as MyKeyPart.Column;
         Assert.NotNull(uniqueCol1);
         Assert.Equal("book_id", uniqueCol1.Name.Name);
 
-        var uniqueCol2 = uniqueKeyColumns[1] as KeyPart.Column;
+        var uniqueCol2 = uniqueKeyColumns[1] as MyKeyPart.Column;
         Assert.NotNull(uniqueCol2);
         Assert.Equal("really_active", uniqueCol2.Name.Name);
 

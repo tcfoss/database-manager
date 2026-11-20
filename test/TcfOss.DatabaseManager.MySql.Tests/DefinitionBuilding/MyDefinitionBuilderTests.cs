@@ -705,7 +705,7 @@ public class MyDefinitionBuilderTests : MyDefinitionBuilderTestsBase
 
         var table = Assert.Single(definition.Tables.Values);
         var key = Assert.Single(table.UniqueKeys.Values);
-        var part = Assert.IsType<KeyPart.IndexExpression>(Assert.Single(key.Columns));
+        var part = Assert.IsType<MyKeyPart.IndexExpression>(Assert.Single(key.Columns));
         Assert.Equal("unique_name", key.Name!.Name);
         Assert.Equal("(LOWER(`name`))", part.Expression.ToSql());
     }

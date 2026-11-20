@@ -75,7 +75,7 @@ public class MyDdlParser(MyParser parser) : DdlParser(parser)
         return [];
     }
 
-    protected override SqlValueList<PgStorageParameter>? ParseOptionalPgViewOptions(ParserState state)
+    protected override SqlValueList<ObjectNameKvp>? ParseOptionalPgViewOptions(ParserState state)
     {
         return null;
     }

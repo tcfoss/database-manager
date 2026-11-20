@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
-public abstract record MyKey(SqlValueList<KeyPart> Columns, Identifier? IndexName)
+public abstract record MyKey(SqlValueList<MyKeyPart> Columns, Identifier? IndexName)
     : IHaveOptionalIdentifierName
 {
     public Comment? Comment { get; init; }
@@ -16,7 +16,7 @@ public abstract record MyKey(SqlValueList<KeyPart> Columns, Identifier? IndexNam
 
     public abstract StatementTableConstraint ToStatementConstraint(DifferFormatManager manager);
 
-    public record Standard(SqlValueList<KeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
+    public record Standard(SqlValueList<MyKeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
     {
         public BuiltInIndexMethod? IndexMethod { get; init; }
 
@@ -27,12 +27,7 @@ public abstract record MyKey(SqlValueList<KeyPart> Columns, Identifier? IndexNam
             {
                 indexMethod = null;
             }
-            SqlValueList<KeyPart> columns = Columns;
-            if (manager.Formatting.OmitModifiersIfDefault)
-            {
-                columns = KeyPart.RemoveOptionalElementsFromKeyParts(columns);
-            }
-            return new StatementTableConstraint.Standard(columns, IndexName)
+            return new StatementTableConstraint.Standard(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)), IndexName)
             {
                 IndexMethod = indexMethod,
                 Comment = Comment,
@@ -41,16 +36,11 @@ public abstract record MyKey(SqlValueList<KeyPart> Columns, Identifier? IndexNam
         }
     }
 
-    public record FullText(SqlValueList<KeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
+    public record FullText(SqlValueList<MyKeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
     {
         public override StatementTableConstraint.FullText ToStatementConstraint(DifferFormatManager manager)
         {
-            SqlValueList<KeyPart> columns = Columns;
-            if (manager.Formatting.OmitModifiersIfDefault)
-            {
-                columns = KeyPart.RemoveOptionalElementsFromKeyParts(columns);
-            }
-            return new StatementTableConstraint.FullText(columns, IndexName)
+            return new StatementTableConstraint.FullText(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)), IndexName)
             {
                 Comment = Comment,
                 KeyLabel = KeyLabel.Key
@@ -58,16 +48,11 @@ public abstract record MyKey(SqlValueList<KeyPart> Columns, Identifier? IndexNam
         }
     }
 
-    public record Spatial(SqlValueList<KeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
+    public record Spatial(SqlValueList<MyKeyPart> Columns, Identifier? IndexName) : MyKey(Columns, IndexName)
     {
         public override StatementTableConstraint.Spatial ToStatementConstraint(DifferFormatManager manager)
         {
-            SqlValueList<KeyPart> columns = Columns;
-            if (manager.Formatting.OmitModifiersIfDefault)
-            {
-                columns = KeyPart.RemoveOptionalElementsFromKeyParts(columns);
-            }
-            return new StatementTableConstraint.Spatial(columns, IndexName)
+            return new StatementTableConstraint.Spatial(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)), IndexName)
             {
                 Comment = Comment,
                 KeyLabel = KeyLabel.Key

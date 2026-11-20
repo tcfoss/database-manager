@@ -48,6 +48,11 @@ public record ObjectIdentifier(string Name, SchemaIdentifier Schema, QuoteStyle 
         throw new IdentifierMismatchException.IdentifierLengthException("{ table | view | procedure | function | trigger | event }", 3, name.Values.Count, name.Values.Select(x => x.Name));
     }
 
+    public static ObjectIdentifier FromIdentifier(Identifier name, SchemaIdentifier schema, QuoteStyle? quoteStyle)
+    {
+        return new ObjectIdentifier(name.Name, schema, quoteStyle ?? name.QuoteStyle) { OriginalIdentifiers = [name] };
+    }
+
     public static ObjectIdentifier FromStrings(string catalog, string schema, string name, QuoteStyle quoteStyle = QuoteStyle.None)
     {
         return new ObjectIdentifier(name,

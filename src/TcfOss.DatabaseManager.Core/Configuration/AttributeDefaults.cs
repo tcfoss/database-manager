@@ -29,6 +29,14 @@ public record AttributeDefaults
     public ReferentialAction? ForeignKeyOnDelete { get; init; } = ReferentialAction.Restrict;
 
     public BuiltInIndexMethod IndexMethod { get; init; } = BuiltInIndexMethod.Btree;
+    public GenerationMode GeneratedColumnMode { get; init; } = GenerationMode.Virtual;
+
+    public PgRoutineVolatility PgFunctionVolatility { get; init; } = PgRoutineVolatility.Volatile;
+    public bool PgFunctionStrict { get; init; }
+    public PgRoutineParallel PgFunctionParallel { get; init; } = PgRoutineParallel.Unsafe;
+    public float PgFunctionCost { get; init; } = 100;
+    public float PgNativeFunctionCost { get; init; } = 1;
+    public float PgFunctionRows { get; init; } = 1000;
 
     public SqlDataRelation? FunctionDataRelation { get; init; } = SqlDataRelation.ContainsSql;
     public SqlDataRelation? ProcedureDataRelation { get; init; } = SqlDataRelation.ContainsSql;

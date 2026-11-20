@@ -1,5 +1,4 @@
 using TcfOss.DatabaseManager.Core.Common;
-using TcfOss.DatabaseManager.Core.DatabaseObjects.Components;
 using TcfOss.DatabaseManager.Core.Expressions;
 
 namespace TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
@@ -74,8 +73,6 @@ public abstract record ColumnOption()
                 return HashCode.Combine(NormalizedExpression, Mode);
             }
         }
-
-        public record PgIdentity(bool Always, PgIdentityOptions Options) : Generated;
     }
 
     public record OnUpdate(Expression Expression) : ColumnOption;

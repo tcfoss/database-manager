@@ -6,26 +6,22 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
-public record MyPrimaryKey(SqlValueList<KeyPart> Columns)
+public record MyPrimaryKey(SqlValueList<MyKeyPart> Columns)
 {
     public BuiltInIndexMethod? IndexMethod { get; init; }
     public Comment? Comment { get; init; }
 
     public StatementTableConstraint.PrimaryKey ToStatementConstraint(DifferFormatManager manager)
     {
-        var result = new StatementTableConstraint.PrimaryKey(Columns)
+        BuiltInIndexMethod? method = manager.Formatting.OmitModifiersIfDefault && IndexMethod == manager.AttributeDefaults.IndexMethod
+            ? null
+            : IndexMethod;
+
+        var result = new StatementTableConstraint.PrimaryKey(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)))
         {
-            IndexMethod = IndexMethod,
+            IndexMethod = method,
             Comment = Comment,
         };
-        if (manager.Formatting.OmitModifiersIfDefault)
-        {
-            if (result.IndexMethod == manager.AttributeDefaults.IndexMethod)
-            {
-                result = result with { IndexMethod = null };
-            }
-            result = result with { Columns = KeyPart.RemoveOptionalElementsFromKeyParts(result.Columns) };
-        }
         return result;
     }
 }

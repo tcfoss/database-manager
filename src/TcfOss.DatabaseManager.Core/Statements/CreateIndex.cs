@@ -12,7 +12,7 @@ using CreateOrLabel = TcfOss.DatabaseManager.Core.Statements.LabelAttributes.Cre
 
 namespace TcfOss.DatabaseManager.Core.Statements;
 
-public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> Columns, Identifier? Name) : Statement
+public abstract record CreateIndex(ObjectName TableName, SqlValueList<StatementKeyPart> Columns, Identifier? Name) : Statement
 {
     public bool IfNotExists { get; init; }
     public CreateOrLabel? CreateOrLabel { get; init; }
@@ -60,7 +60,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         }
         using (context.Enter(ReferencedItemsContext.CreateIndexExpression))
         {
-            IEnumerable<Expression> expressions = Columns.OfType<KeyPart.IndexExpression>().Select(key => key.Expression);
+            IEnumerable<Expression> expressions = Columns.OfType<StatementKeyPart.IndexExpression>().Select(key => key.Expression);
             Expression? filter = this switch
             {
                 Standard standard => standard.Filter,
@@ -154,7 +154,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         Meta.FormatPostNonSql(writer, manager);
     }
 
-    public record Standard(SqlValueList<KeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
+    public record Standard(SqlValueList<StatementKeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
     {
         public IndexMethod? IndexMethod { get; init; }
         public IndexOrganization? IndexOrganization { get; init; }
@@ -231,7 +231,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         }
     }
 
-    public record Unique(SqlValueList<KeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
+    public record Unique(SqlValueList<StatementKeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
     {
         public IndexMethod? IndexMethod { get; init; }
         public IndexOrganization? IndexOrganization { get; init; }
@@ -341,7 +341,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         }
     }
 
-    public record FullText(SqlValueList<KeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
+    public record FullText(SqlValueList<StatementKeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
     {
         public Comment? Comment { get; init; }
 
@@ -365,7 +365,7 @@ public abstract record CreateIndex(ObjectName TableName, SqlValueList<KeyPart> C
         }
     }
 
-    public record Spatial(SqlValueList<KeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
+    public record Spatial(SqlValueList<StatementKeyPart> Columns, Identifier? Name, ObjectName TableName) : CreateIndex(TableName, Columns, Name)
     {
         public Comment? Comment { get; init; }
 

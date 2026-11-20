@@ -223,6 +223,12 @@ public class SqlSyntaxException(string message, SourceRef? sourceRef = null)
         private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_EmptyIndexColumnList);
     }
 
+    public class OnCommitNonTemporary(string tableId, SourceRef? sourceRef = null)
+        : SqlSyntaxException(s_compositeFormat.Apply(tableId), sourceRef)
+    {
+        private static readonly CompositeFormat s_compositeFormat = CompositeFormat.Parse(ErrorMessages.Err_Syntax_OnCommitNonTemporary);
+    }
+
     private static string GetMessage(string message)
     {
         return s_errorWithType.Apply(ErrorMessages.Err_Syntax, message);

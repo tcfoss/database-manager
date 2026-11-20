@@ -171,12 +171,22 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
 
     public ObjectName NormalizeObjectName(ObjectName name)
     {
-        return new ObjectName([.. name.Values.Select(NormalizeSingleIdentifier)]);
+        return new ObjectName(name.Values.Map(NormalizeSingleIdentifier));
+    }
+
+    public ObjectName? NormalizeObjectNameNullable(ObjectName? name)
+    {
+        if (name is null)
+        {
+            return null;
+        }
+
+        return NormalizeObjectName(name);
     }
 
     public CompoundIdentifier NormalizeIdentifier(CompoundIdentifier identifier)
     {
-        return new CompoundIdentifier([.. identifier.Identifiers.Select(NormalizeSingleIdentifier)]);
+        return new CompoundIdentifier(identifier.Identifiers.Map(NormalizeSingleIdentifier));
     }
 
     public SingleIdentifier NormalizeIdentifier(SingleIdentifier identifier)
@@ -187,6 +197,16 @@ public partial class ComponentNormalizer(QuoteStyle quoteStyle, IFunctionNamePro
     public virtual Value NormalizeValue(Value value)
     {
         return value;
+    }
+
+    protected static Value.Number NormalizeDecimalNumber(Value.Number number)
+    {
+        if (number.IsLong)
+        {
+            return number;
+        }
+        string normalized = NumericText.NormalizeDecimal(number.Value);
+        return normalized == number.Value ? number : new Value.Number(normalized, false);
     }
 
     private Identifier NormalizeCase(Identifier identifier)

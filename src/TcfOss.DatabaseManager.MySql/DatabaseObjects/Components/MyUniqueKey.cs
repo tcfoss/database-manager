@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
 
-public record MyUniqueKey(SqlValueList<KeyPart> Columns, Identifier? ConstraintName)
+public record MyUniqueKey(SqlValueList<MyKeyPart> Columns, Identifier? ConstraintName)
     : IHaveOptionalIdentifierName
 {
     public BuiltInIndexMethod? IndexMethod { get; init; }
@@ -23,12 +23,7 @@ public record MyUniqueKey(SqlValueList<KeyPart> Columns, Identifier? ConstraintN
         {
             indexMethod = null;
         }
-        SqlValueList<KeyPart> columns = Columns;
-        if (manager.Formatting.OmitModifiersIfDefault)
-        {
-            columns = KeyPart.RemoveOptionalElementsFromKeyParts(columns);
-        }
-        return new StatementTableConstraint.UniqueConstraint(columns, ConstraintName)
+        return new StatementTableConstraint.UniqueConstraint(Columns.Map(column => column.ToStatementKeyPart(manager.Formatting.OmitModifiersIfDefault)), ConstraintName)
         {
             IndexMethod = indexMethod,
             Comment = Comment,

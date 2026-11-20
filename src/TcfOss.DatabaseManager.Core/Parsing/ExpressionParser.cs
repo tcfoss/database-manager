@@ -461,7 +461,7 @@ public class ExpressionParser
         {
             return new FunctionCall(new ObjectName(new[] { word.ToIdentifier(state.SourceId) }))
             {
-                Arguments = FunctionArguments.EmptyList()
+                Arguments = new FunctionArguments.None()
             };
         }
         return new SingleIdentifier(word.ToIdentifier(state.SourceId));

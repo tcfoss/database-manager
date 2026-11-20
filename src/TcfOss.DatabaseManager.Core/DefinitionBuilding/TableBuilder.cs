@@ -11,15 +11,15 @@ using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
 
 namespace TcfOss.DatabaseManager.Core.DefinitionBuilding;
 
-public abstract class TableBuilder<TTable>(ObjectIdentifier name, NameHandling nameHandling, INormalizeComponents componentNormalizer, SourceRef? sourceRef)
+public abstract class TableBuilder<TTable>(ObjectIdentifier name, NameHandling nameHandling, INormalizeComponents componentNormalizer, SourceRef sourceRef)
 {
     protected ObjectIdentifier Name { get; } = name;
     protected NameHandling NameHandling { get; } = nameHandling;
     protected INormalizeComponents ComponentNormalizer { get; } = componentNormalizer;
-    protected SourceRef? SourceRef { get; } = sourceRef;
+    protected SourceRef SourceRef { get; } = sourceRef;
     protected HashSet<string> ColumnNames { get; } = [];
 
-    public void ApplyCreateTable(CreateTable createTable)
+    public virtual void ApplyCreateTable(CreateTable createTable)
     {
         foreach (StatementTableOption opt in createTable.TableOptions)
         {

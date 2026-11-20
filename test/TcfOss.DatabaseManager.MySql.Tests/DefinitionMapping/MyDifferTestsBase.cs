@@ -3057,4 +3057,31 @@ public abstract class MyDifferTestsBase
         Assert.Equal([0u, 1u], changes.Select(change => change.SubWeight));
         Assert.All(changes, change => Assert.IsType<AlterTable>(change.Statement));
     }
+
+    [Theory]
+    [InlineData("DATE", "CURRENT_DATE", "CURRENT_DATE()")]
+    [InlineData("TIME", "CURRENT_TIME", "CURRENT_TIME()")]
+    [InlineData("DATETIME", "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()")]
+    [InlineData("DATETIME", "current_timestamp", "NOW()")]
+    [InlineData("VARCHAR(100)", "CURRENT_USER", "CURRENT_USER()")]
+    public void Optional_Function_Parentheses_In_Defaults_Generate_No_Change(string dataType, string start, string end)
+    {
+        var changes = ComputeChanges(
+            $"CREATE TABLE mytable (value {dataType} DEFAULT ({start}))",
+            $"CREATE TABLE mytable (value {dataType} DEFAULT ({end}))");
+
+        Assert.Empty(changes);
+    }
+
+    [Theory]
+    [InlineData("CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()")]
+    [InlineData("current_timestamp", "NOW()")]
+    public void Optional_Function_Parentheses_In_OnUpdate_Generate_No_Change(string start, string end)
+    {
+        var changes = ComputeChanges(
+            $"CREATE TABLE mytable (value DATETIME ON UPDATE {start})",
+            $"CREATE TABLE mytable (value DATETIME ON UPDATE {end})");
+
+        Assert.Empty(changes);
+    }
 }

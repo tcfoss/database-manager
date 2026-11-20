@@ -1,3 +1,4 @@
+using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.Formatting;
 using TcfOss.DatabaseManager.Core.IO;
@@ -85,7 +86,7 @@ public abstract record StatementIndexOption : IWriteSql
         }
     }
 
-    public record StorageParameter(PgStorageParameter Parameter) : StatementIndexOption
+    public record StorageParameter(ObjectNameKvp Parameter) : StatementIndexOption
     {
         public override void ToSql(SqlTextWriter writer)
         {

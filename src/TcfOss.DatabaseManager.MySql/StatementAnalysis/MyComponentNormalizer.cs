@@ -19,6 +19,6 @@ public class MyComponentNormalizer(QuoteStyle quoteStyle, IFunctionNameProvider 
                 return new Value.Number("0", false);
             }
         }
-        return value;
+        return value is Value.Number number ? NormalizeDecimalNumber(number) : base.NormalizeValue(value);
     }
 }

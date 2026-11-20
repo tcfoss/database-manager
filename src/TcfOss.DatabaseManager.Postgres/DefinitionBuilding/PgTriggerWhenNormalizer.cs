@@ -98,7 +98,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
         }
         if (column == null)
         {
-            if (isNew && time == TriggerTime.Before && table.Columns.Any(tableColumn => tableColumn.Generated is ColumnOption.Generated.AsExpression))
+            if (isNew && time == TriggerTime.Before && table.Columns.Any(tableColumn => tableColumn.Generated is not null))
             {
                 throw Invalid("NEW containing generated columns before generation");
             }
@@ -111,7 +111,7 @@ public class PgTriggerWhenNormalizer(PgConfig config, ComponentNormalizer compon
         {
             throw Invalid(identifier.Name + "." + column.Name);
         }
-        if (isNew && time == TriggerTime.Before && (systemColumn || resolved!.Generated is ColumnOption.Generated.AsExpression))
+        if (isNew && time == TriggerTime.Before && (systemColumn || resolved!.Generated is not null))
         {
             throw Invalid("NEW." + column.Name + " before generation");
         }
