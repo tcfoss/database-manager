@@ -83,13 +83,16 @@ public class PgExclusionNormalizer(INormalizeComponents componentNormalizer, INo
 
     private PgKeyPart.OperatorClassOptions? NormalizeOperatorClass(PgStatementOperatorClass? options, SourceRef? sourceRef)
     {
-        PgKeyPart.OperatorClassOptions? result = options?.Name is { } operatorClass
-            ? new PgKeyPart.OperatorClassOptions(componentNormalizer.NormalizeObjectName(operatorClass)) : null;
+        if (options == null)
+        {
+            return null;
+        }
+        var result = new PgKeyPart.OperatorClassOptions(componentNormalizer.NormalizeObjectName(options.Name));
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (ObjectNameKvp parameter in options?.Parameters ?? [])
+        foreach (ObjectNameKvp parameter in options.Parameters ?? [])
         {
             ObjectName name = componentNormalizer.NormalizeObjectName(parameter.Name);
-            if (result == null || name.Values.Count != 1
+            if (name.Values.Count != 1
                 || name.Values[0].Name is not ("siglen" or "numranges")
                 || parameter.Value is not Value.Number { IsLong: false } number
                 || number.AsInt() is not > 0)

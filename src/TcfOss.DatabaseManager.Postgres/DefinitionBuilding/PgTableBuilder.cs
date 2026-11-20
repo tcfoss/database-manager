@@ -86,14 +86,14 @@ public class PgTableBuilder(
 
     public override void AddColumn(StatementColumn column, SourceRef? sourceRef)
     {
-        sourceRef ??= SourceRef;
+        SourceRef actualSource = sourceRef ?? SourceRef;
         if (column is not StatementColumn.Typed typedColumn)
         {
             throw new NotImplementedException("PostgreSQL column construction currently supports typed declarations only.");
         }
         if (!ColumnNames.Add(Handle.GetNamePart(typedColumn.Name, NameHandling)))
         {
-            throw new SqlSyntaxException.DuplicateColumn(typedColumn.Name.Name, Name, sourceRef);
+            throw new SqlSyntaxException.DuplicateColumn(typedColumn.Name.Name, Name, actualSource);
         }
         Identifier normalizedName = ComponentNormalizer.NormalizeSingleIdentifier(typedColumn.Name);
         var columnName = new ColumnIdentifier(normalizedName.Name, Name, normalizedName.QuoteStyle)
@@ -118,28 +118,28 @@ public class PgTableBuilder(
             if (option is StatementColumnOption.Default { PgOptions: not null }
                 or StatementColumnOption.PgReference)
             {
-                throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL column constraint options", sourceRef);
+                throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL column constraint options", actualSource);
             }
 
             if (!seenOptions.Add(option.DuplicateCheckKey))
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, sourceRef);
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce(option.DuplicateCheckKey, "column", typedColumn.Name, actualSource);
             }
 
             switch (option)
             {
                 case StatementColumnOption.PrimaryKey primaryKey:
-                    AddColumnPrimaryKey(typedColumn.Name, primaryKey, sourceRef);
+                    AddColumnPrimaryKey(typedColumn.Name, primaryKey, actualSource);
                     break;
                 case StatementColumnOption.Unique unique:
-                    AddColumnUnique(typedColumn.Name, unique, sourceRef);
+                    AddColumnUnique(typedColumn.Name, unique, actualSource);
                     break;
                 case StatementColumnOption.CheckConstraint check:
-                    AddColumnCheck(check, sourceRef);
+                    AddColumnCheck(check, actualSource);
                     break;
                 case StatementColumnOption.Nullability nullabilityOption:
                     nullabilityOptions = PgConstraintNormalizer.Normalize(nullabilityOption.PgOptions, "NOT NULL",
-                        columnName, sourceRef, allowNoInherit: nullabilityOption is StatementColumnOption.Nullability.NotNull);
+                        columnName, actualSource, allowNoInherit: nullabilityOption is StatementColumnOption.Nullability.NotNull);
                     Identifier? nullabilityName = ComponentNormalizer.NormalizeSingleIdentifierNullable(nullabilityOption.Name);
                     nullability = nullabilityOption is StatementColumnOption.Nullability.NotNull
                         ? new ColumnOption.Nullability.NotNull(nullabilityName)
@@ -150,7 +150,7 @@ public class PgTableBuilder(
                     break;
                 case StatementColumnOption.Generated.AsExpression expression:
                     (Expression normalized, Expression flattened) = GetNormalizedExpressions(expression.Expression);
-                    ValidateExpressionScope(normalized, sourceRef);
+                    ValidateExpressionScope(normalized, actualSource);
                     generated = new ColumnOption.Generated.AsExpression(normalized,
                         expression.ModeGiven ? expression.Mode : attributeDefaults.GeneratedColumnMode)
                     {
@@ -175,21 +175,17 @@ public class PgTableBuilder(
         }
         if (generated != null && defaultValue != null)
         {
-            throw new SqlSyntaxException.MutuallyExclusive("GENERATED", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
+            throw new SqlSyntaxException.MutuallyExclusive("GENERATED", "DEFAULT", "column", typedColumn.Name.Name, actualSource);
         }
         if (identity != null && defaultValue != null)
         {
-            throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "DEFAULT", "column", typedColumn.Name.Name, sourceRef);
-        }
-        if (identity != null && generated != null)
-        {
-            throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "GENERATED", "column", typedColumn.Name.Name, sourceRef);
+            throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "DEFAULT", "column", typedColumn.Name.Name, actualSource);
         }
         if (identity != null)
         {
             if (nullability is ColumnOption.Nullability.Null)
             {
-                throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "NULL", "column", typedColumn.Name.Name, sourceRef);
+                throw new SqlSyntaxException.MutuallyExclusive("IDENTITY", "NULL", "column", typedColumn.Name.Name, actualSource);
             }
             nullability ??= new ColumnOption.Nullability.NotNull();
         }
@@ -202,7 +198,7 @@ public class PgTableBuilder(
             Storage = storage,
             Compression = compression,
             NullabilityOptions = nullabilityOptions,
-            SourceRef = sourceRef
+            SourceRef = actualSource
         }));
     }
 
@@ -238,34 +234,34 @@ public class PgTableBuilder(
 
     public override void AddIndexOrConstraint(StatementTableConstraint constraint, SourceRef? sourceRef)
     {
-        sourceRef ??= SourceRef;
+        SourceRef actualSource = sourceRef ?? SourceRef;
         if (constraint is StatementTableConstraint.PgUsingIndex)
         {
-            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL constraint options", sourceRef);
+            throw new DefinitionException($"{nameof(CreateTable)} PostgreSQL constraint options", actualSource);
         }
         switch (constraint)
         {
             case StatementTableConstraint.PrimaryKey primaryKey:
-                AddTablePrimaryKey(primaryKey, sourceRef);
+                AddTablePrimaryKey(primaryKey, actualSource);
                 break;
             case StatementTableConstraint.UniqueConstraint unique:
-                AddTableUnique(unique, sourceRef);
+                AddTableUnique(unique, actualSource);
                 break;
             case StatementTableConstraint.ForeignKey foreignKey:
-                AddTableForeignKey(foreignKey, sourceRef);
+                AddTableForeignKey(foreignKey, actualSource);
                 break;
             case StatementTableConstraint.Check check:
-                AddTableCheck(check, sourceRef);
+                AddTableCheck(check, actualSource);
                 break;
             case StatementTableConstraint.PgExclusion exclusion:
-                AddTableExclusion(exclusion, sourceRef);
+                AddTableExclusion(exclusion, actualSource);
                 break;
             default:
                 throw new NotImplementedException($"PostgreSQL constraint {constraint.GetType().Name} is not implemented.");
         }
     }
 
-    private void AddColumnPrimaryKey(Identifier column, StatementColumnOption.PrimaryKey primaryKey, SourceRef? sourceRef)
+    private void AddColumnPrimaryKey(Identifier column, StatementColumnOption.PrimaryKey primaryKey, SourceRef sourceRef)
     {
         AddTablePrimaryKey(new StatementTableConstraint.PrimaryKey([new StatementKeyPart.Column(column)], primaryKey.Name)
         {
@@ -274,7 +270,7 @@ public class PgTableBuilder(
         }, sourceRef);
     }
 
-    private void AddColumnUnique(Identifier column, StatementColumnOption.Unique unique, SourceRef? sourceRef)
+    private void AddColumnUnique(Identifier column, StatementColumnOption.Unique unique, SourceRef sourceRef)
     {
         AddTableUnique(new StatementTableConstraint.UniqueConstraint([new StatementKeyPart.Column(column)], unique.Name)
         {
@@ -284,7 +280,7 @@ public class PgTableBuilder(
         }, sourceRef);
     }
 
-    private void AddColumnCheck(StatementColumnOption.CheckConstraint check, SourceRef? sourceRef)
+    private void AddColumnCheck(StatementColumnOption.CheckConstraint check, SourceRef sourceRef)
     {
         AddTableCheck(new StatementTableConstraint.Check(check.Expression, check.Name)
         {
@@ -292,7 +288,7 @@ public class PgTableBuilder(
         }, sourceRef);
     }
 
-    private void AddTablePrimaryKey(StatementTableConstraint.PrimaryKey primaryKey, SourceRef? sourceRef)
+    private void AddTablePrimaryKey(StatementTableConstraint.PrimaryKey primaryKey, SourceRef sourceRef)
     {
         ValidateTablePrimaryKey(primaryKey, sourceRef);
         if (_primaryKey != null)
@@ -330,7 +326,7 @@ public class PgTableBuilder(
         };
     }
 
-    private void AddTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef? sourceRef)
+    private void AddTableUnique(StatementTableConstraint.UniqueConstraint unique, SourceRef sourceRef)
     {
         ValidateTableUnique(unique, sourceRef);
         Identifier normalizedName = AddConstraintName(unique.Name, "UNIQUE constraint", sourceRef, hasBackingIndex: true);
@@ -347,7 +343,7 @@ public class PgTableBuilder(
         });
     }
 
-    private void AddTableForeignKey(StatementTableConstraint.ForeignKey foreignKey, SourceRef? sourceRef)
+    private void AddTableForeignKey(StatementTableConstraint.ForeignKey foreignKey, SourceRef sourceRef)
     {
         ValidateConstraintIndexOptions(foreignKey.Comment, sourceRef);
         Identifier constraintName = AddConstraintName(foreignKey.Name, "FOREIGN KEY", sourceRef);
@@ -360,7 +356,7 @@ public class PgTableBuilder(
             sourceRef));
     }
 
-    private void AddTableCheck(StatementTableConstraint.Check check, SourceRef? sourceRef)
+    private void AddTableCheck(StatementTableConstraint.Check check, SourceRef sourceRef)
     {
         ValidateConstraintIndexOptions(check.Comment, sourceRef);
         Identifier constraintName = AddConstraintName(check.Name, "CHECK", sourceRef);
@@ -373,7 +369,7 @@ public class PgTableBuilder(
         });
     }
 
-    private void AddTableExclusion(StatementTableConstraint.PgExclusion exclusion, SourceRef? sourceRef)
+    private void AddTableExclusion(StatementTableConstraint.PgExclusion exclusion, SourceRef sourceRef)
     {
         ValidateConstraintIndexOptions(exclusion.Comment, sourceRef);
         Identifier name = AddConstraintName(exclusion.Name, "EXCLUDE", sourceRef, hasBackingIndex: true);
@@ -471,32 +467,32 @@ public class PgTableBuilder(
 
     public void AddIndex(CreateIndex statement, SourceRef? sourceRef)
     {
-        sourceRef ??= SourceRef;
+        SourceRef actualSource = sourceRef ?? SourceRef;
         if (statement.Name == null)
         {
-            throw new DefinitionException.TableConstraintNameRequired("INDEX", Name, sourceRef);
+            throw new DefinitionException.TableConstraintNameRequired("INDEX", Name, actualSource);
         }
         Identifier name = statement.Name;
         switch (statement)
         {
             case CreateIndex.Standard standard:
-                ValidateConstraintIndexOptions(standard.Comment, sourceRef, organization: standard.IndexOrganization,
+                ValidateConstraintIndexOptions(standard.Comment, actualSource, organization: standard.IndexOrganization,
                     options: standard.Options, storageLocation: standard.StorageLocation);
                 AddIndexDeclaration(name, standard.Columns, unique: false, standard.IndexMethod, standard.Filter,
-                    standard.IncludedColumns, standard.PgOptions?.Tablespace, sourceRef);
+                    standard.IncludedColumns, standard.PgOptions?.Tablespace, actualSource);
                 break;
             case CreateIndex.Unique unique:
-                ValidateConstraintIndexOptions(unique.Comment, sourceRef, organization: unique.IndexOrganization,
+                ValidateConstraintIndexOptions(unique.Comment, actualSource, organization: unique.IndexOrganization,
                     options: unique.Options, storageLocation: unique.StorageLocation);
                 AddIndexDeclaration(name, unique.Columns, unique: true, unique.IndexMethod, unique.Filter,
-                    unique.IncludedColumns, unique.PgOptions?.Tablespace, sourceRef);
+                    unique.IncludedColumns, unique.PgOptions?.Tablespace, actualSource);
                 break;
             default:
                 throw new NotSupportedException("Only basic PostgreSQL standard and unique indexes are supported.");
         }
     }
 
-    private Identifier AddConstraintName(Identifier? name, string constraintType, SourceRef? sourceRef, bool hasBackingIndex = false)
+    private Identifier AddConstraintName(Identifier? name, string constraintType, SourceRef sourceRef, bool hasBackingIndex = false)
     {
         if (name == null)
         {
@@ -507,15 +503,15 @@ public class PgTableBuilder(
             throw new SqlSyntaxException.SpecifiedMoreThanOnce(name.Name, "table", Name, sourceRef);
         }
         return hasBackingIndex
-            ? _registerRelationName(name, Name.Schema, sourceRef ?? SourceRef).Id.ToSimpleIdentifier()
+            ? _registerRelationName(name, Name.Schema, sourceRef).Id.ToSimpleIdentifier()
             : ComponentNormalizer.NormalizeSingleIdentifier(name);
     }
 
     private void AddIndexDeclaration(Identifier name, SqlValueList<StatementKeyPart> columns, bool unique, IndexMethod? method,
-        Expression? predicate, IncludedColumns? includedColumns = null, Identifier? tablespace = null, SourceRef? sourceRef = null)
+        Expression? predicate, IncludedColumns? includedColumns, Identifier? tablespace, SourceRef sourceRef)
     {
         method ??= new IndexMethod.BuiltIn(attributeDefaults.IndexMethod);
-        ObjectNameAndHandle nameAndHandle = _registerRelationName(name, Name.Schema, sourceRef ?? SourceRef);
+        ObjectNameAndHandle nameAndHandle = _registerRelationName(name, Name.Schema, sourceRef);
         name = nameAndHandle.Id.ToSimpleIdentifier();
         if (!IndexMethod.IsBtree(method) && columns.Any(part => part switch
             {
@@ -852,7 +848,7 @@ public class PgTableBuilder(
         }
     }
 
-    private SqlValueList<Identifier> NormalizeConstraintColumns(SqlValueList<StatementKeyPart> keyParts, Identifier? constraintName, SourceRef? sourceRef)
+    private SqlValueList<Identifier> NormalizeConstraintColumns(SqlValueList<StatementKeyPart> keyParts, Identifier constraintName, SourceRef? sourceRef)
     {
         if (keyParts.Count == 0)
         {
@@ -869,7 +865,7 @@ public class PgTableBuilder(
             Identifier actual = ComponentNormalizer.NormalizeSingleIdentifier(column.Name);
             if (!seen.Add(actual.Name))
             {
-                throw new SqlSyntaxException.SpecifiedMoreThanOnce(actual.Name, "constraint", constraintName ?? Name, sourceRef);
+                throw new SqlSyntaxException.SpecifiedMoreThanOnce(actual.Name, "constraint", constraintName, sourceRef);
             }
             result.Add(actual);
         }

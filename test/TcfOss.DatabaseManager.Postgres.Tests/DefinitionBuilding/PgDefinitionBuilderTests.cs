@@ -1471,16 +1471,20 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Single(builder.ToDefinition().Tables);
     }
 
-    [Fact]
-    public void Indexes_PreserveExpressionKeysAndQuotedColumns()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Indexes_PreserveExpressionKeysAndQuotedColumns(bool descending)
     {
         var builder = CreateBuilder();
-        builder.ProcessStatements(ParseStatements("CREATE TABLE items (\"Label\" TEXT, id INT, CONSTRAINT ck_id CHECK (items.id > 0)); CREATE INDEX ix ON items ((lower(\"Label\"))) WHERE id > 0"), GetSchema(), 0);
+        string direction = descending ? " DESC" : "";
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (\"Label\" TEXT, id INT, CONSTRAINT ck_id CHECK (items.id > 0)); CREATE INDEX ix ON items ((lower(\"Label\")){direction}) WHERE id > 0"), GetSchema(), 0);
 
         PgDefinition definition = builder.ToDefinition();
 
         PgTable table = Assert.Single(definition.Tables).Value;
-        Assert.IsType<PgKeyPart.IndexExpression>(Assert.Single(Assert.Single(table.Indexes.Values).Columns));
+        var key = Assert.IsType<PgKeyPart.IndexExpression>(Assert.Single(Assert.Single(table.Indexes.Values).Columns));
+        Assert.Equal(descending ? Direction.Descending : null, key.Direction);
         var rebuilt = CreateBuilder();
         rebuilt.ProcessStatements(ParseStatements($"{table.ToCreateStatement(true, PgTestConfig.GetDifferFormatManager()).ToSql()}; {Assert.Single(table.ToCreateIndexStatements(true, PgTestConfig.GetDifferFormatManager())).ToSql()}"), GetSchema(), 1);
         Assert.Equal(definition.Tables, rebuilt.ToDefinition().Tables);
@@ -3611,6 +3615,8 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("label TEXT", "label TEXT STORAGE EXTENDED COLLATE \"default\" NULL")]
     [InlineData("amount NUMERIC", "amount NUMERIC STORAGE MAIN NULL")]
     [InlineData("address INET", "address INET STORAGE MAIN NULL")]
+    [InlineData("period INT4RANGE", "period INT4RANGE STORAGE EXTENDED NULL")]
+    [InlineData("period INT4MULTIRANGE", "period INT4MULTIRANGE STORAGE EXTENDED NULL")]
     public void Defaults_OmittedAndExplicitColumnDefaultsCompareEqually(string omitted, string explicitDefaults)
     {
         var first = CreateBuilder();
@@ -3679,6 +3685,30 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Equal("fast", table.Tablespace!.Name);
         Assert.Null(table.PrimaryKey!.BackingIndex.Tablespace);
         Assert.Equal("pg_default", Assert.Single(table.Indexes.Values).Tablespace!.Name);
+    }
+
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData("session_space", null, "session_space")]
+    [InlineData("session_space", "explicit_space", "explicit_space")]
+    public void Defaults_PartitionedParentsPreserveExplicitOrSessionTablespaces(string? session, string? explicitName, string? expected)
+    {
+        var config = PgTestConfig.GetTestConfig();
+        config = config with
+        {
+            ServerDefaults = config.ServerDefaults with
+            {
+                Tablespace = session == null ? null : new Identifier(session)
+            }
+        };
+        var builder = new PgDefinitionBuilder(config, new SourceManager(), NullLogger<PgDefinitionBuilder>.Instance);
+        string tablespace = explicitName == null ? "" : $" TABLESPACE {explicitName}";
+        builder.ProcessStatements(ParseStatements($"CREATE TABLE items (id INT) PARTITION BY HASH (id){tablespace}"), GetSchema(), 83);
+
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+
+        Assert.Equal(expected, table.Tablespace?.Name);
+        Assert.Null(table.AccessMethod);
     }
 
     [Fact]
@@ -4159,6 +4189,24 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
         Assert.Null(context.CurrentContext);
     }
 
+    [Fact]
+    public void TableModel_OrdinaryTablesReferenceExpressionsWithoutPartitionMetadata()
+    {
+        var builder = CreateBuilder();
+        builder.ProcessStatements(ParseStatements("""
+            CREATE TABLE items (id INT DEFAULT util.default_id());
+            CREATE INDEX ix ON items ((util.index_key(id)))
+            """), GetSchema(), 98);
+        PgTable table = Assert.Single(builder.ToDefinition().Tables.Values);
+        var context = new ReferencedItemsManager { Filters = ObjectNameFilters.All };
+
+        string[] names = [.. table.GetReferencedItems(context).Cast<ItemRef.ObjectNameRef>()
+            .Select(reference => reference.Name.ToSql().Replace("\"", "", StringComparison.Ordinal))];
+
+        Assert.Equal(["util.default_id", "public.items", "util.index_key"], names);
+        Assert.Null(context.CurrentContext);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -4265,7 +4313,10 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
     [InlineData("LEAST(1, 2)", "least(1, 2)", "\"least\"(1, 2)")]
     [InlineData("NULLIF(1, 2)", "nullif(1, 2)", "\"nullif\"(1, 2)")]
     [InlineData("CURRENT_DATE", "current_date", "\"current_date\"()")]
+    [InlineData("CURRENT_TIME", "current_time", "\"current_time\"()")]
     [InlineData("CURRENT_TIMESTAMP(2)", "current_timestamp(2)", "\"current_timestamp\"(2)")]
+    [InlineData("CURRENT_USER", "current_user", "\"current_user\"()")]
+    [InlineData("SYSTEM_USER", "system_user", "\"system_user\"()")]
     public void ComparisonExpressions_KeywordFunctionsRemainPrintableAndDistinctFromQuotedCalls(string sql, string equivalent, string quoted)
     {
         var config = PgTestConfig.GetTestConfig();
@@ -4311,6 +4362,57 @@ public class PgDefinitionBuilderTests : ParserTestsBase<PgLexer, PgParser>
 
         Assert.NotEqual(keyword, quoted);
         Assert.Equal(quoted, normalizer.NormalizeExpression(quoted));
+    }
+
+    [Theory]
+    [InlineData("localtime")]
+    [InlineData("localtimestamp")]
+    [InlineData("current_role")]
+    [InlineData("session_user")]
+    [InlineData("user")]
+    [InlineData("current_catalog")]
+    [InlineData("current_schema")]
+    public void ComparisonExpressions_QuotedKeywordFunctionNamesRemainQuoted(string name)
+    {
+        var config = PgTestConfig.GetTestConfig() with { QuoteStyle = QuoteStyle.None };
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+        Expression expression = ParseExpression($"\"{name}\"()");
+
+        var normalized = Assert.IsType<FunctionCall>(normalizer.NormalizeExpression(expression));
+
+        Assert.Equal(QuoteStyle.Ansi, Assert.Single(normalized.Name.Values).QuoteStyle);
+        Assert.Equal(normalized, normalizer.NormalizeExpression(normalized));
+    }
+
+    [Fact]
+    public void ComparisonExpressions_CteBodiesRetainPostgresFunctionAndLiteralNormalization()
+    {
+        var config = PgTestConfig.GetTestConfig();
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+        var first = Assert.IsType<Select>(ParseStatement("WITH values_cte AS (SELECT coalesce(0x10, 01) AS value) SELECT value FROM values_cte"));
+        var second = Assert.IsType<Select>(ParseStatement("WITH values_cte AS (SELECT coalesce(16, 1) AS value) SELECT value FROM values_cte"));
+        var quoted = Assert.IsType<Select>(ParseStatement("WITH values_cte AS (SELECT \"coalesce\"(16, 1) AS value) SELECT value FROM values_cte"));
+
+        Select normalized = normalizer.NormalizeSelect(first);
+
+        Assert.Equal(normalizer.NormalizeSelect(second), normalized);
+        Assert.NotEqual(normalizer.NormalizeSelect(quoted), normalized);
+    }
+
+    [Theory]
+    [InlineData("-0001.20E+002", "-1.20e2")]
+    [InlineData("+0001", "1")]
+    [InlineData("-000", "-0")]
+    public void ComparisonExpressions_SignedNumericValuesNormalizeWithoutLosingTheirSign(string value, string expected)
+    {
+        var config = PgTestConfig.GetTestConfig();
+        var normalizer = new PgExpressionNormalizer(config, new PgComponentNormalizer(config));
+        var expression = new LiteralValue(new Value.Number(value, false));
+
+        var normalized = Assert.IsType<LiteralValue>(normalizer.NormalizeExpression(expression));
+
+        Assert.Equal(expected, Assert.IsType<Value.Number>(normalized.Value).Value);
+        Assert.Equal(expression, normalizer.NormalizeExpressionNoFlatten(expression));
     }
 
     private static PgTable BuildExpressionTable(string expression)

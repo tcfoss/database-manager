@@ -8,7 +8,7 @@ using TcfOss.DatabaseManager.Core.Statements.Components;
 
 namespace TcfOss.DatabaseManager.Postgres.DatabaseObjects.Components;
 
-public abstract record PgTableConstraint(Identifier? Name = null)
+public abstract record PgTableConstraint(Identifier Name)
 {
     public PgConstraintOptions Options { get; init; } = new();
 

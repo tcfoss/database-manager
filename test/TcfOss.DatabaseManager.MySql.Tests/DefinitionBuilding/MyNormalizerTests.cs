@@ -137,4 +137,17 @@ public class MyNormalizerTests
 
         Assert.NotEqual(normalizer.NormalizeExpression(first), normalizer.NormalizeExpression(second));
     }
+
+    [Fact]
+    public void NormalizeExpression_PreservesExplicitLongLiteralKind()
+    {
+        var config = TestConfig.GetMyTestConfig();
+        var normalizer = new MyNormalizer(config, new MyComponentNormalizer(config.QuoteStyle, new MyFunctionNameProvider()));
+        var expression = new LiteralValue(new Value.Number("0001", true));
+
+        Expression normalized = normalizer.NormalizeExpression(expression);
+
+        Assert.Equal(expression, normalized);
+        Assert.NotEqual(new LiteralValue(new Value.Number("1", false)), normalized);
+    }
 }

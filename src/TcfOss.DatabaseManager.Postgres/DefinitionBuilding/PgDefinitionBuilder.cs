@@ -639,7 +639,7 @@ public class PgDefinitionBuilder(PgConfig config, SourceManager sourceManager, I
             PgTable table = entry.Value;
             foreach (PgTableConstraint.ForeignKey foreignKey in table.ForeignKeys.Values)
             {
-                string keyName = foreignKey.Name?.Name ?? "foreign key";
+                string keyName = foreignKey.Name.Name;
                 SourceRef? source = SourceManager.GetSourceRef(entry.Key);
                 if (!definition.Tables.TryGetValue(foreignKey.ReferencedTable, out PgTable? referencedTable))
                 {
