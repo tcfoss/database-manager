@@ -1,6 +1,6 @@
 [project]
 name = "dbman-dev"
-version = "0.5.37"
+version = "0.6.0"
 description = "Tools for automating NetDatabaseManager development tasks"
 authors = [
     {name = "Thomas Flanagan",email = "t@tcflanagan.net"}
@@ -18,11 +18,7 @@ dependencies = [
 
 [project.scripts]
 dbman-dev-debug-help = "dbman_dev.debug_help:main"
-dbman-dev-infoschema-entities = "dbman_dev.infoschema_building.entities:run_cli"
-dbman-dev-infoschema-test-data = "dbman_dev.infoschema_building.test_data:run_cli"
-dbman-dev-infoschema-regenerator = "dbman_dev.infoschema_building.all_auto:main"
-dbman-dev-pg-catalog-entities = "dbman_dev.pg_catalog_building.entities:run_cli"
-dbman-dev-pg-catalog-test-data = "dbman_dev.pg_catalog_building.test_data:run_cli"
+dbman-dev-codegen = "dbman_dev.code_generation.main:run_cli"
 dbman-dev-coverage-old = "dbman_dev.coverage.generate_report:main"
 dbman-dev-coverage = "dbman_dev.coverage.generate_report_mtp:main"
 

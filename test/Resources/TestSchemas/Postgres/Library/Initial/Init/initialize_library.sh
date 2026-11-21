@@ -2,7 +2,8 @@
 set -euo pipefail
 
 export PGPASSWORD="${POSTGRES_PASSWORD:-password}"
-psql_args=(--host=127.0.0.1 --username="${POSTGRES_USER:-postgres}" --dbname="${POSTGRES_DB:-postgres}" --set=ON_ERROR_STOP=1)
+# psql_args=(--host=127.0.0.1 --username="${POSTGRES_USER:-postgres}" --dbname="${POSTGRES_DB:-postgres}" --set=ON_ERROR_STOP=1)
+psql_args=(--username="${POSTGRES_USER:-postgres}" --dbname="${POSTGRES_DB:-postgres}" --set=ON_ERROR_STOP=1)
 psql "${psql_args[@]}" <<'SQL'
 CREATE ROLE admin LOGIN PASSWORD 'password';
 CREATE SCHEMA library_catalog;

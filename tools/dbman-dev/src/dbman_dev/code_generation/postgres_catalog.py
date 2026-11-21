@@ -1,0 +1,393 @@
+"""Definition-relevant PostgreSQL catalogs with readable C# names."""
+
+from dbman_dev.code_generation.table_config import ColumnConfig, SchemaJoinConfig, TableConfig
+
+
+def _class_join(column: str) -> SchemaJoinConfig:
+    return SchemaJoinConfig(
+        join_clause=(
+            f"JOIN pg_catalog.pg_class AS c ON c.oid = t.{column}"
+            " JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace"
+        ),
+        schema_predicate_lhs="n.nspname",
+    )
+
+
+def _namespace_join(column: str) -> SchemaJoinConfig:
+    return SchemaJoinConfig(
+        join_clause=f"JOIN pg_catalog.pg_namespace AS n ON n.oid = t.{column}",
+        schema_predicate_lhs="n.nspname",
+    )
+
+
+def _relation_scope(column: str) -> str:
+    return f"""SELECT {{columns}} FROM {{table}}
+WHERE t.{column} IN (
+    SELECT c.oid FROM pg_catalog.pg_class AS c
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname IN ({{schemas}})
+)
+{{order_by}}"""
+
+
+_POSTGRES_CONFIGS = {
+    "PG_NAMESPACE": TableConfig(
+        table_name="pg_namespace",
+        schema_name="pg_catalog",
+        base_name_override="Schema",
+        key_properties=["SchemaId"],
+        column_configs=[
+            ColumnConfig("oid", "SchemaId"),
+            ColumnConfig("nspname", "Name"),
+        ],
+        data_query_template=(
+            "SELECT {columns} FROM {table} WHERE t.nspname IN ({schemas}) {order_by}"
+        ),
+    ),
+    "PG_CLASS": TableConfig(
+        table_name="pg_class",
+        schema_name="pg_catalog",
+        base_name_override="Relation",
+        key_properties=["RelationId"],
+        column_configs=[
+            ColumnConfig("oid", "RelationId"),
+            ColumnConfig("relname", "Name"),
+            ColumnConfig("relnamespace", "SchemaId"),
+            ColumnConfig("reltype", "RowTypeId"),
+            ColumnConfig("relam", "AccessMethodId"),
+            ColumnConfig("reltablespace", "TablespaceId"),
+            ColumnConfig("relpersistence", "Persistence"),
+            ColumnConfig("relkind", "RelationKind"),
+            ColumnConfig("relrowsecurity", "RowSecurityEnabled"),
+            ColumnConfig("relforcerowsecurity", "RowSecurityForced"),
+            ColumnConfig("relreplident", "ReplicaIdentity"),
+            ColumnConfig("relispartition", "IsPartition"),
+            ColumnConfig("reloptions", "StorageOptions"),
+            ColumnConfig("relpartbound", "PartitionBoundTree"),
+        ],
+        schemas_join=_namespace_join("relnamespace"),
+    ),
+    "PG_ATTRIBUTE": TableConfig(
+        table_name="pg_attribute",
+        schema_name="pg_catalog",
+        base_name_override="Column",
+        key_properties=["RelationId", "ColumnNumber"],
+        column_configs=[
+            ColumnConfig("attrelid", "RelationId"),
+            ColumnConfig("attname", "Name"),
+            ColumnConfig("atttypid", "DataTypeId"),
+            ColumnConfig("attnum", "ColumnNumber"),
+            ColumnConfig("atttypmod", "TypeModifier"),
+            ColumnConfig("attndims", "ArrayDimensions"),
+            ColumnConfig("attstorage", "StorageMode"),
+            ColumnConfig("attcompression", "CompressionMethod"),
+            ColumnConfig("attnotnull", "IsNotNull"),
+            ColumnConfig("attidentity", "IdentityKind"),
+            ColumnConfig("attgenerated", "GenerationKind"),
+            ColumnConfig("attislocal", "IsLocal"),
+            ColumnConfig("attinhcount", "InheritedCount"),
+            ColumnConfig("attcollation", "CollationId"),
+        ],
+        schemas_join=_class_join("attrelid"),
+        additional_predicate="t.attnum > 0 AND NOT t.attisdropped",
+    ),
+    "PG_TYPE": TableConfig(
+        table_name="pg_type",
+        schema_name="pg_catalog",
+        base_name_override="DataType",
+        key_properties=["DataTypeId"],
+        column_configs=[
+            ColumnConfig("oid", "DataTypeId"),
+            ColumnConfig("typname", "Name"),
+            ColumnConfig("typnamespace", "SchemaId"),
+            ColumnConfig("typlen", "InternalLength"),
+            ColumnConfig("typbyval", "PassedByValue"),
+            ColumnConfig("typtype", "TypeKind"),
+            ColumnConfig("typcategory", "TypeCategory"),
+            ColumnConfig("typispreferred", "IsPreferred"),
+            ColumnConfig("typisdefined", "IsDefined"),
+            ColumnConfig("typdelim", "ArrayDelimiter"),
+            ColumnConfig("typrelid", "CompositeRelationId"),
+            ColumnConfig(
+                "typsubscript", "SubscriptFunctionId", query_template="t.typsubscript::oid"
+            ),
+            ColumnConfig("typelem", "ElementTypeId"),
+            ColumnConfig("typarray", "ArrayTypeId"),
+            ColumnConfig("typinput", "InputFunctionId", query_template="t.typinput::oid"),
+            ColumnConfig("typoutput", "OutputFunctionId", query_template="t.typoutput::oid"),
+            ColumnConfig("typreceive", "ReceiveFunctionId", query_template="t.typreceive::oid"),
+            ColumnConfig("typsend", "SendFunctionId", query_template="t.typsend::oid"),
+            ColumnConfig(
+                "typmodin", "TypeModifierInputFunctionId", query_template="t.typmodin::oid"
+            ),
+            ColumnConfig(
+                "typmodout", "TypeModifierOutputFunctionId", query_template="t.typmodout::oid"
+            ),
+            ColumnConfig("typanalyze", "AnalyzeFunctionId", query_template="t.typanalyze::oid"),
+            ColumnConfig("typalign", "Alignment"),
+            ColumnConfig("typstorage", "StorageMode"),
+            ColumnConfig("typnotnull", "IsNotNull"),
+            ColumnConfig("typbasetype", "BaseTypeId"),
+            ColumnConfig("typtypmod", "TypeModifier"),
+            ColumnConfig("typndims", "ArrayDimensions"),
+            ColumnConfig("typcollation", "CollationId"),
+            ColumnConfig("typdefault", "DefaultExpression"),
+        ],
+        schemas_join=_namespace_join("typnamespace"),
+    ),
+    "PG_CONSTRAINT": TableConfig(
+        table_name="pg_constraint",
+        schema_name="pg_catalog",
+        base_name_override="Constraint",
+        key_properties=["ConstraintId"],
+        column_configs=[
+            ColumnConfig("oid", "ConstraintId"),
+            ColumnConfig("conname", "Name"),
+            ColumnConfig("connamespace", "SchemaId"),
+            ColumnConfig("contype", "ConstraintKind"),
+            ColumnConfig("condeferrable", "IsDeferrable"),
+            ColumnConfig("condeferred", "IsInitiallyDeferred"),
+            ColumnConfig("convalidated", "IsValidated"),
+            ColumnConfig("conrelid", "RelationId"),
+            ColumnConfig("contypid", "DataTypeId"),
+            ColumnConfig("conindid", "IndexId"),
+            ColumnConfig("conparentid", "ParentConstraintId"),
+            ColumnConfig("confrelid", "ReferencedRelationId"),
+            ColumnConfig("confupdtype", "UpdateAction"),
+            ColumnConfig("confdeltype", "DeleteAction"),
+            ColumnConfig("confmatchtype", "MatchKind"),
+            ColumnConfig("conislocal", "IsLocal"),
+            ColumnConfig("coninhcount", "InheritedCount"),
+            ColumnConfig("connoinherit", "NoInherit"),
+            ColumnConfig("conkey", "ColumnNumbers"),
+            ColumnConfig("confkey", "ReferencedColumnNumbers"),
+            ColumnConfig("confdelsetcols", "DeleteActionColumnNumbers"),
+            ColumnConfig("conexclop", "ExclusionOperatorIds"),
+            ColumnConfig("conbin", "CheckExpressionTree"),
+        ],
+        schemas_join=_namespace_join("connamespace"),
+    ),
+    "PG_INDEX": TableConfig(
+        table_name="pg_index",
+        schema_name="pg_catalog",
+        base_name_override="Index",
+        key_properties=["IndexId"],
+        column_configs=[
+            ColumnConfig("indexrelid", "IndexId"),
+            ColumnConfig("indrelid", "RelationId"),
+            ColumnConfig("indnkeyatts", "KeyColumnCount"),
+            ColumnConfig("indisunique", "IsUnique"),
+            ColumnConfig("indnullsnotdistinct", "NullsNotDistinct"),
+            ColumnConfig("indisprimary", "IsPrimaryKey"),
+            ColumnConfig("indisexclusion", "IsExclusionConstraint"),
+            ColumnConfig("indisclustered", "IsClustered"),
+            ColumnConfig("indisreplident", "IsReplicaIdentity"),
+            ColumnConfig("indkey", "ColumnNumbers"),
+            ColumnConfig("indcollation", "CollationIds"),
+            ColumnConfig("indclass", "OperatorClassIds"),
+            ColumnConfig("indoption", "ColumnOptionFlags"),
+            ColumnConfig("indexprs", "ExpressionTrees"),
+            ColumnConfig("indpred", "PredicateTree"),
+        ],
+        schemas_join=_class_join("indrelid"),
+    ),
+    "PG_PROC": TableConfig(
+        table_name="pg_proc",
+        schema_name="pg_catalog",
+        base_name_override="Routine",
+        key_properties=["RoutineId"],
+        column_configs=[
+            ColumnConfig("oid", "RoutineId"),
+            ColumnConfig("proname", "Name"),
+            ColumnConfig("pronamespace", "SchemaId"),
+            ColumnConfig("prolang", "LanguageId"),
+            ColumnConfig("procost", "EstimatedCost"),
+            ColumnConfig("prorows", "EstimatedRows"),
+            ColumnConfig("provariadic", "VariadicTypeId"),
+            ColumnConfig("prosupport", "SupportFunctionId", query_template="t.prosupport::oid"),
+            ColumnConfig("prokind", "RoutineKind"),
+            ColumnConfig("prosecdef", "SecurityDefiner"),
+            ColumnConfig("proleakproof", "IsLeakproof"),
+            ColumnConfig("proisstrict", "IsStrict"),
+            ColumnConfig("proretset", "ReturnsSet"),
+            ColumnConfig("provolatile", "Volatility"),
+            ColumnConfig("proparallel", "ParallelSafety"),
+            ColumnConfig("pronargdefaults", "ParameterDefaultCount"),
+            ColumnConfig("prorettype", "ReturnTypeId"),
+            ColumnConfig("proargtypes", "InputParameterTypeIds"),
+            ColumnConfig("proallargtypes", "AllParameterTypeIds"),
+            ColumnConfig("proargmodes", "ParameterModes"),
+            ColumnConfig("proargnames", "ParameterNames"),
+            ColumnConfig("proargdefaults", "ParameterDefaultExpressionTree"),
+            ColumnConfig("protrftypes", "TransformTypeIds"),
+            ColumnConfig("prosrc", "BodySource"),
+            ColumnConfig("probin", "LibraryName"),
+            ColumnConfig("prosqlbody", "ParsedSqlBodyTree"),
+            ColumnConfig("proconfig", "Settings"),
+        ],
+        schemas_join=_namespace_join("pronamespace"),
+    ),
+    "PG_TRIGGER": TableConfig(
+        table_name="pg_trigger",
+        schema_name="pg_catalog",
+        base_name_override="Trigger",
+        key_properties=["TriggerId"],
+        column_configs=[
+            ColumnConfig("oid", "TriggerId"),
+            ColumnConfig("tgrelid", "RelationId"),
+            ColumnConfig("tgparentid", "ParentTriggerId"),
+            ColumnConfig("tgname", "Name"),
+            ColumnConfig("tgfoid", "FunctionId"),
+            ColumnConfig("tgtype", "TriggerTypeFlags"),
+            ColumnConfig("tgenabled", "EnabledMode"),
+            ColumnConfig("tgconstrrelid", "ReferencedRelationId"),
+            ColumnConfig("tgconstraint", "ConstraintId"),
+            ColumnConfig("tgdeferrable", "IsDeferrable"),
+            ColumnConfig("tginitdeferred", "IsInitiallyDeferred"),
+            ColumnConfig("tgattr", "UpdateColumnNumbers"),
+            ColumnConfig("tgargs", "ArgumentBytes"),
+            ColumnConfig("tgqual", "WhenExpressionTree"),
+            ColumnConfig("tgoldtable", "OldTransitionTableName"),
+            ColumnConfig("tgnewtable", "NewTransitionTableName"),
+        ],
+        schemas_join=_class_join("tgrelid"),
+        additional_predicate="NOT t.tgisinternal",
+    ),
+    "PG_REWRITE": TableConfig(
+        table_name="pg_rewrite",
+        schema_name="pg_catalog",
+        base_name_override="RewriteRule",
+        key_properties=["RuleId"],
+        column_configs=[
+            ColumnConfig("oid", "RuleId"),
+            ColumnConfig("rulename", "Name"),
+            ColumnConfig("ev_class", "RelationId"),
+            ColumnConfig("ev_type", "CommandKind"),
+            ColumnConfig("ev_enabled", "EnabledMode"),
+            ColumnConfig("is_instead", "IsInstead"),
+            ColumnConfig("ev_qual", "ConditionTree"),
+            ColumnConfig("ev_action", "ActionTree"),
+        ],
+        schemas_join=_class_join("ev_class"),
+    ),
+    "PG_DEPEND": TableConfig(
+        table_name="pg_depend",
+        schema_name="pg_catalog",
+        base_name_override="Dependency",
+        key_properties=[
+            "ObjectClassId",
+            "ObjectId",
+            "ObjectSubId",
+            "ReferencedObjectClassId",
+            "ReferencedObjectId",
+            "ReferencedObjectSubId",
+            "DependencyKind",
+        ],
+        column_configs=[
+            ColumnConfig("classid", "ObjectClassId"),
+            ColumnConfig("objid", "ObjectId"),
+            ColumnConfig("objsubid", "ObjectSubId"),
+            ColumnConfig("refclassid", "ReferencedObjectClassId"),
+            ColumnConfig("refobjid", "ReferencedObjectId"),
+            ColumnConfig("refobjsubid", "ReferencedObjectSubId"),
+            ColumnConfig("deptype", "DependencyKind"),
+        ],
+        data_query_template=_relation_scope("refobjid"),
+    ),
+    "PG_DESCRIPTION": TableConfig(
+        table_name="pg_description",
+        schema_name="pg_catalog",
+        base_name_override="ObjectComment",
+        key_properties=["ObjectId", "ObjectClassId", "ObjectSubId"],
+        column_configs=[
+            ColumnConfig("objoid", "ObjectId"),
+            ColumnConfig("classoid", "ObjectClassId"),
+            ColumnConfig("objsubid", "ObjectSubId"),
+            ColumnConfig("description", "Comment"),
+        ],
+        data_query_template=_relation_scope("objoid"),
+    ),
+    "PG_COLLATION": TableConfig(
+        table_name="pg_collation",
+        schema_name="pg_catalog",
+        base_name_override="Collation",
+        key_properties=["CollationId"],
+        column_configs=[
+            ColumnConfig("oid", "CollationId"),
+            ColumnConfig("collname", "Name"),
+            ColumnConfig("collnamespace", "SchemaId"),
+            ColumnConfig("collprovider", "Provider"),
+            ColumnConfig("collisdeterministic", "IsDeterministic"),
+            ColumnConfig("collencoding", "EncodingId"),
+            ColumnConfig("collcollate", "CollateLocale"),
+            ColumnConfig("collctype", "CharacterClassificationLocale"),
+            ColumnConfig("colllocale", "Locale"),
+            ColumnConfig("collicurules", "IcuRules"),
+        ],
+        schemas_join=_namespace_join("collnamespace"),
+    ),
+    "PG_ENUM": TableConfig(
+        table_name="pg_enum",
+        schema_name="pg_catalog",
+        base_name_override="EnumLabel",
+        key_properties=["EnumLabelId"],
+        column_configs=[
+            ColumnConfig("oid", "EnumLabelId"),
+            ColumnConfig("enumtypid", "DataTypeId"),
+            ColumnConfig("enumsortorder", "SortOrder"),
+            ColumnConfig("enumlabel", "Label"),
+        ],
+        schemas_join=SchemaJoinConfig(
+            join_clause=(
+                "JOIN pg_catalog.pg_type AS p ON p.oid = t.enumtypid"
+                " JOIN pg_catalog.pg_namespace AS n ON n.oid = p.typnamespace"
+            ),
+            schema_predicate_lhs="n.nspname",
+        ),
+    ),
+    "PG_SEQUENCE": TableConfig(
+        table_name="pg_sequence",
+        schema_name="pg_catalog",
+        base_name_override="Sequence",
+        key_properties=["SequenceId"],
+        column_configs=[
+            ColumnConfig("seqrelid", "SequenceId"),
+            ColumnConfig("seqtypid", "DataTypeId"),
+            ColumnConfig("seqstart", "StartValue"),
+            ColumnConfig("seqincrement", "Increment"),
+            ColumnConfig("seqmax", "MaximumValue"),
+            ColumnConfig("seqmin", "MinimumValue"),
+            ColumnConfig("seqcache", "CacheSize"),
+            ColumnConfig("seqcycle", "IsCyclic"),
+        ],
+        schemas_join=_class_join("seqrelid"),
+    ),
+    "PG_ATTRDEF": TableConfig(
+        table_name="pg_attrdef",
+        schema_name="pg_catalog",
+        base_name_override="ColumnExpression",
+        key_properties=["ExpressionId"],
+        column_configs=[
+            ColumnConfig("oid", "ExpressionId"),
+            ColumnConfig("adrelid", "RelationId"),
+            ColumnConfig("adnum", "ColumnNumber"),
+            ColumnConfig("adbin", "ExpressionTree"),
+        ],
+        schemas_join=_class_join("adrelid"),
+    ),
+    "PG_AM": TableConfig(
+        table_name="pg_am",
+        schema_name="pg_catalog",
+        base_name_override="AccessMethod",
+        key_properties=["AccessMethodId"],
+        column_configs=[
+            ColumnConfig("oid", "AccessMethodId"),
+            ColumnConfig("amname", "Name"),
+            ColumnConfig("amhandler", "HandlerFunctionId", query_template="t.amhandler::oid"),
+            ColumnConfig("amtype", "AccessMethodKind"),
+        ],
+        filter_by_schema=False,
+    ),
+}
+
+POSTGRES_CONFIGS = list(_POSTGRES_CONFIGS.values())
