@@ -74,26 +74,29 @@ jobs:
       - name: Build and package CLI binaries
         run: |
           version="${{ needs.parse-version.outputs.version }}"
-          for RID in linux-x64 win-x64 osx-arm64; do
+          for RID in linux-x64 win-x64 osx-x64 linux-arm64 win-arm64 osx-arm64; do
             echo "Publishing CLI for RID: $RID..."
             dotnet publish src/TcfOss.DatabaseManager.App/TcfOss.DatabaseManager.App.csproj \
               --configuration Release \
               --runtime "$RID" \
-              --self-contained false \
+              --self-contained true \
               --output "publish/dbman_$RID"
 
             echo "Creating tarball for RID: $RID..."
             (
               cd "publish/dbman_$RID"
-              tar -czvf "../../database-manager-${RID}-${version}.tar.gz" *
+              tar -czvf "../../database-manager-${RID}.tar.gz" *
             )
           done
+          sha256sum database-manager-*.tar.gz > SHA256SUMS
 
       - name: Upload CLI binaries artifact
         uses: actions/upload-artifact@v7
         with:
           name: cli-binaries
-          path: database-manager-*.tar.gz
+          path: |
+            database-manager-*.tar.gz
+            SHA256SUMS
 
   publish-dotnet:
     needs: [parse-version, tag]
@@ -126,6 +129,7 @@ jobs:
         run: |
           version="${{ needs.parse-version.outputs.version }}"
           projects=(
+            "src/TcfOss.DatabaseManager.App/TcfOss.DatabaseManager.App.csproj"
             "src/TcfOss.DatabaseManager.Core/TcfOss.DatabaseManager.Core.csproj"
             "src/TcfOss.DatabaseManager.MySql/TcfOss.DatabaseManager.MySql.csproj"
             "src/TcfOss.DatabaseManager.MariaDb/TcfOss.DatabaseManager.MariaDb.csproj"
@@ -143,7 +147,7 @@ jobs:
               -p:PackageVersion="$version" \
               --output ./nupkg
             package_name="$(basename "$proj" .csproj)"
-            if [[ ! -f "./nupkg/${package_name}.${version}.snupkg" ]]; then
+            if [[ "$package_name" != "TcfOss.DatabaseManager.App" && ! -f "./nupkg/${package_name}.${version}.snupkg" ]]; then
               echo "::error::Missing symbol package for ${package_name} ${version}"
               exit 1
             fi
@@ -268,6 +272,8 @@ jobs:
       release-status: Released
       work-item-status: Released
       artifact-name: cli-binaries
-      files: database-manager-*.tar.gz
+      files: |
+        database-manager-*.tar.gz
+        SHA256SUMS
     secrets:
       issuetracker-api-token: ${{ secrets.ISSUETRACKER_API_TOKEN }}

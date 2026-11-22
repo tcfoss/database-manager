@@ -26,13 +26,21 @@ Documentation: [App usage](https://tcfoss.github.io/database-manager/app/),
 
 ## Getting Started
 
-See the [documentation](https://tcfoss.github.io/database-manager/) for  instructions on installing and using DatabaseManager.
+To get started with DatabaseManager:
+1. Install it. [Instructions](https://tcfoss.github.io/database-manager/#installing) are provided for installing it as a standalone app from GitHub Releases or as a `dotnet` global tool.
+2. Create a [database-manager.yaml configuration](https://tcfoss.github.io/database-manager/app/configuration/) at the top level of your database project directory.
+3. Run the application from the directory containing your configuration file:
+
+```sh
+dbman compute-changes [output-path]
+```
+
+If `[output-path]` is omitted, the SQL script will be written by default to `changes.sql`.
 
 
 ## Using the .NET Packages
 
-The Core, MySQL, MariaDB, and SQL Server libraries are available as NuGet packages targeting .NET 10. The corresponding `*.Hosting` packages handle configuration, logging, and dependency-injection startup for both the CLI and library consumers. See the
-[package-selection guide](https://tcfoss.github.io/database-manager/libraries/) and [quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/).
+The underlying components of DatabaseManager are also published as NuGet packages in case you want to invoke them programmatically (for example, you could use the definition-parsing feature to automate code generation). See the [quick start](https://tcfoss.github.io/database-manager/libraries/quickstart/) guide for more information.
 
 
 ## Reporting Issues and Contributing

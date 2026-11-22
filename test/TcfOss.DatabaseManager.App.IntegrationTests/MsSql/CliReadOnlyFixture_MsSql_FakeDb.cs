@@ -7,6 +7,8 @@ namespace TcfOss.DatabaseManager.App.IntegrationTests.MsSql;
 // ReSharper disable ClassNeverInstantiated.Global
 public class CliReadOnlyFixture_MsSql_FakeDb : CliReadOnlyFixture_MsSql<FakeDbBuilder, FakeDbContainer>
 {
+    public override bool Skip => false;
+
     public CliReadOnlyFixture_MsSql_FakeDb(IMessageSink messageSink)
     {
         DbFixture = new FakeDbFixture(messageSink);

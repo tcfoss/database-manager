@@ -41,12 +41,12 @@ Here are the procedures for when it's time to bump versions and issue a new rele
 6. Complete the Pull Request. The subsequent pipeline will
    1. Attach the release tag `vX.Y.Z` to the merge commit.
    2. Build the application, packages and documentation from that tag.
-   3. Publish the application with the new version for all currently-supported platforms (currently
-      `linux-x64`, `win-x64`, and `osx-arm64`).
-   4. Upload the published artifacts.
+   3. Publish the self-contained application with the new version for all currently-supported platforms (currently
+      `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `osx-x64`, and `osx-arm64`).
+   4. Generate a `SHA256SUMS` file for the CLI archives and upload it with the artifacts.
    5. Pack and publish the Core, provider, and Hosting NuGet packages and their
       matching `.snupkg` symbol packages.
-   6. Create a release for version `X.Y.Z` with the corresponding tag and link the published artifacts.
+   6. Create a release for version `X.Y.Z` with the corresponding tag and attach the published artifacts and `SHA256SUMS`.
    7. Deploy documentation to GitHub Pages only after successful release finalization
       and only if this is the highest published stable version.
 

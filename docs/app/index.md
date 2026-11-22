@@ -9,7 +9,6 @@ The SQL Server provider currently supports parsing and formatting; definition
 loading, schema download, and migration generation are not yet implemented.
 
 
-
 DatabaseManager lets you specify a database definition in version-controlled
 files and use those files to update a live RDBMS.
 
