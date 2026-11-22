@@ -7,27 +7,23 @@ The project defines several scripts.
 
 ## Entity Framework Code Generation
 
-There are three scripts for auto-generating Entity Framework code. They all require that
-you have Docker installed.
-
-Calling
+Entity framework models, configurations, and unit-test data are auto-generated.
+From `tools/dbman-dev`, run:
 
 ```sh
-poetry run dbman-dev-infoschema-entities DIALECT
+poetry run dbman-dev-codegen DIALECT [SCHEMA ...] [--skip-models | --skip-data]
 ```
 
-where `DIALECT` is either "MySql" or "MariaDb", regenerates the Entity Framework
-models, configurations, and context for the respective project.
+`DIALECT` is `mysql`, `mariadb`, or `postgres`.
 
-```sh
-poetry run dbman-dev-infoschema-test-data DIALECT
-```
+The command regenerates entities and configurations (if `--skip-models` is not specified)
+and populates a static class used to hydrate an in-memory database for unit testing (if
+`--skip-data` is not specified).
 
-where `DIALECT` has the same meaning as above, recreates the mock data used by the
-respective project's unit tests.
+The two `--skip` flags cannot be specified together.
 
-```sh
-poetry run dbman-dev-infoschema-regenerator
-```
-
-is the same as running both of the above commands for both "MySql" and "MariaDb".
+`[SCHEMA ...]` is a space-separated list of schemas to process. Only programmatically registered
+schemas are accepted (anything unknown will exit with an error). To regenerate data for *all*
+schemas registered for the given dialect, omit the argument. (Since all test data for a given
+dialect live in the same file, omitting the argument is recommended except for temporary
+diagnostic purposes.)

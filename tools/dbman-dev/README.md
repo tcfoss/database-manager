@@ -1,85 +1,70 @@
-Scripts for code generation and other tasks.
+# DbMan-Dev
 
-## INFORMATION_SCHEMA Test Data
+Developer tools for generating C# system-table models and test fixture data.
 
-The test-data generator initializes schema projects sequentially in one fresh
-database container, then extracts their combined INFORMATION_SCHEMA data into one
-C# class per dialect. The default projects are:
+## Registering Test Fixtures
 
-| Project | Database Schemas | Initialization Script |
-| --- | --- | --- |
-| Library | library_catalog, library_identity, library_activity | initialize_library.sh |
-| ExtraTest | extra_test | initialize_db.sh |
+Add a `DbInitialization` entry to `_mysql_projects` or `_pg_projects` in
+[projects.py](src/dbman_dev/code_generation/projects.py). MySQL and MariaDB
+share the MySQL fixture registrations.
 
-Both MySQL and MariaDB use the projects under
-`test/Resources/TestSchemas/MySql` at the repository root. Each project's `Initial`
-directory is staged at `/InitialSchemas` in turn, with scripts executed from
-`/InitialSchemas/Init`. Only the staged files are replaced between projects; the
-initialized databases remain available until extraction finishes.
+- `source_path`: local fixture directory, normally
+  `test/Resources/TestSchemas/<Dialect>/<Fixture>/Initial` beneath the repository root.
+  Its contents are copied into the container at `/InitialSchemas`.
+- `initialization_scripts`: script paths relative to `source_path / "Init"`.
+  They run in order with `/InitialSchemas/Init` as their working directory.
+- `provided_schemas`: names of the schemas created by the fixture.
 
-```bash
-# Both projects, with output outside the checked-in fixtures:
-poetry run dbman-dev-infoschema-test-data MySql --output-path /tmp/dbman-mysql-combined.cs
-poetry run dbman-dev-infoschema-test-data MariaDb --output-path /tmp/dbman-mariadb-combined.cs
+Fixtures are initialized in registration order. The staging directory is replaced
+between fixtures, but their database objects remain available for extraction.
+Shared setup must tolerate earlier fixtures having performed it already.
 
-# Select one project:
-poetry run dbman-dev-infoschema-test-data MySql --projects ExtraTest --output-path /tmp/dbman-extra.cs
+Generated output paths are set on `ProjectConfig` in the same module:
 
-# Explicit selection also determines initialization order:
-poetry run dbman-dev-infoschema-test-data MySql --projects Library ExtraTest --output-path /tmp/dbman-both.cs
+- `entity_dir`: destination directory for C# entity files.
+- `config_dir`: destination directory for EF configuration files.
+- `data_file`: destination C# file containing test-fixture data for an in-memory-backed database context.
+
+Setting an output path to `None` disables that output.
+
+## Query Templates
+
+Query configuration lives on `TableConfig` and `ColumnConfig` in
+[table_config.py](src/dbman_dev/code_generation/table_config.py).
+The source table is qualified by its system schema and aliased as `t`.
+
+- `ColumnConfig.query_template` replaces a column's projection with a SQL
+  expression, such as `t.typinput::oid`.
+- `schemas_join` adds a join and can override the schema predicate's left-hand side.
+- `additional_predicate` adds an `AND` condition.
+- `order_by` supplies ordering expressions; otherwise key columns determine
+  ordering. An empty list disables ordering.
+- `filter_by_schema=False` removes the fixture-schema restriction for global tables.
+
+Use `data_query_template` to replace the complete query:
+
+```python
+data_query_template = """
+SELECT {columns} FROM {table}
+WHERE {schema_filter}
+{order_by}
+"""
 ```
 
-Docker must be available, with port 3309 and container name `mysql_container` free.
+The available substitutions are:
 
-### Adding A Project
+| Token | Expansion |
+| --- | --- |
+| `{columns}` | Ordered column expressions. Required. |
+| `{table}` | Qualified source table, including `AS t`. |
+| `{schema_filter}` | Complete predicate restricting rows to fixture schemas. |
+| `{schemas}` | Parameter placeholders for fixture schema names. |
+| `{order_by}` | Generated `ORDER BY` clause, or an empty string. |
 
-Add a `ProjectConfig` entry to `get_default_projects()` in
-[test_data.py](src/dbman_dev/infoschema_building/test_data.py). This registers it
-for CLI selection and includes it in the default run. Its fields are:
+When schema filtering is enabled, include `{schema_filter}` or use `{schemas}`
+inside your own predicate. Include `{order_by}` when ordering is generated.
+Full-query templates must contain their own joins and additional predicates;
+they override `schemas_join` and `additional_predicate`.
 
-- `name`: unique project name used by `--projects` and error messages.
-- `source_path`: directory whose contents are uploaded, normally a project's `Initial` directory.
-- `schemas`: database names to include in INFORMATION_SCHEMA extraction.
-- `initialization_scripts`: script paths relative to `source_path / "Init"`, in execution order.
-
-For programmatic use, pass `projects=[ProjectConfig(...), ...]` to
-`get_arguments()`, or set `ModelDataLoaderConfig.projects` directly.
-An empty project list is an error, rather than a request for the defaults.
-Projects must have distinct names and schema names, existing source directories,
-and existing initialization scripts. Shared setup, such as database-user creation, must
-tolerate earlier projects having performed it already.
-
-ExtraTest stores its replica-disabled event with `DISABLE ON SLAVE`. Its
-initialization script queries the server version, loads that SQL unchanged on
-MariaDB, and translates the clause to `DISABLE ON REPLICA` for MySQL.
-
-The supported images are configured in
-[defaults.py](src/dbman_dev/db/defaults.py).
-
-## PostgreSQL Catalog Fixtures
-
-The PostgreSQL catalog tools generate entity/configuration models and C# row
-fixtures for selected `pg_catalog` relations. Their Library project is under
-`test/Resources/TestSchemas/Postgres/Library/Initial`; the extraction filters
-catalog rows to the three Library schemas rather than copying all system rows.
-
-```bash
-poetry run dbman-dev-pg-catalog-entities --output-root /tmp/pg-catalog-entities
-poetry run dbman-dev-pg-catalog-test-data --output-path /tmp/PostgresContextTestData.cs
-```
-
-The default PostgreSQL image and credentials are configured in
-[defaults.py](src/dbman_dev/db/defaults.py). Docker must be available, with port
-5433 and container name `postgres_container` free. PostgreSQL has no direct
-equivalent to MySQL scheduled events, so the stale-user event is represented as
-a callable function in the fixture.
-
-### Verification And Fixture Migration
-
-```bash
-poetry run python -m unittest discover -s tests -p 'test_model_data_loader.py' -v
-```
-
-The focused tests cover configuration, CLI selection, shared-container ordering,
-metadata filtering, initialization failures, and both event dialect branches.
-Live verification uses the temporary-output commands above and requires Docker.
+SQL fragments are trusted developer-authored SQL; schema values are bound as
+driver parameters. Escape literal percent signs as `%%`.
