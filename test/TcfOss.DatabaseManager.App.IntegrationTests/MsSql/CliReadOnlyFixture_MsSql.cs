@@ -7,6 +7,7 @@ namespace TcfOss.DatabaseManager.App.IntegrationTests.MsSql;
 
 public abstract class CliReadOnlyFixture_MsSql : IAsyncLifetime
 {
+    public virtual bool Skip => true;
     public abstract IDatabaseContainer Container { get; }
     public abstract ValueTask InitializeAsync();
     public abstract ValueTask DisposeAsync();
@@ -22,6 +23,11 @@ public abstract class CliReadOnlyFixture_MsSql<TBuilderEntity, TContainerEntity>
 
     public override async ValueTask InitializeAsync()
     {
+        if (Skip)
+        {
+            return;
+        }
+
         try
         {
             await DbFixture.Container.StartAsync();

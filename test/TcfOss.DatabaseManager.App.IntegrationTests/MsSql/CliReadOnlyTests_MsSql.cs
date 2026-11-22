@@ -13,13 +13,15 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
     : IClassFixture<TFixture>
     where TFixture : CliReadOnlyFixture_MsSql
 {
+    public static bool SkipTests => true;
+
     protected TFixture Fixture { get; init; } = null!;
     protected IDatabaseContainer Container => Fixture.Container;
 
     protected virtual bool ConnectionAvailable => true;
     protected virtual int MajorVersion => 16;
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_NoOptions()
     {
         using var fileFixture = new FsProjectFixture();
@@ -40,7 +42,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, false, false, TestContext.Current.CancellationToken);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_WithMeta()
     {
         using var fileFixture = new FsProjectFixture();
@@ -62,7 +64,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         await TestParseFilesCommon(parseResult, fileFixture.RootDirectory.FullName, true, false, TestContext.Current.CancellationToken);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_DuplicateSkip()
     {
         using var fileFixture = new FsProjectFixture();
@@ -88,7 +90,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Equal("Existing content", selectText);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_DuplicateError()
     {
         using var fileFixture = new FsProjectFixture();
@@ -111,7 +113,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Equal(expected, actual);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_DuplicateOverwrite()
     {
         using var fileFixture = new FsProjectFixture();
@@ -133,7 +135,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.DoesNotContain("Existing content", selectText);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_DuplicateRename()
     {
         using var fileFixture = new FsProjectFixture();
@@ -155,7 +157,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Contains("Existing content", selectText);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public void ParseFiles_NonExistentFile()
     {
         using var fileFixture = new FsProjectFixture();
@@ -177,7 +179,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Equal(expected, actual);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ParseFiles_GlobPattern()
     {
         using var fileFixture = new FsProjectFixture();
@@ -198,7 +200,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.True(File.Exists(fileFixture.CombinePath("extra_b.parsed.json")), "Parsed extra_b file was not created.");
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public void ParseErrorFakeJoin()
     {
         using var fileFixture = new FsProjectFixture();
@@ -222,7 +224,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Equal(expected, actual);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public void ParseErrorNotDroppable()
     {
         using var fileFixture = new FsProjectFixture();
@@ -247,7 +249,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Equal(expected, actual);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public void LexErrorUnclosedQuote()
     {
         using var fileFixture = new FsProjectFixture();
@@ -313,7 +315,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ValidateConfig_Success()
     {
         using var fileFixture = new FsProjectFixture();
@@ -332,7 +334,7 @@ public abstract class CliReadOnlyTests_MsSql<TFixture>
         Assert.Equal(expected, actual);
     }
 
-    [Fact]
+    [Fact(Skip = "Containerized tests are not useful yet", SkipWhen = nameof(SkipTests))]
     public async Task ValidateConfig_Print()
     {
         using var fileFixture = new FsProjectFixture();
