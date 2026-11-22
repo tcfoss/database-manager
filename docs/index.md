@@ -17,9 +17,6 @@ It also provides commands for emitting formatted SQL files and JSON representati
 This parsing and formatting is available for MySQL, MariaDB, and a limited subset of Microsoft SQL
 Server.
 
-## Prerequisites
-
-The CLI requires the [.NET 10 runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
 
 ## Installing
 
@@ -36,9 +33,26 @@ dbman --help
 
 1. The `pipx ensurepath` invocation is only needed if you haven't called it before or added `~/.local/bin` to your path manually. On Windows, if you *do* need to call it, you will have to close your shell and open a new one before running the next command.
 
+To upgrade to the latest version, simply run
 
-!!! tip
-    Using `ninman` to install DatabaseManager will also make it upgradable via `ninman upgrade dbman`.
+```sh
+ninman upgrade dbman
+```
+
+### As a .NET Global Tool
+
+If you have the .NET 10 SDK available, you can also install DatabaseManager as a .NET global tool using the .NET CLI:
+
+```sh
+dotnet tool install --global TcfOss.DatabaseManager.App
+dbman --help
+```
+
+To upgrade, run
+
+```sh
+dotnet tool update --global TcfOss.DatabaseManager.App
+```
 
 
 ### Release Artifact
@@ -46,6 +60,7 @@ dbman --help
 1. Go to the [latest release page](https://github.com/tcfoss/database-manager/releases/latest).
 2. Download the `.tar.gz` file that corresponds to your operating system, and unpack it. Move the contents to some reasonable directory.
 3. Create a link to the `TcfOss.DatabaseManager.App` (+ `.exe` on Windows) executable in some place on your system `PATH`, or create a launcher script that invokes it.
+
 
 ### Compile from Source
 
