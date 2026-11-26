@@ -830,8 +830,91 @@ public abstract class MyDifferTestsBase
 
         var changes = ComputeChanges(startText, endText);
         var change = Assert.Single(changes);
-        var expected = "ALTER TABLE `mytable` ALTER COLUMN `id` SET DEFAULT 1";
+        var expected = "ALTER TABLE `mytable` MODIFY COLUMN `id` INT NOT NULL DEFAULT 1";
         Assert.Equal(expected, change.Statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("TINYTEXT", "DEFAULT ('old')")]
+    [InlineData("TEXT", "")]
+    [InlineData("TEXT", "DEFAULT ('old')")]
+    [InlineData("MEDIUMTEXT", "DEFAULT ('old')")]
+    [InlineData("LONGTEXT", "DEFAULT ('old')")]
+    [InlineData("TINYBLOB", "DEFAULT ('old')")]
+    [InlineData("BLOB", "DEFAULT ('old')")]
+    [InlineData("MEDIUMBLOB", "DEFAULT ('old')")]
+    [InlineData("LONGBLOB", "DEFAULT ('old')")]
+    public void Set_Literal_Default_On_Text_Or_Blob_Uses_Modify_Column(string dataType, string startDefault)
+    {
+        var changes = ComputeChanges(
+            $"CREATE TABLE mytable (my_val {dataType} NOT NULL {startDefault})",
+            $"CREATE TABLE mytable (my_val {dataType} NOT NULL DEFAULT ('a''b'))");
+
+        var change = Assert.Single(changes);
+        string expectedDefault = Dialect == SqlDialect.MySql ? "('a''b')" : "'a''b'";
+        Assert.Equal(
+            $"ALTER TABLE `mytable` MODIFY COLUMN `my_val` {dataType} NOT NULL DEFAULT {expectedDefault}",
+            change.Statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("INT UNSIGNED", "1", "2", "COMMENT 'count'")]
+    [InlineData("VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin", "'old'", "'new'", "COMMENT 'label'")]
+    [InlineData("TIMESTAMP(6)", "'2020-01-01 00:00:00'", "'2021-01-01 00:00:00'", "ON UPDATE CURRENT_TIMESTAMP(6) COMMENT 'updated'")]
+    public void Set_Default_Using_Modify_Column_Preserves_Attributes(string dataType, string startDefault, string endDefault, string attributes)
+    {
+        var changes = ComputeChanges(
+            $"CREATE TABLE mytable (my_val {dataType} NOT NULL DEFAULT {startDefault} {attributes})",
+            $"CREATE TABLE mytable (my_val {dataType} NOT NULL DEFAULT {endDefault} {attributes})");
+
+        var change = Assert.Single(changes);
+        Assert.Equal(
+            $"ALTER TABLE `mytable` MODIFY COLUMN `my_val` {dataType} NOT NULL DEFAULT {endDefault} {attributes}",
+            change.Statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("TEXT")]
+    [InlineData("LONGTEXT")]
+    public void Set_Default_And_Not_Null_Using_Modify_Column_Defers_Not_Null(string endDataType)
+    {
+        DefinitionMappingDeployScript[] deployScripts =
+        [
+            new(
+                DeployScriptType.PreSetNotNull,
+                s_schema,
+                "pre_set_not_null.sql",
+                "/fake/project/root/pre_set_not_null.sql",
+                TextParser.ParseText("UPDATE mytable SET my_val = 'new' WHERE my_val IS NULL;"))
+        ];
+
+        var changes = ComputeChanges(
+            "CREATE TABLE mytable (my_val TEXT NULL DEFAULT ('old'))",
+            $"CREATE TABLE mytable (my_val {endDataType} NOT NULL DEFAULT ('new'))",
+            deployScripts: deployScripts);
+
+        string expectedDefault = Dialect == SqlDialect.MySql ? "('new')" : "'new'";
+        Assert.Collection(changes,
+            nullableChange =>
+            {
+                Assert.Equal(DefinitionAlterPhase.AlterTable, nullableChange.Weight);
+                Assert.Equal(
+                    $"ALTER TABLE `mytable` MODIFY COLUMN `my_val` {endDataType} NULL DEFAULT {expectedDefault}",
+                    nullableChange.Statement.ToSql());
+            },
+            scriptChange =>
+            {
+                Assert.Equal(DefinitionAlterPhase.PreSetNotNullScript, scriptChange.Weight);
+                Assert.True(scriptChange.FromDeployScript);
+                Assert.Equal("UPDATE mytable SET my_val = 'new' WHERE my_val IS NULL;\n", scriptChange.Statement.ToSql());
+            },
+            notNullChange =>
+            {
+                Assert.Equal(DefinitionAlterPhase.SetNotNull, notNullChange.Weight);
+                Assert.Equal(
+                    $"ALTER TABLE `mytable` MODIFY COLUMN `my_val` {endDataType} NOT NULL DEFAULT {expectedDefault}",
+                    notNullChange.Statement.ToSql());
+            });
     }
 
     [Fact]
@@ -1184,9 +1267,9 @@ public abstract class MyDifferTestsBase
 
         var third = changes[2].Statement as AlterTable;
         Assert.NotNull(third);
-        var thirdOp = Assert.Single(third.Operations) as AlterTableOperation.SetDefault;
+        var thirdOp = Assert.Single(third.Operations) as AlterTableOperation.ModifyColumn;
         Assert.NotNull(thirdOp);
-        Assert.Equal("ALTER COLUMN `age` SET DEFAULT 30", thirdOp.ToSql());
+        Assert.Equal("MODIFY COLUMN `age` INT NOT NULL DEFAULT 30", thirdOp.ToSql());
     }
 
     [Fact]

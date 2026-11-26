@@ -11,6 +11,7 @@ using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.StatementAnalysis;
 using TcfOss.DatabaseManager.Core.Statements.Components;
 using TcfOss.DatabaseManager.Core.Statements.LabelAttributes;
+using TcfOss.DatabaseManager.MySql.BuiltIn;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
@@ -35,6 +36,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
     private ulong? _autoIncrement;
     private Comment? _tableComment;
 
+    private readonly SqlDialect _dialect = config.Dialect;
     private readonly QuoteStyle _quoteStyle = config.QuoteStyle;
     private readonly AttributeDefaults _attributeDefaults = config.AttributeDefaults;
     private readonly ValidationSettings _validationSettings = config.ValidationSettings;
@@ -63,6 +65,9 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         }
 
         var name = new ColumnIdentifier(column.Name.Name, Name, _quoteStyle);
+
+        DataTypeReference.BuiltIn rawDataType = (DataTypeReference.BuiltIn)typedColumn.DataType;
+        DataType dataType = GetNormalizedDataType(rawDataType.DataType);
         ColumnOption.Unique? unique = null;
         ColumnOption.Nullability? nullability = null;
         ColumnOption.ColumnDefault? defaultValue = null;
@@ -86,7 +91,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
                     nullability = ConvertColumnNullability(n, name, nullability, sourceRef);
                     break;
                 case StatementColumnOption.Default d:
-                    defaultValue = ConvertColumnDefault(d, name, defaultValue, sourceRef);
+                    defaultValue = ConvertColumnDefault(d, name, dataType, defaultValue, sourceRef);
                     break;
                 case StatementColumnOption.CheckConstraint ch:
                     check = ConvertColumnCheck(ch, name, check, sourceRef);
@@ -120,8 +125,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             defaultValue = null;
         }
 
-        DataTypeReference.BuiltIn dataType = (DataTypeReference.BuiltIn)typedColumn.DataType;
-        var myColumn = new MyColumn(name, GetNormalizedDataType(dataType.DataType))
+        var myColumn = new MyColumn(name, dataType)
         {
             Unique = unique,
             Nullability = nullability,
@@ -488,7 +492,7 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
     }
 
     // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
-    private ColumnOption.ColumnDefault ConvertColumnDefault(StatementColumnOption.Default defaultOption, ColumnIdentifier columnName, ColumnOption? existingDefault, SourceRef? sourceRef = null)
+    private ColumnOption.ColumnDefault ConvertColumnDefault(StatementColumnOption.Default defaultOption, ColumnIdentifier columnName, DataType dataType, ColumnOption? existingDefault, SourceRef? sourceRef = null)
     {
         if (existingDefault != null)
         {
@@ -498,7 +502,20 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
         {
             throw new SqlSyntaxException.ConstraintNameNotAllowedException(defaultOption.Name, "DEFAULT", "column", columnName, "MySQL", sourceRef);
         }
+
+        if (_dialect == SqlDialect.MySql
+            && defaultOption is StatementColumnOption.Default.DefaultExpression { Expression: LiteralValue literal }
+            && IsDataTypeStoredOffPage(dataType))
+        {
+            Value newValue = ComponentNormalizer.NormalizeValue(literal.Value);
+            return new ColumnOption.ColumnDefault.DefaultExpression(new LiteralValue(newValue));
+        }
         return NormalizeDefault(defaultOption);
+    }
+
+    private static bool IsDataTypeStoredOffPage(DataType dataType)
+    {
+        return dataType is MyDataType.MyText or MyDataType.MyTinyText or MyDataType.MyMediumText or MyDataType.MyLongText or MyDataType.Blob or MyDataType.TinyBlob or MyDataType.MediumBlob or MyDataType.LongBlob or MyDataType.Geometry;
     }
 
     // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
