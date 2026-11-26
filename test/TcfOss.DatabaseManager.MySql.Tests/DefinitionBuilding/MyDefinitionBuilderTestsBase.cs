@@ -1653,6 +1653,53 @@ public abstract class MyDefinitionBuilderTestsBase
         Assert.IsType<Value.Number>(defaultValueOption.Value);
     }
 
+    [Theory]
+    [InlineData("TINYTEXT", "'a''b'", "'a''b'", true)]
+    [InlineData("TEXT", "'a''b'", "'a''b'", true)]
+    [InlineData("MEDIUMTEXT", "'a''b'", "'a''b'", true)]
+    [InlineData("LONGTEXT", "'a''b'", "'a''b'", true)]
+    [InlineData("TINYBLOB", "X'6162'", "X'6162'", true)]
+    [InlineData("BLOB", "X'6162'", "X'6162'", true)]
+    [InlineData("MEDIUMBLOB", "X'6162'", "X'6162'", true)]
+    [InlineData("LONGBLOB", "X'6162'", "X'6162'", true)]
+    [InlineData("TEXT", "TRUE", "1", true)]
+    [InlineData("TEXT", "0001.500", "1.500", true)]
+    [InlineData("GEOMETRY", "NULL", "NULL", true)]
+    [InlineData("POINT", "NULL", "NULL", true)]
+    [InlineData("VARCHAR(20)", "'a''b'", "'a''b'", false)]
+    [InlineData("INT", "TRUE", "1", false)]
+    [InlineData("VARBINARY(20)", "X'6162'", "X'6162'", false)]
+    public void CreateTable_ParenthesizedLiteralDefault_PreservesExpressionWhenRequired(string dataType, string literal, string normalizedLiteral, bool requiresExpression)
+    {
+        var statements = TextParser.ParseText($"CREATE TABLE mytable (my_val {dataType} DEFAULT ({literal}))");
+        DefinitionBuilder.ProcessStatements(statements, Schema, 0);
+
+        var table = Assert.Single(DefinitionBuilder.ToDefinition().Tables.Values);
+        var column = Assert.Single(table.Columns);
+        bool preserveExpression = MyConfig.Dialect == SqlDialect.MySql && requiresExpression;
+        if (preserveExpression)
+        {
+            var defaultExpression = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(column.Default);
+            var value = Assert.IsType<LiteralValue>(defaultExpression.Expression);
+            Assert.Equal(normalizedLiteral, value.Value.ToSql());
+            Assert.Equal(defaultExpression.Expression, defaultExpression.NormalizedExpression);
+        }
+        else
+        {
+            var defaultValue = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(column.Default);
+            Assert.Equal(normalizedLiteral, defaultValue.Value.ToSql());
+        }
+
+        string expectedDefault = preserveExpression ? $"DEFAULT ({normalizedLiteral})" : $"DEFAULT {normalizedLiteral}";
+        var createSql = table.ToCreateStatement(true, GetDifferFormatManager()).ToSql();
+        Assert.Contains(expectedDefault, createSql);
+
+        var roundTripBuilder = GetDefinitionBuilder();
+        roundTripBuilder.ProcessStatements(TextParser.ParseText(createSql), Schema, 0);
+        var roundTripTable = Assert.Single(roundTripBuilder.ToDefinition().Tables.Values);
+        Assert.Equal(column.Default, Assert.Single(roundTripTable.Columns).Default);
+    }
+
     [Fact]
     public void Generated_Nesting_KeptInExpression_RemovedInNormalized_EqualityBasedOnNormalized()
     {

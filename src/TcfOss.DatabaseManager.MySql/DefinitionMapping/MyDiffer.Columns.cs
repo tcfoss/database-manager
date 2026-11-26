@@ -3,7 +3,6 @@ using TcfOss.DatabaseManager.Core;
 using TcfOss.DatabaseManager.Core.Common;
 using TcfOss.DatabaseManager.Core.DatabaseObjects.Attributes;
 using TcfOss.DatabaseManager.Core.DefinitionMapping;
-using TcfOss.DatabaseManager.Core.Errors;
 using TcfOss.DatabaseManager.Core.Expressions;
 using TcfOss.DatabaseManager.Core.IO;
 using TcfOss.DatabaseManager.Core.Statements;
@@ -110,16 +109,10 @@ public partial class MyDiffer
                 return;
             }
 
-            // For the default checks, we use equality rather than HasFlag, because if there are
-            // multiple changes, the catch-all ModifyColumn will handle them.
+            // If other attributes change too, ModifyColumn handles dropping the default.
             if (colChanges == ColumnChangeType.DropDefault)
             {
                 _ = ApplyDropDefault(end, colChanges);
-                return;
-            }
-            if (colChanges == ColumnChangeType.SetDefault)
-            {
-                _ = ApplySetDefault(end, colChanges);
                 return;
             }
 
@@ -263,20 +256,6 @@ public partial class MyDiffer
         {
             _currentModifications.Add(new AlterTableOperation.DropDefault(end.Name.ToSimpleIdentifier()));
             colChanges &= ~ColumnChangeType.DropDefault;
-            return colChanges;
-        }
-
-        private ColumnChangeType ApplySetDefault(MyColumn end, ColumnChangeType colChanges)
-        {
-            StatementColumnOption.Default newDefault = end.Default switch
-            {
-                ColumnOption.ColumnDefault.DefaultValue dv => new StatementColumnOption.Default.DefaultValue(dv.Value),
-                ColumnOption.ColumnDefault.DefaultExpression de => new StatementColumnOption.Default.DefaultExpression(de.Expression),
-                _ => throw new DefensiveGuardException("column default type", end.Default?.GetType() ?? typeof(object), "ColumnChangeType.SetDefault should not be active if end default is null. Switch is otherwise exhaustive.")
-            };
-
-            _currentModifications.Add(new AlterTableOperation.SetDefault(end.Name.ToSimpleIdentifier(), newDefault));
-            colChanges &= ~ColumnChangeType.SetDefault;
             return colChanges;
         }
 
