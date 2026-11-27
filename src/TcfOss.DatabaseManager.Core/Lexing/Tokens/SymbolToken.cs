@@ -2,7 +2,7 @@ namespace TcfOss.DatabaseManager.Core.Lexing.Tokens;
 
 public abstract class SymbolToken(string symbol) : Token
 {
-    private string Symbol { get; } = symbol;
+    public string Symbol { get; } = symbol;
 
     public override int Length => Symbol.Length;
 

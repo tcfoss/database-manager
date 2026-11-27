@@ -7,4 +7,6 @@ public interface IRetrieveRawEntities
 {
     Task<CreateProcedureEntity> GetCreateProcedureAsync(ObjectIdentifier procedureId, CancellationToken cancellationToken = default);
     Task<CreateViewEntity> GetCreateViewAsync(ObjectIdentifier viewId, CancellationToken cancellationToken = default);
+    Task<Dictionary<ObjectIdentifier, CreateTriggerEntity>> GetCreateTriggersAsync(IReadOnlyCollection<ObjectIdentifier> triggerIds, CancellationToken cancellationToken = default);
+    Task<Dictionary<ObjectIdentifier, CreateFunctionEntity>> GetCreateFunctionsAsync(IReadOnlyCollection<ObjectIdentifier> functionIds, CancellationToken cancellationToken = default);
 }

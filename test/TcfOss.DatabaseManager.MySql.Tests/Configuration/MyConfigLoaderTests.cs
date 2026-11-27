@@ -877,6 +877,21 @@ public class MyConfigLoaderTests
     }
 
     [Theory]
+    [InlineData(SqlDialect.MySql, true)]
+    [InlineData(SqlDialect.MariaDb, false)]
+    public void ParseSettings_RemoveSlashes_DefaultsByDialect(SqlDialect dialect, bool expected)
+    {
+        var rawConfig = TestDataRawConfig.GetMyTestRawConfig();
+        rawConfig.Dialect = dialect;
+        rawConfig.ParseSettings = null;
+
+        var config = LoadConfig(rawConfig);
+
+        Assert.Equal(expected, config.ParseSettings.RemoveSlashesBeforeQuotesGenerationExpression);
+        Assert.Equal(expected, config.ParseSettings.RemoveSlashesBeforeQuotesColumnDefault);
+    }
+
+    [Theory]
     [InlineData(null, false)]
     [InlineData(null, true)]
     [InlineData("", false)]

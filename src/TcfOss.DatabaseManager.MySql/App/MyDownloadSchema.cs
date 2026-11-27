@@ -113,7 +113,7 @@ public partial class MyDownloadSchema(MyConfig config, ILogger<MyDownloadSchema>
             fout.WriteLine($"    {stmt.TriggerTime.ToSql()} {stmt.Events[0].ToSql()}");
             fout.WriteLine($"    ON {stmt.TableName.ToSql()}");
             fout.WriteLine("FOR EACH ROW");
-            fout.WriteLine(trigger.RawBodyText + "//");
+            fout.WriteLine(trigger.RawBodyText!.TrimStart() + "//");
             fout.WriteLine();
             fout.WriteLine("DELIMITER ;");
         }
@@ -145,7 +145,7 @@ public partial class MyDownloadSchema(MyConfig config, ILogger<MyDownloadSchema>
             {
                 fout.WriteLine($"    {stmt.MyCharacteristic.ToSql()}");
             }
-            fout.WriteLine(function.RawBodyText + "//");
+            fout.WriteLine(function.RawBodyText!.TrimStart() + "//");
 
             fout.WriteLine();
             fout.WriteLine("DELIMITER ;");

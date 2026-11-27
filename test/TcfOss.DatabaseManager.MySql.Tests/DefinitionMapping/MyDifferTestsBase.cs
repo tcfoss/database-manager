@@ -3167,4 +3167,33 @@ public abstract class MyDifferTestsBase
 
         Assert.Empty(changes);
     }
+
+    [Theory]
+    [InlineData("", " ON UPDATE CURRENT_TIMESTAMP", " ON UPDATE CURRENT_TIMESTAMP()")]
+    [InlineData(" ON UPDATE CURRENT_TIMESTAMP", "", "")]
+    public void OnUpdate_Change_Modifies_Column(string startOnUpdate, string endOnUpdate, string expectedOnUpdate)
+    {
+        var changes = ComputeChanges(
+            $"CREATE TABLE mytable (value TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP(){startOnUpdate})",
+            $"CREATE TABLE mytable (value TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP{endOnUpdate})");
+
+        var change = Assert.Single(changes);
+        Assert.Equal(DefinitionAlterPhase.AlterTable, change.Weight);
+        Assert.Equal(
+            $"ALTER TABLE `mytable` MODIFY COLUMN `value` TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP){expectedOnUpdate}",
+            change.Statement.ToSql());
+    }
+
+    [Fact]
+    public void Removing_Default_And_Adding_OnUpdate_Modifies_Column()
+    {
+        var changes = ComputeChanges(
+            "CREATE TABLE mytable (value TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE mytable (value TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP)");
+
+        var change = Assert.Single(changes);
+        Assert.Equal(
+            "ALTER TABLE `mytable` MODIFY COLUMN `value` TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP()",
+            change.Statement.ToSql());
+    }
 }

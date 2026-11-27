@@ -38,6 +38,8 @@ public class InfoSchemaRepoHelperTests
     [InlineData("'myname'@'myhost'", QuoteStyle.Ansi, ExtendedQuoteStyle.Ansi, "myname", "myhost")]
     [InlineData("'myname'@'myhost'", QuoteStyle.Brackets, ExtendedQuoteStyle.Brackets, "myname", "myhost")]
     [InlineData("'myname'@'myhost'", QuoteStyle.None, ExtendedQuoteStyle.None, "myname", "myhost")]
+    [InlineData("myname@%", QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks, "myname", "%")]
+    [InlineData("'myname'@%", QuoteStyle.Backticks, ExtendedQuoteStyle.Backticks, "myname", "%")]
     public void AccountsParse(string given, QuoteStyle quoteStyle, ExtendedQuoteStyle expectedQuoteStyle, string expectedIdentity, string? expectedHost)
     {
         Account expected;
@@ -262,7 +264,7 @@ public class InfoSchemaRepoHelperTests
     {
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
 
-        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "");
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "", false);
 
         Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(text)), actual);
     }
@@ -279,9 +281,19 @@ public class InfoSchemaRepoHelperTests
     {
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
 
-        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), extra);
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), extra, false);
 
         Assert.Equal(new ColumnOption.ColumnDefault.DefaultExpression(repoHelper.ParseExpr(text)), actual);
+    }
+
+    [Fact]
+    public void ColumnDefault_RemovesSlashesBeforeQuotesWhenRequested()
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault("concat(\\'a\\', `base_col`)", false, repoHelper.ParseDataType("VARCHAR(20)"), "DEFAULT_GENERATED", true);
+
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultExpression(repoHelper.ParseExpr("concat('a', `base_col`)")), actual);
     }
 
     [Theory]
@@ -294,7 +306,7 @@ public class InfoSchemaRepoHelperTests
     {
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
 
-        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "");
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "", false);
 
         Assert.Equal(repoHelper.ParseColumnDefault(text, false), actual);
     }
@@ -306,7 +318,7 @@ public class InfoSchemaRepoHelperTests
     {
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
 
-        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(null, isNullable, repoHelper.ParseDataType("VARCHAR(20)"), "");
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(null, isNullable, repoHelper.ParseDataType("VARCHAR(20)"), "", false);
 
         Assert.Equal(repoHelper.ParseColumnDefault(null, isNullable), actual);
     }
@@ -319,7 +331,7 @@ public class InfoSchemaRepoHelperTests
     {
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
 
-        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "");
+        ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "", false);
 
         Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.HexString(expectedHex)), actual);
     }
