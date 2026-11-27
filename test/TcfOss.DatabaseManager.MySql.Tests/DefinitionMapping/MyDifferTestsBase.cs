@@ -3168,6 +3168,42 @@ public abstract class MyDifferTestsBase
         Assert.Empty(changes);
     }
 
+    [Fact]
+    public void Generated_Column_Convert_With_Equivalent_Identifiers_Generates_No_Change()
+    {
+        var changes = ComputeChanges(
+            "CREATE TABLE mytable (major INT, minor INT, version VARCHAR(100) GENERATED ALWAYS AS (CONVERT(CONCAT_WS('.', `major`, `minor`) USING utf8mb4)) VIRTUAL)",
+            "CREATE TABLE mytable (major INT, minor INT, version VARCHAR(100) GENERATED ALWAYS AS (CONVERT(CONCAT_WS('.', major, minor) USING utf8mb4)) VIRTUAL)");
+
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void Generated_Column_Convert_With_Different_Charset_Generates_Change()
+    {
+        var changes = ComputeChanges(
+            "CREATE TABLE mytable (major INT, version VARCHAR(100) GENERATED ALWAYS AS (CONVERT(major USING latin1)) VIRTUAL)",
+            "CREATE TABLE mytable (major INT, version VARCHAR(100) GENERATED ALWAYS AS (CONVERT(major USING utf8mb4)) VIRTUAL)");
+
+        var change = Assert.Single(changes);
+        Assert.Equal(
+            "ALTER TABLE `mytable` MODIFY COLUMN `version` VARCHAR(100) GENERATED ALWAYS AS (CONVERT(`major` USING utf8mb4)) VIRTUAL",
+            change.Statement.ToSql());
+    }
+
+    [Theory]
+    [InlineData("'a''b'", @"'a\'b'")]
+    [InlineData("'\nline'", @"'\nline'")]
+    [InlineData(@"'\%'", @"'\\%'")]
+    public void Equivalent_String_Defaults_Generate_No_Change(string start, string end)
+    {
+        var changes = ComputeChanges(
+            $"CREATE TABLE mytable (value VARCHAR(20) NOT NULL DEFAULT {start})",
+            $"CREATE TABLE mytable (value VARCHAR(20) NOT NULL DEFAULT {end})");
+
+        Assert.Empty(changes);
+    }
+
     [Theory]
     [InlineData("", " ON UPDATE CURRENT_TIMESTAMP", " ON UPDATE CURRENT_TIMESTAMP()")]
     [InlineData(" ON UPDATE CURRENT_TIMESTAMP", "", "")]

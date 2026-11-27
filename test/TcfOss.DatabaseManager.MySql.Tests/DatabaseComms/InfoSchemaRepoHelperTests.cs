@@ -26,6 +26,7 @@ public class InfoSchemaRepoHelperTests
         Assert.Throws<InvalidOperationException>(() => repoHelper.ParseExpr("value unexpected"));
         Assert.Throws<InvalidOperationException>(() => repoHelper.ParseColumnDefault("1 unexpected", false));
         Assert.Throws<ParseException.ExpectedButFound>(() => repoHelper.ParseOnUpdate("ON UPDATE value unexpected"));
+        Assert.Throws<ParseException.ExpectedButFound>(() => repoHelper.ParseOnUpdate("DEFAULT_GENERATED on update CURRENT_TIMESTAMP unexpected"));
         var expression = Assert.IsType<ColumnOption.ColumnDefault.DefaultExpression>(repoHelper.ParseColumnDefault("1 + 2", false));
         Assert.Equal("1 + 2", expression.Expression.ToSql());
     }
@@ -131,6 +132,9 @@ public class InfoSchemaRepoHelperTests
 
     [Theory]
     [InlineData("ON UPDATE CURRENT_TIMESTAMP", false)]
+    [InlineData("DEFAULT_GENERATED on update CURRENT_TIMESTAMP", false)]
+    [InlineData("default_generated ON UPDATE CURRENT_TIMESTAMP", false)]
+    [InlineData("DEFAULT_GENERATED", true)]
     [InlineData(null, true)]
     [InlineData("", true)]
     [InlineData("NOT AN ON UPDATE", true)]
@@ -139,14 +143,26 @@ public class InfoSchemaRepoHelperTests
         var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
         var actual = repoHelper.ParseOnUpdate(given);
 
-        ColumnOption.OnUpdate? expected = expectNull ? null : new ColumnOption.OnUpdate(
-            new FunctionCall(
-                new ObjectName(new Identifier("CURRENT_TIMESTAMP")))
-            {
-                Arguments = new FunctionArguments.None()
-            });
+        ColumnOption.OnUpdate? expected = expectNull
+            ? null
+            : new ColumnOption.OnUpdate(
+                new FunctionCall(
+                    new ObjectName(new Identifier("CURRENT_TIMESTAMP")))
+                {
+                    Arguments = new FunctionArguments.None()
+                });
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void OnUpdateCurrentTimestamp_WithPrecision()
+    {
+        var repoHelper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        var actual = repoHelper.ParseOnUpdate("DEFAULT_GENERATED on update CURRENT_TIMESTAMP(6)");
+
+        Assert.Equal(new ColumnOption.OnUpdate(repoHelper.ParseExpr("CURRENT_TIMESTAMP(6)")), actual);
     }
 
     [Fact]
@@ -267,6 +283,39 @@ public class InfoSchemaRepoHelperTests
         ColumnOption.ColumnDefault? actual = repoHelper.ParseColumnDefault(text, false, repoHelper.ParseDataType(dataType), "", false);
 
         Assert.Equal(new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(text)), actual);
+    }
+
+    [Theory]
+    [InlineData("\nline", @"'\nline'")]
+    [InlineData("it's", @"'it\'s'")]
+    [InlineData("it's", "'it''s'")]
+    [InlineData("a\\b", @"'a\\b'")]
+    [InlineData("\\'x", @"'\\\'x'")]
+    [InlineData("\\%", @"'\%'")]
+    [InlineData("\0\b\r\t\u001a", @"'\0\b\r\t\Z'")]
+    public void ColumnDefault_MySqlLiteralMatchesSqlLiteral(string databaseValue, string sqlLiteral)
+    {
+        var helper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+
+        var databaseDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(
+            helper.ParseColumnDefault(databaseValue, false, helper.ParseDataType("VARCHAR(20)"), "", false));
+        var sqlDefault = Assert.IsType<ColumnOption.ColumnDefault.DefaultValue>(helper.ParseColumnDefault(sqlLiteral, false));
+
+        Assert.Equal(sqlDefault, databaseDefault);
+        Assert.Equal(sqlDefault.GetHashCode(), databaseDefault.GetHashCode());
+        Assert.Equal(databaseDefault, helper.ParseColumnDefault(databaseDefault.Value.ToSql(), false));
+    }
+
+    [Fact]
+    public void ColumnDefault_LiteralBackslashNDoesNotEqualNewline()
+    {
+        var helper = new InfoSchemaRepoHelper(_lexer, _parser, QuoteStyle.Backticks);
+        var dataType = helper.ParseDataType("VARCHAR(20)");
+
+        var newline = helper.ParseColumnDefault("\n", false, dataType, "", false);
+        var backslashN = helper.ParseColumnDefault("\\n", false, dataType, "", false);
+
+        Assert.NotEqual(newline, backslashN);
     }
 
     [Theory]

@@ -38,6 +38,24 @@ public class MyInfoSchemaRepoTests : BaseInfoSchemaRepoTests, IClassFixture<MyIn
     }
 
     [Fact]
+    public async Task Table_ColumnWithGeneratedDefaultAndOnUpdate_PreservesBoth()
+    {
+        using var fixture = new MyInfoSchemaContextFixture();
+        var column = fixture.Context.Columns.Single(c =>
+            c.TableSchema == "library_activity" && c.TableName == "active_rental" && c.ColumnName == "rental_date");
+        column.Extra = "DEFAULT_GENERATED on update CURRENT_TIMESTAMP";
+        fixture.Context.SaveChanges();
+        var repo = new InfoSchemaRepo(MyConfig, fixture.CreateFactory(), _rawEntityRetriever);
+
+        var table = await repo.GetTableAsync(ObIdent("active_rental", "library_activity"), TestContext.Current.CancellationToken);
+
+        var actual = Assert.Single(table.Columns, c => c.Name.Name == "rental_date");
+        var helper = new InfoSchemaRepoHelper(new MyLexer(), new MyParser(), MyConfig.QuoteStyle);
+        Assert.Equal(new ColumnOption.ColumnDefault.DefaultExpression(helper.ParseExpr("now()")), actual.Default);
+        Assert.Equal(new ColumnOption.OnUpdate(helper.ParseExpr("CURRENT_TIMESTAMP")), actual.OnUpdate);
+    }
+
+    [Fact]
     public async Task Function_UsesCreateDefinitionForBody()
     {
         var id = ObIdent("func_no_params", "extra_test");

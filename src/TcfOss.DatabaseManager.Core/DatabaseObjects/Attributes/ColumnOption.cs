@@ -16,7 +16,22 @@ public abstract record ColumnOption()
 
     public abstract record ColumnDefault(Identifier? Name) : WithConstraint(Name)
     {
-        public record DefaultValue(Value Value, Identifier? Name = null) : ColumnDefault(Name);
+        public record DefaultValue(Value Value, Identifier? Name = null) : ColumnDefault(Name)
+        {
+            public Value NormalizedValue { get; init; } = Value;
+
+            public virtual bool Equals(DefaultValue? other)
+            {
+                return other is not null
+                    && Name == other.Name
+                    && NormalizedValue == other.NormalizedValue;
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Name, NormalizedValue);
+            }
+        }
 
         public record DefaultExpression(Expression Expression, Identifier? Name = null) : ColumnDefault(Name)
         {
