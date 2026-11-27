@@ -144,7 +144,10 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
             or DataTypeClass.Date or DataTypeClass.DateTime or DataTypeClass.Time
             or DataTypeClass.Enum or DataTypeClass.Set)
         {
-            return new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(text));
+            return new ColumnOption.ColumnDefault.DefaultValue(new Value.SingleQuotedString(StringLiteralEncodingHelpers.Encode(text)))
+            {
+                NormalizedValue = new Value.SingleQuotedString(text)
+            };
         }
 
         return ParseColumnDefault(text, isNullable);
@@ -180,6 +183,13 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
             if (val is Value.HexString hexString)
             {
                 return new ColumnOption.ColumnDefault.DefaultValue(hexString with { Value = hexString.Value.ToUpperInvariant() });
+            }
+            if (val is Value.SingleQuotedString textValue)
+            {
+                return new ColumnOption.ColumnDefault.DefaultValue(val)
+                {
+                    NormalizedValue = new Value.SingleQuotedString(StringLiteralEncodingHelpers.Decode(textValue.Value))
+                };
             }
             return new ColumnOption.ColumnDefault.DefaultValue(val);
         }
@@ -222,13 +232,18 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
             return null;
         }
 
-        if (!text.StartsWith("ON UPDATE", StringComparison.InvariantCultureIgnoreCase))
+        ParserState updateState = GetState(text);
+        if (updateState.Peek() is Word { Value: var value, QuoteStyle: QuoteStyle.None }
+            && value.Equals("DEFAULT_GENERATED", StringComparison.OrdinalIgnoreCase))
+        {
+            updateState.Next();
+        }
+
+        if (!updateState.ParseKeywordsAll(Keyword.ON, Keyword.UPDATE))
         {
             return null;
         }
 
-        ParserState updateState = GetState(text);
-        updateState.ExpectKeywordsAll(Keyword.ON, Keyword.UPDATE);
         Expression onUpdateExpr = _parser.ExpressionParser.ParseExpr(updateState);
         if (updateState.Peek() is not Eof)
         {

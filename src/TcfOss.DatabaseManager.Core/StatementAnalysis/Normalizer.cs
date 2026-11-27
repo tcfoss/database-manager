@@ -344,6 +344,7 @@ public class Normalizer(ConfigBase config, ComponentNormalizer componentNormaliz
             LiteralValue literal when flatten => literal with { Value = ComponentNormalizer.NormalizeValue(literal.Value) },
             LiteralValue => expr,
             TypedString or PositionalParameter or PgIntervalLiteral => expr,
+            Expressions.Convert convert => convert with { Expression = NormalizeExpression(convert.Expression, inSelect, flatten) },
             _ => NormalizeOtherExpression(expr)
         };
     }

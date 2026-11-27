@@ -650,6 +650,15 @@ public class NormalizerTests
     }
 
     [Theory]
+    [InlineData("CONVERT((value) USING utf8mb4)", "CONVERT(`value` USING utf8mb4)", "CONVERT((`value`) USING utf8mb4)")]
+    [InlineData("CONVERT((value), INT)", "CONVERT(`value`, INT)", "CONVERT((`value`), INT)")]
+    public void NormalizeExpression_TraversesConvert(string sql, string flattened, string unflattened)
+    {
+        Assert.Equal(flattened, GetNormalizedExpressionText(sql, flatten: true));
+        Assert.Equal(unflattened, GetNormalizedExpressionText(sql, flatten: false));
+    }
+
+    [Theory]
     [InlineData(true, true)]
     [InlineData(false, true)]
     [InlineData(true, false)]

@@ -510,7 +510,12 @@ public class MyTableBuilder(ObjectIdentifier name, MyConfig config, SchemaDefaul
             Value newValue = ComponentNormalizer.NormalizeValue(literal.Value);
             return new ColumnOption.ColumnDefault.DefaultExpression(new LiteralValue(newValue));
         }
-        return NormalizeDefault(defaultOption);
+        ColumnOption.ColumnDefault normalized = NormalizeDefault(defaultOption);
+        if (normalized is ColumnOption.ColumnDefault.DefaultValue { Value: Value.SingleQuotedString text } value)
+        {
+            return value with { NormalizedValue = new Value.SingleQuotedString(StringLiteralEncodingHelpers.Decode(text.Value)) };
+        }
+        return normalized;
     }
 
     private static bool IsDataTypeStoredOffPage(DataType dataType)
