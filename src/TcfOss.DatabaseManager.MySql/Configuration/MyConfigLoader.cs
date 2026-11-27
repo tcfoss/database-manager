@@ -52,7 +52,8 @@ public class MyConfigLoader(ILogger logger, IFileSystem? fileSystem = null)
         {
             parseSettings = new ParseSettings()
             {
-                RemoveSlashesBeforeQuotesGenerationExpression = rawConfig.Dialect == SqlDialect.MySql
+                RemoveSlashesBeforeQuotesGenerationExpression = rawConfig.Dialect == SqlDialect.MySql,
+                RemoveSlashesBeforeQuotesColumnDefault = rawConfig.Dialect == SqlDialect.MySql
             };
         }
 

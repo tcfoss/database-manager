@@ -98,6 +98,11 @@ public static class MyColumnComparer
 
         changes = ApplyDefaults(changes, start, end);
 
+        if (start.OnUpdate != end.OnUpdate)
+        {
+            changes |= ColumnChangeType.OnUpdate;
+        }
+
         if (start.Check != end.Check)
         {
             changes |= ColumnChangeType.CheckConstraint;

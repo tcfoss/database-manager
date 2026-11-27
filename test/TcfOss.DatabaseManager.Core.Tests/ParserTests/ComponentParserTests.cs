@@ -47,8 +47,42 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
     [InlineData("`2`")]
     public static void ParseExtendedIdentifier_TextMatch(string identifierSql)
     {
-        var (expected, actual) = GetExpectedActual(ComponentParser.ParseExtendedIdentifier, identifierSql);
+        var (expected, actual) = GetExpectedActual(state => ComponentParser.ParseExtendedIdentifier(state), identifierSql);
         Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData("dog")]
+    [InlineData("`dog`")]
+    [InlineData("'dog'")]
+    public static void ParseExtendedIdentifier_AllowWildcard_StillParsesIdentifiers(string identifierSql)
+    {
+        var expected = ComponentParser.ParseExtendedIdentifier(GetState(identifierSql));
+
+        var actual = ComponentParser.ParseExtendedIdentifier(GetState(identifierSql), allowWildcard: true);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public static void ParseExtendedIdentifier_AllowWildcard_ParsesUnquotedPercent()
+    {
+        var actual = ComponentParser.ParseExtendedIdentifier(GetState("%"), allowWildcard: true);
+
+        Assert.Equal(new ExtendedIdentifier("%", ExtendedQuoteStyle.None), actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(null)]
+    public static void ParseExtendedIdentifier_WildcardNotAllowed_Throws(bool? allowWildcard)
+    {
+        var state = GetState("%");
+
+        var ex = Assert.Throws<ParseException.ExpectedButFound>(() => allowWildcard is { } allow
+            ? ComponentParser.ParseExtendedIdentifier(state, allow)
+            : ComponentParser.ParseExtendedIdentifier(state));
+        Assert.Contains("identifier", ex.Message);
     }
 
     [Fact]
@@ -413,6 +447,14 @@ public class ComponentParserTests : ParserTestsBase<GenericLexer, Parser>
         var actual = ComponentParser.ParseAccount(state);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public static void ParseAccount_WildcardUser_Throws()
+    {
+        var state = GetState("% @ 'hostname'");
+
+        Assert.Throws<ParseException.ExpectedButFound>(() => ComponentParser.ParseAccount(state));
     }
 
     private class AccountTestData : IEnumerable<TheoryDataRow<string, Account>>

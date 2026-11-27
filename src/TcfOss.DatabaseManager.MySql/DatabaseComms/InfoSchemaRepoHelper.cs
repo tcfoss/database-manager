@@ -125,7 +125,7 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
         return dataType;
     }
 
-    public ColumnOption.ColumnDefault? ParseColumnDefault(string? text, bool isNullable, DataType dataType, string columnExtra)
+    public ColumnOption.ColumnDefault? ParseColumnDefault(string? text, bool isNullable, DataType dataType, string columnExtra, bool removeSlashesBeforeQuotes)
     {
         if (text == null)
         {
@@ -134,6 +134,9 @@ public partial class InfoSchemaRepoHelper(ILexer lexer, IParser parser, QuoteSty
 
         if (columnExtra.Contains("DEFAULT_GENERATED", StringComparison.OrdinalIgnoreCase))
         {
+            text = removeSlashesBeforeQuotes
+                ? _escapedQuoteRegex.Replace(text, "'")
+                : text;
             return new ColumnOption.ColumnDefault.DefaultExpression(ParseExpr(text));
         }
 

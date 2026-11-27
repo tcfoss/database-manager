@@ -32,13 +32,14 @@ public class ComponentParser(ParserBase parser)
         };
     }
 
-    public static ExtendedIdentifier ParseExtendedIdentifier(ParserState state)
+    public static ExtendedIdentifier ParseExtendedIdentifier(ParserState state, bool allowWildcard = false)
     {
         Token token = state.Next();
         return token switch
         {
             Word word => word.ToIdentifier(state.SourceId),
             StringLiteral str => new ExtendedIdentifier(str.Value, ExtendedQuoteStyle.SingleQuote) { Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length) },
+            SymbolToken { Symbol: "%" } when allowWildcard => new ExtendedIdentifier("%", ExtendedQuoteStyle.None) { Source = new SourceRef(state.SourceId, token.Location.Position, token.Location.Position + token.Length) },
             _ => throw ParserState.ExpectedCategoryException("identifier", token)
         };
     }
@@ -278,7 +279,7 @@ public class ComponentParser(ParserBase parser)
         if (state.PeekIs<At>())
         {
             state.Next();
-            ExtendedIdentifier host = ParseExtendedIdentifier(state);
+            ExtendedIdentifier host = ParseExtendedIdentifier(state, allowWildcard: true);
             return new Account.IdentityWithHost(ident, host);
         }
         else if (state.Peek() is Word { Sigil: SigilKind.Variable } w)

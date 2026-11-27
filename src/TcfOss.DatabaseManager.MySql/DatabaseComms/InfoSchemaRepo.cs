@@ -14,6 +14,7 @@ using TcfOss.DatabaseManager.Core.Statements;
 using TcfOss.DatabaseManager.MySql.Configuration;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework.Entities;
+using TcfOss.DatabaseManager.MySql.DatabaseComms.EntityFramework.PseudoEntities;
 using TcfOss.DatabaseManager.MySql.DatabaseComms.InfoSchemaHelperModels;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects;
 using TcfOss.DatabaseManager.MySql.DatabaseObjects.Components;
@@ -25,7 +26,8 @@ namespace TcfOss.DatabaseManager.MySql.DatabaseComms;
 public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
 {
     private readonly SemaphoreSlim _queryGate = new(10);
-    private readonly CachedDataLoader<ILookup<string, TriggerDto>> _triggersBySchema;
+    private readonly CachedDataLoader<ILookup<string, TriggerDefinitionDto>> _triggersBySchema;
+    private readonly CachedDataLoader<IReadOnlyDictionary<string, string?>> _functionDefinitionsBySchema;
     private readonly CachedDataLoader<IReadOnlyDictionary<string, TableData>> _tableDataBySchema;
     private readonly CachedDataLoader<SchemaRoutineData> _routineDataBySchema;
     private readonly CachedDataLoader<IReadOnlyDictionary<string, ViewEntity>> _viewsBySchema;
@@ -49,7 +51,8 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         _lexer = new MyLexer();
         _parser = new MyParser();
         _helper = new InfoSchemaRepoHelper(_lexer, _parser, _quoteStyle);
-        _triggersBySchema = new CachedDataLoader<ILookup<string, TriggerDto>>(LoadSchemaTriggersAsync);
+        _triggersBySchema = new CachedDataLoader<ILookup<string, TriggerDefinitionDto>>(LoadSchemaTriggersAsync);
+        _functionDefinitionsBySchema = new CachedDataLoader<IReadOnlyDictionary<string, string?>>(LoadSchemaFunctionDefinitionsAsync);
         _tableDataBySchema = new CachedDataLoader<IReadOnlyDictionary<string, TableData>>(LoadSchemaTableDataAsync);
         _routineDataBySchema = new CachedDataLoader<SchemaRoutineData>(LoadSchemaRoutineDataAsync);
         _viewsBySchema = new CachedDataLoader<IReadOnlyDictionary<string, ViewEntity>>(LoadSchemaViewsAsync);
@@ -62,6 +65,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         {
             // Refresh schema-local caches for each schema load.
             _triggersBySchema.Clear(schemaId.InfoSchemaKey);
+            _functionDefinitionsBySchema.Clear(schemaId.InfoSchemaKey);
             _tableDataBySchema.Clear(schemaId.InfoSchemaKey);
             _routineDataBySchema.Clear(schemaId.InfoSchemaKey);
             _viewsBySchema.Clear(schemaId.InfoSchemaKey);
@@ -266,7 +270,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             bool isNullable = q.IsNullable == "YES";
             ColumnOption.Nullability nullability = isNullable ? new ColumnOption.Nullability.Null() : new ColumnOption.Nullability.NotNull();
 
-            ColumnOption.ColumnDefault? colDefault = _helper.ParseColumnDefault(q.ColumnDefault, isNullable, dataType, q.Extra);
+            ColumnOption.ColumnDefault? colDefault = _helper.ParseColumnDefault(q.ColumnDefault, isNullable, dataType, q.Extra, _config.ParseSettings.RemoveSlashesBeforeQuotesColumnDefault);
 
             ColumnOption.Generated? generation = _helper.ParseGenerated(q.GenerationExpression, q.Extra, _config.ParseSettings.RemoveSlashesBeforeQuotesGenerationExpression);
 
@@ -455,7 +459,6 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
                                                       SqlDataAccess = r.SqlDataAccess,
                                                       RoutineComment = r.RoutineComment,
                                                       IsDeterministic = r.IsDeterministic,
-                                                      RoutineDefinition = r.RoutineDefinition,
                                                   }
                                               }).ToListAsync(cancellationToken);
 
@@ -524,11 +527,15 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
         RoutineInfo funcInfo = _helper.RoutineToRoutineInfo(func);
         DataType returnType = _helper.ParseDataType(func.DataType!);
 
-        Statement body = _helper.ParseStatement(func.RoutineDefinition!);
+        IReadOnlyDictionary<string, string?> definitions = await _functionDefinitionsBySchema.GetAsync(functionId.InfoSchemaKey, cancellationToken);
+        string createText = definitions[funcName]
+            ?? throw new InvalidOperationException($"SHOW CREATE FUNCTION returned no definition for {functionId}.");
+        var createFunction = (CreateFunction)_parser.Parse([.. _lexer.Tokenize(createText)])[0];
+        string bodyText = createText[(int)createFunction.Body.Meta.Start!..];
 
-        bool isAggregate = _helper.IsAggregateFunction(func.RoutineDefinition!);
+        bool isAggregate = _helper.IsAggregateFunction(bodyText);
 
-        return new MyStoredFunction(functionId, routineParams, returnType, body)
+        return new MyStoredFunction(functionId, routineParams, returnType, createFunction.Body)
         {
             Definer = funcInfo.Definer,
             SecurityContext = funcInfo.SecurityContext,
@@ -536,35 +543,66 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
             Comment = funcInfo.Comment,
             Deterministic = funcInfo.IsDeterministic,
             SqlDataRelation = funcInfo.SqlDataRelation,
-            RawBodyText = func.RoutineDefinition!,
+            RawBodyText = bodyText,
         };
     }
 
     public async Task<Dictionary<ObjectIdentifier, MyTrigger>> GetTriggersOnTableAsync(ObjectIdentifier tableId, CancellationToken cancellationToken = default)
     {
-        return _helper.TriggersOnTableToDictionary((await _triggersBySchema.GetAsync(tableId.InfoSchemaKey, cancellationToken))[tableId.Name], tableId);
+        var triggers = new Dictionary<ObjectIdentifier, MyTrigger>();
+        foreach (TriggerDefinitionDto row in (await _triggersBySchema.GetAsync(tableId.InfoSchemaKey, cancellationToken))[tableId.Name])
+        {
+            var id = new ObjectIdentifier(row.TriggerName, tableId.Schema, _quoteStyle);
+            string createText = row.CreateTrigger
+                ?? throw new InvalidOperationException($"SHOW CREATE TRIGGER returned no definition for {id}.");
+            var createTrigger = (CreateTrigger)_parser.Parse([.. _lexer.Tokenize(createText)])[0];
+            triggers.Add(id, new MyTrigger(id, tableId, TriggerTime.Parse(row.ActionTiming), TriggerEvent.Parse(row.EventManipulation), createTrigger.Body)
+            {
+                Definer = new Definer(_helper.ParseAccount(row.Definer)),
+                Order = (uint)row.ActionOrder,
+                RawBodyText = createText[(int)createTrigger.Body.Meta.Start!..]
+            });
+        }
+        return triggers;
     }
 
-    private async Task<ILookup<string, TriggerDto>> LoadSchemaTriggersAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken = default)
+    private async Task<IReadOnlyDictionary<string, string?>> LoadSchemaFunctionDefinitionsAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken = default)
     {
-        await using QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken);
-        InfoSchemaContext context = lease.Context;
+        SchemaRoutineData routineData = await _routineDataBySchema.GetAsync(schemaKey, cancellationToken);
+        List<ObjectIdentifier> ids = [.. routineData.RoutinesByName.Keys
+            .Where(key => key.Type == "FUNCTION")
+            .Select(key => ObjectIdentifier.FromStrings(schemaKey.Catalog, schemaKey.Schema, key.Name, _quoteStyle))];
+        Dictionary<ObjectIdentifier, CreateFunctionEntity> definitions = await _rawEntityRetriever.GetCreateFunctionsAsync(ids, cancellationToken);
+        return definitions.ToDictionary(kv => kv.Key.Name, kv => kv.Value.CreateFunction);
+    }
 
-        List<TriggerDto> triggers = await (from t in context.Triggers
-                                           where t.EventObjectCatalog == schemaKey.Catalog
-                                           && t.EventObjectSchema == schemaKey.Schema
-                                           orderby t.EventObjectTable, t.ActionOrder
-                                           select new TriggerDto
-                                           {
-                                               EventObjectTable = t.EventObjectTable,
-                                               TriggerName = t.TriggerName,
-                                               EventManipulation = t.EventManipulation,
-                                               ActionTiming = t.ActionTiming,
-                                               ActionStatement = t.ActionStatement,
-                                               ActionOrder = t.ActionOrder,
-                                               Definer = t.Definer
-                                           }).ToListAsync(cancellationToken);
-        return triggers.ToLookup(t => t.EventObjectTable);
+    private async Task<ILookup<string, TriggerDefinitionDto>> LoadSchemaTriggersAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken = default)
+    {
+        List<TriggerDefinitionDto> rows;
+        await using (QueryLease<InfoSchemaContext> lease = await GetConnectionAsync(cancellationToken))
+        {
+            rows = await (from t in lease.Context.Triggers
+                          where t.EventObjectCatalog == schemaKey.Catalog
+                          && t.EventObjectSchema == schemaKey.Schema
+                          orderby t.EventObjectTable, t.ActionOrder
+                          select new TriggerDefinitionDto
+                          {
+                              TriggerName = t.TriggerName,
+                              EventObjectTable = t.EventObjectTable,
+                              EventManipulation = t.EventManipulation,
+                              ActionTiming = t.ActionTiming,
+                              ActionOrder = t.ActionOrder,
+                              Definer = t.Definer
+                          }).ToListAsync(cancellationToken);
+        }
+
+        // Trigger names are unique within a schema, so the bare name is a sufficient key here.
+        Dictionary<ObjectIdentifier, CreateTriggerEntity> definitions = await _rawEntityRetriever.GetCreateTriggersAsync(
+            [.. rows.Select(row => ObjectIdentifier.FromStrings(schemaKey.Catalog, schemaKey.Schema, row.TriggerName, _quoteStyle))], cancellationToken);
+        Dictionary<string, string?> textByName = definitions.ToDictionary(kv => kv.Key.Name, kv => kv.Value.CreateTrigger);
+        return rows
+            .Select(row => row with { CreateTrigger = textByName[row.TriggerName] })
+            .ToLookup(row => row.EventObjectTable);
     }
 
     private async Task<IReadOnlyDictionary<string, ViewEntity>> LoadSchemaViewsAsync(InfoSchemaKey schemaKey, CancellationToken cancellationToken)
@@ -773,6 +811,7 @@ public partial class InfoSchemaRepo : IRetrieveDatabaseObjects, IDisposable
     public void Dispose()
     {
         _triggersBySchema.Dispose();
+        _functionDefinitionsBySchema.Dispose();
         _tableDataBySchema.Dispose();
         _routineDataBySchema.Dispose();
         _viewsBySchema.Dispose();
